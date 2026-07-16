@@ -67,7 +67,6 @@ export const CONTAINER_MAX_WIDTH_WORKSPACE = 1360 as const; // px
 // Gutter tokens per viewport
 export const GUTTER_MOBILE = SPACING_4;   // 16px
 export const GUTTER_TABLET = 20 as const; // 20px (between scale steps, by design)
-export const GUTTER_DESKTOP = SPACING_6;  // 24px
 
 // ---------------------------------------------------------------------------
 // Consolidated spacing token map (for CSS var injection)
@@ -85,8 +84,6 @@ export const spacingTokens = {
   '--control-height-md': `${CONTROL_HEIGHT_MD}px`,
   '--control-height-lg': `${CONTROL_HEIGHT_LG}px`,
   '--input-padding-h': `${INPUT_PADDING_HORIZONTAL}px`,
-  '--card-inner-marketplace': `${CARD_INNER_SPACING_MARKETPLACE}px`,
-  '--card-inner-workspace': `${CARD_INNER_SPACING_WORKSPACE}px`,
   '--form-field-gap': `${FORM_FIELD_STACK_GAP}px`,
   '--section-spacing': `${SECTION_SPACING_DEFAULT}px`,
   '--section-spacing-major': `${SECTION_SPACING_MAJOR}px`,
@@ -95,7 +92,7 @@ export const spacingTokens = {
   '--container-max-workspace': `${CONTAINER_MAX_WIDTH_WORKSPACE}px`,
   '--gutter-mobile': `${GUTTER_MOBILE}px`,
   '--gutter-tablet': `${GUTTER_TABLET}px`,
-  '--gutter-desktop': `${GUTTER_DESKTOP}px`,
+  '--gutter-desktop': `${SPACING_6}px`,
 } as const;
 
 export type SpacingTokenKey = keyof typeof spacingTokens;

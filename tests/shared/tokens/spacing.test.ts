@@ -31,9 +31,8 @@ import {
   CONTAINER_MAX_WIDTH_WORKSPACE,
   GUTTER_MOBILE,
   GUTTER_TABLET,
-  GUTTER_DESKTOP,
   spacingTokens,
-} from '../../../src/shared/ui/tokens/spacing';
+} from '@shared/ui/tokens/spacing';
 
 describe('Spacing tokens', () => {
   describe('Base unit', () => {
@@ -179,8 +178,8 @@ describe('Spacing tokens', () => {
       expect(GUTTER_TABLET).toBe(20);
     });
 
-    it('GUTTER_DESKTOP should be 24', () => {
-      expect(GUTTER_DESKTOP).toBe(24);
+    it('gutter desktop token should be 24px', () => {
+      expect(spacingTokens['--gutter-desktop']).toBe('24px');
     });
   });
 

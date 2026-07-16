@@ -7,12 +7,12 @@
  *
  * Usage:
  *   // Marketplace pages
- *   <ThemeProvider densityMode="marketplace">
+ *   <ThemeProvider initialDensityMode="marketplace">
  *     <CatalogPage />
  *   </ThemeProvider>
  *
  *   // Workspace/task pages
- *   <ThemeProvider densityMode="workspace">
+ *   <ThemeProvider initialDensityMode="workspace">
  *     <InstructorCoursesPage />
  *   </ThemeProvider>
  *
@@ -43,16 +43,16 @@ ThemeContext.displayName = 'ThemeContext';
 // ---------------------------------------------------------------------------
 interface ThemeProviderProps {
   /** Initial density mode. Defaults to 'marketplace'. */
-  densityMode?: DensityMode;
+  initialDensityMode?: DensityMode;
   children: ReactNode;
 }
 
 export function ThemeProvider({
-  densityMode: initialMode = 'marketplace',
+  initialDensityMode = 'marketplace',
   children,
 }: ThemeProviderProps) {
   const [densityMode, setDensityModeState] =
-    useState<DensityMode>(initialMode);
+    useState<DensityMode>(initialDensityMode);
 
   const setDensityMode = useCallback((mode: DensityMode) => {
     setDensityModeState(mode);
@@ -86,7 +86,7 @@ export function useDensityMode(): ThemeContextValue {
   if (ctx === null) {
     throw new Error(
       'useDensityMode must be used within a <ThemeProvider>. ' +
-        'Wrap the relevant page or section with <ThemeProvider densityMode="marketplace|workspace">.',
+        'Wrap the relevant page or section with <ThemeProvider initialDensityMode="marketplace|workspace">.',
     );
   }
   return ctx;
