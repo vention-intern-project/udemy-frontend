@@ -2,7 +2,7 @@
  * ThemeProvider
  *
  * React context provider for the application's density mode.
- * Wraps a section of the tree with a density-mode data attribute and
+ * Applies density-mode data attribute to the document root and
  * exposes `useDensityMode()` hook for consumers.
  *
  * Usage:
@@ -26,6 +26,7 @@ import {
   useState,
   useCallback,
   useMemo,
+  useEffect,
   type ReactNode,
 } from 'react';
 
@@ -63,12 +64,24 @@ export function ThemeProvider({
     setDensityMode,
   }), [densityMode, setDensityMode]);
 
+  useEffect(() => {
+    const root = document.documentElement;
+    const previousDensity = root.getAttribute('data-density');
+
+    root.setAttribute('data-density', densityMode);
+
+    return () => {
+      if (previousDensity === null) {
+        root.removeAttribute('data-density');
+      } else {
+        root.setAttribute('data-density', previousDensity);
+      }
+    };
+  }, [densityMode]);
+
   return (
     <ThemeContext.Provider value={value}>
-      {/* data-density attribute enables CSS density overrides */}
-      <div data-density={densityMode} style={{ display: 'contents' }}>
-        {children}
-      </div>
+      {children}
     </ThemeContext.Provider>
   );
 }

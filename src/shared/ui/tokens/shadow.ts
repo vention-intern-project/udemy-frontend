@@ -27,7 +27,6 @@ export const shadowTokens = {
   '--shadow-1': SHADOW_1,
   '--shadow-2': SHADOW_2,
   '--shadow-3': SHADOW_3,
-  '--overlay-scrim': OVERLAY_SCRIM,
 } as const;
 
 export type ShadowTokenKey = keyof typeof shadowTokens;

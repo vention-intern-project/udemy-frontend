@@ -6,7 +6,7 @@
  *   import '@shared/ui/tokens/tokens.css';
  *
  * Root tokens apply to all elements. Density-specific tokens are
- * applied by ThemeProvider on a wrapping element via data attributes.
+ * applied by ThemeProvider on the document root via data attributes.
  */
 
 /* =========================================================================
@@ -248,8 +248,8 @@
 
 /* =========================================================================
    Density modes
-   Applied via data attribute on a density root element.
-   ThemeProvider applies data-density="marketplace|workspace".
+   Applied via data attribute on the document root element.
+   ThemeProvider applies data-density="marketplace|workspace" on <html>.
    ========================================================================= */
 
 /* Default (marketplace — comfortable) */
