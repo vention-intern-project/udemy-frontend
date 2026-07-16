@@ -32,7 +32,7 @@ export const stateTokenMap: Readonly<Record<ComponentState, Readonly<{
   fg: string;
   /** Border color CSS variable */
   border: string;
-  /** aria attribute for the state (where applicable) */
+  /** ARIA attribute (or other a11y/data attribute) for the state (where applicable) */
   ariaAttr?: string;
 }>>> = {
   initial: {

@@ -25,6 +25,7 @@ import {
   useContext,
   useState,
   useCallback,
+  useMemo,
   type ReactNode,
 } from 'react';
 
@@ -57,10 +58,10 @@ export function ThemeProvider({
     setDensityModeState(mode);
   }, []);
 
-  const value: ThemeContextValue = {
+  const value = useMemo<ThemeContextValue>(() => ({
     densityMode,
     setDensityMode,
-  };
+  }), [densityMode, setDensityMode]);
 
   return (
     <ThemeContext.Provider value={value}>

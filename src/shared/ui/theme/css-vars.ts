@@ -1,8 +1,8 @@
 /**
- * CSS custom property injection utility
+ * CSS custom property utilities
  *
- * Applies a flat record of CSS variable name→value pairs to a DOM element.
- * Used by ThemeProvider to inject density and global tokens.
+ * Helpers for applying/removing a flat record of CSS var name→value pairs
+ * to a DOM element (e.g. document.documentElement). Useful for runtime token injection.
  */
 
 /**

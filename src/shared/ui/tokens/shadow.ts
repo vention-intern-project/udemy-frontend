@@ -5,6 +5,9 @@
  * Mild shadows only; heavier elevation reserved for overlays.
  */
 
+import { OVERLAY_SCRIM } from './color';
+export { OVERLAY_SCRIM as OVERLAY_SCRIM_SHADOW };
+
 // ---------------------------------------------------------------------------
 // Shadow scale
 // ---------------------------------------------------------------------------
@@ -17,9 +20,6 @@ export const SHADOW_2 = '0 4px 12px rgba(17, 24, 39, 0.12)' as const;
 /** Modals, dialogs, drawers — maximum elevation */
 export const SHADOW_3 = '0 12px 28px rgba(17, 24, 39, 0.16)' as const;
 
-// Overlay scrim is also defined in color.ts; re-exported here for elevation context
-export const OVERLAY_SCRIM_SHADOW = 'rgba(17, 24, 39, 0.56)' as const;
-
 // ---------------------------------------------------------------------------
 // Consolidated shadow token map
 // ---------------------------------------------------------------------------
@@ -27,7 +27,7 @@ export const shadowTokens = {
   '--shadow-1': SHADOW_1,
   '--shadow-2': SHADOW_2,
   '--shadow-3': SHADOW_3,
-  '--overlay-scrim': OVERLAY_SCRIM_SHADOW,
+  '--overlay-scrim': OVERLAY_SCRIM,
 } as const;
 
 export type ShadowTokenKey = keyof typeof shadowTokens;
