@@ -1,0 +1,285 @@
+/**
+ * Design System Token CSS Custom Properties
+ * All token families as CSS custom properties.
+ *
+ * Apply by importing this file in the app entry point:
+ *   import '@shared/ui/tokens/tokens.css';
+ *
+ * Root tokens apply to all elements. Density-specific tokens are
+ * applied by ThemeProvider on a wrapping element via data attributes.
+ */
+
+/* =========================================================================
+   Semantic color tokens
+   ========================================================================= */
+:root {
+  /* Surface */
+  --color-canvas: #f7f8fa;
+  --color-surface: #ffffff;
+  --color-surface-elevated: #ffffff;
+  --color-surface-inverted: #1f2937;
+
+  /* Text */
+  --text-primary: #111827;
+  --text-secondary: #374151;
+  --text-muted: #6b7280;
+
+  /* Border */
+  --border-default: #d1d5db;
+  --border-strong: #9ca3af;
+
+  /* Action — Primary */
+  --action-primary-bg: #6d28d9;
+  --action-primary-bg-hover: #5b21b6;
+  --action-primary-bg-pressed: #4c1d95;
+  --action-primary-fg: #ffffff;
+
+  /* Action — Secondary */
+  --action-secondary-bg: #ede9fe;
+  --action-secondary-bg-hover: #ddd6fe;
+  --action-secondary-bg-pressed: #c4b5fd;
+  --action-secondary-fg: #4c1d95;
+
+  /* Action — Link */
+  --action-link: #1d4ed8;
+
+  /* Focus ring — keyboard only */
+  --focus-ring: #2563eb;
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+
+  /* Component states */
+  --state-selected: #dbeafe;
+  --state-disabled-bg: #e5e7eb;
+  --state-disabled-text: #9ca3af;
+  --state-disabled-opacity: 0.56;
+
+  /* Feedback / status */
+  --feedback-success: #047857;
+  --feedback-success-bg: #ecfdf5;
+  --feedback-warning: #92400e;
+  --feedback-warning-bg: #fffbeb;
+  --feedback-error: #b91c1c;
+  --feedback-error-bg: #fef2f2;
+  --feedback-info: #1e40af;
+  --feedback-info-bg: #eff6ff;
+
+  /* Miscellaneous */
+  --rating-emphasis: #b45309;
+  --overlay-scrim: rgba(17, 24, 39, 0.56);
+}
+
+/* =========================================================================
+   Typography scale
+   ========================================================================= */
+:root {
+  --font-family-base: "Inter", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-family-numeric: "Inter", "Segoe UI", sans-serif;
+
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* Display */
+  --type-display-size: 40px;
+  --type-display-lh: 48px;
+  --type-display-weight: 700;
+  --type-display-ls: -0.01em;
+
+  /* Page H1 */
+  --type-page-h1-size: 32px;
+  --type-page-h1-lh: 40px;
+  --type-page-h1-weight: 700;
+  --type-page-h1-ls: -0.01em;
+
+  /* Section H2 */
+  --type-section-h2-size: 24px;
+  --type-section-h2-lh: 32px;
+  --type-section-h2-weight: 700;
+
+  /* Card H3 */
+  --type-card-h3-size: 18px;
+  --type-card-h3-lh: 26px;
+  --type-card-h3-weight: 600;
+
+  /* Body */
+  --type-body-md-size: 16px;
+  --type-body-md-lh: 24px;
+  --type-body-sm-size: 14px;
+  --type-body-sm-lh: 20px;
+
+  /* Label / button */
+  --type-label-size: 14px;
+  --type-label-lh: 20px;
+  --type-label-weight: 600;
+  --type-button-size: 14px;
+  --type-button-lh: 20px;
+  --type-button-weight: 600;
+
+  /* Caption / metadata */
+  --type-caption-size: 12px;
+  --type-caption-lh: 16px;
+  --type-metadata-size: 13px;
+  --type-metadata-lh: 18px;
+  --type-metadata-weight: 500;
+
+  /* Numeric emphasis */
+  --type-numeric-emphasis-size: 20px;
+  --type-numeric-emphasis-lh: 28px;
+  --type-numeric-emphasis-weight: 700;
+}
+
+/* =========================================================================
+   Spacing scale
+   ========================================================================= */
+:root {
+  --spacing-1: 4px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-6: 24px;
+  --spacing-8: 32px;
+  --spacing-12: 48px;
+  --spacing-16: 64px;
+
+  --control-height-sm: 36px;
+  --control-height-md: 44px;
+  --control-height-lg: 52px;
+
+  --input-padding-h: 12px;
+  --form-field-gap: 16px;
+  --section-spacing: 32px;
+  --section-spacing-major: 48px;
+
+  --layout-header-height: 64px;
+  --container-max-public: 1200px;
+  --container-max-workspace: 1360px;
+
+  --gutter-mobile: 16px;
+  --gutter-tablet: 20px;
+  --gutter-desktop: 24px;
+}
+
+/* =========================================================================
+   Border radius
+   ========================================================================= */
+:root {
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+
+  --border-width: 1px;
+  --border-width-emphasized: 2px;
+}
+
+/* =========================================================================
+   Shadow / elevation
+   ========================================================================= */
+:root {
+  --shadow-1: 0 1px 2px rgba(17, 24, 39, 0.08);
+  --shadow-2: 0 4px 12px rgba(17, 24, 39, 0.12);
+  --shadow-3: 0 12px 28px rgba(17, 24, 39, 0.16);
+}
+
+/* =========================================================================
+   Motion / animation
+   ========================================================================= */
+:root {
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
+  --duration-slow: 240ms;
+  --duration-reduced: 80ms;
+  --easing-standard: cubic-bezier(0.2, 0, 0, 1);
+  --easing-enter: cubic-bezier(0, 0, 0.2, 1);
+  --easing-exit: cubic-bezier(0.4, 0, 1, 1);
+}
+
+/* Reduced-motion overrides — disable shimmer and transform transitions */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration-base: 0ms;
+    --duration-slow: 0ms;
+  }
+}
+
+/* =========================================================================
+   Breakpoints
+   Breakpoints are defined as JS constants; CSS uses them via media queries.
+   Reference values below for documentation only (not consumed as custom props).
+
+   xs: 320px  |  sm: 480px  |  md: 768px  |  lg: 1024px  |  xl: 1280px  |  2xl: 1440px
+   ========================================================================= */
+:root {
+  --bp-xs: 320px;
+  --bp-sm: 480px;
+  --bp-md: 768px;
+  --bp-lg: 1024px;
+  --bp-xl: 1280px;
+  --bp-2xl: 1440px;
+}
+
+/* =========================================================================
+   Component state CSS vars
+   ========================================================================= */
+:root {
+  /* initial state uses base tokens — no override needed */
+  /* loading */
+  --state-loading-bg: var(--color-surface);
+  --state-loading-fg: var(--text-muted);
+  /* empty */
+  --state-empty-bg: var(--color-canvas);
+  --state-empty-fg: var(--text-muted);
+  /* success */
+  --state-success-bg: var(--feedback-success-bg);
+  --state-success-fg: var(--feedback-success);
+  --state-success-border: var(--feedback-success);
+  /* error */
+  --state-error-bg: var(--feedback-error-bg);
+  --state-error-fg: var(--feedback-error);
+  --state-error-border: var(--feedback-error);
+  /* disabled — also see --state-disabled-bg / --state-disabled-text above */
+  /* focus — uses --focus-ring above */
+  /* selected — uses --state-selected above */
+}
+
+/* =========================================================================
+   Density modes
+   Applied via data attribute on a density root element.
+   ThemeProvider applies data-density="marketplace|workspace".
+   ========================================================================= */
+
+/* Default (marketplace — comfortable) */
+:root,
+[data-density="marketplace"] {
+  --density-card-inner: 16px;
+  --density-section-gap: 32px;
+  --density-item-gap: 24px;
+  --density-form-gap: 16px;
+  --density-gutter: 24px;
+}
+
+/* Workspace — compact */
+[data-density="workspace"] {
+  --density-card-inner: 12px;
+  --density-section-gap: 16px;
+  --density-item-gap: 12px;
+  --density-form-gap: 16px;
+  --density-gutter: 16px;
+}
+
+/* =========================================================================
+   Z-index scale
+   ========================================================================= */
+:root {
+  --z-base: 0;
+  --z-raised: 100;
+  --z-dropdown: 200;
+  --z-sticky: 300;
+  --z-overlay: 400;
+  --z-modal: 500;
+  --z-toast: 600;
+}
