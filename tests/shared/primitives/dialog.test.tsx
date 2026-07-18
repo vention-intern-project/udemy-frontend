@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { useRef, useState } from 'react';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -90,6 +90,40 @@ function MultipleDialogsHarness() {
   );
 }
 
+function EscapeOwnershipHarness({ busy, onEscapeBubble }: {
+  busy: boolean;
+  onEscapeBubble: () => void;
+}) {
+  const [firstOpen, setFirstOpen] = useState(true);
+  const [secondOpen, setSecondOpen] = useState(true);
+
+  return (
+    <div
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') onEscapeBubble();
+      }}
+    >
+      <Dialog
+        open={firstOpen}
+        title="Underlying dialog"
+        onClose={() => setFirstOpen(false)}
+        showCloseButton={false}
+      >
+        <button type="button">Underlying action</button>
+      </Dialog>
+      <Dialog
+        open={secondOpen}
+        title="Top dialog"
+        onClose={() => setSecondOpen(false)}
+        showCloseButton={false}
+        busy={busy}
+      >
+        <button type="button">Top action</button>
+      </Dialog>
+    </div>
+  );
+}
+
 describe('Dialog', () => {
   it('links its accessible name and description, traps focus, closes on Escape, and restores focus', async () => {
     const user = userEvent.setup();
@@ -124,6 +158,33 @@ describe('Dialog', () => {
     await act(async () => user.click(screen.getByRole('button', { name: 'Open editor' })));
     await user.keyboard('{Escape}');
     expect(screen.getByRole('dialog').getAttribute('aria-busy')).toBe('true');
+  });
+
+  it('contains Escape in the topmost dialog while preserving busy and close ownership', async () => {
+    const user = userEvent.setup();
+    const onEscapeBubble = vi.fn();
+    const { rerender } = render(
+      <EscapeOwnershipHarness busy onEscapeBubble={onEscapeBubble} />,
+    );
+
+    const underlyingDialog = screen.getByRole('dialog', { name: 'Underlying dialog' });
+    fireEvent.keyDown(underlyingDialog, { key: 'Escape' });
+    expect(screen.getByRole('dialog', { name: 'Underlying dialog' })).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: 'Top dialog' })).toBeTruthy();
+    expect(onEscapeBubble).toHaveBeenCalledTimes(1);
+
+    onEscapeBubble.mockClear();
+    screen.getByRole('button', { name: 'Top action' }).focus();
+    await user.keyboard('{Escape}');
+    expect(screen.getByRole('dialog', { name: 'Top dialog' }).getAttribute('aria-busy'))
+      .toBe('true');
+    expect(onEscapeBubble).not.toHaveBeenCalled();
+
+    rerender(<EscapeOwnershipHarness busy={false} onEscapeBubble={onEscapeBubble} />);
+    await act(async () => user.keyboard('{Escape}'));
+    expect(screen.queryByRole('dialog', { name: 'Top dialog' })).toBe(null);
+    expect(screen.getByRole('dialog', { name: 'Underlying dialog' })).toBeTruthy();
+    expect(onEscapeBubble).not.toHaveBeenCalled();
   });
 
   it('uses computed tabbability for entry and wrapping and falls back to the dialog', async () => {

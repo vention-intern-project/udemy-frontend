@@ -120,6 +120,7 @@ export function Dialog({
 
     if (event.key === 'Escape') {
       event.preventDefault();
+      event.stopPropagation();
       if (!busy) onClose();
       return;
     }
