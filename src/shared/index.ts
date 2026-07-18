@@ -8,3 +8,9 @@ export * from './ui/tokens';
 // Theme provider and density mode
 export { ThemeProvider, useDensityMode } from './ui/theme';
 export type { ThemeContextValue, DensityMode } from './ui/theme';
+
+// Endpoint-agnostic accessible UI primitives
+export * from './ui/primitives';
+
+// Accessibility utilities used by composed shared controls
+export * from './accessibility';

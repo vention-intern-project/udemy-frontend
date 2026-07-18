@@ -27,6 +27,7 @@ import {
   useCallback,
   useMemo,
   useEffect,
+  useRef,
   type ReactNode,
 } from 'react';
 
@@ -36,8 +37,63 @@ import type { ThemeContextValue, DensityMode } from './types';
 // Context
 // ---------------------------------------------------------------------------
 const ThemeContext = createContext<ThemeContextValue | null>(null);
+const ThemeOwnershipDepthContext = createContext(0);
 
 ThemeContext.displayName = 'ThemeContext';
+
+interface DensityOwner {
+  id: symbol;
+  depth: number;
+  sequence: number;
+  mode: DensityMode;
+}
+
+const densityOwners: DensityOwner[] = [];
+let densityOwnerSequence = 0;
+let densityBeforeProviders: string | null | undefined;
+
+function activeDensityOwner(): DensityOwner | undefined {
+  return densityOwners.reduce<DensityOwner | undefined>((active, owner) => {
+    if (!active || owner.depth > active.depth) return owner;
+    if (owner.depth === active.depth && owner.sequence > active.sequence) return owner;
+    return active;
+  }, undefined);
+}
+
+function applyActiveDensity() {
+  const root = document.documentElement;
+  const active = activeDensityOwner();
+
+  if (active) {
+    root.setAttribute('data-density', active.mode);
+  } else if (densityBeforeProviders === null) {
+    root.removeAttribute('data-density');
+  } else if (densityBeforeProviders !== undefined) {
+    root.setAttribute('data-density', densityBeforeProviders);
+  }
+}
+
+function registerDensityOwner(id: symbol, depth: number, mode: DensityMode) {
+  if (densityOwners.length === 0) {
+    densityBeforeProviders = document.documentElement.getAttribute('data-density');
+  }
+  densityOwners.push({ id, depth, mode, sequence: densityOwnerSequence });
+  densityOwnerSequence += 1;
+  applyActiveDensity();
+}
+
+function updateDensityOwner(id: symbol, mode: DensityMode) {
+  const owner = densityOwners.find((candidate) => candidate.id === id);
+  if (owner) owner.mode = mode;
+  applyActiveDensity();
+}
+
+function unregisterDensityOwner(id: symbol) {
+  const ownerIndex = densityOwners.findIndex((owner) => owner.id === id);
+  if (ownerIndex >= 0) densityOwners.splice(ownerIndex, 1);
+  applyActiveDensity();
+  if (densityOwners.length === 0) densityBeforeProviders = undefined;
+}
 
 // ---------------------------------------------------------------------------
 // Provider
@@ -52,8 +108,12 @@ export function ThemeProvider({
   initialDensityMode = 'marketplace',
   children,
 }: ThemeProviderProps) {
+  const parentOwnershipDepth = useContext(ThemeOwnershipDepthContext);
   const [densityMode, setDensityModeState] =
     useState<DensityMode>(initialDensityMode);
+  const ownerIdRef = useRef(Symbol('theme-density-owner'));
+  const densityModeRef = useRef(densityMode);
+  densityModeRef.current = densityMode;
 
   const setDensityMode = useCallback((mode: DensityMode) => {
     setDensityModeState(mode);
@@ -65,24 +125,25 @@ export function ThemeProvider({
   }), [densityMode, setDensityMode]);
 
   useEffect(() => {
-    const root = document.documentElement;
-    const previousDensity = root.getAttribute('data-density');
+    const ownerId = ownerIdRef.current;
+    registerDensityOwner(
+      ownerId,
+      parentOwnershipDepth,
+      densityModeRef.current,
+    );
+    return () => unregisterDensityOwner(ownerId);
+  }, [parentOwnershipDepth]);
 
-    root.setAttribute('data-density', densityMode);
-
-    return () => {
-      if (previousDensity === null) {
-        root.removeAttribute('data-density');
-      } else {
-        root.setAttribute('data-density', previousDensity);
-      }
-    };
+  useEffect(() => {
+    updateDensityOwner(ownerIdRef.current, densityMode);
   }, [densityMode]);
 
   return (
-    <ThemeContext.Provider value={value}>
-      {children}
-    </ThemeContext.Provider>
+    <ThemeOwnershipDepthContext.Provider value={parentOwnershipDepth + 1}>
+      <ThemeContext.Provider value={value}>
+        {children}
+      </ThemeContext.Provider>
+    </ThemeOwnershipDepthContext.Provider>
   );
 }
 

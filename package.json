@@ -5,10 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "typecheck": "tsc",
     "build": "tsc && vite build",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "test:browser": "playwright test --config tests/browser/playwright.config.ts --project=chromium --workers=1 --retries=0 --reporter=line",
+    "test:all": "npm run typecheck && npm run lint && npm test && npm run test:browser",
+    "lint": "eslint src tests vite.config.ts .eslintrc.cjs --ext ts,tsx,cjs --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -17,6 +20,10 @@
     "react-router-dom": "^6.23.1"
   },
   "devDependencies": {
+    "@playwright/test": "1.61.1",
+    "@testing-library/react": "14.3.1",
+    "@testing-library/user-event": "14.5.2",
+    "@types/node": "24.13.3",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@typescript-eslint/eslint-plugin": "^7.13.0",
@@ -26,6 +33,7 @@
     "eslint": "^8.57.0",
     "eslint-plugin-react-hooks": "^4.6.2",
     "eslint-plugin-react-refresh": "^0.4.7",
+    "jsdom": "24.1.0",
     "typescript": "^5.2.2",
     "vite": "^5.3.1",
     "vitest": "^1.6.0"
