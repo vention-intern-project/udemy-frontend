@@ -1,0 +1,131 @@
+// @vitest-environment jsdom
+
+import { cleanup, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import { Button, Input, Select, Textarea } from '../../../src/shared/ui/primitives';
+
+afterEach(cleanup);
+
+describe('Button', () => {
+  it('keeps native keyboard activation', async () => {
+    const user = userEvent.setup();
+    const onClick = vi.fn();
+    render(<Button onClick={onClick}>Save course</Button>);
+
+    const button = screen.getByRole('button', { name: 'Save course' });
+    button.focus();
+    await user.keyboard('{Enter}');
+    await user.keyboard(' ');
+
+    expect(onClick).toHaveBeenCalledTimes(2);
+  });
+
+  it('exposes and announces loading state while preventing duplicate activation', async () => {
+    const user = userEvent.setup();
+    const onClick = vi.fn();
+    render(
+      <Button state="loading" statusMessage="Saving course" onClick={onClick}>
+        Save
+      </Button>,
+    );
+
+    const button = screen.getByRole('button', { name: 'Loading…' }) as HTMLButtonElement;
+    const statusId = button.getAttribute('aria-describedby');
+    expect(button.disabled).toBe(true);
+    expect(button.getAttribute('aria-busy')).toBe('true');
+    expect(statusId).toBeTruthy();
+    expect(document.getElementById(statusId ?? '')?.textContent).toBe('Saving course');
+    await user.click(button);
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it('distinguishes success and error without relying on color and keeps status accessible', () => {
+    render(
+      <>
+        <Button state="success" statusMessage="Changes saved">Save</Button>
+        <Button state="error" statusMessage="Save failed">Retry</Button>
+      </>,
+    );
+
+    const success = screen.getByRole('button', { name: 'Save' });
+    const error = screen.getByRole('button', { name: 'Retry' });
+    const successStatus = document.getElementById(success.getAttribute('aria-describedby') ?? '');
+    const errorStatus = document.getElementById(error.getAttribute('aria-describedby') ?? '');
+
+    expect(success.querySelector('[data-state-indicator="success"]')?.textContent).toBe('✓');
+    expect(error.querySelector('[data-state-indicator="error"]')?.textContent).toBe('!');
+    expect(success.querySelector('[data-state-indicator]')?.getAttribute('aria-hidden')).toBe('true');
+    expect(error.querySelector('[data-state-indicator]')?.getAttribute('aria-hidden')).toBe('true');
+    expect(successStatus?.textContent).toBe('Changes saved');
+    expect(errorStatus?.textContent).toBe('Save failed');
+  });
+});
+
+describe('form primitives', () => {
+  it('links Input label, help and error text programmatically', () => {
+    render(
+      <Input
+        label="Email"
+        required
+        helpText="Use your work email"
+        error="Email is invalid"
+      />,
+    );
+
+    const input = screen.getByRole('textbox', { name: 'Email' });
+    const descriptions = (input.getAttribute('aria-describedby') ?? '')
+      .split(' ')
+      .map((id) => document.getElementById(id)?.textContent);
+    expect(input.getAttribute('aria-invalid')).toBe('true');
+    expect(descriptions).toContain('Use your work email');
+    expect(descriptions).toContain('Email is invalid');
+  });
+
+  it('provides visible labels for Select and Textarea', () => {
+    render(
+      <>
+        <Select label="Sort courses" defaultValue="new">
+          <option value="new">Newest</option>
+        </Select>
+        <Textarea label="Description" helpText="Describe the course" />
+      </>,
+    );
+
+    expect(screen.getByRole('combobox', { name: 'Sort courses' })).toBeTruthy();
+    const textarea = screen.getByRole('textbox', { name: 'Description' });
+    const helpId = textarea.getAttribute('aria-describedby');
+    expect(document.getElementById(helpId ?? '')?.textContent).toBe('Describe the course');
+  });
+
+  it('preserves caller aria-invalid values unless an error forces invalid state', () => {
+    render(
+      <>
+        <Input label="Input caller state" aria-invalid="grammar" />
+        <Select label="Select caller state" aria-invalid="spelling">
+          <option>One</option>
+        </Select>
+        <Textarea label="Textarea caller state" aria-invalid={false} />
+        <Input label="Input error state" aria-invalid={false} error="Invalid input" />
+        <Select label="Select error state" aria-invalid={false} error="Invalid selection">
+          <option>One</option>
+        </Select>
+        <Textarea label="Textarea error state" aria-invalid={false} error="Invalid text" />
+      </>,
+    );
+
+    expect(screen.getByRole('textbox', { name: 'Input caller state' }).getAttribute('aria-invalid'))
+      .toBe('grammar');
+    expect(screen.getByRole('combobox', { name: 'Select caller state' }).getAttribute('aria-invalid'))
+      .toBe('spelling');
+    expect(screen.getByRole('textbox', { name: 'Textarea caller state' }).getAttribute('aria-invalid'))
+      .toBe('false');
+    expect(screen.getByRole('textbox', { name: 'Input error state' }).getAttribute('aria-invalid'))
+      .toBe('true');
+    expect(screen.getByRole('combobox', { name: 'Select error state' }).getAttribute('aria-invalid'))
+      .toBe('true');
+    expect(screen.getByRole('textbox', { name: 'Textarea error state' }).getAttribute('aria-invalid'))
+      .toBe('true');
+  });
+});

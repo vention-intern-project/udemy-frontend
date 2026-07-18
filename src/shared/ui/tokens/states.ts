@@ -96,6 +96,23 @@ export const ALL_COMPONENT_STATES: readonly ComponentState[] = [
   'selected',
 ] as const;
 
+// Concrete state custom properties that are declared in tokens.css. States
+// that directly reuse a semantic token remain represented by stateTokenMap.
+export const stateTokens = {
+  '--state-loading-bg': 'var(--color-surface)',
+  '--state-loading-fg': 'var(--text-muted)',
+  '--state-empty-bg': 'var(--color-canvas)',
+  '--state-empty-fg': 'var(--text-muted)',
+  '--state-success-bg': 'var(--feedback-success-bg)',
+  '--state-success-fg': 'var(--feedback-success)',
+  '--state-success-border': 'var(--feedback-success)',
+  '--state-error-bg': 'var(--feedback-error-bg)',
+  '--state-error-fg': 'var(--feedback-error)',
+  '--state-error-border': 'var(--feedback-error)',
+} as const;
+
+export type StateTokenKey = keyof typeof stateTokens;
+
 // ---------------------------------------------------------------------------
 // State-specific CSS classes (BEM modifier pattern for each state)
 // ---------------------------------------------------------------------------

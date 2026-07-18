@@ -18,6 +18,10 @@ build/
 # Coverage
 coverage/
 
+# Browser test evidence
+test-results/
+playwright-report/
+
 # OS
 .DS_Store
 Thumbs.db
