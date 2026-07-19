@@ -140,7 +140,7 @@ export function normalizeTransportError(error: unknown): ApiError {
     return error;
   }
 
-  if (error instanceof DOMException && error.name === 'AbortError') {
+  if (typeof DOMException !== 'undefined' && error instanceof DOMException && error.name === 'AbortError') {
     return new ApiError({
       kind: 'aborted',
       status: null,

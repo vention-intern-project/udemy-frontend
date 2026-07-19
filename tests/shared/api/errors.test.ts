@@ -45,4 +45,41 @@ describe('API error normalization', () => {
       message: 'Unable to reach the server',
     });
   });
+
+  it('normalizes DOMException AbortError failures as aborted errors', () => {
+    const cause = new DOMException('The operation was aborted', 'AbortError');
+
+    expect(normalizeTransportError(cause)).toMatchObject({
+      kind: 'aborted',
+      status: null,
+      message: 'Request was cancelled',
+      originalCause: cause,
+    });
+  });
+
+  it('normalizes transport failures when DOMException is not globally available', () => {
+    const originalDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'DOMException');
+    const cause = new TypeError('fetch failed');
+
+    try {
+      Object.defineProperty(globalThis, 'DOMException', {
+        configurable: true,
+        value: undefined,
+        writable: true,
+      });
+
+      expect(normalizeTransportError(cause)).toMatchObject({
+        kind: 'offline',
+        status: null,
+        message: 'Unable to reach the server',
+        originalCause: cause,
+      });
+    } finally {
+      if (originalDescriptor === undefined) {
+        Reflect.deleteProperty(globalThis, 'DOMException');
+      } else {
+        Object.defineProperty(globalThis, 'DOMException', originalDescriptor);
+      }
+    }
+  });
 });
