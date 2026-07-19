@@ -79,7 +79,8 @@ export const densityCssVarNames = {
 
 /**
  * Build a CSS custom property set for the given density mode.
- * Used by ThemeProvider to inject density variables onto a root element.
+ * Optional helper for explicitly applying density variables to a scoped element.
+ * ThemeProvider uses the data-density attribute; tokens.css supplies its overrides.
  */
 export function buildDensityVars(mode: DensityMode): Record<string, string> {
   const tokens = densityTokens[mode];
