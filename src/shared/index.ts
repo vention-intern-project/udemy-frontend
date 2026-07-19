@@ -14,3 +14,6 @@ export * from './ui/primitives';
 
 // Accessibility utilities used by composed shared controls
 export * from './accessibility';
+
+// Transport boundary
+export * from './api';
