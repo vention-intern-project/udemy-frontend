@@ -1,0 +1,209 @@
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
+
+import { mapUserProfileDto, type UserProfile, type UserProfileDto } from '../../entities/user';
+import {
+  ApiError, createApiClient, type ApiClient, type ApiRequestOptions,
+} from '../../shared/api';
+import {
+  createBrowserAccessTokenStore,
+  createExceptionSafeAccessTokenStore,
+  type AccessTokenStore,
+} from './storage';
+
+export type SessionState =
+  | { status: 'bootstrapping' }
+  | { status: 'anonymous' }
+  | { status: 'authenticated'; user: UserProfile }
+  | { status: 'error' };
+
+export interface SessionContextValue {
+  state: SessionState;
+  retryBootstrap(): void;
+  acceptAccessToken(token: string): void;
+  clearSession(): void;
+  requestRequired<TResponse, TBody = unknown>(options: ApiRequestOptions<TBody>): Promise<TResponse>;
+  requestOptional<TResponse, TBody = unknown>(options: ApiRequestOptions<TBody>): Promise<TResponse>;
+}
+
+interface SessionProviderProps {
+  children: ReactNode;
+  client?: ApiClient;
+  tokenStore?: AccessTokenStore;
+  apiBaseUrl?: string;
+  fetchImplementation?: typeof fetch;
+}
+
+const SessionContext = createContext<SessionContextValue | null>(null);
+SessionContext.displayName = 'SessionContext';
+
+function forSessionGeneration<TBody>(
+  options: ApiRequestOptions<TBody>,
+  generation: number,
+): ApiRequestOptions<TBody> {
+  if (!options.dedupeKey) return options;
+  return {
+    ...options,
+    dedupeKey: `session:${generation}:${options.dedupeKey}`,
+  };
+}
+
+export function SessionProvider({
+  children,
+  client: suppliedClient,
+  tokenStore: suppliedTokenStore,
+  apiBaseUrl = '',
+  fetchImplementation,
+}: SessionProviderProps) {
+  const tokenStore = useMemo(
+    () => createExceptionSafeAccessTokenStore(
+      suppliedTokenStore ?? createBrowserAccessTokenStore(),
+    ),
+    [suppliedTokenStore],
+  );
+  const [state, setState] = useState<SessionState>({ status: 'bootstrapping' });
+  const [bootstrapSequence, setBootstrapSequence] = useState(0);
+  const mountedRef = useRef(true);
+  const generationRef = useRef(0);
+
+  const clearSession = useCallback(() => {
+    generationRef.current += 1;
+    tokenStore.clear();
+    if (mountedRef.current) setState({ status: 'anonymous' });
+  }, [tokenStore]);
+
+  const isCurrentSnapshot = useCallback((generation: number, _token: string | null) => (
+    mountedRef.current && generationRef.current === generation
+  ), []);
+
+  const clearSessionForSnapshot = useCallback((generation: number, token: string | null) => {
+    if (!isCurrentSnapshot(generation, token)) return false;
+    const currentToken = tokenStore.get();
+    if (currentToken !== token) {
+      generationRef.current += 1;
+      setState({ status: 'anonymous' });
+      return false;
+    }
+    generationRef.current += 1;
+    tokenStore.clear();
+    setState({ status: 'anonymous' });
+    return true;
+  }, [isCurrentSnapshot, tokenStore]);
+
+  const ownedClient = useMemo(() => createApiClient({
+    baseUrl: apiBaseUrl,
+    fetch: fetchImplementation,
+    getAccessToken: () => tokenStore.get(),
+  }), [apiBaseUrl, fetchImplementation, tokenStore]);
+  const client = suppliedClient ?? ownedClient;
+
+  const bootstrap = useCallback(async () => {
+    const generation = generationRef.current;
+    const token = tokenStore.get();
+    if (!token) {
+      if (isCurrentSnapshot(generation, token)) setState({ status: 'anonymous' });
+      return;
+    }
+
+    if (isCurrentSnapshot(generation, token)) setState({ status: 'bootstrapping' });
+    try {
+      const profile = await client.request<UserProfileDto>(forSessionGeneration({
+        path: '/me',
+        dedupeKey: 'bootstrap',
+      }, generation));
+      if (isCurrentSnapshot(generation, token) && tokenStore.get() === token) {
+        setState({ status: 'authenticated', user: mapUserProfileDto(profile) });
+      } else if (isCurrentSnapshot(generation, token)) {
+        generationRef.current += 1;
+        setState({ status: 'anonymous' });
+      }
+    } catch (error) {
+      if (!isCurrentSnapshot(generation, token)) return;
+      if (error instanceof ApiError && error.status === 401) {
+        clearSessionForSnapshot(generation, token);
+      } else {
+        setState({ status: 'error' });
+      }
+    }
+  }, [clearSessionForSnapshot, client, isCurrentSnapshot, tokenStore]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    void bootstrap();
+    return () => {
+      mountedRef.current = false;
+    };
+  }, [bootstrap, bootstrapSequence]);
+
+  const retryBootstrap = useCallback(() => {
+    generationRef.current += 1;
+    if (mountedRef.current) setState({ status: 'bootstrapping' });
+    setBootstrapSequence((sequence) => sequence + 1);
+  }, []);
+
+  const acceptAccessToken = useCallback((token: string) => {
+    generationRef.current += 1;
+    if (!tokenStore.set(token)) {
+      if (mountedRef.current) setState({ status: 'anonymous' });
+      return;
+    }
+    if (mountedRef.current) setState({ status: 'bootstrapping' });
+    setBootstrapSequence((sequence) => sequence + 1);
+  }, [tokenStore]);
+
+  const requestRequired = useCallback(async <TResponse, TBody = unknown>(
+    options: ApiRequestOptions<TBody>,
+  ): Promise<TResponse> => {
+    const generation = generationRef.current;
+    const token = tokenStore.get();
+    try {
+      return await client.request<TResponse, TBody>(forSessionGeneration(options, generation));
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        clearSessionForSnapshot(generation, token);
+      }
+      throw error;
+    }
+  }, [clearSessionForSnapshot, client, tokenStore]);
+
+  const requestOptional = useCallback(async <TResponse, TBody = unknown>(
+    options: ApiRequestOptions<TBody>,
+  ): Promise<TResponse> => {
+    const generation = generationRef.current;
+    const token = tokenStore.get();
+    try {
+      return await client.request<TResponse, TBody>(forSessionGeneration(options, generation));
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.status !== 401 || !token) {
+        throw error;
+      }
+      if (!clearSessionForSnapshot(generation, token)) throw error;
+      return client.request<TResponse, TBody>(forSessionGeneration(options, generationRef.current));
+    }
+  }, [clearSessionForSnapshot, client, tokenStore]);
+
+  const value = useMemo<SessionContextValue>(() => ({
+    state,
+    retryBootstrap,
+    acceptAccessToken,
+    clearSession,
+    requestRequired,
+    requestOptional,
+  }), [acceptAccessToken, clearSession, requestOptional, requestRequired, retryBootstrap, state]);
+
+  return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
+}
+
+export function useSession(): SessionContextValue {
+  const context = useContext(SessionContext);
+  if (!context) throw new Error('useSession must be used within SessionProvider');
+  return context;
+}
