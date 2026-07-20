@@ -12,13 +12,21 @@ export interface ExceptionSafeAccessTokenStore {
 
 export const ACCESS_TOKEN_STORAGE_KEY = 'learnhub.access-token';
 
+function getBrowserStorage(): Storage {
+  const storage = globalThis.localStorage;
+  if (!storage) {
+    throw new Error('localStorage is unavailable');
+  }
+  return storage;
+}
+
 export function createBrowserAccessTokenStore(
   storageKey = ACCESS_TOKEN_STORAGE_KEY,
 ): AccessTokenStore {
   return {
-    get: () => globalThis.localStorage?.getItem(storageKey) ?? null,
-    set: (token) => globalThis.localStorage?.setItem(storageKey, token),
-    clear: () => globalThis.localStorage?.removeItem(storageKey),
+    get: () => getBrowserStorage().getItem(storageKey),
+    set: (token) => getBrowserStorage().setItem(storageKey, token),
+    clear: () => getBrowserStorage().removeItem(storageKey),
   };
 }
 
