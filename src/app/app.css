@@ -135,9 +135,10 @@ button:focus-visible,
 
 .app-menu-button {
   display: inline-grid;
-  width: 44px;
+  min-width: 44px;
   height: 44px;
   place-items: center;
+  padding-inline: var(--spacing-3);
   border: var(--border-width) solid var(--border-default);
   border-radius: var(--radius-md);
   color: var(--text-primary);

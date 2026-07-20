@@ -53,6 +53,78 @@ async function expectNoHorizontalOverflow(page: Page) {
   expect(widths.body).toBeLessThanOrEqual(widths.viewport);
 }
 
+async function expectMobileMenuGeometry(page: Page) {
+  const metrics = await page.getByRole('button', { name: 'Open navigation' }).evaluate((button) => {
+    const labels = button.querySelectorAll('[aria-hidden="true"]');
+    const label = labels.item(0);
+    const header = button.closest('.app-header');
+    if (
+      labels.length !== 1
+      || !(label instanceof HTMLElement)
+      || !(header instanceof HTMLElement)
+    ) {
+      throw new Error('Mobile menu geometry targets are unavailable');
+    }
+
+    const buttonRect = button.getBoundingClientRect();
+    const labelRect = label.getBoundingClientRect();
+    const style = getComputedStyle(button);
+    const labelStyle = getComputedStyle(label);
+    return {
+      labelText: label.textContent?.trim() ?? '',
+      labelDisplay: labelStyle.display,
+      labelVisibility: labelStyle.visibility,
+      labelOpacity: Number.parseFloat(labelStyle.opacity),
+      labelWidth: labelRect.width,
+      labelHeight: labelRect.height,
+      width: buttonRect.width,
+      height: buttonRect.height,
+      paddingLeft: Number.parseFloat(style.paddingLeft),
+      paddingRight: Number.parseFloat(style.paddingRight),
+      labelLeftInset: labelRect.left - buttonRect.left,
+      labelRightInset: buttonRect.right - labelRect.right,
+      labelTopInset: labelRect.top - buttonRect.top,
+      labelBottomInset: buttonRect.bottom - labelRect.bottom,
+      horizontalCenterOffset: Math.abs(
+        (labelRect.left + labelRect.right) / 2 - (buttonRect.left + buttonRect.right) / 2,
+      ),
+      verticalCenterOffset: Math.abs(
+        (labelRect.top + labelRect.bottom) / 2 - (buttonRect.top + buttonRect.bottom) / 2,
+      ),
+      clientWidth: button.clientWidth,
+      scrollWidth: button.scrollWidth,
+      clientHeight: button.clientHeight,
+      scrollHeight: button.scrollHeight,
+      headerClientWidth: header.clientWidth,
+      headerScrollWidth: header.scrollWidth,
+      outlineStyle: style.outlineStyle,
+      outlineWidth: Number.parseFloat(style.outlineWidth),
+    };
+  });
+
+  expect(metrics.labelText).toBe('Menu');
+  expect(metrics.labelDisplay).not.toBe('none');
+  expect(metrics.labelVisibility).toBe('visible');
+  expect(metrics.labelOpacity).toBeGreaterThan(0);
+  expect(metrics.labelWidth).toBeGreaterThan(0);
+  expect(metrics.labelHeight).toBeGreaterThan(0);
+  expect(metrics.width).toBeGreaterThanOrEqual(44);
+  expect(metrics.height).toBeGreaterThanOrEqual(44);
+  expect(metrics.paddingLeft).toBeGreaterThanOrEqual(8);
+  expect(metrics.paddingRight).toBeGreaterThanOrEqual(8);
+  expect(metrics.labelLeftInset).toBeGreaterThan(metrics.paddingLeft);
+  expect(metrics.labelRightInset).toBeGreaterThan(metrics.paddingRight);
+  expect(metrics.labelTopInset).toBeGreaterThan(0);
+  expect(metrics.labelBottomInset).toBeGreaterThan(0);
+  expect(metrics.horizontalCenterOffset).toBeLessThanOrEqual(1);
+  expect(metrics.verticalCenterOffset).toBeLessThanOrEqual(1);
+  expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth);
+  expect(metrics.scrollHeight).toBeLessThanOrEqual(metrics.clientHeight);
+  expect(metrics.headerScrollWidth).toBeLessThanOrEqual(metrics.headerClientWidth);
+  expect(metrics.outlineStyle).not.toBe('none');
+  expect(metrics.outlineWidth).toBeGreaterThan(0);
+}
+
 test('redirects an anonymous protected route with its internal returnTo', async ({ page }) => {
   const assertRuntimeClean = monitorRuntime(page);
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -160,6 +232,7 @@ test('supports keyboard-operated mobile navigation and focus restoration', async
   await page.keyboard.press('Escape');
   await expect(page.getByRole('navigation', { name: 'Mobile navigation' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Open navigation' })).toBeFocused();
+  await expectMobileMenuGeometry(page);
 
   await page.keyboard.press('Enter');
   await page.getByRole('link', { name: 'Instructor courses' }).last().focus();
@@ -174,6 +247,10 @@ test('supports keyboard-operated mobile navigation and focus restoration', async
   await page.keyboard.press('Enter');
   await expect(page.getByRole('navigation', { name: 'Mobile navigation' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Open navigation' })).toBeFocused();
+  await expectNoHorizontalOverflow(page);
+
+  await page.setViewportSize({ width: 320, height: 740 });
+  await expectMobileMenuGeometry(page);
   await expectNoHorizontalOverflow(page);
   assertRuntimeClean();
 });
