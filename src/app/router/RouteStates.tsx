@@ -4,7 +4,7 @@ import { Button, Notice, Skeleton, SkeletonGroup } from '../../shared/ui/primiti
 
 export function BootstrapState() {
   return (
-    <main className="app-state app-state--centered" role="status" aria-live="polite" aria-busy="true">
+    <main className="app-state app-state--centered" aria-busy="true">
       <div className="app-state__card">
         <h1>Preparing your workspace</h1>
         <p>We are verifying your session.</p>

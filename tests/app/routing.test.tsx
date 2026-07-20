@@ -69,6 +69,29 @@ function renderApp(path: string, role?: UserRoleDto) {
 afterEach(cleanup);
 
 describe('application routing and guards', () => {
+  it('keeps the busy bootstrap main landmark separate from its polite status region', () => {
+    const client: ApiClient = {
+      request: <TResponse,>() => new Promise<TResponse>(() => undefined),
+    };
+    render(
+      <ThemeProvider initialDensityMode="marketplace">
+        <SessionProvider client={client} tokenStore={store('token')}>
+          <MemoryRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+            <AppRouter />
+          </MemoryRouter>
+        </SessionProvider>
+      </ThemeProvider>,
+    );
+
+    const main = screen.getByRole('main');
+    expect(main.getAttribute('aria-busy')).toBe('true');
+    expect(within(main).getAllByRole('status')).toHaveLength(1);
+    const status = within(main).getByRole('status', { name: 'Loading application' });
+    expect(status.getAttribute('aria-live')).toBe('polite');
+    expect(within(main).getByRole('heading', { level: 1, name: 'Preparing your workspace' })).toBeTruthy();
+    expect(main.textContent).toContain('We are verifying your session.');
+  });
+
   it('redirects an anonymous protected visit with a safe path/query/hash returnTo', async () => {
     renderApp('/cart?coupon=SAVE#summary');
 

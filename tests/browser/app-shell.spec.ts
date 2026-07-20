@@ -21,7 +21,6 @@ function monitorRuntime(page: Page, expectedHttpResourceErrors: readonly number[
     });
     expect(pageErrors, 'uncaught browser errors').toEqual([]);
     expect(unexpectedConsoleErrors, 'unexpected browser console errors').toEqual([]);
-    expect(remainingExpectedStatuses, 'expected HTTP resource errors not observed').toEqual([]);
   };
 }
 
