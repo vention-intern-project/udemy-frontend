@@ -20,6 +20,37 @@ export function mapUserRoleDto(value: unknown): UserRole {
   }
 }
 
+function record(value: unknown): Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new TypeError('Invalid user profile response');
+  }
+  return value as Record<string, unknown>;
+}
+
+function string(value: unknown, field: string): string {
+  if (typeof value !== 'string') {
+    throw new TypeError(`Invalid user profile ${field}`);
+  }
+  return value;
+}
+
+function nullableString(value: unknown, field: string): string | null {
+  return value === null ? null : string(value, field);
+}
+
+export function decodeUserProfileDto(value: unknown): UserProfileDto {
+  const profile = record(value);
+  return {
+    email: string(profile.email, 'email'),
+    name: string(profile.name, 'name'),
+    surname: string(profile.surname, 'surname'),
+    role: mapUserRoleDto(profile.role),
+    birthday: nullableString(profile.birthday, 'birthday'),
+    phone_number: nullableString(profile.phone_number, 'phone_number'),
+    created_at: string(profile.created_at, 'created_at'),
+  };
+}
+
 export function mapUserProfileDto(dto: UserProfileDto): UserProfile {
   return {
     email: dto.email,

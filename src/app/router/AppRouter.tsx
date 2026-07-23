@@ -1,11 +1,17 @@
 import { Route, Routes } from 'react-router-dom';
 
 import { useSession } from '../../features/auth-session';
+import { CatalogPage } from '@pages/index';
 import { AppShell } from '../layouts/AppShell';
 import { PlaceholderPage } from './PlaceholderPage';
 import { RouteBoundary } from './RouteBoundary';
 import { APP_ROUTES } from './route-registry';
 import { BootstrapState, NotFoundState, SessionErrorState } from './RouteStates';
+
+function pageForRoute(route: (typeof APP_ROUTES)[number]) {
+  if (route.id === 'PAGE-001') return <CatalogPage />;
+  return <PlaceholderPage route={route} />;
+}
 
 export function AppRouter() {
   const { state, retryBootstrap } = useSession();
@@ -24,7 +30,7 @@ export function AppRouter() {
             path={route.path}
             element={(
               <RouteBoundary route={route}>
-                <PlaceholderPage route={route} />
+                {pageForRoute(route)}
               </RouteBoundary>
             )}
           />

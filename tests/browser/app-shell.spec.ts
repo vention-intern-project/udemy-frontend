@@ -147,10 +147,48 @@ test('shows a bootstrap state then student-only workspace navigation', async ({ 
   await page.goto('/learning');
   await expect(page.getByRole('heading', { level: 1, name: 'Preparing your workspace' })).toBeVisible();
   await expect(page.getByRole('heading', { level: 1, name: 'My learning' })).toBeVisible();
+  await expect(page).toHaveTitle('My learning | LearnHub');
   const navigation = page.getByRole('navigation', { name: 'Primary navigation' });
   await expect(navigation.getByRole('link', { name: 'Cart' })).toBeVisible();
   await expect(navigation.getByRole('link', { name: 'My learning' })).toHaveAttribute('aria-current', 'page');
   await expect(navigation.getByRole('link', { name: 'Instructor courses' })).toHaveCount(0);
+  assertRuntimeClean();
+});
+
+test('rejects malformed successful session data without authenticating or clearing it as a 401', async ({ page }) => {
+  const assertRuntimeClean = monitorRuntime(page);
+  await page.addInitScript(() => localStorage.setItem('learnhub.access-token', 'potentially-valid-token'));
+  await page.route('**/me', async (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ role: 'student' }),
+  }));
+  await page.goto('/learning');
+  await expect(page.getByRole('heading', { level: 1, name: 'Session check failed' })).toBeVisible();
+  await expect(page.getByText(/student/)).toHaveCount(0);
+  await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toHaveCount(0);
+  expect(await page.evaluate(() => localStorage.getItem('learnhub.access-token')))
+    .toBe('potentially-valid-token');
+  await expect(page).toHaveTitle('LearnHub');
+  assertRuntimeClean();
+});
+
+test('keeps Router metadata, layout, density, and titles aligned for a case/trailing parameter route', async ({ page }) => {
+  const assertRuntimeClean = monitorRuntime(page);
+  await mockAuthenticatedSession(page, 'instructor');
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto('/instructor/COURSES/ABC/edit/');
+  await expect(page.getByRole('heading', { level: 1, name: 'Edit course' })).toBeVisible();
+  await expect(page.locator('.app-shell')).toHaveAttribute('data-layout', 'workspace');
+  await expect(page.locator('html')).toHaveAttribute('data-density', 'workspace');
+  await expect(page).toHaveTitle('Edit course | LearnHub');
+  await expectNoHorizontalOverflow(page);
+
+  await page.setViewportSize({ width: 320, height: 740 });
+  await expect(page.getByRole('heading', { level: 1, name: 'Edit course' })).toBeVisible();
+  await page.getByRole('button', { name: 'Open navigation' }).focus();
+  await expectMobileMenuGeometry(page);
+  await expectNoHorizontalOverflow(page);
   assertRuntimeClean();
 });
 
@@ -255,11 +293,87 @@ test('supports keyboard-operated mobile navigation and focus restoration', async
   assertRuntimeClean();
 });
 
+test('preserves the source mobile menu and focus for modified and new-tab activation', async ({ page, context }) => {
+  const assertRuntimeClean = monitorRuntime(page);
+  await mockAuthenticatedSession(page, 'instructor');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/instructor/courses/42/edit');
+  await expect(page.getByRole('heading', { level: 1, name: 'Edit course' })).toBeVisible();
+  const originalUrl = page.url();
+  const menu = page.getByRole('button', { name: 'Open navigation' });
+
+  async function openAndFocusInstructorCourses() {
+    if (await page.getByRole('navigation', { name: 'Mobile navigation' }).count() === 0) {
+      await menu.click();
+    }
+    const navigation = page.getByRole('navigation', { name: 'Mobile navigation' });
+    await expect(navigation).toBeVisible();
+    const link = navigation.getByRole('link', { name: 'Instructor courses' });
+    await link.focus();
+    await expect(link).toBeFocused();
+    return { navigation, link };
+  }
+
+  const control = await openAndFocusInstructorCourses();
+  const controlPopupPromise = context.waitForEvent('page');
+  await control.link.click({ modifiers: ['Control'] });
+  const controlPopup = await controlPopupPromise;
+  await controlPopup.waitForURL(/\/instructor\/courses(?:[?#]|$)/);
+  expect(new URL(controlPopup.url()).pathname).toBe('/instructor/courses');
+  expect(page.url()).toBe(originalUrl);
+  await expect(control.navigation).toBeVisible();
+  await expect(control.link).toBeFocused();
+  await controlPopup.close();
+
+  const meta = await openAndFocusInstructorCourses();
+  const metaDefaultAllowed = await meta.link.evaluate((element) => {
+    let defaultPreventedByApplication = true;
+    const observeThenCancelNavigation = (event: MouseEvent) => {
+      defaultPreventedByApplication = event.defaultPrevented;
+      event.preventDefault();
+    };
+    document.addEventListener('click', observeThenCancelNavigation, { once: true });
+    const event = new MouseEvent('click', {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+      metaKey: true,
+    });
+    element.dispatchEvent(event);
+    return !defaultPreventedByApplication;
+  });
+  expect(metaDefaultAllowed).toBe(true);
+  expect(page.url()).toBe(originalUrl);
+  await expect(meta.navigation).toBeVisible();
+  await expect(meta.link).toBeFocused();
+
+  const middle = await openAndFocusInstructorCourses();
+  const middlePopupPromise = context.waitForEvent('page');
+  await middle.link.click({ button: 'middle' });
+  const middlePopup = await middlePopupPromise;
+  await middlePopup.waitForURL(/\/instructor\/courses(?:[?#]|$)/);
+  expect(new URL(middlePopup.url()).pathname).toBe('/instructor/courses');
+  expect(page.url()).toBe(originalUrl);
+  await expect(middle.navigation).toBeVisible();
+  await expect(middle.link).toBeFocused();
+  await middlePopup.close();
+
+  const ordinary = await openAndFocusInstructorCourses();
+  await ordinary.link.click();
+  await expect(page).toHaveURL(/\/instructor\/courses$/);
+  await expect(page.getByRole('navigation', { name: 'Mobile navigation' })).toHaveCount(0);
+  await expect(page.locator('#main-content')).toBeFocused();
+  await expect(page).toHaveTitle('Instructor courses | LearnHub');
+  await expectNoHorizontalOverflow(page);
+  assertRuntimeClean();
+});
+
 test('renders the not-found route at mobile width without overflow', async ({ page }) => {
   const assertRuntimeClean = monitorRuntime(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/missing-page');
   await expect(page.getByRole('heading', { level: 1, name: 'Page not found' })).toBeVisible();
+  await expect(page).toHaveTitle('LearnHub');
   await expect(page.getByRole('link', { name: 'Skip to main content' })).toHaveAttribute('href', '#main-content');
   await expectNoHorizontalOverflow(page);
   await page.setViewportSize({ width: 320, height: 740 });

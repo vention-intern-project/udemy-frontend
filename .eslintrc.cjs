@@ -26,7 +26,7 @@ module.exports = {
       },
     },
     {
-      files: ['src/**/*.tsx', 'tests/**/*.tsx'],
+      files: ['src/**/*.{ts,tsx}', 'tests/**/*.{ts,tsx}'],
       env: { browser: true },
       plugins: ['react-hooks'],
       extends: ['plugin:react-hooks/recommended'],

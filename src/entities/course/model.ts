@@ -23,3 +23,23 @@ export interface Lesson {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface CatalogCourse {
+  id: number;
+  title: string;
+  instructorName: string;
+  price: string;
+  currency: string;
+  totalLessonCount: number;
+  isPublished: boolean;
+}
+
+export interface CatalogCourseList {
+  items: readonly CatalogCourse[];
+  page: number;
+  pageSize: number;
+  total: number;
+  pages: number;
+  hasNext: boolean;
+  hasPrevious: boolean;
+}

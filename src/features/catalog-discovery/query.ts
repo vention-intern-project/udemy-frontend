@@ -1,0 +1,115 @@
+import type { CourseListQueryDto } from '@entities/course';
+
+export const CATALOG_PAGE_SIZE = 20;
+export const CATALOG_SORT_VALUES = [
+  'id', '-id', 'title', '-title', 'price', '-price', 'created_at', '-created_at',
+] as const;
+export type CatalogSort = (typeof CATALOG_SORT_VALUES)[number];
+
+export interface CatalogQuery {
+  search_query?: string;
+  min_price?: number;
+  max_price?: number;
+  sort: CatalogSort;
+  page: number;
+}
+
+export interface CatalogFilterDraft {
+  search_query: string;
+  min_price: string;
+  max_price: string;
+  sort: CatalogSort;
+}
+
+export interface CatalogFilterValidation {
+  value?: CatalogQuery;
+  errors: Readonly<Partial<Record<'min_price' | 'max_price', string>>>;
+}
+
+function safePage(value: string | null): number {
+  const numeric = Number(value);
+  return Number.isSafeInteger(numeric) && numeric >= 1 ? numeric : 1;
+}
+
+function optionalPrice(value: string | null): number | undefined {
+  if (value === null || value.trim() === '') return undefined;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric >= 0 ? numeric : undefined;
+}
+
+function isSort(value: string | null): value is CatalogSort {
+  return CATALOG_SORT_VALUES.some((sort) => sort === value);
+}
+
+export function parseCatalogQuery(params: URLSearchParams): CatalogQuery {
+  const search = params.get('search_query')?.trim();
+  const rawSort = params.get('sort');
+  const minPrice = optionalPrice(params.get('min_price'));
+  const maxPrice = optionalPrice(params.get('max_price'));
+  const hasInvertedRange = minPrice !== undefined && maxPrice !== undefined && minPrice > maxPrice;
+  return {
+    search_query: search || undefined,
+    min_price: hasInvertedRange ? undefined : minPrice,
+    max_price: hasInvertedRange ? undefined : maxPrice,
+    sort: isSort(rawSort) ? rawSort : 'id',
+    page: safePage(params.get('page')),
+  };
+}
+
+export function serializeCatalogQuery(query: CatalogQuery): string {
+  const params = new URLSearchParams();
+  if (query.search_query?.trim()) params.set('search_query', query.search_query.trim());
+  if (query.min_price !== undefined) params.set('min_price', String(query.min_price));
+  if (query.max_price !== undefined) params.set('max_price', String(query.max_price));
+  if (query.sort !== 'id') params.set('sort', query.sort);
+  if (query.page !== 1) params.set('page', String(query.page));
+  return params.toString();
+}
+
+export function toCourseListQuery(query: CatalogQuery): CourseListQueryDto {
+  return {
+    page: query.page,
+    page_size: CATALOG_PAGE_SIZE,
+    search_query: query.search_query,
+    min_price: query.min_price,
+    max_price: query.max_price,
+    sort: query.sort === 'id' ? undefined : query.sort,
+  };
+}
+
+export function draftFromCatalogQuery(query: CatalogQuery): CatalogFilterDraft {
+  return {
+    search_query: query.search_query ?? '',
+    min_price: query.min_price === undefined ? '' : String(query.min_price),
+    max_price: query.max_price === undefined ? '' : String(query.max_price),
+    sort: query.sort,
+  };
+}
+
+function validateDraftPrice(value: string): number | undefined | 'invalid' {
+  if (value.trim() === '') return undefined;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric >= 0 ? numeric : 'invalid';
+}
+
+export function validateCatalogDraft(draft: CatalogFilterDraft): CatalogFilterValidation {
+  const min = validateDraftPrice(draft.min_price);
+  const max = validateDraftPrice(draft.max_price);
+  const errors: Partial<Record<'min_price' | 'max_price', string>> = {};
+  if (min === 'invalid') errors.min_price = 'Enter a non-negative price.';
+  if (max === 'invalid') errors.max_price = 'Enter a non-negative price.';
+  if (min !== 'invalid' && max !== 'invalid' && min !== undefined && max !== undefined && min > max) {
+    errors.max_price = 'Maximum price must be at least the minimum price.';
+  }
+  if (Object.keys(errors).length > 0) return { errors };
+  return {
+    errors,
+    value: {
+      search_query: draft.search_query.trim() || undefined,
+      min_price: min === 'invalid' ? undefined : min,
+      max_price: max === 'invalid' ? undefined : max,
+      sort: draft.sort,
+      page: 1,
+    },
+  };
+}

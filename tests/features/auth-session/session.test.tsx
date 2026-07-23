@@ -42,11 +42,18 @@ function tokenStore(initial: string | null): AccessTokenStore & { value: string 
   };
 }
 
-function clientFrom(handler: (options: ApiRequestOptions) => Promise<unknown>): ApiClient {
+type TestApiRequestOptions = ApiRequestOptions<unknown, unknown>;
+
+function clientFrom(handler: (options: TestApiRequestOptions) => Promise<unknown>): ApiClient {
   return {
-    request: <TResponse, TBody = unknown>(options: ApiRequestOptions<TBody>) => (
-      handler(options) as Promise<TResponse>
-    ),
+    request: async <TResponse, TBody = unknown>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ): Promise<TResponse> => {
+      const value = await handler(options);
+      return 'decode' in options && options.decode
+        ? options.decode(value)
+        : value as TResponse;
+    },
   };
 }
 
@@ -98,8 +105,9 @@ describe('SessionProvider', () => {
     );
 
     await waitFor(() => expect(screen.getByLabelText('session status').textContent).toBe('anonymous'));
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Accept replacement token' }));
-    expect(screen.getByLabelText('session status').textContent).toBe('anonymous');
+    const user = userEvent.setup();
+    await act(async () => user.click(screen.getByRole('button', { name: 'Accept replacement token' })));
+    await waitFor(() => expect(screen.getByLabelText('session status').textContent).toBe('anonymous'));
     expect(clear).toHaveBeenCalledTimes(1);
     expect(request).not.toHaveBeenCalled();
   });
@@ -122,7 +130,8 @@ describe('SessionProvider', () => {
 
     await waitFor(() => expect(screen.getByLabelText('session status').textContent).toBe('anonymous'));
     expect(storedToken).toBe('expired-token');
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Retry' }));
+    const user = userEvent.setup();
+    await act(async () => user.click(screen.getByRole('button', { name: 'Retry' })));
     await waitFor(() => expect(screen.getByLabelText('session status').textContent).toBe('anonymous'));
     expect(request).toHaveBeenCalledTimes(1);
   });
@@ -152,6 +161,31 @@ describe('SessionProvider', () => {
     expect(screen.getByText('+10000000000')).toBeTruthy();
     expect(request).toHaveBeenCalledTimes(1);
     expect(request.mock.calls[0]?.[0]).toMatchObject({ path: '/me' });
+    expect((request.mock.calls[0]?.[0] as TestApiRequestOptions).decode)
+      .toEqual(expect.any(Function));
+  });
+
+  it('rejects malformed successful /me data without authenticating or clearing the token', async () => {
+    const store = tokenStore('potentially-valid-token');
+    const fetchImplementation = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+      .mockResolvedValue(new Response(
+        JSON.stringify({ role: 'student' }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ));
+    render(
+      <SessionProvider
+        apiBaseUrl="https://api.learnhub.test"
+        fetchImplementation={fetchImplementation}
+        tokenStore={store}
+      >
+        <SessionStatus />
+      </SessionProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByLabelText('session status').textContent).toBe('error'));
+    expect(screen.getByLabelText('session role').textContent).toBe('none');
+    expect(store.value).toBe('potentially-valid-token');
+    expect(fetchImplementation).toHaveBeenCalledTimes(1);
   });
 
   it('clears an invalid token and becomes anonymous on /me 401', async () => {

@@ -5,6 +5,8 @@ export interface PaginationProps extends Omit<HTMLAttributes<HTMLElement>, 'onCh
   totalPages: number;
   onPageChange: (page: number) => void;
   label?: string;
+  hasNext?: boolean;
+  hasPrevious?: boolean;
 }
 
 type PageItem = number | 'ellipsis-start' | 'ellipsis-end';
@@ -36,11 +38,15 @@ export function Pagination({
   totalPages,
   onPageChange,
   label = 'Pagination',
+  hasNext,
+  hasPrevious,
   className,
   ...props
 }: PaginationProps) {
   const safeTotal = positiveSafeInteger(totalPages) ?? 1;
   const safeCurrent = Math.min(positiveSafeInteger(currentPage) ?? 1, safeTotal);
+  const previousAvailable = hasPrevious ?? safeCurrent !== 1;
+  const nextAvailable = hasNext ?? safeCurrent !== safeTotal;
 
   const changePage = (page: number) => {
     if (
@@ -48,10 +54,17 @@ export function Pagination({
       && page !== safeCurrent
       && page >= 1
       && page <= safeTotal
+      && (page >= safeCurrent || previousAvailable)
+      && (page <= safeCurrent || nextAvailable)
     ) {
       onPageChange(page);
     }
   };
+
+  const pageAvailable = (page: number) => (
+    (page >= safeCurrent || previousAvailable)
+    && (page <= safeCurrent || nextAvailable)
+  );
 
   return (
     <nav {...props} aria-label={label} className={['ui-pagination', className].filter(Boolean).join(' ')}>
@@ -61,8 +74,8 @@ export function Pagination({
       <button
         type="button"
         className="ui-pagination__button"
-        disabled={safeCurrent === 1}
-        onClick={() => changePage(safeCurrent - 1)}
+        disabled={!previousAvailable}
+        onClick={() => { if (previousAvailable) changePage(safeCurrent - 1); }}
         aria-label="Go to previous page"
       >
         Previous
@@ -76,6 +89,7 @@ export function Pagination({
               className="ui-pagination__button"
               aria-label={`Go to page ${item}`}
               aria-current={item === safeCurrent ? 'page' : undefined}
+              disabled={!pageAvailable(item)}
               onClick={() => changePage(item)}
             >
               {item}
@@ -88,8 +102,8 @@ export function Pagination({
       <button
         type="button"
         className="ui-pagination__button"
-        disabled={safeCurrent === safeTotal}
-        onClick={() => changePage(safeCurrent + 1)}
+        disabled={!nextAvailable}
+        onClick={() => { if (nextAvailable) changePage(safeCurrent + 1); }}
         aria-label="Go to next page"
       >
         Next

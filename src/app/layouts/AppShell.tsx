@@ -1,9 +1,15 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type MouseEvent,
+} from 'react';
 import { Link, matchPath, NavLink, Outlet, useLocation } from 'react-router-dom';
 
 import { useSession } from '../../features/auth-session';
 import { useDensityMode } from '../../shared/ui/theme';
-import { APP_ROUTE_BY_ID, densityForPath, routeForPath } from '../router/route-registry';
+import { APP_ROUTE_BY_ID, routeForPath } from '../router/route-registry';
 
 interface NavigationItem {
   label: string;
@@ -55,7 +61,9 @@ function NavigationLinks({ items, onNavigate }: {
           <NavLink
             end={item.end}
             className={({ isActive }) => isActive ? 'app-nav__link app-nav__link--active' : 'app-nav__link'}
-            onClick={() => onNavigate?.(item.to)}
+            onClick={(event) => {
+              if (isCurrentTabNavigation(event)) onNavigate?.(item.to);
+            }}
             to={item.to}
           >
             {item.label}
@@ -64,6 +72,18 @@ function NavigationLinks({ items, onNavigate }: {
       ))}
     </ul>
   );
+}
+
+function isCurrentTabNavigation(event: MouseEvent<HTMLAnchorElement>): boolean {
+  const target = event.currentTarget.getAttribute('target');
+  return !event.defaultPrevented
+    && event.button === 0
+    && !event.metaKey
+    && !event.ctrlKey
+    && !event.shiftKey
+    && !event.altKey
+    && (!target || target.toLowerCase() === '_self')
+    && !event.currentTarget.hasAttribute('download');
 }
 
 export function AppShell() {
@@ -81,12 +101,18 @@ export function AppShell() {
   ].map((path) => matchPath({ path, end: true }, location.pathname))
     .find((match) => match?.params.courseId);
   const navigation = navigationForSession(state, courseRouteMatch?.params.courseId ?? null);
-  const layout = routeForPath(location.pathname)?.layout ?? 'public';
-  const routeDensityMode = densityForPath(location.pathname);
+  const route = routeForPath(location.pathname);
+  const layout = route?.layout ?? 'public';
+  const routeDensityMode = route?.layout === 'workspace' ? 'workspace' : 'marketplace';
+  const documentTitle = route ? `${route.title} | LearnHub` : 'LearnHub';
 
   useLayoutEffect(() => {
     if (densityMode !== routeDensityMode) setDensityMode(routeDensityMode);
   }, [densityMode, routeDensityMode, setDensityMode]);
+
+  useEffect(() => {
+    document.title = documentTitle;
+  }, [documentTitle]);
 
   useEffect(() => {
     if (previousLocationRef.current !== currentLocation) {

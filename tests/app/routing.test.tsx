@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import {
+  act, cleanup, render, screen, waitFor, within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -34,9 +36,14 @@ function store(token: string | null): AccessTokenStore {
 
 function clientFor(role: UserRoleDto): ApiClient {
   return {
-    request: async <TResponse, TBody = unknown>(_options: ApiRequestOptions<TBody>) => (
-      profile(role) as TResponse
-    ),
+    request: async <TResponse, TBody = unknown>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ): Promise<TResponse> => {
+      const value: unknown = profile(role);
+      return 'decode' in options && options.decode
+        ? options.decode(value)
+        : value as TResponse;
+    },
   };
 }
 
@@ -148,10 +155,24 @@ describe('application routing and guards', () => {
     renderApp('/learning', 'student');
     await screen.findByRole('heading', { level: 1, name: 'My learning' });
     await waitFor(() => expect(document.documentElement.getAttribute('data-density')).toBe('workspace'));
+    await waitFor(() => expect(document.title).toBe('My learning | LearnHub'));
 
-    await userEvent.setup().click(screen.getByRole('link', { name: 'LearnHub home' }));
+    const user = userEvent.setup();
+    await act(async () => user.click(screen.getByRole('link', { name: 'LearnHub home' })));
     await screen.findByRole('heading', { level: 1, name: 'Course catalog' });
     await waitFor(() => expect(document.documentElement.getAttribute('data-density')).toBe('marketplace'));
+    await waitFor(() => expect(document.title).toBe('Course catalog | LearnHub'));
+  });
+
+  it.each([
+    ['/LOGIN/', undefined, 'Log in | LearnHub'],
+    ['/Learning/', 'student' as const, 'My learning | LearnHub'],
+    ['/instructor/courses/ABC/edit/', 'instructor' as const, 'Edit course | LearnHub'],
+  ])('applies Router-parity metadata and title for %s', async (path, role, expectedTitle) => {
+    renderApp(path, role);
+    await waitFor(() => expect(document.title).toBe(expectedTitle));
+    expect(document.querySelector('.app-shell')?.getAttribute('data-layout'))
+      .toBe(role ? 'workspace' : 'auth');
   });
 
   it('does not mark the My learning section as the current page on learning details', async () => {
@@ -214,6 +235,7 @@ describe('application routing and guards', () => {
   it('renders a not-found state for unknown routes', async () => {
     renderApp('/does-not-exist');
     expect(await screen.findByRole('heading', { level: 1, name: 'Page not found' })).toBeTruthy();
+    await waitFor(() => expect(document.title).toBe('LearnHub'));
   });
 
   it('exposes the skip link and semantic landmarks', async () => {
@@ -232,10 +254,10 @@ describe('application routing and guards', () => {
     const user = userEvent.setup();
     const trigger = screen.getByRole('button', { name: 'Open navigation' });
 
-    await user.click(trigger);
+    await act(async () => user.click(trigger));
     expect(trigger).toBe(document.activeElement);
-    expect(screen.getByRole('navigation', { name: 'Mobile navigation' })).toBeTruthy();
-    await user.keyboard('{Escape}');
+    await screen.findByRole('navigation', { name: 'Mobile navigation' });
+    await act(async () => user.keyboard('{Escape}'));
 
     await waitFor(() => expect(screen.queryByRole('navigation', { name: 'Mobile navigation' })).toBe(null));
     await waitFor(() => expect(trigger).toBe(document.activeElement));

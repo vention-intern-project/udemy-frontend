@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -57,6 +57,59 @@ describe('Pagination', () => {
     expect((screen.getByRole('button', { name: 'Go to previous page' }) as HTMLButtonElement).disabled).toBe(true);
     rerender(<Pagination currentPage={2} totalPages={2} onPageChange={() => undefined} />);
     expect((screen.getByRole('button', { name: 'Go to next page' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('uses explicit server edge availability without changing the default consumer behavior', async () => {
+    const user = userEvent.setup();
+    const onPageChange = vi.fn();
+    const { rerender } = render(
+      <Pagination currentPage={1} totalPages={3} hasNext={false} hasPrevious={false} onPageChange={onPageChange} />,
+    );
+
+    const previous = screen.getByRole('button', { name: 'Go to previous page' }) as HTMLButtonElement;
+    const next = screen.getByRole('button', { name: 'Go to next page' }) as HTMLButtonElement;
+    expect(previous.disabled).toBe(true);
+    expect(next.disabled).toBe(true);
+    await user.click(next);
+    expect(onPageChange).not.toHaveBeenCalled();
+
+    rerender(<Pagination currentPage={1} totalPages={3} onPageChange={onPageChange} />);
+    expect((screen.getByRole('button', { name: 'Go to next page' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('applies server direction availability to numbered targets and callback guards', async () => {
+    const user = userEvent.setup();
+    const onPageChange = vi.fn();
+    const { rerender } = render(
+      <Pagination currentPage={2} totalPages={4} hasPrevious={false} hasNext onPageChange={onPageChange} />,
+    );
+
+    const pageOne = screen.getByRole('button', { name: 'Go to page 1' }) as HTMLButtonElement;
+    const pageThree = screen.getByRole('button', { name: 'Go to page 3' }) as HTMLButtonElement;
+    expect(pageOne.disabled).toBe(true);
+    expect(pageThree.disabled).toBe(false);
+    pageOne.disabled = false;
+    fireEvent.click(pageOne);
+    expect(onPageChange).not.toHaveBeenCalled();
+    await user.click(pageThree);
+    expect(onPageChange).toHaveBeenCalledWith(3);
+
+    onPageChange.mockClear();
+    rerender(<Pagination currentPage={1} totalPages={3} hasPrevious hasNext={false} onPageChange={onPageChange} />);
+    const pageTwo = screen.getByRole('button', { name: 'Go to page 2' }) as HTMLButtonElement;
+    const pageThreeBlocked = screen.getByRole('button', { name: 'Go to page 3' }) as HTMLButtonElement;
+    expect(pageTwo.disabled).toBe(true);
+    expect(pageThreeBlocked.disabled).toBe(true);
+    pageTwo.disabled = false;
+    pageThreeBlocked.disabled = false;
+    fireEvent.click(pageTwo);
+    fireEvent.click(pageThreeBlocked);
+    expect(onPageChange).not.toHaveBeenCalled();
+
+    rerender(<Pagination currentPage={2} totalPages={3} onPageChange={onPageChange} />);
+    expect((screen.getByRole('button', { name: 'Go to page 1' }) as HTMLButtonElement).disabled).toBe(false);
+    await user.click(screen.getByRole('button', { name: 'Go to page 3' }));
+    expect(onPageChange).toHaveBeenCalledWith(3);
   });
 
   it('bounds invalid runtime inputs and emits only safe in-range page changes', async () => {

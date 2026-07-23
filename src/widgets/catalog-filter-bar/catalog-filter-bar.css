@@ -1,0 +1,16 @@
+.catalog-filter-bar {
+  display: grid;
+  gap: var(--spacing-4);
+  padding: var(--spacing-4);
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-1);
+}
+
+.catalog-filter-bar__action { display: flex; align-items: end; }
+
+@media (min-width: 768px) {
+  .catalog-filter-bar { grid-template-columns: minmax(180px, 2fr) repeat(3, minmax(130px, 1fr)) auto; }
+  .catalog-filter-bar__action { padding-bottom: 0; }
+}

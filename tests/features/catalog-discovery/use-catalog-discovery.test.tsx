@@ -1,0 +1,87 @@
+// @vitest-environment jsdom
+
+import { act, renderHook, waitFor } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+
+import { useCatalogDiscovery, type CatalogRequester } from '../../../src/features/catalog-discovery';
+import { ApiError } from '../../../src/shared/api';
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => { resolve = next; });
+  return { promise, resolve };
+}
+
+function result(title?: string) {
+  return { items: title ? [{ id: 1, title, description: null, price: '9.99', currency: 'USD', published_at: null, instructor: { id: 2, name: 'Ada', surname: 'Lovelace' }, lessons: [] }] : [], page: 1, page_size: 20, total: title ? 1 : 0, pages: title ? 1 : 0, has_next: false, has_previous: false };
+}
+
+describe('catalog discovery lifecycle', () => {
+  it('keeps equivalent canonical queries on one request and replaces changed queries', async () => {
+    const first = deferred<unknown>();
+    const second = deferred<unknown>();
+    const signals: AbortSignal[] = [];
+    const request = vi.fn((options) => {
+      signals.push(options.signal as AbortSignal);
+      return signals.length === 1 ? first.promise : second.promise;
+    }) as CatalogRequester;
+    const { result: hook, rerender } = renderHook(
+      ({ search_query }) => useCatalogDiscovery({ search_query, sort: 'id', page: 1 }, request),
+      { initialProps: { search_query: 'react' } },
+    );
+
+    rerender({ search_query: ' react ' });
+    expect(request).toHaveBeenCalledTimes(1);
+
+    rerender({ search_query: 'typescript' });
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(signals[0].aborted).toBe(true);
+    first.resolve(result('Old'));
+    second.resolve(result('New'));
+
+    await waitFor(() => expect(hook.current.data?.items[0].title).toBe('New'));
+    expect(hook.current.status).toBe('populated');
+  });
+
+  it('aborts and ignores stale requests while retaining only the newest result', async () => {
+    const first = deferred<unknown>();
+    const second = deferred<unknown>();
+    const signals: AbortSignal[] = [];
+    const request = vi.fn((options) => {
+      signals.push(options.signal as AbortSignal);
+      return signals.length === 1 ? first.promise : second.promise;
+    }) as CatalogRequester;
+    const { result: hook, rerender } = renderHook(({ search_query }) => useCatalogDiscovery({ search_query, sort: 'id', page: 1 }, request), { initialProps: { search_query: 'first' } });
+
+    rerender({ search_query: 'second' });
+    expect(signals[0].aborted).toBe(true);
+    first.resolve(result('Old'));
+    second.resolve(result('New'));
+    await waitFor(() => expect(hook.current.data?.items[0].title).toBe('New'));
+    expect(hook.current.status).toBe('populated');
+  });
+
+  it('distinguishes empty, offline error, retry, and retained-data refetch states', async () => {
+    const request = vi.fn()
+      .mockRejectedValueOnce(new ApiError({ kind: 'offline', status: null, message: 'Offline' }))
+      .mockResolvedValueOnce(result('Recovered'))
+      .mockResolvedValueOnce(result())
+      .mockRejectedValueOnce(new ApiError({ kind: 'server', status: 500, message: 'Unavailable' }));
+    const { result: hook, rerender } = renderHook(
+      ({ search_query }) => useCatalogDiscovery({ search_query, sort: 'id', page: 1 }, request as CatalogRequester),
+      { initialProps: { search_query: 'offline' } },
+    );
+
+    await waitFor(() => expect(hook.current.status).toBe('error-without-results'));
+    expect(hook.current.failure?.kind).toBe('offline');
+    await act(async () => { hook.current.retry(); });
+    await waitFor(() => expect(hook.current.data?.items[0].title).toBe('Recovered'));
+
+    rerender({ search_query: 'empty' });
+    await waitFor(() => expect(hook.current.status).toBe('empty'));
+    rerender({ search_query: 'failed-refresh' });
+    await waitFor(() => expect(hook.current.status).toBe('error-with-results'));
+    expect(hook.current.data?.items).toEqual([]);
+    expect(hook.current.failure?.kind).toBe('request');
+  });
+});

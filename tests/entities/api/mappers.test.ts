@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import { mapCartDto } from '../../../src/entities/cart';
 import {
+  decodeCourseListDto,
+  mapCourseListDto,
   mapCourseDto,
   mapLessonDto,
   mapLessonTypeDto,
@@ -19,6 +21,15 @@ import {
 } from '../../../src/entities/user';
 
 describe('wire DTO to domain mappers', () => {
+  it('decodes API-008 populated and empty pagination without accepting malformed metadata', () => {
+    const populated = decodeCourseListDto({
+      items: [{ id: 1, title: 'React', description: null, price: '9.99', currency: 'USD', published_at: null, instructor: { id: 2, name: 'Ada', surname: 'Lovelace' }, lessons: [{ id: 3, title: 'Intro' }] }],
+      page: 1, page_size: 20, total: 1, pages: 1, has_next: false, has_previous: false,
+    });
+    expect(mapCourseListDto(populated).items[0]).toMatchObject({ instructorName: 'Ada Lovelace', totalLessonCount: 1, isPublished: false });
+    expect(decodeCourseListDto({ items: [], page: 1, page_size: 20, total: 0, pages: 0, has_next: false, has_previous: false }).pages).toBe(0);
+    expect(() => decodeCourseListDto({ items: [], page: 1, page_size: 20, total: 0, pages: 1, has_next: false, has_previous: false })).toThrow('pagination consistency');
+  });
   it('maps course and lesson snake_case fields while preserving decimals and nullable values', () => {
     expect(mapCourseDto({
       id: 1,

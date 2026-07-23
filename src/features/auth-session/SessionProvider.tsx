@@ -9,7 +9,12 @@ import {
   type ReactNode,
 } from 'react';
 
-import { mapUserProfileDto, type UserProfile, type UserProfileDto } from '../../entities/user';
+import {
+  decodeUserProfileDto,
+  mapUserProfileDto,
+  type UserProfile,
+  type UserProfileDto,
+} from '../../entities/user';
 import {
   ApiError, createApiClient, type ApiClient, type ApiRequestOptions,
 } from '../../shared/api';
@@ -30,8 +35,12 @@ export interface SessionContextValue {
   retryBootstrap(): void;
   acceptAccessToken(token: string): void;
   clearSession(): void;
-  requestRequired<TResponse, TBody = unknown>(options: ApiRequestOptions<TBody>): Promise<TResponse>;
-  requestOptional<TResponse, TBody = unknown>(options: ApiRequestOptions<TBody>): Promise<TResponse>;
+  requestRequired<TResponse, TBody = unknown>(
+    options: ApiRequestOptions<TBody, NoInfer<TResponse>>,
+  ): Promise<TResponse>;
+  requestOptional<TResponse, TBody = unknown>(
+    options: ApiRequestOptions<TBody, NoInfer<TResponse>>,
+  ): Promise<TResponse>;
 }
 
 interface SessionProviderProps {
@@ -45,10 +54,10 @@ interface SessionProviderProps {
 const SessionContext = createContext<SessionContextValue | null>(null);
 SessionContext.displayName = 'SessionContext';
 
-function forSessionGeneration<TBody>(
-  options: ApiRequestOptions<TBody>,
+function forSessionGeneration<TBody, TResponse>(
+  options: ApiRequestOptions<TBody, TResponse>,
   generation: number,
-): ApiRequestOptions<TBody> {
+): ApiRequestOptions<TBody, TResponse> {
   if (!options.dedupeKey) return options;
   return {
     ...options,
@@ -118,6 +127,7 @@ export function SessionProvider({
       const profile = await client.request<UserProfileDto>(forSessionGeneration({
         path: '/me',
         dedupeKey: 'bootstrap',
+        decode: decodeUserProfileDto,
       }, generation));
       if (isCurrentSnapshot(generation, token) && tokenStore.get() === token) {
         setState({ status: 'authenticated', user: mapUserProfileDto(profile) });
@@ -160,7 +170,7 @@ export function SessionProvider({
   }, [tokenStore]);
 
   const requestRequired = useCallback(async <TResponse, TBody = unknown>(
-    options: ApiRequestOptions<TBody>,
+    options: ApiRequestOptions<TBody, NoInfer<TResponse>>,
   ): Promise<TResponse> => {
     const generation = generationRef.current;
     const token = tokenStore.get();
@@ -175,7 +185,7 @@ export function SessionProvider({
   }, [clearSessionForSnapshot, client, tokenStore]);
 
   const requestOptional = useCallback(async <TResponse, TBody = unknown>(
-    options: ApiRequestOptions<TBody>,
+    options: ApiRequestOptions<TBody, NoInfer<TResponse>>,
   ): Promise<TResponse> => {
     const generation = generationRef.current;
     const token = tokenStore.get();

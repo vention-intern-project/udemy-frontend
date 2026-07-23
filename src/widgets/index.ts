@@ -2,3 +2,4 @@
 // Allowed imports: features, entities, shared
 // Forbidden imports: app, pages
 export {};
+export { CatalogFilterBar } from './catalog-filter-bar';
