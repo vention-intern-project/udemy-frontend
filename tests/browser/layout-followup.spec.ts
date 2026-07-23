@@ -68,11 +68,10 @@ interface StateLayoutGeometry {
   clippedControls: string[];
 }
 
-const directCommand = '.\\node_modules\\.bin\\playwright.cmd test --config tests\\browser\\layout-followup.playwright.config.ts --project=chromium --workers=1 --retries=0 --reporter=line';
+const directCommand = 'npx playwright test --config tests/browser/layout-followup.playwright.config.ts --project=chromium --workers=1 --retries=0 --reporter=line';
 const capabilityFiles = [
   'tests/browser/layout-followup.spec.ts',
   'tests/browser/support/visual-quality.ts',
-  'tests/browser/README.md',
 ] as const;
 const visualQualityRuntime = new WeakMap<Page, VisualQualityRuntime>();
 
@@ -281,11 +280,14 @@ function expectCleanStateLayout(geometry: StateLayoutGeometry, width: number) {
 }
 
 const routeCases = [
-  { path: '/', heading: 'Course catalog', submitName: null },
-  { path: '/login', heading: 'Log in', submitName: 'Log in' },
-  { path: '/signup', heading: 'Create account', submitName: 'Create account' },
-  { path: '/forgot-password', heading: 'Forgot password', submitName: 'Continue' },
-  { path: '/reset-password?token=layout-followup-token', heading: 'Reset password', submitName: 'Reset password' },
+  { path: '/', heading: 'Course catalog', submitName: null, firstInvalidLabel: null },
+  { path: '/login', heading: 'Log in', submitName: 'Log in', firstInvalidLabel: /^Email/ },
+  { path: '/signup', heading: 'Create account', submitName: 'Create account', firstInvalidLabel: /^Email/ },
+  { path: '/forgot-password', heading: 'Forgot password', submitName: 'Continue', firstInvalidLabel: /^Email/ },
+  {
+    path: '/reset-password?token=layout-followup-token', heading: 'Reset password', submitName: 'Reset password',
+    firstInvalidLabel: /^New password/,
+  },
 ] as const;
 
 for (const width of [320, 768, 1280]) {
@@ -420,7 +422,7 @@ for (const width of [320, 390, 768, 1280, 1440]) {
         expect(spacing.noteToPanelBottom).toBe(47);
       }
 
-      if (routeCase.submitName) {
+      if (routeCase.submitName && routeCase.firstInvalidLabel) {
         expect(normal.panelGap).toBe(24);
         expect(normal.headingGap).toBe(16);
         expect(normal.fieldsGap).toBe(16);
@@ -432,7 +434,8 @@ for (const width of [320, 390, 768, 1280, 1440]) {
         const submit = page.getByRole('button', { name: routeCase.submitName, exact: true });
         await submit.focus();
         await page.keyboard.press('Enter');
-        await expect(page.getByRole('alert')).toBeFocused();
+        await expect(page.getByLabel(routeCase.firstInvalidLabel)).toBeFocused();
+        await expect(page.getByRole('alert')).toHaveCount(0);
         const validation = await captureLayout(page);
         expectCleanLayout(validation, width);
         expect(validation.panelPaddingLeft).toBe(normal.panelPaddingLeft);
@@ -455,18 +458,22 @@ for (const width of [320, 390, 768, 1280, 1440]) {
 }
 
 const passwordRouteCases = [
-  { path: '/login', heading: 'Log in', submitName: 'Log in', fieldIds: ['password'] },
+  {
+    path: '/login', heading: 'Log in', submitName: 'Log in', fieldIds: ['password'], firstInvalidLabel: /^Email/,
+  },
   {
     path: '/signup',
     heading: 'Create account',
     submitName: 'Create account',
     fieldIds: ['password', 'passwordConfirmation'],
+    firstInvalidLabel: /^Email/,
   },
   {
     path: '/reset-password?token=layout-password-token',
     heading: 'Reset password',
     submitName: 'Reset password',
     fieldIds: ['password', 'passwordConfirmation'],
+    firstInvalidLabel: /^New password/,
   },
 ] as const;
 
@@ -529,7 +536,8 @@ for (const width of [320, 390, 768, 1280, 1440]) {
 
       for (const input of inputs) await input.fill('');
       await page.getByRole('button', { name: routeCase.submitName, exact: true }).press('Enter');
-      await expect(page.getByRole('alert')).toBeFocused();
+      await expect(page.getByLabel(routeCase.firstInvalidLabel)).toBeFocused();
+      await expect(page.getByRole('alert')).toHaveCount(0);
       for (const [index, id] of routeCase.fieldIds.entries()) {
         await expect(inputs[index]).toHaveAttribute('aria-invalid', 'true');
         const describedBy = await inputs[index].getAttribute('aria-describedby');
