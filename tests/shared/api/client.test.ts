@@ -40,6 +40,27 @@ describe('fetch API client', () => {
     expect(new Headers(init?.headers).get('Content-Type')).toBe('application/json');
   });
 
+  it('suppresses stored and caller-supplied bearers for explicitly public operations', async () => {
+    const fetchMock = vi.fn<FetchArguments, FetchResult>().mockResolvedValue(new Response(
+      JSON.stringify({ access_token: 'replacement' }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+    const client = createApiClient({
+      fetch: fetchMock,
+      getAccessToken: () => 'existing-private-token',
+    });
+
+    await client.request({
+      method: 'POST',
+      path: '/login',
+      authPolicy: 'public',
+      headers: { Authorization: 'Bearer caller-supplied-token' },
+      body: { email: 'a', password: 'b' },
+    });
+
+    expect(new Headers(fetchMock.mock.calls[0][1]?.headers).get('Authorization')).toBe(null);
+  });
+
   it('retries a safe GET once for offline and 500 failures', async () => {
     const offlineFetch = vi.fn<FetchArguments, FetchResult>()
       .mockRejectedValueOnce(new TypeError('offline'))
@@ -162,6 +183,36 @@ describe('fetch API client', () => {
     await expect(client.request({ path: '/courses' })).rejects.toMatchObject({
       kind: 'invalid_response',
       status: 200,
+    });
+  });
+
+  it('decodes successful JSON from unknown and normalizes decoder failures', async () => {
+    const fetchMock = vi.fn<FetchArguments, FetchResult>()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: 7 }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: 'wrong' }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    const client = createApiClient({ fetch: fetchMock });
+    const decode = (value: unknown): { id: number } => {
+      if (
+        typeof value !== 'object'
+        || value === null
+        || !('id' in value)
+        || typeof value.id !== 'number'
+      ) {
+        throw new TypeError('Expected numeric id');
+      }
+      return { id: value.id };
+    };
+
+    await expect(client.request({ path: '/decoded', decode })).resolves.toEqual({ id: 7 });
+    await expect(client.request({ path: '/decoded', decode })).rejects.toMatchObject({
+      kind: 'invalid_response',
+      status: 200,
+      message: 'Server returned an invalid success response',
+    });
+    await expect(client.request({ path: '/decoded', decode })).rejects.toMatchObject({
+      kind: 'invalid_response',
+      status: 204,
     });
   });
 });

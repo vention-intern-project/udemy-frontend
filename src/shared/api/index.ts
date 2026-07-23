@@ -3,6 +3,7 @@ export type {
   ApiClient,
   ApiClientConfig,
   ApiBinaryResponse,
+  AuthPolicy,
   ApiMethod,
   ApiRequestOptions,
   QueryValue,
@@ -10,3 +11,4 @@ export type {
 export { ApiError, normalizeHttpError, normalizeTransportError } from './errors';
 export type { ApiErrorInit, ApiErrorKind, ApiValidationIssue } from './errors';
 export type { PageQueryDto, PaginationDto } from './contracts';
+export { isPrivateQueryForSubject, mutationKeys } from './query-keys';

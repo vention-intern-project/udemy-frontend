@@ -1,9 +1,10 @@
 import { ApiError, normalizeHttpError, normalizeTransportError } from './errors';
 
 export type ApiMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE';
+export type AuthPolicy = 'public' | 'optional' | 'required';
 export type QueryValue = string | number | boolean | null | undefined;
 
-export interface ApiRequestOptions<TBody = unknown> {
+export interface ApiRequestOptions<TBody = unknown, TResponse = unknown> {
   method?: ApiMethod;
   path: string;
   query?: Readonly<Record<string, QueryValue>>;
@@ -12,6 +13,8 @@ export interface ApiRequestOptions<TBody = unknown> {
   signal?: AbortSignal;
   dedupeKey?: string;
   responseType?: 'json' | 'blob';
+  authPolicy?: AuthPolicy;
+  decode?: (value: unknown) => TResponse;
 }
 
 export interface ApiClientConfig {
@@ -25,7 +28,7 @@ export interface ApiClientConfig {
 }
 
 export interface ApiClient {
-  request<TResponse, TBody = unknown>(options: ApiRequestOptions<TBody>): Promise<TResponse>;
+  request<TResponse, TBody = unknown>(options: ApiRequestOptions<TBody, TResponse>): Promise<TResponse>;
 }
 
 export interface ApiBinaryResponse {
@@ -101,8 +104,13 @@ function safeFilename(contentDisposition: string | null): string | undefined {
   return basename && basename !== '.' && basename !== '..' ? basename : undefined;
 }
 
-async function parseSuccess<TResponse>(response: Response, responseType: 'json' | 'blob'): Promise<TResponse> {
+async function parseSuccess<TResponse>(
+  response: Response,
+  responseType: 'json' | 'blob',
+  decode?: (value: unknown) => TResponse,
+): Promise<TResponse> {
   if (response.status === 204) {
+    if (responseType === 'json' && decode) return decode(undefined);
     return undefined as TResponse;
   }
 
@@ -118,7 +126,8 @@ async function parseSuccess<TResponse>(response: Response, responseType: 'json' 
     return binaryResponse as TResponse;
   }
 
-  return response.json() as Promise<TResponse>;
+  const value: unknown = await response.json();
+  return decode ? decode(value) : value as TResponse;
 }
 
 export function createApiClient(config: ApiClientConfig = {}): ApiClient {
@@ -130,11 +139,16 @@ export function createApiClient(config: ApiClientConfig = {}): ApiClient {
   }));
   const inFlight = new Map<string, Promise<unknown>>();
 
-  async function execute<TResponse, TBody>(options: ApiRequestOptions<TBody>): Promise<TResponse> {
+  async function execute<TResponse, TBody>(
+    options: ApiRequestOptions<TBody, TResponse>,
+  ): Promise<TResponse> {
     const method = options.method ?? 'GET';
     const url = buildUrl(config.baseUrl ?? '', options.path, options.query);
-    const token = config.getAccessToken?.();
+    const token = options.authPolicy === 'public' ? null : config.getAccessToken?.();
     const headers = new Headers(options.headers);
+    if (options.authPolicy === 'public') {
+      headers.delete('Authorization');
+    }
     headers.set('Accept', options.responseType === 'blob' ? '*/*' : 'application/json');
 
     const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
@@ -177,7 +191,11 @@ export function createApiClient(config: ApiClientConfig = {}): ApiClient {
         }
 
         try {
-          return await parseSuccess<TResponse>(response, options.responseType ?? 'json');
+          return await parseSuccess<TResponse>(
+            response,
+            options.responseType ?? 'json',
+            options.decode,
+          );
         } catch (error) {
           throw new ApiError({
             kind: 'invalid_response',
@@ -200,7 +218,9 @@ export function createApiClient(config: ApiClientConfig = {}): ApiClient {
   }
 
   return {
-    request<TResponse, TBody = unknown>(options: ApiRequestOptions<TBody>): Promise<TResponse> {
+    request<TResponse, TBody = unknown>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ): Promise<TResponse> {
       if (!options.dedupeKey) {
         return execute<TResponse, TBody>(options);
       }

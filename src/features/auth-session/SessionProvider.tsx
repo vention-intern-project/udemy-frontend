@@ -9,10 +9,15 @@ import {
   type ReactNode,
 } from 'react';
 
-import { mapUserProfileDto, type UserProfile, type UserProfileDto } from '../../entities/user';
+import {
+  decodeUserProfileDto,
+  mapUserProfileDto,
+  type UserProfile,
+  type UserProfileDto,
+} from '@entities/user';
 import {
   ApiError, createApiClient, type ApiClient, type ApiRequestOptions,
-} from '../../shared/api';
+} from '@shared/api';
 import {
   createBrowserAccessTokenStore,
   createExceptionSafeAccessTokenStore,
@@ -30,8 +35,15 @@ export interface SessionContextValue {
   retryBootstrap(): void;
   acceptAccessToken(token: string): void;
   clearSession(): void;
-  requestRequired<TResponse, TBody = unknown>(options: ApiRequestOptions<TBody>): Promise<TResponse>;
-  requestOptional<TResponse, TBody = unknown>(options: ApiRequestOptions<TBody>): Promise<TResponse>;
+  requestPublic<TResponse, TBody = unknown>(
+    options: ApiRequestOptions<TBody, TResponse>,
+  ): Promise<TResponse>;
+  requestRequired<TResponse, TBody = unknown>(
+    options: ApiRequestOptions<TBody, TResponse>,
+  ): Promise<TResponse>;
+  requestOptional<TResponse, TBody = unknown>(
+    options: ApiRequestOptions<TBody, TResponse>,
+  ): Promise<TResponse>;
 }
 
 interface SessionProviderProps {
@@ -45,10 +57,10 @@ interface SessionProviderProps {
 const SessionContext = createContext<SessionContextValue | null>(null);
 SessionContext.displayName = 'SessionContext';
 
-function forSessionGeneration<TBody>(
-  options: ApiRequestOptions<TBody>,
+function forSessionGeneration<TBody, TResponse>(
+  options: ApiRequestOptions<TBody, TResponse>,
   generation: number,
-): ApiRequestOptions<TBody> {
+): ApiRequestOptions<TBody, TResponse> {
   if (!options.dedupeKey) return options;
   return {
     ...options,
@@ -118,6 +130,7 @@ export function SessionProvider({
       const profile = await client.request<UserProfileDto>(forSessionGeneration({
         path: '/me',
         dedupeKey: 'bootstrap',
+        decode: decodeUserProfileDto,
       }, generation));
       if (isCurrentSnapshot(generation, token) && tokenStore.get() === token) {
         setState({ status: 'authenticated', user: mapUserProfileDto(profile) });
@@ -160,12 +173,12 @@ export function SessionProvider({
   }, [tokenStore]);
 
   const requestRequired = useCallback(async <TResponse, TBody = unknown>(
-    options: ApiRequestOptions<TBody>,
+    options: ApiRequestOptions<TBody, TResponse>,
   ): Promise<TResponse> => {
     const generation = generationRef.current;
     const token = tokenStore.get();
     try {
-      return await client.request<TResponse, TBody>(forSessionGeneration(options, generation));
+      return await client.request<TResponse, TBody>(forSessionGeneration({ ...options, authPolicy: 'required' }, generation));
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
         clearSessionForSnapshot(generation, token);
@@ -175,29 +188,34 @@ export function SessionProvider({
   }, [clearSessionForSnapshot, client, tokenStore]);
 
   const requestOptional = useCallback(async <TResponse, TBody = unknown>(
-    options: ApiRequestOptions<TBody>,
+    options: ApiRequestOptions<TBody, TResponse>,
   ): Promise<TResponse> => {
     const generation = generationRef.current;
     const token = tokenStore.get();
     try {
-      return await client.request<TResponse, TBody>(forSessionGeneration(options, generation));
+      return await client.request<TResponse, TBody>(forSessionGeneration({ ...options, authPolicy: 'optional' }, generation));
     } catch (error) {
       if (!(error instanceof ApiError) || error.status !== 401 || !token) {
         throw error;
       }
       if (!clearSessionForSnapshot(generation, token)) throw error;
-      return client.request<TResponse, TBody>(forSessionGeneration(options, generationRef.current));
+      return client.request<TResponse, TBody>(forSessionGeneration({ ...options, authPolicy: 'public' }, generationRef.current));
     }
   }, [clearSessionForSnapshot, client, tokenStore]);
+
+  const requestPublic = useCallback(<TResponse, TBody = unknown>(
+    options: ApiRequestOptions<TBody, TResponse>,
+  ): Promise<TResponse> => client.request<TResponse, TBody>({ ...options, authPolicy: 'public' }), [client]);
 
   const value = useMemo<SessionContextValue>(() => ({
     state,
     retryBootstrap,
     acceptAccessToken,
     clearSession,
+    requestPublic,
     requestRequired,
     requestOptional,
-  }), [acceptAccessToken, clearSession, requestOptional, requestRequired, retryBootstrap, state]);
+  }), [acceptAccessToken, clearSession, requestOptional, requestPublic, requestRequired, retryBootstrap, state]);
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }

@@ -1,4 +1,4 @@
-import type { ApiMethod } from '../../shared/api';
+import type { ApiMethod } from '@shared/api';
 import type { ContractAssumptionCode } from './assumptions';
 
 export type SelectedApiOperationId =

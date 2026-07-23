@@ -1,3 +1,5 @@
+import { matchPath } from 'react-router-dom';
+
 import type { UserRole } from '../../entities/user';
 import type { DensityMode } from '../../shared/ui/theme';
 
@@ -39,12 +41,7 @@ export const APP_ROUTE_BY_ID = Object.freeze(Object.fromEntries(
 )) as Readonly<Record<PageId, (typeof APP_ROUTES)[number]>>;
 
 export function routeForPath(pathname: string): AppRouteDefinition | undefined {
-  return APP_ROUTES.find((route) => {
-    const pattern = route.path
-      .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      .replace(/:[^/]+/g, '[^/]+');
-    return new RegExp(`^${pattern}$`).test(pathname);
-  });
+  return APP_ROUTES.find((route) => matchPath({ path: route.path, end: true }, pathname));
 }
 
 export function densityForPath(pathname: string): DensityMode {

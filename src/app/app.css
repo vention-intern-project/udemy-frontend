@@ -3,14 +3,12 @@
 }
 
 html {
-  min-width: 320px;
   color: var(--text-primary);
   background: var(--color-canvas);
   font-family: var(--font-family-base);
 }
 
 body {
-  min-width: 320px;
   min-height: 100vh;
   margin: 0;
   background: var(--color-canvas);
@@ -71,22 +69,36 @@ button:focus-visible,
 
 .app-brand {
   display: inline-flex;
+  flex-shrink: 0;
   align-items: center;
   gap: var(--spacing-2);
   color: var(--text-primary);
   font-size: var(--type-card-h3-size);
-  font-weight: var(--font-weight-bold);
+  font-weight: var(--font-weight-semibold);
   text-decoration: none;
 }
 
 .app-brand__mark {
-  display: grid;
+  display: block;
   width: 32px;
   height: 32px;
-  place-items: center;
-  border-radius: var(--radius-md);
-  color: var(--action-primary-fg);
-  background: var(--action-primary-bg);
+  flex: 0 0 32px;
+  color: var(--action-primary-bg);
+}
+
+.app-brand__mark-outline {
+  fill: none;
+  stroke: currentColor;
+  stroke-linejoin: round;
+  stroke-width: var(--border-width-emphasized);
+}
+
+.app-brand__mark-book {
+  fill: currentColor;
+}
+
+.app-brand__wordmark {
+  white-space: nowrap;
 }
 
 .app-nav--desktop {
@@ -258,6 +270,191 @@ button:focus-visible,
   font-size: var(--type-caption-size);
 }
 
+.app-shell--auth .app-main {
+  display: grid;
+  place-items: start center;
+}
+
+.app-shell--auth .auth-form {
+  position: relative;
+  left: var(--auth-physical-scrollbar-offset, 0px);
+}
+
+.auth-form {
+  display: grid;
+  width: min(100%, 520px);
+  gap: var(--spacing-6);
+  padding: var(--spacing-6);
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-1);
+}
+
+.app-placeholder {
+  margin-inline: auto;
+}
+
+.auth-form__heading,
+.auth-form__fields {
+  display: grid;
+  gap: var(--spacing-4);
+}
+
+.auth-form__heading,
+.auth-form__footer {
+  text-align: center;
+}
+
+.auth-form__heading h1,
+.auth-form__heading p,
+.auth-form__footer,
+.auth-form__token-help {
+  margin: 0;
+}
+
+.auth-form__heading h1 {
+  font-size: clamp(1.75rem, 7vw, var(--type-page-h1-size));
+  line-height: 1.2;
+}
+
+.auth-form__heading > p:not(.auth-form__eyebrow),
+.auth-form__token-help,
+.auth-form__footer {
+  color: var(--text-secondary);
+  line-height: var(--type-body-md-lh);
+}
+
+.auth-form__split {
+  display: grid;
+  align-items: start;
+  gap: var(--spacing-4);
+}
+
+.auth-form__password {
+  position: relative;
+  display: grid;
+  gap: var(--spacing-2);
+}
+
+.auth-form__reveal {
+  width: var(--control-height-sm);
+  min-width: var(--control-height-sm);
+  height: var(--control-height-sm);
+  padding: 0;
+}
+
+.auth-form__reveal svg {
+  width: var(--spacing-5);
+  height: var(--spacing-5);
+}
+
+.auth-form__reveal.ui-button--ghost:not(:disabled) {
+  color: var(--action-secondary-fg);
+  background: var(--action-secondary-bg);
+  border-color: transparent;
+}
+
+.auth-form__reveal.ui-button--ghost:hover:not(:disabled) {
+  color: var(--action-primary-fg);
+  background: var(--action-primary-bg-hover);
+}
+
+.auth-form__reveal.ui-button--ghost:active:not(:disabled) {
+  color: var(--action-primary-fg);
+  background: var(--action-primary-bg-pressed);
+}
+
+.auth-form__reveal.ui-button--ghost:focus-visible {
+  color: var(--action-secondary-fg);
+  background: var(--action-secondary-bg);
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+@supports (appearance: base-select) and selector(::picker(select)) {
+  .auth-form__role-picker,
+  .auth-form__role-picker::picker(select) {
+    appearance: base-select;
+  }
+
+  .auth-form__role-picker {
+    background: var(--color-surface);
+    border-color: var(--border-default);
+    border-radius: var(--radius-md);
+  }
+
+  .auth-form__role-picker:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  .auth-form__role-picker::picker-icon {
+    color: var(--action-primary-bg);
+    transition: color var(--duration-fast) var(--easing-standard),
+      rotate var(--duration-fast) var(--easing-standard);
+  }
+
+  .auth-form__role-picker:open::picker-icon {
+    color: var(--action-primary-bg-pressed);
+    rotate: 180deg;
+  }
+
+  .auth-form__role-picker::picker(select) {
+    margin-block-start: var(--spacing-1);
+    padding: var(--spacing-1);
+    background: var(--color-surface-elevated);
+    border: var(--border-width) solid var(--border-default);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-2);
+  }
+
+  .auth-form__role-picker option {
+    padding: var(--spacing-2) var(--spacing-3);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    background: var(--color-surface);
+  }
+
+  .auth-form__role-picker option:hover,
+  .auth-form__role-picker option:focus-visible {
+    color: var(--action-secondary-fg);
+    background: var(--action-secondary-bg-hover);
+  }
+
+  .auth-form__role-picker option:checked {
+    color: var(--action-primary-fg);
+    background: var(--action-primary-bg);
+  }
+
+  .auth-form__role-picker option::checkmark {
+    color: var(--action-primary-fg);
+  }
+}
+
+.auth-form__error-alert {
+  padding: var(--spacing-3) var(--spacing-4);
+  border: var(--border-width) solid var(--feedback-error);
+  border-radius: var(--radius-md);
+  color: var(--feedback-error);
+  background: var(--feedback-error-bg);
+}
+
+.auth-form__error-alert:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.auth-form__link {
+  color: var(--action-link);
+  font-weight: var(--font-weight-semibold);
+}
+
+.auth-form__footer {
+  padding-top: var(--spacing-4);
+  border-top: var(--border-width) solid var(--border-default);
+}
+
 @media (min-width: 768px) {
   .app-header__inner,
   .app-main {
@@ -269,8 +466,27 @@ button:focus-visible,
     display: block;
   }
 
+  .app-nav--desktop-split {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    margin-left: 0;
+  }
+
+  .app-nav__auth-actions {
+    margin-left: auto;
+  }
+
+  .app-account--anonymous {
+    display: none;
+  }
+
   .app-account > span {
     display: inline;
+  }
+
+  .app-account--instructor {
+    margin-left: 0;
   }
 
   .app-menu-button,
@@ -278,9 +494,16 @@ button:focus-visible,
     display: none;
   }
 
-  .app-placeholder,
   .app-state__card {
     padding: var(--spacing-12);
+  }
+
+  .auth-form {
+    padding: var(--spacing-8);
+  }
+
+  .auth-form__split {
+    grid-template-columns: 1fr 1fr;
   }
 }
 

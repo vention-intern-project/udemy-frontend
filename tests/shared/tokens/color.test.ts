@@ -111,8 +111,8 @@ describe('Color tokens', () => {
   });
 
   describe('Focus token', () => {
-    it('FOCUS_RING should be #2563EB', () => {
-      expect(FOCUS_RING).toBe('#2563EB');
+    it('FOCUS_RING should be the primary purple #6D28D9', () => {
+      expect(FOCUS_RING).toBe('#6D28D9');
     });
 
     it('FOCUS_RING_WIDTH should be 2px', () => {

@@ -9,3 +9,7 @@ export interface UserProfile {
   phoneNumber: string | null;
   createdAt: string;
 }
+
+export interface AuthToken {
+  accessToken: string;
+}

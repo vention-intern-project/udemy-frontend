@@ -18,9 +18,12 @@ export function RouteBoundary({
   if (route.access === 'public') return children;
 
   if (route.access === 'guest') {
-    return state.status === 'authenticated'
-      ? <Navigate replace to={homeForRole(state.user.role)} />
-      : children;
+    if (state.status !== 'authenticated') return children;
+    const returnTo = sanitizeInternalReturnTo(
+      new URLSearchParams(location.search).get('returnTo'),
+      globalThis.location?.origin,
+    );
+    return <Navigate replace to={returnTo ?? homeForRole(state.user.role)} />;
   }
 
   if (state.status !== 'authenticated') {
