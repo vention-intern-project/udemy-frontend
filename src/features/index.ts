@@ -2,3 +2,4 @@
 // Allowed imports: entities, shared
 // Forbidden imports: app, pages, widgets
 export * from './auth-session';
+export * from './auth-workflows';

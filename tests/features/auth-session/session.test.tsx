@@ -44,9 +44,12 @@ function tokenStore(initial: string | null): AccessTokenStore & { value: string 
 
 function clientFrom(handler: (options: ApiRequestOptions) => Promise<unknown>): ApiClient {
   return {
-    request: <TResponse, TBody = unknown>(options: ApiRequestOptions<TBody>) => (
-      handler(options) as Promise<TResponse>
-    ),
+    request: async <TResponse, TBody = unknown>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      const value = await handler(options);
+      return options.decode ? options.decode(value) : value as TResponse;
+    },
   };
 }
 
@@ -98,8 +101,9 @@ describe('SessionProvider', () => {
     );
 
     await waitFor(() => expect(screen.getByLabelText('session status').textContent).toBe('anonymous'));
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Accept replacement token' }));
-    expect(screen.getByLabelText('session status').textContent).toBe('anonymous');
+    const user = userEvent.setup();
+    await act(async () => user.click(screen.getByRole('button', { name: 'Accept replacement token' })));
+    await waitFor(() => expect(screen.getByLabelText('session status').textContent).toBe('anonymous'));
     expect(clear).toHaveBeenCalledTimes(1);
     expect(request).not.toHaveBeenCalled();
   });
@@ -122,7 +126,8 @@ describe('SessionProvider', () => {
 
     await waitFor(() => expect(screen.getByLabelText('session status').textContent).toBe('anonymous'));
     expect(storedToken).toBe('expired-token');
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Retry' }));
+    const user = userEvent.setup();
+    await act(async () => user.click(screen.getByRole('button', { name: 'Retry' })));
     await waitFor(() => expect(screen.getByLabelText('session status').textContent).toBe('anonymous'));
     expect(request).toHaveBeenCalledTimes(1);
   });
@@ -152,6 +157,30 @@ describe('SessionProvider', () => {
     expect(screen.getByText('+10000000000')).toBeTruthy();
     expect(request).toHaveBeenCalledTimes(1);
     expect(request.mock.calls[0]?.[0]).toMatchObject({ path: '/me' });
+  });
+
+  it('does not establish a session from a malformed successful /me payload', async () => {
+    const store = tokenStore('malformed-profile-token');
+    const fetchImplementation = vi.fn(async () => new Response(JSON.stringify({
+      ...profile,
+      role: 'owner',
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }));
+    render(
+      <SessionProvider
+        apiBaseUrl="https://api.learnhub.test"
+        fetchImplementation={fetchImplementation}
+        tokenStore={store}
+      >
+        <SessionStatus />
+      </SessionProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByLabelText('session status').textContent).toBe('error'));
+    expect(screen.getByLabelText('session role').textContent).toBe('none');
+    expect(store.value).toBe('malformed-profile-token');
   });
 
   it('clears an invalid token and becomes anonymous on /me 401', async () => {
@@ -389,9 +418,10 @@ describe('session-aware requests', () => {
 
   it('clears a required-route session after a 401', async () => {
     const store = tokenStore('valid-then-expired');
+    const requiredRequest = deferred<unknown>();
     const request = vi.fn()
       .mockResolvedValueOnce(profile)
-      .mockRejectedValueOnce(new ApiError({ kind: 'unauthorized', status: 401, message: 'Expired' }));
+      .mockReturnValueOnce(requiredRequest.promise);
     render(
       <SessionProvider client={clientFrom(request)} tokenStore={store}>
         <RequestHarness mode="required" />
@@ -399,12 +429,15 @@ describe('session-aware requests', () => {
     );
     await waitFor(() => expect(screen.getByLabelText('session status').textContent).toBe('authenticated'));
     const user = userEvent.setup();
-    await act(async () => {
-      await user.click(screen.getByRole('button', { name: 'Run request' }));
-      await Promise.resolve();
+    await act(async () => user.click(screen.getByRole('button', { name: 'Run request' })));
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+    await act(async () => requiredRequest.reject(
+      new ApiError({ kind: 'unauthorized', status: 401, message: 'Expired' }),
+    ));
+    await waitFor(() => {
+      expect(screen.getByLabelText('request result').textContent).toBe('failed');
+      expect(screen.getByLabelText('session status').textContent).toBe('anonymous');
     });
-    await waitFor(() => expect(screen.getByLabelText('request result').textContent).toBe('failed'));
-    expect(screen.getByLabelText('session status').textContent).toBe('anonymous');
     expect(store.value).toBe(null);
   });
 
@@ -447,6 +480,7 @@ describe('session-aware requests', () => {
   it('uses the real client to remove Authorization before one anonymous optional retry', async () => {
     const store = tokenStore('invalid-on-optional');
     const courseAuthorization: Array<string | null> = [];
+    const courseResponses = [deferred<Response>(), deferred<Response>()];
     let courseAttempts = 0;
     const fetchImplementation: typeof fetch = async (input, init) => {
       const url = String(input);
@@ -459,16 +493,9 @@ describe('session-aware requests', () => {
       }
       courseAttempts += 1;
       courseAuthorization.push(authorization);
-      return courseAttempts === 1
-        ? new Response(JSON.stringify({ detail: 'Invalid bearer' }), {
-          status: 401,
-          statusText: 'Unauthorized',
-          headers: { 'Content-Type': 'application/json' },
-        })
-        : new Response(JSON.stringify({ ok: true }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        });
+      const response = courseResponses[courseAttempts - 1];
+      if (!response) throw new Error('Unexpected optional request');
+      return response.promise;
     };
     const fetchSpy = vi.fn(fetchImplementation);
     render(
@@ -482,12 +509,25 @@ describe('session-aware requests', () => {
     );
     await waitFor(() => expect(screen.getByLabelText('session status').textContent).toBe('authenticated'));
     const user = userEvent.setup();
-    await act(async () => {
-      await user.click(screen.getByRole('button', { name: 'Run request' }));
-      await Promise.resolve();
+    await act(async () => user.click(screen.getByRole('button', { name: 'Run request' })));
+    await waitFor(() => expect(courseAttempts).toBe(1));
+    await act(async () => courseResponses[0]?.resolve(new Response(
+      JSON.stringify({ detail: 'Invalid bearer' }),
+      {
+        status: 401,
+        statusText: 'Unauthorized',
+        headers: { 'Content-Type': 'application/json' },
+      },
+    )));
+    await waitFor(() => expect(courseAttempts).toBe(2));
+    await act(async () => courseResponses[1]?.resolve(new Response(
+      JSON.stringify({ ok: true }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    )));
+    await waitFor(() => {
+      expect(screen.getByLabelText('request result').textContent).toBe('success');
+      expect(screen.getByLabelText('session status').textContent).toBe('anonymous');
     });
-    await waitFor(() => expect(screen.getByLabelText('request result').textContent).toBe('success'));
-    expect(screen.getByLabelText('session status').textContent).toBe('anonymous');
     expect(store.value).toBe(null);
     expect(courseAttempts).toBe(2);
     expect(courseAuthorization).toEqual(['Bearer invalid-on-optional', null]);

@@ -1,14 +1,18 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Link, matchPath, NavLink, Outlet, useLocation } from 'react-router-dom';
 
-import { useSession } from '../../features/auth-session';
-import { useDensityMode } from '../../shared/ui/theme';
+import { useSession } from '@features/auth-session';
+import { useDensityMode } from '@shared/ui/theme';
 import { APP_ROUTE_BY_ID, densityForPath, routeForPath } from '../router/route-registry';
+
+type NavigationItemVariant = 'browse-link' | 'signup-primary';
 
 interface NavigationItem {
   label: string;
   to: string;
   end?: boolean;
+  desktopGroup?: 'auth-actions';
+  variant?: NavigationItemVariant;
 }
 
 function navigationForSession(
@@ -17,9 +21,15 @@ function navigationForSession(
 ): NavigationItem[] {
   if (status.status !== 'authenticated') {
     return [
-      { label: 'Browse courses', to: '/', end: true },
-      { label: 'Sign up', to: '/signup', end: true },
-      { label: 'Log in', to: '/login', end: true },
+      { label: 'Browse courses', to: '/', end: true, variant: 'browse-link' },
+      { label: 'Log in', to: '/login', end: true, desktopGroup: 'auth-actions' },
+      {
+        label: 'Sign up',
+        to: '/signup',
+        end: true,
+        desktopGroup: 'auth-actions',
+        variant: 'signup-primary',
+      },
     ];
   }
   if (status.user.role === 'student') {
@@ -54,7 +64,11 @@ function NavigationLinks({ items, onNavigate }: {
         <li key={item.to}>
           <NavLink
             end={item.end}
-            className={({ isActive }) => isActive ? 'app-nav__link app-nav__link--active' : 'app-nav__link'}
+            className={({ isActive }) => [
+              'app-nav__link',
+              isActive ? 'app-nav__link--active' : null,
+              item.variant ? `app-nav__link--${item.variant}` : null,
+            ].filter(Boolean).join(' ')}
             onClick={() => onNavigate?.(item.to)}
             to={item.to}
           >
@@ -73,14 +87,17 @@ export function AppShell() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const mainRef = useRef<HTMLElement>(null);
-  const currentLocation = `${location.pathname}${location.search}${location.hash}`;
-  const previousLocationRef = useRef(currentLocation);
+  const routeFocusIdentity = `${location.pathname}${location.search}`;
+  const previousRouteFocusIdentityRef = useRef(routeFocusIdentity);
   const courseRouteMatch = [
     APP_ROUTE_BY_ID['PAGE-011'].path,
     APP_ROUTE_BY_ID['PAGE-012'].path,
   ].map((path) => matchPath({ path, end: true }, location.pathname))
     .find((match) => match?.params.courseId);
   const navigation = navigationForSession(state, courseRouteMatch?.params.courseId ?? null);
+  const desktopPrimaryNavigation = navigation.filter((item) => item.desktopGroup !== 'auth-actions');
+  const desktopAuthActions = navigation.filter((item) => item.desktopGroup === 'auth-actions');
+  const hasDesktopAuthActions = desktopAuthActions.length > 0;
   const layout = routeForPath(location.pathname)?.layout ?? 'public';
   const routeDensityMode = densityForPath(location.pathname);
 
@@ -88,13 +105,44 @@ export function AppShell() {
     if (densityMode !== routeDensityMode) setDensityMode(routeDensityMode);
   }, [densityMode, routeDensityMode, setDensityMode]);
 
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    const root = document.documentElement;
+    const main = mainRef.current;
+    const syncAuthScrollbarOffset = () => {
+      const rootRect = root.getBoundingClientRect();
+      const hasRenderedRootBox = Number.isFinite(rootRect.left)
+        && Number.isFinite(rootRect.right)
+        && Number.isFinite(rootRect.width)
+        && rootRect.width > 0;
+      const signedOffset = hasRenderedRootBox
+        ? window.innerWidth / 2 - (rootRect.left + rootRect.right) / 2
+        : 0;
+      main?.style.setProperty(
+        '--auth-physical-scrollbar-offset',
+        `${Number.isFinite(signedOffset) ? signedOffset : 0}px`,
+      );
+    };
+
+    const directionObserver = new MutationObserver(syncAuthScrollbarOffset);
+    directionObserver.observe(root, { attributes: true, attributeFilter: ['dir'] });
+    window.addEventListener('resize', syncAuthScrollbarOffset);
+    syncAuthScrollbarOffset();
+    return () => {
+      window.removeEventListener('resize', syncAuthScrollbarOffset);
+      directionObserver.disconnect();
+      main?.style.removeProperty('--auth-physical-scrollbar-offset');
+    };
+  }, []);
+
   useEffect(() => {
-    if (previousLocationRef.current !== currentLocation) {
+    if (previousRouteFocusIdentityRef.current !== routeFocusIdentity) {
       setMobileOpen(false);
       scheduleFocus(() => mainRef.current?.focus());
-      previousLocationRef.current = currentLocation;
+      previousRouteFocusIdentityRef.current = routeFocusIdentity;
     }
-  }, [currentLocation]);
+  }, [routeFocusIdentity]);
 
   function scheduleFocus(focus: () => void) {
     if (typeof globalThis.requestAnimationFrame === 'function') {
@@ -118,13 +166,38 @@ export function AppShell() {
       <header className="app-header">
         <div className="app-header__inner">
           <Link className="app-brand" to="/" aria-label="LearnHub home">
-            <span aria-hidden="true" className="app-brand__mark">L</span>
-            LearnHub
+            <svg
+              aria-hidden="true"
+              className="app-brand__mark"
+              focusable="false"
+              viewBox="0 0 32 32"
+            >
+              <rect className="app-brand__mark-outline" x="2" y="2" width="28" height="28" rx="6" />
+              <path
+                className="app-brand__mark-book"
+                d="M5.5 8.5c3.4.6 6.3 1.8 9.5 3.7v13.2c-3.2-1.9-6.4-3-9.5-3.4V8.5Zm21 0c-3.4.6-6.3 1.8-9.5 3.7v13.2c3.2-1.9 6.4-3 9.5-3.4V8.5Z"
+              />
+            </svg>
+            <span className="app-brand__wordmark">LearnHub</span>
           </Link>
-          <nav className="app-nav app-nav--desktop" aria-label="Primary navigation">
-            <NavigationLinks items={navigation} />
+          <nav
+            className={hasDesktopAuthActions
+              ? 'app-nav app-nav--desktop app-nav--desktop-split'
+              : 'app-nav app-nav--desktop'}
+            aria-label="Primary navigation"
+          >
+            <NavigationLinks items={desktopPrimaryNavigation} />
+            {hasDesktopAuthActions ? (
+              <div className="app-nav__auth-actions">
+                <NavigationLinks items={desktopAuthActions} />
+              </div>
+            ) : null}
           </nav>
-          <div className="app-account">
+          <div className={state.status === 'authenticated'
+            ? state.user.role === 'instructor'
+              ? 'app-account app-account--instructor'
+              : 'app-account'
+            : 'app-account app-account--anonymous'}>
             {state.status === 'authenticated' ? (
               <span title={state.user.email}>{state.user.name} - {state.user.role}</span>
             ) : null}
@@ -161,7 +234,7 @@ export function AppShell() {
           >
             <NavigationLinks
               items={navigation}
-              onNavigate={(to) => closeMobileMenu(to === currentLocation ? 'trigger' : 'main')}
+              onNavigate={(to) => closeMobileMenu(to === routeFocusIdentity ? 'trigger' : 'main')}
             />
           </nav>
         ) : null}

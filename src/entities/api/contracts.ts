@@ -1,4 +1,4 @@
-import type { ApiBinaryResponse, PageQueryDto } from '../../shared/api';
+import type { ApiBinaryResponse, PageQueryDto } from '@shared/api';
 import type { CartDto, CartItemAddDto, CartItemDto, CheckoutDto } from '../cart';
 import type {
   CourseDetailDto,

@@ -1,4 +1,4 @@
-import type { ApiClient, QueryValue } from '../../shared/api';
+import type { ApiClient, QueryValue } from '@shared/api';
 import { normalizeLessonPageQuery, normalizePageQuery } from './assumptions';
 import type { SelectedApiContractMap } from './contracts';
 import { API_OPERATION_BY_ID, type SelectedApiOperationId } from './operations';

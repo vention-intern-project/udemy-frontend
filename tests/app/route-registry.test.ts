@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { matchPath } from 'react-router-dom';
 
 import {
   APP_ROUTE_BY_ID, APP_ROUTES, densityForPath, homeForRole, routeForPath,
@@ -41,5 +42,23 @@ describe('application route registry', () => {
     expect(densityForPath('/learning')).toBe('workspace');
     expect(densityForPath('/instructor/courses/course-42/enrollments')).toBe('workspace');
     expect(densityForPath('/unknown')).toBe('marketplace');
+  });
+
+  it('uses React Router semantics for canonical, case, trailing-slash, and parameter variants', () => {
+    for (const route of APP_ROUTES) {
+      const canonical = route.path.replace(/:[^/]+/g, 'Example-42');
+      const variants = canonical === '/'
+        ? ['/']
+        : [canonical, canonical.toUpperCase(), `${canonical}/`, `${canonical}//`];
+
+      for (const pathname of variants) {
+        expect(matchPath({ path: route.path, end: true }, pathname), `${route.id}: ${pathname}`)
+          .not.toBe(null);
+        expect(routeForPath(pathname)?.id, pathname).toBe(route.id);
+      }
+    }
+
+    expect(routeForPath('/learning/enrollments/42/extra')).toBeUndefined();
+    expect(routeForPath('/instructor/courses//edit')).toBeUndefined();
   });
 });
