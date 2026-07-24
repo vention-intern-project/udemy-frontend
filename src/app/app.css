@@ -127,9 +127,37 @@ button:focus-visible,
 }
 
 .app-nav__link:hover,
-.app-nav__link--active {
+.app-nav__link--active:not(.app-nav__link--browse-link) {
   color: var(--action-primary-bg-pressed);
   background: var(--action-secondary-bg);
+}
+
+.app-nav__link--signup-primary,
+.app-nav__link--signup-primary.app-nav__link--active {
+  color: var(--action-primary-fg);
+  background: var(--action-primary-bg);
+}
+
+.app-nav__link--signup-primary:hover {
+  color: var(--action-primary-fg);
+  background: #7c3aed;
+}
+
+.app-nav__link--browse-link.app-nav__link--active {
+  position: relative;
+  color: var(--action-primary-bg);
+  background: transparent;
+}
+
+.app-nav__link--browse-link.app-nav__link--active::after {
+  position: absolute;
+  bottom: var(--spacing-1);
+  left: 50%;
+  width: 24px;
+  height: 2px;
+  background: var(--action-primary-bg);
+  content: '';
+  transform: translateX(-50%);
 }
 
 .app-account {

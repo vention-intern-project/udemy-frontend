@@ -163,9 +163,12 @@ describe('application routing and guards', () => {
     renderApp('/');
     await screen.findByRole('heading', { level: 1, name: 'Course catalog' });
     const navigation = screen.getByRole('navigation', { name: 'Primary navigation' });
-    expect(within(navigation).getByRole('link', { name: 'Browse courses' })).toBeTruthy();
-    expect(within(navigation).getByRole('link', { name: 'Sign up' })).toBeTruthy();
-    expect(within(navigation).getByRole('link', { name: 'Log in' })).toBeTruthy();
+    const links = within(navigation).getAllByRole('link');
+    expect(links.map((link) => link.textContent)).toEqual(['Browse courses', 'Log in', 'Sign up']);
+    expect(within(navigation).getByRole('link', { name: 'Browse courses' }).className)
+      .toContain('app-nav__link--browse-link');
+    expect(within(navigation).getByRole('link', { name: 'Sign up' }).className)
+      .toContain('app-nav__link--signup-primary');
     expect(within(navigation).queryByRole('link', { name: 'Cart' })).toBe(null);
     expect(within(navigation).queryByRole('link', { name: 'Instructor courses' })).toBe(null);
   });

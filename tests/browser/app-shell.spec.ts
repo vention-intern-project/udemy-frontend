@@ -284,19 +284,24 @@ async function expectAnonymousDesktopHeaderGeometry(page: Page, width: 768 | 128
   const brand = page.getByRole('link', { name: 'LearnHub home' });
   const navigation = page.getByRole('navigation', { name: 'Primary navigation' });
   const browse = navigation.getByRole('link', { name: 'Browse courses' });
-  const signup = navigation.getByRole('link', { name: 'Sign up' });
   const login = navigation.getByRole('link', { name: 'Log in' });
+  const signup = navigation.getByRole('link', { name: 'Sign up' });
   await expectBrandComposition(brand);
   await expectBrandFocusTreatment(page, brand);
   await expect(browse).toBeVisible();
-  await expect(signup).toBeVisible();
   await expect(login).toBeVisible();
+  await expect(signup).toBeVisible();
+  expect(await navigation.locator('a').allTextContents()).toEqual([
+    'Browse courses',
+    'Log in',
+    'Sign up',
+  ]);
 
-  const [brandBox, browseBox, signupBox, loginBox] = await Promise.all([
+  const [brandBox, browseBox, loginBox, signupBox] = await Promise.all([
     requiredBoundingBox(brand),
     requiredBoundingBox(browse),
-    requiredBoundingBox(signup),
     requiredBoundingBox(login),
+    requiredBoundingBox(signup),
   ]);
   const headerContentRight = await brand.evaluate((link) => {
     const inner = link.closest('.app-header__inner');
@@ -305,14 +310,109 @@ async function expectAnonymousDesktopHeaderGeometry(page: Page, width: 768 | 128
     return rect.right - Number.parseFloat(getComputedStyle(inner).paddingRight);
   });
   const brandToBrowseGap = browseBox.x - (brandBox.x + brandBox.width);
-  const browseToSignupGap = signupBox.x - (browseBox.x + browseBox.width);
-  const signupToLoginGap = loginBox.x - (signupBox.x + signupBox.width);
+  const browseToLoginGap = loginBox.x - (browseBox.x + browseBox.width);
+  const loginToSignupGap = signupBox.x - (loginBox.x + loginBox.width);
   expect(brandToBrowseGap).toBeGreaterThanOrEqual(0);
   expect(brandToBrowseGap).toBeLessThanOrEqual(32);
-  expect(signupToLoginGap).toBeGreaterThanOrEqual(0);
-  expect(signupToLoginGap).toBeLessThanOrEqual(16);
-  expect(browseToSignupGap).toBeGreaterThan(signupToLoginGap);
-  expect(Math.abs(loginBox.x + loginBox.width - headerContentRight)).toBeLessThanOrEqual(1);
+  expect(loginToSignupGap).toBeGreaterThanOrEqual(0);
+  expect(loginToSignupGap).toBeLessThanOrEqual(16);
+  expect(browseToLoginGap).toBeGreaterThan(loginToSignupGap);
+  expect(Math.abs(signupBox.x + signupBox.width - headerContentRight)).toBeLessThanOrEqual(1);
+
+  const idleStyles = await Promise.all([
+    browse.evaluate((link) => {
+      const style = getComputedStyle(link);
+      const after = getComputedStyle(link, '::after');
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--action-primary-bg)';
+      document.body.append(probe);
+      const expectedPurple = getComputedStyle(probe).color;
+      probe.remove();
+      return {
+        background: style.backgroundColor,
+        color: style.color,
+        underlineBackground: after.backgroundColor,
+        underlineHeight: after.height,
+        underlineWidth: after.width,
+        expectedPurple,
+      };
+    }),
+    signup.evaluate((link) => {
+      const style = getComputedStyle(link);
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--action-primary-fg)';
+      probe.style.background = 'var(--action-primary-bg)';
+      document.body.append(probe);
+      const expected = getComputedStyle(probe);
+      const result = {
+        color: style.color,
+        background: style.backgroundColor,
+        expectedColor: expected.color,
+        expectedBackground: expected.backgroundColor,
+      };
+      probe.remove();
+      return result;
+    }),
+  ]);
+  expect(idleStyles[0].color).toBe(idleStyles[0].expectedPurple);
+  expect(idleStyles[0].background).toBe('rgba(0, 0, 0, 0)');
+  expect(idleStyles[0].underlineBackground).toBe(idleStyles[0].expectedPurple);
+  expect(idleStyles[0].underlineHeight).toBe('2px');
+  expect(idleStyles[0].underlineWidth).toBe('24px');
+  expect(idleStyles[1].color).toBe(idleStyles[1].expectedColor);
+  expect(idleStyles[1].background).toBe(idleStyles[1].expectedBackground);
+  await signup.hover();
+  await expect.poll(() => signup.evaluate((link) => getComputedStyle(link).backgroundColor))
+    .toBe('rgb(124, 58, 237)');
+  await signup.focus();
+  await expect(signup).toBeFocused();
+  const focusStyle = await signup.evaluate((link) => getComputedStyle(link).outlineStyle);
+  expect(focusStyle).not.toBe('none');
+  await expectNoHorizontalOverflow(page);
+
+  await page.goto('/login');
+  const activeLogin = page.getByRole('navigation', { name: 'Primary navigation' })
+    .getByRole('link', { name: 'Log in' });
+  await expect(activeLogin).toHaveAttribute('aria-current', 'page');
+  const activeLoginStyle = await activeLogin.evaluate((link) => {
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--action-primary-bg-pressed)';
+    probe.style.background = 'var(--action-secondary-bg)';
+    document.body.append(probe);
+    const expected = getComputedStyle(probe);
+    const result = {
+      color: getComputedStyle(link).color,
+      background: getComputedStyle(link).backgroundColor,
+      expectedColor: expected.color,
+      expectedBackground: expected.backgroundColor,
+    };
+    probe.remove();
+    return result;
+  });
+  expect(activeLoginStyle.color).toBe(activeLoginStyle.expectedColor);
+  expect(activeLoginStyle.background).toBe(activeLoginStyle.expectedBackground);
+}
+
+async function expectAnonymousMobileNavigation(page: Page, width: 320 | 390) {
+  await page.setViewportSize({ width, height: 844 });
+  await page.goto('/');
+  const menu = page.getByRole('button', { name: 'Open navigation' });
+  await menu.focus();
+  await page.keyboard.press('Enter');
+  const navigation = page.getByRole('navigation', { name: 'Mobile navigation' });
+  const browse = navigation.getByRole('link', { name: 'Browse courses' });
+  const login = navigation.getByRole('link', { name: 'Log in' });
+  const signup = navigation.getByRole('link', { name: 'Sign up' });
+  expect(await navigation.locator('a').allTextContents()).toEqual([
+    'Browse courses',
+    'Log in',
+    'Sign up',
+  ]);
+  await browse.focus();
+  await page.keyboard.press('Tab');
+  await expect(login).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(signup).toBeFocused();
   await expectNoHorizontalOverflow(page);
 }
 
@@ -440,6 +540,13 @@ test('aligns anonymous desktop navigation and renders the lighter brand', async 
   const assertRuntimeClean = monitorRuntime(page);
   await expectAnonymousDesktopHeaderGeometry(page, 768);
   await expectAnonymousDesktopHeaderGeometry(page, 1280);
+  assertRuntimeClean();
+});
+
+test('keeps anonymous mobile navigation in visual and keyboard order', async ({ page }) => {
+  const assertRuntimeClean = monitorRuntime(page);
+  await expectAnonymousMobileNavigation(page, 320);
+  await expectAnonymousMobileNavigation(page, 390);
   assertRuntimeClean();
 });
 

@@ -5,11 +5,14 @@ import { useSession } from '@features/auth-session';
 import { useDensityMode } from '@shared/ui/theme';
 import { APP_ROUTE_BY_ID, densityForPath, routeForPath } from '../router/route-registry';
 
+type NavigationItemVariant = 'browse-link' | 'signup-primary';
+
 interface NavigationItem {
   label: string;
   to: string;
   end?: boolean;
   desktopGroup?: 'auth-actions';
+  variant?: NavigationItemVariant;
 }
 
 function navigationForSession(
@@ -18,9 +21,15 @@ function navigationForSession(
 ): NavigationItem[] {
   if (status.status !== 'authenticated') {
     return [
-      { label: 'Browse courses', to: '/', end: true },
-      { label: 'Sign up', to: '/signup', end: true, desktopGroup: 'auth-actions' },
+      { label: 'Browse courses', to: '/', end: true, variant: 'browse-link' },
       { label: 'Log in', to: '/login', end: true, desktopGroup: 'auth-actions' },
+      {
+        label: 'Sign up',
+        to: '/signup',
+        end: true,
+        desktopGroup: 'auth-actions',
+        variant: 'signup-primary',
+      },
     ];
   }
   if (status.user.role === 'student') {
@@ -55,7 +64,11 @@ function NavigationLinks({ items, onNavigate }: {
         <li key={item.to}>
           <NavLink
             end={item.end}
-            className={({ isActive }) => isActive ? 'app-nav__link app-nav__link--active' : 'app-nav__link'}
+            className={({ isActive }) => [
+              'app-nav__link',
+              isActive ? 'app-nav__link--active' : null,
+              item.variant ? `app-nav__link--${item.variant}` : null,
+            ].filter(Boolean).join(' ')}
             onClick={() => onNavigate?.(item.to)}
             to={item.to}
           >
