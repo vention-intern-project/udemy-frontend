@@ -7,6 +7,7 @@ export interface PaginationProps extends Omit<HTMLAttributes<HTMLElement>, 'onCh
   label?: string;
   hasNext?: boolean;
   hasPrevious?: boolean;
+  directionDisplay?: 'text' | 'arrows';
 }
 
 type PageItem = number | 'ellipsis-start' | 'ellipsis-end';
@@ -40,6 +41,7 @@ export function Pagination({
   label = 'Pagination',
   hasNext,
   hasPrevious,
+  directionDisplay = 'text',
   className,
   ...props
 }: PaginationProps) {
@@ -73,12 +75,12 @@ export function Pagination({
       </span>
       <button
         type="button"
-        className="ui-pagination__button"
+        className={['ui-pagination__button', directionDisplay === 'arrows' && 'ui-pagination__button--direction'].filter(Boolean).join(' ')}
         disabled={!previousAvailable}
         onClick={() => { if (previousAvailable) changePage(safeCurrent - 1); }}
         aria-label="Go to previous page"
       >
-        Previous
+        {directionDisplay === 'arrows' ? <span aria-hidden="true">&lt;</span> : 'Previous'}
       </button>
       <div className="ui-pagination__pages">
         {pageItems(safeCurrent, safeTotal).map((item) =>
@@ -101,12 +103,12 @@ export function Pagination({
       </div>
       <button
         type="button"
-        className="ui-pagination__button"
+        className={['ui-pagination__button', directionDisplay === 'arrows' && 'ui-pagination__button--direction'].filter(Boolean).join(' ')}
         disabled={!nextAvailable}
         onClick={() => { if (nextAvailable) changePage(safeCurrent + 1); }}
         aria-label="Go to next page"
       >
-        Next
+        {directionDisplay === 'arrows' ? <span aria-hidden="true">&gt;</span> : 'Next'}
       </button>
     </nav>
   );

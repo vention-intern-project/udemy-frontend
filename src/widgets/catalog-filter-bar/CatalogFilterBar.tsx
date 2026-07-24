@@ -1,38 +1,81 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import {
-  CATALOG_SORT_VALUES, draftFromCatalogQuery, validateCatalogDraft,
+  draftFromCatalogQuery, validateCatalogDraft,
   type CatalogFilterDraft, type CatalogQuery,
 } from '@features/catalog-discovery';
-import { Button, Input, Select } from '@shared/ui/primitives';
+import { Input } from '@shared/ui/primitives';
 
 import './catalog-filter-bar.css';
 
-const SORT_LABEL: Readonly<Record<(typeof CATALOG_SORT_VALUES)[number], string>> = {
-  id: 'ID: low to high',
-  '-id': 'ID: high to low',
-  title: 'Title: A to Z',
-  '-title': 'Title: Z to A',
-  price: 'Price: low to high',
-  '-price': 'Price: high to low',
-  created_at: 'Created: oldest first',
-  '-created_at': 'Created: newest first',
-};
+type PriceDraft = Pick<CatalogFilterDraft, 'min_price' | 'max_price'>;
+type PriceRange = Pick<CatalogQuery, 'min_price' | 'max_price'>;
+
+function priceDraftFromCatalogQuery(query: CatalogQuery): PriceDraft {
+  const draft = draftFromCatalogQuery(query);
+  return { min_price: draft.min_price, max_price: draft.max_price };
+}
+
+function priceRangeMatches(left: PriceRange, right: PriceRange): boolean {
+  return left.min_price === right.min_price && left.max_price === right.max_price;
+}
 
 export function CatalogFilterBar({ query, onApply }: {
   query: CatalogQuery;
   onApply: (next: CatalogQuery) => void;
 }) {
-  const [draft, setDraft] = useState<CatalogFilterDraft>(() => draftFromCatalogQuery(query));
+  const [draft, setDraft] = useState<PriceDraft>(() => priceDraftFromCatalogQuery(query));
   const [errors, setErrors] = useState<Partial<Record<'min_price' | 'max_price', string>>>({});
+  const draftRef = useRef(draft);
+  const queryRef = useRef(query);
+  const lastAppliedRangeRef = useRef<PriceRange>({ min_price: query.min_price, max_price: query.max_price });
+
+  draftRef.current = draft;
+  queryRef.current = query;
 
   useEffect(() => {
-    setDraft(draftFromCatalogQuery(query));
+    setDraft(priceDraftFromCatalogQuery(query));
     setErrors({});
+    lastAppliedRangeRef.current = { min_price: query.min_price, max_price: query.max_price };
   }, [query]);
 
-  const update = <K extends keyof CatalogFilterDraft>(key: K, value: CatalogFilterDraft[K]) => {
-    setDraft((current) => ({ ...current, [key]: value }));
+  const update = <K extends keyof PriceDraft>(key: K, value: PriceDraft[K]) => {
+    const next = { ...draftRef.current, [key]: value };
+    draftRef.current = next;
+    setDraft(next);
+  };
+
+  const applyDraft = (draftToApply = draftRef.current) => {
+    const currentQuery = queryRef.current;
+    const validation = validateCatalogDraft({
+      search_query: currentQuery.search_query ?? '',
+      min_price: draftToApply.min_price,
+      max_price: draftToApply.max_price,
+      sort: currentQuery.sort,
+    });
+    setErrors(validation.errors);
+    if (!validation.value) return;
+
+    const nextRange: PriceRange = {
+      min_price: validation.value.min_price,
+      max_price: validation.value.max_price,
+    };
+    const currentRange: PriceRange = {
+      min_price: currentQuery.min_price,
+      max_price: currentQuery.max_price,
+    };
+    if (priceRangeMatches(nextRange, currentRange) || priceRangeMatches(nextRange, lastAppliedRangeRef.current)) return;
+
+    lastAppliedRangeRef.current = nextRange;
+    onApply({
+      ...validation.value,
+      search_query: currentQuery.search_query,
+      sort: currentQuery.sort,
+    });
+  };
+
+  const applyOnBlur = () => {
+    applyDraft({ ...draftRef.current });
   };
 
   return (
@@ -42,49 +85,50 @@ export function CatalogFilterBar({ query, onApply }: {
       noValidate
       onSubmit={(event) => {
         event.preventDefault();
-        const validation = validateCatalogDraft(draft);
-        setErrors(validation.errors);
-        if (validation.value) onApply(validation.value);
+        applyDraft();
       }}
     >
-      <Input
-        label="Search courses"
-        name="search_query"
-        value={draft.search_query}
-        onChange={(event) => update('search_query', event.target.value)}
-        placeholder="Search title, description, or instructor first or last name"
-      />
-      <Input
-        label="Minimum price"
-        name="min_price"
-        type="number"
-        inputMode="decimal"
-        min="0"
-        value={draft.min_price}
-        error={errors.min_price}
-        onChange={(event) => update('min_price', event.target.value)}
-      />
-      <Input
-        label="Maximum price"
-        name="max_price"
-        type="number"
-        inputMode="decimal"
-        min="0"
-        value={draft.max_price}
-        error={errors.max_price}
-        onChange={(event) => update('max_price', event.target.value)}
-      />
-      <Select
-        label="Sort courses"
-        name="sort"
-        value={draft.sort}
-        onChange={(event) => update('sort', event.target.value as CatalogFilterDraft['sort'])}
-      >
-        {CATALOG_SORT_VALUES.map((sort) => <option key={sort} value={sort}>{SORT_LABEL[sort]}</option>)}
-      </Select>
-      <div className="catalog-filter-bar__action">
-        <Button type="submit">Apply filters</Button>
-      </div>
+      <fieldset className="catalog-filter-bar__price-range">
+        <legend><span className="catalog-filter-bar__legend">Price range:</span></legend>
+        <Input
+          label={<span className="ui-sr-only">Min price</span>}
+          name="min_price"
+          type="number"
+          inputMode="decimal"
+          min="0"
+          placeholder="Min price"
+          fieldClassName="catalog-filter-bar__field"
+          value={draft.min_price}
+          error={errors.min_price}
+          onChange={(event) => update('min_price', event.target.value)}
+          onBlur={applyOnBlur}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              applyDraft();
+            }
+          }}
+        />
+        <Input
+          label={<span className="ui-sr-only">Max price</span>}
+          name="max_price"
+          type="number"
+          inputMode="decimal"
+          min="0"
+          placeholder="Max price"
+          fieldClassName="catalog-filter-bar__field"
+          value={draft.max_price}
+          error={errors.max_price}
+          onChange={(event) => update('max_price', event.target.value)}
+          onBlur={applyOnBlur}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              applyDraft();
+            }
+          }}
+        />
+      </fieldset>
     </form>
   );
 }

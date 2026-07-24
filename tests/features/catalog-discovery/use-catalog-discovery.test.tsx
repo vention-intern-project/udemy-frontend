@@ -26,7 +26,7 @@ describe('catalog discovery lifecycle', () => {
       return signals.length === 1 ? first.promise : second.promise;
     }) as CatalogRequester;
     const { result: hook, rerender } = renderHook(
-      ({ search_query }) => useCatalogDiscovery({ search_query, sort: 'id', page: 1 }, request),
+      ({ search_query }) => useCatalogDiscovery({ search_query, sort: 'created_at', page: 1 }, request),
       { initialProps: { search_query: 'react' } },
     );
 
@@ -51,7 +51,7 @@ describe('catalog discovery lifecycle', () => {
       signals.push(options.signal as AbortSignal);
       return signals.length === 1 ? first.promise : second.promise;
     }) as CatalogRequester;
-    const { result: hook, rerender } = renderHook(({ search_query }) => useCatalogDiscovery({ search_query, sort: 'id', page: 1 }, request), { initialProps: { search_query: 'first' } });
+    const { result: hook, rerender } = renderHook(({ search_query }) => useCatalogDiscovery({ search_query, sort: 'created_at', page: 1 }, request), { initialProps: { search_query: 'first' } });
 
     rerender({ search_query: 'second' });
     expect(signals[0].aborted).toBe(true);
@@ -68,7 +68,7 @@ describe('catalog discovery lifecycle', () => {
       .mockResolvedValueOnce(result())
       .mockRejectedValueOnce(new ApiError({ kind: 'server', status: 500, message: 'Unavailable' }));
     const { result: hook, rerender } = renderHook(
-      ({ search_query }) => useCatalogDiscovery({ search_query, sort: 'id', page: 1 }, request as CatalogRequester),
+      ({ search_query }) => useCatalogDiscovery({ search_query, sort: 'created_at', page: 1 }, request as CatalogRequester),
       { initialProps: { search_query: 'offline' } },
     );
 

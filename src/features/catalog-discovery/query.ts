@@ -2,7 +2,7 @@ import type { CourseListQueryDto } from '@entities/course';
 
 export const CATALOG_PAGE_SIZE = 20;
 export const CATALOG_SORT_VALUES = [
-  'id', '-id', 'title', '-title', 'price', '-price', 'created_at', '-created_at',
+  'created_at', '-created_at', 'price', '-price', 'title', '-title',
 ] as const;
 export type CatalogSort = (typeof CATALOG_SORT_VALUES)[number];
 
@@ -41,6 +41,12 @@ function isSort(value: string | null): value is CatalogSort {
   return CATALOG_SORT_VALUES.some((sort) => sort === value);
 }
 
+function normalizeSort(value: string | null): CatalogSort {
+  if (value === 'id') return 'created_at';
+  if (value === '-id') return '-created_at';
+  return isSort(value) ? value : 'created_at';
+}
+
 export function parseCatalogQuery(params: URLSearchParams): CatalogQuery {
   const search = params.get('search_query')?.trim();
   const rawSort = params.get('sort');
@@ -51,7 +57,7 @@ export function parseCatalogQuery(params: URLSearchParams): CatalogQuery {
     search_query: search || undefined,
     min_price: hasInvertedRange ? undefined : minPrice,
     max_price: hasInvertedRange ? undefined : maxPrice,
-    sort: isSort(rawSort) ? rawSort : 'id',
+    sort: normalizeSort(rawSort),
     page: safePage(params.get('page')),
   };
 }
@@ -61,7 +67,7 @@ export function serializeCatalogQuery(query: CatalogQuery): string {
   if (query.search_query?.trim()) params.set('search_query', query.search_query.trim());
   if (query.min_price !== undefined) params.set('min_price', String(query.min_price));
   if (query.max_price !== undefined) params.set('max_price', String(query.max_price));
-  if (query.sort !== 'id') params.set('sort', query.sort);
+  if (query.sort !== 'created_at') params.set('sort', query.sort);
   if (query.page !== 1) params.set('page', String(query.page));
   return params.toString();
 }
@@ -73,7 +79,7 @@ export function toCourseListQuery(query: CatalogQuery): CourseListQueryDto {
     search_query: query.search_query,
     min_price: query.min_price,
     max_price: query.max_price,
-    sort: query.sort === 'id' ? undefined : query.sort,
+    sort: query.sort,
   };
 }
 

@@ -27,6 +27,7 @@ export interface Lesson {
 export interface CatalogCourse {
   id: number;
   title: string;
+  description: string | null;
   instructorName: string;
   price: string;
   currency: string;

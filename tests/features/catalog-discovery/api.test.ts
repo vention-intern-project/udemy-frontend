@@ -20,7 +20,7 @@ describe('catalog request boundary', () => {
 
   it('normalizes decoder failures to the public invalid-response classification', async () => {
     const request = vi.fn().mockResolvedValue({ ...validResponse, has_next: 'no' }) as CatalogRequester;
-    await expect(requestCatalog(request, { sort: 'id', page: 1 }, new AbortController().signal))
+    await expect(requestCatalog(request, { sort: 'created_at', page: 1 }, new AbortController().signal))
       .rejects.toMatchObject({ kind: 'invalid_response' });
     expect(catalogFailure(new ApiError({ kind: 'invalid_response', status: null, message: 'Malformed' })))
       .toMatchObject({ kind: 'invalid_response', title: 'Catalog data is unavailable' });

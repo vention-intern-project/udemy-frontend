@@ -52,6 +52,28 @@ describe('Pagination', () => {
     expect(onPageChange).toHaveBeenCalledWith(3);
   });
 
+  it('uses borderless literal chevrons only for the opt-in direction mode while retaining button names and status text', () => {
+    const { rerender } = render(<Pagination currentPage={2} totalPages={4} onPageChange={() => undefined} directionDisplay="arrows" />);
+
+    const previous = screen.getByRole('button', { name: 'Go to previous page' });
+    const next = screen.getByRole('button', { name: 'Go to next page' });
+    expect(previous.textContent).toBe('<');
+    expect(next.textContent).toBe('>');
+    expect(previous.classList.contains('ui-pagination__button--direction')).toBe(true);
+    expect(next.classList.contains('ui-pagination__button--direction')).toBe(true);
+    expect(previous.firstElementChild?.getAttribute('aria-hidden')).toBe('true');
+    expect(next.firstElementChild?.getAttribute('aria-hidden')).toBe('true');
+    expect(screen.getByRole('status').textContent).toContain('Page 2 of 4');
+
+    rerender(<Pagination currentPage={2} totalPages={4} onPageChange={() => undefined} />);
+    const textPrevious = screen.getByRole('button', { name: 'Go to previous page' });
+    const textNext = screen.getByRole('button', { name: 'Go to next page' });
+    expect(textPrevious.textContent).toBe('Previous');
+    expect(textNext.textContent).toBe('Next');
+    expect(textPrevious.classList.contains('ui-pagination__button--direction')).toBe(false);
+    expect(textNext.classList.contains('ui-pagination__button--direction')).toBe(false);
+  });
+
   it('disables unavailable boundary actions', () => {
     const { rerender } = render(<Pagination currentPage={1} totalPages={2} onPageChange={() => undefined} />);
     expect((screen.getByRole('button', { name: 'Go to previous page' }) as HTMLButtonElement).disabled).toBe(true);
@@ -63,13 +85,17 @@ describe('Pagination', () => {
     const user = userEvent.setup();
     const onPageChange = vi.fn();
     const { rerender } = render(
-      <Pagination currentPage={1} totalPages={3} hasNext={false} hasPrevious={false} onPageChange={onPageChange} />,
+      <Pagination currentPage={1} totalPages={3} hasNext={false} hasPrevious={false} onPageChange={onPageChange} directionDisplay="arrows" />,
     );
 
     const previous = screen.getByRole('button', { name: 'Go to previous page' }) as HTMLButtonElement;
     const next = screen.getByRole('button', { name: 'Go to next page' }) as HTMLButtonElement;
     expect(previous.disabled).toBe(true);
     expect(next.disabled).toBe(true);
+    expect(previous.textContent).toBe('<');
+    expect(next.textContent).toBe('>');
+    expect(previous.classList.contains('ui-pagination__button--direction')).toBe(true);
+    expect(next.classList.contains('ui-pagination__button--direction')).toBe(true);
     await user.click(next);
     expect(onPageChange).not.toHaveBeenCalled();
 

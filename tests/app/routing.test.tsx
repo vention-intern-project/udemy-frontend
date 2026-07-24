@@ -73,7 +73,10 @@ function renderApp(path: string, role?: UserRoleDto) {
   );
 }
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  globalThis.localStorage.clear();
+});
 
 describe('application routing and guards', () => {
   it('keeps the busy bootstrap main landmark separate from its polite status region', () => {
@@ -118,13 +121,55 @@ describe('application routing and guards', () => {
 
   it('shows only guest navigation to an anonymous user', async () => {
     renderApp('/');
-    await screen.findByRole('heading', { level: 1, name: 'Course catalog' });
+    await screen.findByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' });
+    const catalogSearch = screen.getByRole('search', { name: 'Course catalog search' });
+    const headerSearch = within(catalogSearch).getByLabelText('Search courses');
+    expect(headerSearch.getAttribute('placeholder'))
+      .toBe('Search courses, topics, or instructors');
+    const label = catalogSearch.querySelector('label.ui-field__label');
+    expect(label?.querySelector('.ui-sr-only')?.textContent).toBe('Search courses');
+    const icon = catalogSearch.querySelector('svg.app-catalog-search__icon');
+    expect(icon?.getAttribute('aria-hidden')).toBe('true');
+    expect(icon?.getAttribute('focusable')).toBe('false');
+    expect(icon?.getAttribute('role')).toBe(null);
+    expect(within(catalogSearch).queryByRole('button', { name: 'Search' })).toBeNull();
+    expect(headerSearch.getAttribute('role')).toBe('combobox');
+    expect(headerSearch.getAttribute('aria-autocomplete')).toBe('list');
+    expect(headerSearch.getAttribute('autocomplete')).toBe('off');
+    expect(headerSearch.getAttribute('aria-expanded')).toBe('false');
     const navigation = screen.getByRole('navigation', { name: 'Primary navigation' });
     expect(within(navigation).getByRole('link', { name: 'Browse courses' })).toBeTruthy();
-    expect(within(navigation).getByRole('link', { name: 'Sign up' })).toBeTruthy();
-    expect(within(navigation).getByRole('link', { name: 'Log in' })).toBeTruthy();
+    const accountNavigation = screen.getByRole('navigation', { name: 'Account navigation' });
+    const logIn = within(accountNavigation).getByRole('link', { name: 'Log in' });
+    const signUp = within(accountNavigation).getByRole('link', { name: 'Sign up' });
+    expect(logIn.getAttribute('href')).toBe('/login');
+    expect(signUp.getAttribute('href')).toBe('/signup');
+    expect(within(navigation).getByRole('link', { name: 'Browse courses' }).getAttribute('aria-current')).toBe('page');
+    expect(logIn.getAttribute('aria-current')).toBe(null);
+    expect(signUp.getAttribute('aria-current')).toBe(null);
+    const header = catalogSearch.closest('header');
+    expect(header).toBeTruthy();
+    expect(header?.classList.contains('app-header--anonymous-catalog')).toBe(true);
+    const headerInner = header!.querySelector('.app-header__inner');
+    expect(Array.from(headerInner?.children ?? []).map((child) => child.className)).toEqual([
+      'app-header__catalog-start',
+      'app-catalog-search',
+      'app-header__catalog-end',
+    ]);
+    expect(headerInner?.querySelector('.app-header__catalog-start')?.contains(navigation)).toBe(true);
+    expect(headerInner?.querySelector('.app-header__catalog-end')?.contains(accountNavigation)).toBe(true);
+    expect(Array.from(header!.querySelectorAll('a, input')).map((element) => {
+      if (element instanceof HTMLInputElement) return element.getAttribute('aria-label') ?? element.name;
+      return element.getAttribute('aria-label') ?? element.textContent?.trim();
+    })).toEqual(['LearnHub home', 'Browse courses', 'search_query', 'Log in', 'Sign up']);
     expect(within(navigation).queryByRole('link', { name: 'Cart' })).toBe(null);
     expect(within(navigation).queryByRole('link', { name: 'Instructor courses' })).toBe(null);
+  });
+
+  it('does not render the catalog search on a non-catalog route', async () => {
+    renderApp('/login');
+    await screen.findByRole('heading', { level: 1, name: 'Log in' });
+    expect(screen.queryByRole('search', { name: 'Course catalog search' })).toBe(null);
   });
 
   it.each(['/login/help', '/signup/help'])(
@@ -159,7 +204,7 @@ describe('application routing and guards', () => {
 
     const user = userEvent.setup();
     await act(async () => user.click(screen.getByRole('link', { name: 'LearnHub home' })));
-    await screen.findByRole('heading', { level: 1, name: 'Course catalog' });
+    await screen.findByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' });
     await waitFor(() => expect(document.documentElement.getAttribute('data-density')).toBe('marketplace'));
     await waitFor(() => expect(document.title).toBe('Course catalog | LearnHub'));
   });
@@ -226,7 +271,7 @@ describe('application routing and guards', () => {
 
   it('gives admin no invented workspace and redirects guest-only routes home', async () => {
     renderApp('/login', 'admin');
-    await screen.findByRole('heading', { level: 1, name: 'Course catalog' });
+    await screen.findByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' });
     expect(screen.getByLabelText('current location').textContent).toBe('/');
     const navigation = screen.getByRole('navigation', { name: 'Primary navigation' });
     expect(within(navigation).queryAllByRole('link')).toHaveLength(0);
@@ -240,7 +285,7 @@ describe('application routing and guards', () => {
 
   it('exposes the skip link and semantic landmarks', async () => {
     renderApp('/');
-    await screen.findByRole('heading', { level: 1, name: 'Course catalog' });
+    await screen.findByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' });
     expect(screen.getByRole('link', { name: 'Skip to main content' }).getAttribute('href'))
       .toBe('#main-content');
     expect(screen.getByRole('banner')).toBeTruthy();

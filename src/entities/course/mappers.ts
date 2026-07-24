@@ -137,6 +137,7 @@ export function mapCourseListDto(dto: CourseListDto): CatalogCourseList {
     items: dto.items.map((item): CatalogCourse => ({
       id: item.id,
       title: item.title,
+      description: item.description,
       instructorName: `${item.instructor.name} ${item.instructor.surname}`.trim(),
       price: item.price,
       currency: item.currency,
