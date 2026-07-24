@@ -13,7 +13,7 @@
 
 .catalog-filter-bar__price-range {
   display: grid;
-  grid-template-columns: max-content repeat(2, 9rem);
+  grid-template-columns: max-content repeat(2, 8rem);
   align-items: center;
   gap: var(--spacing-2);
   min-width: 0;
@@ -36,8 +36,8 @@
 
 .catalog-filter-bar__field {
   display: block;
-  flex: 0 0 9rem;
-  inline-size: 9rem;
+  flex: 0 0 8rem;
+  inline-size: 8rem;
   min-width: 0;
 }
 
@@ -45,10 +45,11 @@
   position: absolute;
 }
 
-.catalog-filter-bar__field .ui-control { width: 100%; min-width: 0; }
+.catalog-filter-bar__field .ui-control { width: 100%; min-width: 0; height: 36px; min-height: 36px; }
+.catalog-filter-bar__field .ui-control:focus-visible { border-color: var(--action-primary-bg); outline-color: var(--action-primary-bg); }
 
 @media (max-width: 479px) {
   .catalog-filter-bar { flex-basis: 100vw; margin-inline: calc(-1 * var(--gutter-mobile)); }
-  .catalog-filter-bar__price-range { display: grid; flex-basis: 100%; grid-template-columns: repeat(2, 9rem); justify-content: start; }
+  .catalog-filter-bar__price-range { display: grid; flex-basis: 100%; grid-template-columns: repeat(2, 8rem); justify-content: start; }
   .catalog-filter-bar__legend { grid-column: 1 / -1; }
 }

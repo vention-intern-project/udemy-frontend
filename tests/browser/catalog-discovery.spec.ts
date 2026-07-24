@@ -247,7 +247,7 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
     expect(geometry.every((card) => card.priceFontSize === '16px' && card.priceLineHeight === '24px')).toBe(true);
     expect(geometry.every((card) => card.bodyPadding === '12px' && card.pricePaddingBlockStart === '12px' && card.pricePaddingBlockEnd === '12px')).toBe(true);
     expect(geometry.every((card) => card.bodyGap === '8px' && card.metadataDisplay === 'flex' && card.metadataWhiteSpace === 'nowrap' && card.lessonWhiteSpace === 'nowrap' && card.metadataHeight <= 18.5 && card.metadataScrollHeight >= card.metadataClientHeight)).toBe(true);
-    expect(geometry.every((card) => card.separatorFontSize === '26px' && Math.abs(card.separatorHeight - 18) <= .5 && card.separatorMarginInlineStart === '8px' && card.separatorMarginInlineEnd === '8px' && card.separatorCentreDelta <= .5)).toBe(true);
+    expect(geometry.every((card) => card.separatorFontSize === '26px' && Math.abs(card.separatorHeight - 18) <= .5 && card.separatorMarginInlineStart === '12px' && card.separatorMarginInlineEnd === '12px' && card.separatorCentreDelta <= .5)).toBe(true);
     const firstRow = geometry.slice(0, width >= 1100 ? 3 : width >= 768 ? 2 : 1);
     expect(Math.max(...firstRow.map((card) => card.metadataTop)) - Math.min(...firstRow.map((card) => card.metadataTop))).toBeLessThanOrEqual(1);
     expect(geometry.every((card) => Math.abs(card.actionHeight - 41.8) <= .5 && card.actionPaddingInlineStart === '15.2px' && card.actionPaddingInlineEnd === '15.2px' && card.actionFontSize === '14px' && card.actionFontWeight === '600')).toBe(true);
@@ -671,8 +671,8 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
       expected: { primary: resolveColor('--text-primary'), muted: resolveColor('--text-muted') },
     };
   });
-  expect(resultTypography.heading.fontSize).toBe(resultTypography.label.fontSize);
-  expect(resultTypography.heading.lineHeight).toBe(resultTypography.label.lineHeight);
+  expect(resultTypography.heading.fontSize).toBe('18px');
+  expect(resultTypography.heading.lineHeight).toBe('26px');
   expect(resultTypography.total.color).toBe(resultTypography.expected.primary);
   expect(resultTypography.total.fontWeight).toBe('700');
   expect(resultTypography.suffix.color).toBe(resultTypography.expected.muted);
@@ -704,6 +704,10 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   expect(sortIdle.transition).toContain('transform');
   expect(sortIdle.transition).toContain('color');
   expect(sortIdle.duration).not.toBe('0s');
+  const focusedCourseLink = page.getByRole('link', { name: 'React' });
+  const focusedCourseTooltip = focusedCourseLink.locator('.catalog-card__tooltip');
+  await focusedCourseLink.focus();
+  await expect(focusedCourseTooltip).toHaveCSS('opacity', '1');
   await sortTrigger.hover();
   const sortListbox = page.getByRole('listbox', { name: 'Sort by options' });
   await expect(sortListbox).toBeVisible();
@@ -720,7 +724,7 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   })]);
   expect(sortGeometry[0]).not.toBeNull();
   expect(sortGeometry[1]).not.toBeNull();
-  expect(Math.abs(sortGeometry[0]!.width - 144)).toBeLessThanOrEqual(1);
+  expect(Math.abs(sortGeometry[0]!.width - 128)).toBeLessThanOrEqual(1);
   expect(Math.abs(sortGeometry[0]!.width - sortGeometry[1]!.width)).toBeLessThanOrEqual(1);
   expect(sortGeometry[1]!.x + sortGeometry[1]!.width).toBeLessThanOrEqual(sortGeometry[0]!.x + sortGeometry[0]!.width + 1);
   expect(sortGeometry[2].color).toBe(sortGeometry[2].expectedPrimary);
@@ -730,8 +734,35 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   expect(sortGeometry[2].centreDelta).toBeLessThanOrEqual(1);
   expect(page.url()).toBe(sortUrlBeforeHover);
   expect(requests).toHaveLength(requestCountBeforeHover);
-  await sortListbox.getByRole('option', { name: 'Low to High' }).hover();
-  await expect(sortListbox.getByRole('option', { name: 'Low to High' })).toHaveClass(/catalog-page__sort-option--active/);
+  const lowToHighOption = sortListbox.getByRole('option', { name: 'Low to High' });
+  await lowToHighOption.evaluate((option) => {
+    const tooltip = document.querySelector<HTMLElement>('.catalog-card__tooltip--open');
+    const rect = option.getBoundingClientRect();
+    if (!tooltip) throw new Error('Focused course tooltip is required for Sort layering coverage.');
+    tooltip.style.setProperty('transform', `translate3d(${rect.left}px, ${rect.top}px, 0)`, 'important');
+  });
+  await lowToHighOption.hover();
+  const sortHit = await lowToHighOption.evaluate((option) => {
+    const rect = option.getBoundingClientRect();
+    const hit = document.elementFromPoint(rect.left + (rect.width / 2), rect.top + (rect.height / 2));
+    return { listboxHit: hit?.closest('[role="listbox"]') === option.closest('[role="listbox"]'), tooltipHit: Boolean(hit?.closest('.catalog-card__tooltip')) };
+  });
+  expect(sortHit).toEqual({ listboxHit: true, tooltipHit: false });
+  await expect(sortTrigger).toHaveAttribute('aria-expanded', 'true');
+  await lowToHighOption.evaluate(() => document.querySelector<HTMLElement>('.catalog-card__tooltip--open')?.style.removeProperty('transform'));
+  await expect(lowToHighOption).toHaveClass(/catalog-page__sort-option--active/);
+  const purple = 'rgb(109, 40, 217)';
+  for (const target of [filters.getByLabel('Min price'), filters.getByLabel('Max price'), sortTrigger, focusedCourseLink]) {
+    await target.focus();
+    expect(await target.evaluate((element) => element.matches(':focus-visible'))).toBe(true);
+    await expect(target).toHaveCSS('outline-color', purple);
+    if (target !== focusedCourseLink) await expect(target).toHaveCSS('border-color', purple);
+  }
+  await sortTrigger.focus();
+  await page.keyboard.press('Enter');
+  await expect(sortListbox).toBeFocused();
+  await expect(sortListbox).toHaveCSS('outline-color', purple);
+  await expect(sortListbox).toHaveCSS('border-color', purple);
   const optionGeometry = await sortListbox.evaluate((listbox) => {
     const selected = Array.from(listbox.querySelectorAll<HTMLElement>('[role="option"]')).find((option) => option.getAttribute('aria-selected') === 'true');
     const active = listbox.querySelector<HTMLElement>('.catalog-page__sort-option--active');
@@ -789,7 +820,10 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   expect(desktopPriceControls.every(Boolean)).toBe(true);
   expect(Math.abs(desktopPriceControls[0]!.width - toolbarGeometry[5]!.width)).toBeLessThanOrEqual(1);
   expect(Math.abs(desktopPriceControls[1]!.width - toolbarGeometry[5]!.width)).toBeLessThanOrEqual(1);
-  expect(toolbarGeometry[5]!.width).toBeLessThanOrEqual(144);
+  expect(Math.abs(desktopPriceControls[0]!.height - 36)).toBeLessThanOrEqual(1);
+  expect(Math.abs(desktopPriceControls[1]!.height - 36)).toBeLessThanOrEqual(1);
+  expect(Math.abs(toolbarGeometry[5]!.height - 36)).toBeLessThanOrEqual(1);
+  expect(toolbarGeometry[5]!.width).toBeLessThanOrEqual(128);
   expect(toolbarGeometry[5]!.y + toolbarGeometry[5]!.height).toBeLessThanOrEqual(toolbarGeometry[6]!.y);
   expect(Math.abs((toolbarGeometry[0]!.y + (toolbarGeometry[0]!.height / 2)) - (toolbarGeometry[1]!.y + (toolbarGeometry[1]!.height / 2)))).toBeLessThanOrEqual(1);
   const resultsColumnGeometry = await Promise.all([
@@ -915,8 +949,8 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
       expect(responsivePriceGeometry[0]!.y).toBeLessThanOrEqual(responsivePriceGeometry[1]!.y);
       expect(Math.abs(responsivePriceGeometry[1]!.y - responsivePriceGeometry[2]!.y)).toBeLessThanOrEqual(1);
       expect(responsivePriceGeometry[1]!.x).toBeLessThan(responsivePriceGeometry[2]!.x);
-      expect(responsivePriceGeometry[1]!.width).toBeCloseTo(144, 1);
-      expect(responsivePriceGeometry[2]!.width).toBeCloseTo(144, 1);
+      expect(responsivePriceGeometry[1]!.width).toBeCloseTo(128, 1);
+      expect(responsivePriceGeometry[2]!.width).toBeCloseTo(128, 1);
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth && document.body.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   }
