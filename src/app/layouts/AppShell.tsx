@@ -9,13 +9,13 @@ import {
 } from 'react';
 import { Link, matchPath, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 
-import { useSession } from '../../features/auth-session';
+import { useSession } from '@features/auth-session';
 import {
   addCatalogSearchHistory, parseCatalogQuery, persistCatalogSearchHistory,
   readCatalogSearchHistory, serializeCatalogQuery,
-} from '../../features/catalog-discovery';
-import { Input } from '../../shared/ui/primitives';
-import { useDensityMode } from '../../shared/ui/theme';
+} from '@features/catalog-discovery';
+import { Input } from '@shared/ui/primitives';
+import { useDensityMode } from '@shared/ui/theme';
 import { APP_ROUTE_BY_ID, routeForPath } from '../router/route-registry';
 
 interface NavigationItem {
@@ -112,6 +112,8 @@ export function AppShell() {
   const catalogSearchListboxId = `catalog-search-history-${useId()}`;
   const currentLocation = `${location.pathname}${location.search}${location.hash}`;
   const previousLocationRef = useRef(currentLocation);
+  const currentRouteLocation = `${location.pathname}${location.hash}`;
+  const previousRouteLocationRef = useRef(currentRouteLocation);
   const courseRouteMatch = [
     APP_ROUTE_BY_ID['PAGE-011'].path,
     APP_ROUTE_BY_ID['PAGE-012'].path,
@@ -158,14 +160,16 @@ export function AppShell() {
     if (previousLocationRef.current !== currentLocation) {
       setMobileOpen(false);
       const restoreCatalogSearchFocus = restoreCatalogSearchFocusRef.current;
+      const routeChanged = previousRouteLocationRef.current !== currentRouteLocation;
       restoreCatalogSearchFocusRef.current = false;
       scheduleFocus(() => {
         if (restoreCatalogSearchFocus) catalogSearchRef.current?.focus();
-        else mainRef.current?.focus();
+        else if (routeChanged) mainRef.current?.focus();
       });
       previousLocationRef.current = currentLocation;
+      previousRouteLocationRef.current = currentRouteLocation;
     }
-  }, [currentLocation]);
+  }, [currentLocation, currentRouteLocation]);
 
   function scheduleFocus(focus: () => void) {
     if (typeof globalThis.requestAnimationFrame === 'function') {
@@ -192,9 +196,10 @@ export function AppShell() {
   const activeCatalogSearchTerm = activeCatalogSearchIndex === null
     ? undefined
     : catalogSearchMatches[activeCatalogSearchIndex];
+  const catalogSearchListboxVisible = catalogSearchOpen && catalogSearchMatches.length > 0;
 
   useEffect(() => {
-    if (!catalogSearchOpen) return undefined;
+    if (!catalogSearchListboxVisible) return undefined;
     function closeOnOutsidePointer(event: PointerEvent) {
       if (!catalogSearchWrapperRef.current?.contains(event.target as Node)) {
         setCatalogSearchOpen(false);
@@ -203,7 +208,7 @@ export function AppShell() {
     }
     document.addEventListener('pointerdown', closeOnOutsidePointer, true);
     return () => document.removeEventListener('pointerdown', closeOnOutsidePointer, true);
-  }, [catalogSearchOpen]);
+  }, [catalogSearchListboxVisible]);
 
   function closeCatalogSearchList() {
     setCatalogSearchOpen(false);
@@ -274,8 +279,8 @@ export function AppShell() {
                   autoComplete="off"
                   role="combobox"
                   aria-autocomplete="list"
-                  aria-controls={catalogSearchOpen && catalogSearchMatches.length > 0 ? catalogSearchListboxId : undefined}
-                  aria-expanded={catalogSearchOpen && catalogSearchMatches.length > 0}
+                  aria-controls={catalogSearchListboxVisible ? catalogSearchListboxId : undefined}
+                  aria-expanded={catalogSearchListboxVisible}
                   aria-activedescendant={activeCatalogSearchTerm
                     ? `${catalogSearchListboxId}-option-${activeCatalogSearchIndex}`
                     : undefined}
@@ -319,7 +324,7 @@ export function AppShell() {
                 <svg className="app-catalog-search__icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24">
                   <path d="m21 21-4.35-4.35m1.35-5.15a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0Z" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
                 </svg>
-                {catalogSearchOpen && catalogSearchMatches.length > 0 ? (
+                {catalogSearchListboxVisible ? (
                   <div className="app-catalog-search__listbox" id={catalogSearchListboxId} role="listbox" aria-label="Recent searches">
                     {catalogSearchMatches.map((term, index) => (
                       <div

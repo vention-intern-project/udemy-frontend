@@ -31,6 +31,15 @@ type TooltipPlacement =
   | { mode: 'inline' }
   | { mode: 'side'; side: 'left' | 'right'; left: number; top: number; width: number };
 
+interface CourseCardProps {
+  course: CatalogCourse;
+}
+
+interface SortControlProps {
+  value: CatalogQuery['sort'];
+  onChange: (sort: CatalogQuery['sort']) => void;
+}
+
 function sameTooltipPlacement(current: TooltipPlacement | null, next: TooltipPlacement): boolean {
   if (!current || current.mode !== next.mode) return false;
   if (current.mode === 'inline' || next.mode === 'inline') return true;
@@ -58,7 +67,7 @@ function formatCatalogPrice(price: string, currency: string): string {
   }
 }
 
-function CourseCard({ course }: { course: CatalogCourse }) {
+function CourseCard({ course }: CourseCardProps) {
   const previewCue = course.isPublished ? 'View details' : 'View Draft';
   const tooltipNotice = course.isPublished ? null : 'This course is not available for enrollment yet.';
   const statusExplanationId = `catalog-course-${course.id}-status`;
@@ -212,13 +221,11 @@ function CourseCard({ course }: { course: CatalogCourse }) {
   );
 }
 
-function SortControl({ value, onChange }: {
-  value: CatalogQuery['sort'];
-  onChange: (sort: CatalogQuery['sort']) => void;
-}) {
+function SortControl({ value, onChange }: SortControlProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const focusListboxRef = useRef(false);
+  const finePointerHoverRef = useRef(false);
   const activeIndexRef = useRef<number | null>(null);
   const listboxId = `catalog-sort-options-${useId()}`;
   const [open, setOpen] = useState(false);
@@ -279,10 +286,12 @@ function SortControl({ value, onChange }: {
       ref={rootRef}
       className={['catalog-page__sort-control', open && 'catalog-page__sort-control--open'].filter(Boolean).join(' ')}
       onPointerEnter={(event) => {
-        if (supportsFinePointerHover(event.pointerType)) openList(selectedIndex);
+        finePointerHoverRef.current = supportsFinePointerHover(event.pointerType);
+        if (finePointerHoverRef.current) openList(selectedIndex);
       }}
-      onPointerLeave={(event) => {
-        if (supportsFinePointerHover(event.pointerType)) close();
+      onPointerLeave={() => {
+        if (finePointerHoverRef.current) close();
+        finePointerHoverRef.current = false;
       }}
       onBlur={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) close();
@@ -296,7 +305,14 @@ function SortControl({ value, onChange }: {
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={open ? listboxId : undefined}
-        onClick={() => open ? close() : openList(selectedIndex, true)}
+        onClick={() => {
+          if (finePointerHoverRef.current) {
+            if (!open) openList(selectedIndex);
+            return;
+          }
+          if (open) close();
+          else openList(selectedIndex, true);
+        }}
         onKeyDown={(event) => {
           if (event.key === 'Enter' || event.key === ' ') {
             event.preventDefault();

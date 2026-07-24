@@ -1,6 +1,18 @@
 import { expect, test, type ConsoleMessage, type Page, type Request } from '@playwright/test';
 
-function response(items: unknown[] = [], pagination: Partial<{ page: number; pages: number; has_next: boolean; has_previous: boolean }> = {}) {
+interface CatalogPaginationFixture {
+  page?: number;
+  pages?: number;
+  has_next?: boolean;
+  has_previous?: boolean;
+}
+
+interface BrowserMonitorAllowances {
+  requestFailure?: (request: Request) => boolean;
+  consoleError?: (message: ConsoleMessage) => boolean;
+}
+
+function response(items: readonly unknown[] = [], pagination: CatalogPaginationFixture = {}) {
   return JSON.stringify({ items, page: 1, page_size: 20, total: items.length, pages: items.length ? 1 : 0, has_next: false, has_previous: false, ...pagination });
 }
 
@@ -8,10 +20,7 @@ function permittedCourse(title = 'React') {
   return { id: 7, title, description: null, price: '9.99', currency: 'USD', published_at: '2026-01-01T00:00:00Z', instructor: { id: 1, name: 'Ada', surname: 'Lovelace' }, lessons: [{ id: 1, title: 'Intro' }] };
 }
 
-async function monitor(page: Page, allowed: {
-  requestFailure?: (request: Request) => boolean;
-  consoleError?: (message: ConsoleMessage) => boolean;
-} = {}) {
+async function monitor(page: Page, allowed: BrowserMonitorAllowances = {}) {
   const errors: string[] = [];
   const failures: string[] = [];
   page.on('console', (message) => {
@@ -489,12 +498,15 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
   expect(paginationStyles.nextBorderWidth).toBe('0px');
   expect(paginationStyles.currentBorderWidth).not.toBe('0px');
   expect(paginationStyles.currentBackground).toBe(paginationStyles.primaryBackground);
+  await expect(page.getByRole('button', { name: 'Go to page 1' })).toBeDisabled();
   await next.focus();
   expect(await next.evaluate((button) => button.matches(':focus-visible'))).toBe(true);
   await expect(next).toBeEnabled();
   await next.click();
   await expect(page).toHaveURL(/page=2/);
   await expect(next).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Go to page 2' })).toBeDisabled();
+  await expect(previous).toBeEnabled();
   const disabledNext = await next.evaluate((button) => {
     const style = getComputedStyle(button);
     return { background: style.backgroundColor, borderWidth: style.borderTopWidth };
@@ -506,6 +518,85 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
   await reactLink.press('Enter');
   await expect(page).toHaveURL(/\/courses\/7$/);
   expect(forbiddenMutationRequests).toEqual([]);
+  assertClean();
+});
+
+test('keeps a fine-pointer hover-open Sort popup open through trigger click and activates an option', async ({ page }) => {
+  const assertClean = await monitor(page, { requestFailure: (request) => request.failure()?.errorText === 'net::ERR_ABORTED' });
+  const requests: string[] = [];
+  await page.route('**/courses**', async (route) => {
+    requests.push(route.request().url());
+    const requestedPage = Number(new URL(route.request().url()).searchParams.get('page') ?? '1');
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: response([permittedCourse()], {
+        page: requestedPage,
+        pages: 2,
+        has_next: requestedPage === 1,
+        has_previous: requestedPage === 2,
+      }),
+    });
+  });
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/?page=2');
+  await expect(page.getByRole('link', { name: 'React' })).toBeVisible();
+  const trigger = page.getByRole('button', { name: 'Sort by: Oldest' });
+  await trigger.hover();
+  const listbox = page.getByRole('listbox', { name: 'Sort by options' });
+  await expect(listbox).toBeVisible();
+  await trigger.click();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  await expect(listbox).toBeVisible();
+
+  const requestCountBeforeSelection = requests.length;
+  await listbox.getByRole('option', { name: 'Low to High' }).click();
+  await expect(page).toHaveURL('/?sort=price');
+  await expect.poll(() => requests.length).toBe(requestCountBeforeSelection + 1);
+  const selectedRequest = new URL(requests[requests.length - 1]);
+  expect(selectedRequest.searchParams.get('sort')).toBe('price');
+  expect(selectedRequest.searchParams.get('page')).toBe('1');
+  assertClean();
+});
+
+test('navigates every enabled control for an authoritative page beyond the advertised page count', async ({ page }) => {
+  const assertClean = await monitor(page, { requestFailure: (request) => request.failure()?.errorText === 'net::ERR_ABORTED' });
+  const requests: string[] = [];
+  await page.route('**/courses**', async (route) => {
+    requests.push(route.request().url());
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: response([permittedCourse()], {
+        page: 99,
+        pages: 1,
+        has_next: false,
+        has_previous: true,
+      }),
+    });
+  });
+
+  await page.goto('/?page=99');
+  await expect(page.getByRole('link', { name: 'React' })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: 'Page 99 of 1' })).toHaveCount(1);
+  const previous = page.getByRole('button', { name: 'Go to previous page' });
+  const pageOne = page.getByRole('button', { name: 'Go to page 1' });
+  await expect(previous).toBeEnabled();
+  await expect(pageOne).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Go to next page' })).toBeDisabled();
+
+  const requestCountBeforePrevious = requests.length;
+  await previous.click();
+  await expect(page).toHaveURL('/?page=98');
+  await expect.poll(() => requests.length).toBe(requestCountBeforePrevious + 1);
+  expect(new URL(requests[requests.length - 1]).searchParams.get('page')).toBe('98');
+
+  const requestCountBeforePageOne = requests.length;
+  await pageOne.click();
+  await expect(page).toHaveURL('/');
+  await expect.poll(() => requests.length).toBe(requestCountBeforePageOne + 1);
+  expect(new URL(requests[requests.length - 1]).searchParams.get('page')).toBe('1');
   assertClean();
 });
 
@@ -856,9 +947,25 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   await expect(headerSearch).toHaveValue('TypeScript');
   await page.goForward();
   await expect(headerSearch).toHaveValue('JavaScript');
-  await filters.getByLabel('Min price').fill('10');
-  await sortTrigger.focus();
+  const minimum = filters.getByLabel('Min price');
+  const maximum = filters.getByLabel('Max price');
+  const requestCountBeforeMinimumBlur = requests.length;
+  await minimum.fill('10');
+  await minimum.press('Tab');
   await expect(page).toHaveURL(/search_query=JavaScript&min_price=10&sort=title/);
+  await expect(maximum).toBeFocused();
+  await expect.poll(() => requests.length).toBe(requestCountBeforeMinimumBlur + 1);
+  await page.waitForTimeout(20);
+  expect(requests).toHaveLength(requestCountBeforeMinimumBlur + 1);
+
+  const requestCountBeforeMaximumBlur = requests.length;
+  await maximum.fill('20');
+  await maximum.press('Tab');
+  await expect(page).toHaveURL(/search_query=JavaScript&min_price=10&max_price=20&sort=title/);
+  await expect(sortTrigger).toBeFocused();
+  await expect.poll(() => requests.length).toBe(requestCountBeforeMaximumBlur + 1);
+  await page.waitForTimeout(20);
+  expect(requests).toHaveLength(requestCountBeforeMaximumBlur + 1);
 
   await page.setViewportSize({ width: 320, height: 740 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth && document.body.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
@@ -998,6 +1105,10 @@ test('remembers catalog searches in an accessible local combobox without changin
   expect(requests[requests.length - 1]).toContain('sort=title');
   expect(requests[requests.length - 1]).toContain('page=1');
 
+  await input.fill('no matching history');
+  await expect(listbox).toHaveCount(0);
+  await expect(input).toHaveAttribute('aria-expanded', 'false');
+  await expect(input).not.toHaveAttribute('aria-controls');
   await input.fill('script');
   await expect(listbox.getByRole('option')).toHaveCount(1);
   await expect(listbox.getByRole('option', { name: 'TypeScript' })).toBeVisible();

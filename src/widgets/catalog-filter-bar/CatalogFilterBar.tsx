@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import {
   draftFromCatalogQuery, validateCatalogDraft,
-  type CatalogFilterDraft, type CatalogQuery,
+  type CatalogFilterDraft, type CatalogFilterValidation, type CatalogQuery,
 } from '@features/catalog-discovery';
 import { Input } from '@shared/ui/primitives';
 
@@ -10,6 +10,11 @@ import './catalog-filter-bar.css';
 
 type PriceDraft = Pick<CatalogFilterDraft, 'min_price' | 'max_price'>;
 type PriceRange = Pick<CatalogQuery, 'min_price' | 'max_price'>;
+
+interface CatalogFilterBarProps {
+  query: CatalogQuery;
+  onApply: (next: CatalogQuery) => void;
+}
 
 function priceDraftFromCatalogQuery(query: CatalogQuery): PriceDraft {
   const draft = draftFromCatalogQuery(query);
@@ -20,12 +25,9 @@ function priceRangeMatches(left: PriceRange, right: PriceRange): boolean {
   return left.min_price === right.min_price && left.max_price === right.max_price;
 }
 
-export function CatalogFilterBar({ query, onApply }: {
-  query: CatalogQuery;
-  onApply: (next: CatalogQuery) => void;
-}) {
+export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
   const [draft, setDraft] = useState<PriceDraft>(() => priceDraftFromCatalogQuery(query));
-  const [errors, setErrors] = useState<Partial<Record<'min_price' | 'max_price', string>>>({});
+  const [errors, setErrors] = useState<CatalogFilterValidation['errors']>({});
   const draftRef = useRef(draft);
   const queryRef = useRef(query);
   const lastAppliedRangeRef = useRef<PriceRange>({ min_price: query.min_price, max_price: query.max_price });

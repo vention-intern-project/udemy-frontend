@@ -9,9 +9,6 @@
 
 .catalog-filter-bar__price-range {
   margin: 0;
-}
-
-.catalog-filter-bar__price-range {
   display: grid;
   grid-template-columns: max-content repeat(2, 8rem);
   align-items: center;

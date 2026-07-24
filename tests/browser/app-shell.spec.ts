@@ -1,16 +1,21 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page, type Request } from '@playwright/test';
 
 type BackendRole = 'student' | 'instructor' | 'admin';
 
 function monitorRuntime(page: Page, expectedHttpResourceErrors: readonly number[] = []) {
   const pageErrors: string[] = [];
   const consoleErrors: string[] = [];
+  const requestFailures: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.stack ?? error.message));
   page.on('console', (message) => {
     if (message.type() === 'error') consoleErrors.push(message.text());
   });
+  page.on('requestfailed', (request: Request) => {
+    requestFailures.push(`${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`);
+  });
   return () => {
     const remainingExpectedStatuses = [...expectedHttpResourceErrors];
+    const unexpectedRequestFailures = requestFailures.filter((failure) => !failure.endsWith('net::ERR_ABORTED'));
     const unexpectedConsoleErrors = consoleErrors.filter((message) => {
       const match = /^Failed to load resource: the server responded with a status of (\d{3}) \(.+\)$/.exec(message);
       const status = match ? Number(match[1]) : null;
@@ -21,7 +26,33 @@ function monitorRuntime(page: Page, expectedHttpResourceErrors: readonly number[
     });
     expect(pageErrors, 'uncaught browser errors').toEqual([]);
     expect(unexpectedConsoleErrors, 'unexpected browser console errors').toEqual([]);
+    expect(unexpectedRequestFailures, 'unexpected browser request failures').toEqual([]);
   };
+}
+
+async function mockCatalogResponse(page: Page) {
+  await page.route('**/courses**', async (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      items: [{
+        id: 7,
+        title: 'React',
+        description: null,
+        price: '9.99',
+        currency: 'USD',
+        published_at: '2026-01-01T00:00:00Z',
+        instructor: { id: 1, name: 'Ada', surname: 'Lovelace' },
+        lessons: [{ id: 1, title: 'Intro' }],
+      }],
+      page: 1,
+      page_size: 20,
+      total: 1,
+      pages: 1,
+      has_next: false,
+      has_previous: false,
+    }),
+  }));
 }
 
 async function mockAuthenticatedSession(page: Page, role: BackendRole) {
@@ -206,13 +237,15 @@ test('keeps wrong-role content hidden behind an accessible forbidden state', asy
 test('clears an invalid stored bearer when /me rejects it', async ({ page }) => {
   const assertRuntimeClean = monitorRuntime(page, [401]);
   await page.addInitScript(() => localStorage.setItem('learnhub.access-token', 'expired-token'));
+  await mockCatalogResponse(page);
   await page.route('**/me', async (route) => route.fulfill({
     status: 401,
     contentType: 'application/json',
     body: JSON.stringify({ detail: 'Expired token' }),
   }));
   await page.goto('/');
-  await expect(page.getByRole('heading', { level: 1, name: 'Course catalog' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 2, name: 'Found 1 course' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Log in' })).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('learnhub.access-token'))).toBe(null);
   assertRuntimeClean();
@@ -221,6 +254,7 @@ test('clears an invalid stored bearer when /me rejects it', async ({ page }) => 
 test('announces a recoverable session error and retries /me', async ({ page }) => {
   const assertRuntimeClean = monitorRuntime(page, [503]);
   await page.addInitScript(() => localStorage.setItem('learnhub.access-token', 'retry-token'));
+  await mockCatalogResponse(page);
   let attempts = 0;
   await page.route('**/me', async (route) => {
     attempts += 1;
@@ -252,7 +286,8 @@ test('announces a recoverable session error and retries /me', async ({ page }) =
     'We could not verify your session. Check your connection and try again.',
   );
   await page.getByRole('button', { name: 'Try again' }).click();
-  await expect(page.getByRole('heading', { level: 1, name: 'Course catalog' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 2, name: 'Found 1 course' })).toBeVisible();
   expect(attempts).toBe(2);
   assertRuntimeClean();
 });

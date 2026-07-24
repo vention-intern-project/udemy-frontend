@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -16,7 +16,14 @@ const catalogItem = {
   instructor: { id: 1, name: 'Ada', surname: 'Lovelace' }, lessons: [],
 };
 
-function response(overrides: Partial<Record<'page' | 'pages' | 'has_next' | 'has_previous', number | boolean>> = {}) {
+interface CatalogPaginationFixture {
+  page?: number;
+  pages?: number;
+  has_next?: boolean;
+  has_previous?: boolean;
+}
+
+function response(overrides: CatalogPaginationFixture = {}) {
   return { items: [catalogItem], page: 1, page_size: 20, total: 1, pages: 1, has_next: false, has_previous: false, ...overrides };
 }
 
@@ -234,6 +241,37 @@ describe('CatalogPage public URL and pagination behavior', () => {
     await waitFor(() => expect((screen.getByLabelText('Min price') as HTMLInputElement).value).toBe('5'));
   });
 
+  it('keeps a hover-open Sort popup open through an ordinary trigger click and activates an option', async () => {
+    const user = userEvent.setup();
+    const requests: ApiRequestOptions[] = [];
+    const request: ApiClient['request'] = async <TResponse,>(options: ApiRequestOptions) => {
+      requests.push(options);
+      return response() as TResponse;
+    };
+    renderCatalog(request, ['/?page=2']);
+
+    await screen.findByRole('link', { name: 'React' });
+    const sortTrigger = screen.getByRole('button', { name: 'Sort by: Oldest' });
+
+    await act(async () => { await user.hover(sortTrigger); });
+    expect(screen.getByRole('listbox', { name: 'Sort by options' })).toBeTruthy();
+    await act(async () => { await user.click(sortTrigger); });
+    const listbox = screen.getByRole('listbox', { name: 'Sort by options' });
+    expect(sortTrigger.getAttribute('aria-expanded')).toBe('true');
+
+    fireEvent.click(within(listbox).getByRole('option', { name: 'Low to High' }));
+    await waitFor(() => expect(screen.getByLabelText('catalog location').textContent).toBe('/?sort=price'));
+    await waitFor(() => expect(requests[requests.length - 1]?.query).toEqual({
+      search_query: undefined, min_price: undefined, max_price: undefined, sort: 'price', page: 1, page_size: 20,
+    }));
+
+    fireEvent.pointerEnter(sortTrigger, { pointerType: 'touch' });
+    fireEvent.click(sortTrigger);
+    expect(screen.getByRole('listbox', { name: 'Sort by options' })).toBeTruthy();
+    fireEvent.click(sortTrigger);
+    expect(screen.queryByRole('listbox', { name: 'Sort by options' })).toBeNull();
+  });
+
   it('shows linked negative-price validation on blur without changing the URL or requesting, then applies a corrected value', async () => {
     const user = userEvent.setup();
     const requests: ApiRequestOptions[] = [];
@@ -335,6 +373,33 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(screen.getByLabelText('catalog location').textContent).toBe('/');
   });
 
+  it('navigates every enabled control for an authoritative page beyond the advertised page count', async () => {
+    const user = userEvent.setup();
+    const requests: ApiRequestOptions[] = [];
+    const request: ApiClient['request'] = async <TResponse,>(options: ApiRequestOptions) => {
+      requests.push(options);
+      return response({ page: 99, pages: 1, has_next: false, has_previous: true }) as TResponse;
+    };
+    renderCatalog(request, ['/?page=99']);
+
+    await screen.findByRole('link', { name: 'React' });
+    expect(screen.getAllByRole('status').some((status) => status.textContent?.includes('Page 99 of 1'))).toBe(true);
+    const previous = screen.getByRole('button', { name: 'Go to previous page' }) as HTMLButtonElement;
+    const pageOne = screen.getByRole('button', { name: 'Go to page 1' }) as HTMLButtonElement;
+    const next = screen.getByRole('button', { name: 'Go to next page' }) as HTMLButtonElement;
+    expect(previous.disabled).toBe(false);
+    expect(pageOne.disabled).toBe(false);
+    expect(next.disabled).toBe(true);
+
+    await act(async () => { await user.click(previous); });
+    await waitFor(() => expect(screen.getByLabelText('catalog location').textContent).toBe('/?page=98'));
+    await waitFor(() => expect(requests[1]?.query?.page).toBe(98));
+
+    await act(async () => { await user.click(pageOne); });
+    await waitFor(() => expect(screen.getByLabelText('catalog location').textContent).toBe('/'));
+    await waitFor(() => expect(requests[2]?.query?.page).toBe(1));
+  });
+
   it('serializes an enabled next-page action and propagates its normalized API-008 query', async () => {
     const user = userEvent.setup();
     const requests: ApiRequestOptions[] = [];
@@ -350,12 +415,17 @@ describe('CatalogPage public URL and pagination behavior', () => {
     });
 
     const next = screen.getByRole('button', { name: 'Go to next page' }) as HTMLButtonElement;
+    const pageOne = screen.getByRole('button', { name: 'Go to page 1' }) as HTMLButtonElement;
     expect(next.disabled).toBe(false);
+    expect(pageOne.disabled).toBe(true);
+    expect(pageOne.getAttribute('aria-current')).toBe('page');
     await act(async () => { await user.click(next); });
 
     await waitFor(() => expect(screen.getByLabelText('catalog location').textContent).toBe('/?search_query=React&min_price=5&sort=-price&page=2'));
     await waitFor(() => expect(requests[1]?.query).toEqual({
       search_query: 'React', min_price: 5, max_price: undefined, sort: '-price', page: 2, page_size: 20,
     }));
+    expect((screen.getByRole('button', { name: 'Go to page 2' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Go to previous page' }) as HTMLButtonElement).disabled).toBe(false);
   });
 });

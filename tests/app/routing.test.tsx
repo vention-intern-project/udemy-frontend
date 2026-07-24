@@ -76,6 +76,7 @@ function renderApp(path: string, role?: UserRoleDto) {
 afterEach(() => {
   cleanup();
   globalThis.localStorage.clear();
+  vi.restoreAllMocks();
 });
 
 describe('application routing and guards', () => {
@@ -208,6 +209,37 @@ describe('application routing and guards', () => {
     await screen.findByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' });
     await waitFor(() => expect(document.documentElement.getAttribute('data-density')).toBe('marketplace'));
     await waitFor(() => expect(document.title).toBe('Course catalog | LearnHub'));
+    await waitFor(() => expect(screen.getByRole('main')).toBe(document.activeElement));
+  });
+
+  it('removes the recent-search outside-pointer listener when the open draft has zero matches', async () => {
+    globalThis.localStorage.setItem(
+      'learnhub.catalog-search-history',
+      JSON.stringify(['React Basics', 'TypeScript']),
+    );
+    const addEventListener = vi.spyOn(document, 'addEventListener');
+    const removeEventListener = vi.spyOn(document, 'removeEventListener');
+    renderApp('/');
+    await screen.findByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' });
+    const user = userEvent.setup();
+    const input = screen.getByRole('combobox', { name: 'Search courses' });
+
+    await act(async () => { await user.click(input); });
+    const listbox = await screen.findByRole('listbox', { name: 'Recent searches' });
+    expect(input.getAttribute('aria-controls')).toBe(listbox.id);
+    const pointerListener = [...addEventListener.mock.calls]
+      .reverse()
+      .find(([type]) => type === 'pointerdown')?.[1];
+    expect(pointerListener).toBeTruthy();
+
+    await act(async () => {
+      await user.clear(input);
+      await user.type(input, 'no matching history');
+    });
+    await waitFor(() => expect(screen.queryByRole('listbox', { name: 'Recent searches' })).toBeNull());
+    expect(input.getAttribute('aria-expanded')).toBe('false');
+    expect(input.getAttribute('aria-controls')).toBeNull();
+    await waitFor(() => expect(removeEventListener).toHaveBeenCalledWith('pointerdown', pointerListener, true));
   });
 
   it.each([
