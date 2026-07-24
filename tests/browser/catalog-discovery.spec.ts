@@ -1007,6 +1007,7 @@ test('remembers catalog searches in an accessible local combobox without changin
   await input.press('ArrowDown');
   await input.press('Escape');
   await expect(listbox).toHaveCount(0);
+  await expect(input).not.toHaveAttribute('aria-controls');
   await expect(input).toHaveValue(escapeValue);
   expect(page.url()).toBe(escapeUrl);
   expect(requests).toHaveLength(requestCountBeforeEscape);

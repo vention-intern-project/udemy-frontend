@@ -274,7 +274,7 @@ export function AppShell() {
                   autoComplete="off"
                   role="combobox"
                   aria-autocomplete="list"
-                  aria-controls={catalogSearchListboxId}
+                  aria-controls={catalogSearchOpen && catalogSearchMatches.length > 0 ? catalogSearchListboxId : undefined}
                   aria-expanded={catalogSearchOpen && catalogSearchMatches.length > 0}
                   aria-activedescendant={activeCatalogSearchTerm
                     ? `${catalogSearchListboxId}-option-${activeCatalogSearchIndex}`

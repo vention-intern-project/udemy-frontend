@@ -178,6 +178,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(screen.queryByLabelText('Search courses')).toBeNull();
     const sortTrigger = screen.getByRole('button', { name: 'Sort by: Newest' });
     expect(sortTrigger.closest('.catalog-page__sort-field')).toBeTruthy();
+    expect(sortTrigger.getAttribute('aria-controls')).toBe(null);
     expect(document.querySelector('.catalog-page__sort-select')).toBeNull();
     const toolbarControls = document.querySelector('.catalog-page__toolbar-controls');
     expect(toolbarControls).toBeTruthy();
@@ -202,6 +203,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
     await act(async () => { await user.unhover(sortTrigger); });
     expect(screen.queryByRole('listbox', { name: 'Sort by options' })).toBeNull();
     expect(sortTrigger.getAttribute('aria-expanded')).toBe('false');
+    expect(sortTrigger.getAttribute('aria-controls')).toBe(null);
     const singularResultHeading = screen.getByRole('heading', { level: 2, name: 'Found 1 course' });
     expect(singularResultHeading.textContent).toBe('Found 1 course');
     expect(singularResultHeading.querySelector('.catalog-page__results-prefix')?.textContent).toBe('Found ');

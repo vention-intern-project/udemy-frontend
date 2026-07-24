@@ -295,7 +295,7 @@ function SortControl({ value, onChange }: {
         aria-label={`Sort by: ${SORT_LABEL[value]}`}
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-controls={listboxId}
+        aria-controls={open ? listboxId : undefined}
         onClick={() => open ? close() : openList(selectedIndex, true)}
         onKeyDown={(event) => {
           if (event.key === 'Enter' || event.key === ' ') {

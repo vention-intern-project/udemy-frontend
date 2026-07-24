@@ -137,6 +137,7 @@ describe('application routing and guards', () => {
     expect(headerSearch.getAttribute('aria-autocomplete')).toBe('list');
     expect(headerSearch.getAttribute('autocomplete')).toBe('off');
     expect(headerSearch.getAttribute('aria-expanded')).toBe('false');
+    expect(headerSearch.getAttribute('aria-controls')).toBe(null);
     const navigation = screen.getByRole('navigation', { name: 'Primary navigation' });
     expect(within(navigation).getByRole('link', { name: 'Browse courses' })).toBeTruthy();
     const accountNavigation = screen.getByRole('navigation', { name: 'Account navigation' });
