@@ -17,3 +17,6 @@ export * from './accessibility';
 
 // Transport boundary
 export * from './api';
+
+// Generic type utilities
+export * from './types';

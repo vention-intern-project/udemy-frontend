@@ -1,11 +1,19 @@
 import type { CourseListQueryDto } from '@entities/course';
 
 export const CATALOG_PAGE_SIZE = 20;
+export type CatalogSort =
+  | 'created_at'
+  | '-created_at'
+  | 'price'
+  | '-price'
+  | 'title'
+  | '-title';
+
 export const CATALOG_SORT_VALUES = [
   'created_at', '-created_at', 'price', '-price', 'title', '-title',
-] as const;
-export type CatalogSort = (typeof CATALOG_SORT_VALUES)[number];
-type CatalogPriceField = 'min_price' | 'max_price';
+] as const satisfies readonly CatalogSort[];
+
+export type CatalogPriceField = 'min_price' | 'max_price';
 type CatalogDraftPriceValidation = number | undefined | 'invalid';
 
 export interface CatalogQuery {
@@ -23,9 +31,21 @@ export interface CatalogFilterDraft {
   sort: CatalogSort;
 }
 
+export interface CatalogPriceRangeDraft {
+  min_price: string;
+  max_price: string;
+}
+
+export interface CatalogPriceRange {
+  min_price: number | undefined;
+  max_price: number | undefined;
+}
+
+export type CatalogFilterValidationErrors = Readonly<Partial<Record<CatalogPriceField, string>>>;
+
 export interface CatalogFilterValidation {
   value?: CatalogQuery;
-  errors: Readonly<Partial<Record<CatalogPriceField, string>>>;
+  errors: CatalogFilterValidationErrors;
 }
 
 function safePage(value: string | null): number {

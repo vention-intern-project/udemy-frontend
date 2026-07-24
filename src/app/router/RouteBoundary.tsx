@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 
 import { useSession, sanitizeInternalReturnTo } from '../../features/auth-session';
@@ -5,13 +6,15 @@ import type { AppRouteDefinition } from './route-registry';
 import { homeForRole } from './route-registry';
 import { ForbiddenState } from './RouteStates';
 
+interface RouteBoundaryProps {
+  route: AppRouteDefinition;
+  children: ReactNode;
+}
+
 export function RouteBoundary({
   route,
   children,
-}: {
-  route: AppRouteDefinition;
-  children: React.ReactNode;
-}) {
+}: RouteBoundaryProps) {
   const { state } = useSession();
   const location = useLocation();
 

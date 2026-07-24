@@ -9,7 +9,7 @@ const validResponse = {
 };
 
 describe('catalog request boundary', () => {
-  it('keeps requester body, response, and decoder generics aligned with ApiClient', () => {
+  it('keeps the catalog requester aligned with its API client owner', () => {
     expectTypeOf<CatalogRequester>().toEqualTypeOf<ApiClient['request']>();
   });
 

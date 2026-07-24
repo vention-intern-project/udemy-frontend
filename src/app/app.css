@@ -334,11 +334,11 @@ button:focus-visible,
   line-height: var(--type-body-md-lh);
 }
 
-.app-placeholder__note {
+p.app-placeholder__note {
   margin-top: var(--spacing-6);
   padding-top: var(--spacing-4);
   border-top: var(--border-width) solid var(--border-default);
-  color: var(--text-muted) !important;
+  color: var(--text-muted);
   font-size: var(--type-body-sm-size);
 }
 
@@ -353,9 +353,9 @@ button:focus-visible,
   padding: var(--gutter-mobile);
 }
 
-.app-state__eyebrow {
+p.app-state__eyebrow {
   margin: 0;
-  color: var(--action-primary-bg-pressed) !important;
+  color: var(--action-primary-bg-pressed);
   font-size: var(--type-metadata-size);
   font-weight: var(--font-weight-bold);
   letter-spacing: 0.08em;

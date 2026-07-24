@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { act, renderHook, waitFor } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { useCatalogDiscovery, type CatalogRequester } from '../../../src/features/catalog-discovery';
@@ -61,6 +62,29 @@ describe('catalog discovery lifecycle', () => {
     expect(hook.current.status).toBe('populated');
   });
 
+  it("aborts StrictMode's superseded request and ignores its late result", async () => {
+    const first = deferred<unknown>();
+    const second = deferred<unknown>();
+    const signals: AbortSignal[] = [];
+    const request = vi.fn((options) => {
+      signals.push(options.signal as AbortSignal);
+      return signals.length === 1 ? first.promise : second.promise;
+    }) as CatalogRequester;
+    const { result: hook } = renderHook(
+      () => useCatalogDiscovery({ search_query: 'strict-mode', sort: 'created_at', page: 1 }, request),
+      { wrapper: StrictMode },
+    );
+
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+    expect(signals[0].aborted).toBe(true);
+    first.resolve(result('Stale'));
+    second.resolve(result('Current'));
+
+    await waitFor(() => expect(hook.current.data?.items[0].title).toBe('Current'));
+    expect(hook.current.status).toBe('populated');
+    expect(hook.current.failure).toBeUndefined();
+  });
+
   it('distinguishes empty, offline error, retry, and retained-data refetch states', async () => {
     const request = vi.fn()
       .mockRejectedValueOnce(new ApiError({ kind: 'offline', status: null, message: 'Offline' }))
@@ -73,12 +97,17 @@ describe('catalog discovery lifecycle', () => {
     );
 
     await waitFor(() => expect(hook.current.status).toBe('error-without-results'));
+    expect(hook.current.data).toBeUndefined();
     expect(hook.current.failure?.kind).toBe('offline');
     await act(async () => { hook.current.retry(); });
     await waitFor(() => expect(hook.current.data?.items[0].title).toBe('Recovered'));
+    expect(hook.current.status).toBe('populated');
+    expect(hook.current.failure).toBeUndefined();
 
     rerender({ search_query: 'empty' });
     await waitFor(() => expect(hook.current.status).toBe('empty'));
+    expect(hook.current.data?.items).toEqual([]);
+    expect(hook.current.failure).toBeUndefined();
     rerender({ search_query: 'failed-refresh' });
     await waitFor(() => expect(hook.current.status).toBe('error-with-results'));
     expect(hook.current.data?.items).toEqual([]);

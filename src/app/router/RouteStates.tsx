@@ -2,6 +2,10 @@ import { Link } from 'react-router-dom';
 
 import { Button, Notice, Skeleton, SkeletonGroup } from '../../shared/ui/primitives';
 
+interface RetryStateProps {
+  onRetry: () => void;
+}
+
 export function BootstrapState() {
   return (
     <main className="app-state app-state--centered" aria-busy="true">
@@ -18,7 +22,7 @@ export function BootstrapState() {
   );
 }
 
-export function SessionErrorState({ onRetry }: { onRetry: () => void }) {
+export function SessionErrorState({ onRetry }: RetryStateProps) {
   return (
     <main className="app-state app-state--centered" id="main-content">
       <div className="app-state__card">
@@ -32,7 +36,7 @@ export function SessionErrorState({ onRetry }: { onRetry: () => void }) {
   );
 }
 
-export function RenderErrorState({ onRetry }: { onRetry: () => void }) {
+export function RenderErrorState({ onRetry }: RetryStateProps) {
   return (
     <main className="app-state app-state--centered" id="main-content">
       <div className="app-state__card" role="alert" aria-labelledby="render-error-title">

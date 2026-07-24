@@ -9,7 +9,7 @@ import {
 } from 'react';
 import { Link, matchPath, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 
-import { useSession } from '@features/auth-session';
+import { useSession, type SessionState } from '@features/auth-session';
 import {
   addCatalogSearchHistory, parseCatalogQuery, persistCatalogSearchHistory,
   readCatalogSearchHistory, serializeCatalogQuery,
@@ -30,8 +30,13 @@ interface NavigationItem {
   variant?: NavigationItemVariant;
 }
 
+interface NavigationLinksProps {
+  items: readonly NavigationItem[];
+  onNavigate?: (to: string) => void;
+}
+
 function navigationForSession(
-  status: ReturnType<typeof useSession>['state'],
+  status: SessionState,
   selectedCourseId: string | null,
 ): NavigationItem[] {
   if (status.status !== 'authenticated') {
@@ -69,10 +74,7 @@ function navigationForSession(
   return [];
 }
 
-function NavigationLinks({ items, onNavigate }: {
-  items: readonly NavigationItem[];
-  onNavigate?: (to: string) => void;
-}) {
+function NavigationLinks({ items, onNavigate }: NavigationLinksProps) {
   return (
     <ul className="app-nav__list">
       {items.map((item) => (

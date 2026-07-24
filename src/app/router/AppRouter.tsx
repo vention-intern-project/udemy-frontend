@@ -7,10 +7,10 @@ import {
 import { AppShell } from '../layouts/AppShell';
 import { PlaceholderPage } from './PlaceholderPage';
 import { RouteBoundary } from './RouteBoundary';
-import { APP_ROUTES } from './route-registry';
+import { APP_ROUTES, type AppRouteDefinition } from './route-registry';
 import { BootstrapState, NotFoundState, SessionErrorState } from './RouteStates';
 
-function pageForRoute(route: (typeof APP_ROUTES)[number]) {
+function pageForRoute(route: AppRouteDefinition) {
   if (route.id === 'PAGE-001') return <CatalogPage />;
   if (route.id === 'PAGE-003') return <SignupPage />;
   if (route.id === 'PAGE-004') return <LoginPage />;

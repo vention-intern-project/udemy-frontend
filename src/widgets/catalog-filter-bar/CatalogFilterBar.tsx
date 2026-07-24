@@ -2,35 +2,33 @@ import { useEffect, useRef, useState } from 'react';
 
 import {
   draftFromCatalogQuery, validateCatalogDraft,
-  type CatalogFilterDraft, type CatalogFilterValidation, type CatalogQuery,
+  type CatalogFilterValidationErrors, type CatalogPriceField, type CatalogPriceRange,
+  type CatalogPriceRangeDraft, type CatalogQuery,
 } from '@features/catalog-discovery';
 import { Input } from '@shared/ui/primitives';
 
 import './catalog-filter-bar.css';
-
-type PriceDraft = Pick<CatalogFilterDraft, 'min_price' | 'max_price'>;
-type PriceRange = Pick<CatalogQuery, 'min_price' | 'max_price'>;
 
 interface CatalogFilterBarProps {
   query: CatalogQuery;
   onApply: (next: CatalogQuery) => void;
 }
 
-function priceDraftFromCatalogQuery(query: CatalogQuery): PriceDraft {
+function priceDraftFromCatalogQuery(query: CatalogQuery): CatalogPriceRangeDraft {
   const draft = draftFromCatalogQuery(query);
   return { min_price: draft.min_price, max_price: draft.max_price };
 }
 
-function priceRangeMatches(left: PriceRange, right: PriceRange): boolean {
+function priceRangeMatches(left: CatalogPriceRange, right: CatalogPriceRange): boolean {
   return left.min_price === right.min_price && left.max_price === right.max_price;
 }
 
 export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
-  const [draft, setDraft] = useState<PriceDraft>(() => priceDraftFromCatalogQuery(query));
-  const [errors, setErrors] = useState<CatalogFilterValidation['errors']>({});
+  const [draft, setDraft] = useState<CatalogPriceRangeDraft>(() => priceDraftFromCatalogQuery(query));
+  const [errors, setErrors] = useState<CatalogFilterValidationErrors>({});
   const draftRef = useRef(draft);
   const queryRef = useRef(query);
-  const lastAppliedRangeRef = useRef<PriceRange>({ min_price: query.min_price, max_price: query.max_price });
+  const lastAppliedRangeRef = useRef<CatalogPriceRange>({ min_price: query.min_price, max_price: query.max_price });
 
   draftRef.current = draft;
   queryRef.current = query;
@@ -41,7 +39,7 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
     lastAppliedRangeRef.current = { min_price: query.min_price, max_price: query.max_price };
   }, [query]);
 
-  const update = <K extends keyof PriceDraft>(key: K, value: PriceDraft[K]) => {
+  const update = (key: CatalogPriceField, value: string) => {
     const next = { ...draftRef.current, [key]: value };
     draftRef.current = next;
     setDraft(next);
@@ -58,11 +56,11 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
     setErrors(validation.errors);
     if (!validation.value) return;
 
-    const nextRange: PriceRange = {
+    const nextRange: CatalogPriceRange = {
       min_price: validation.value.min_price,
       max_price: validation.value.max_price,
     };
-    const currentRange: PriceRange = {
+    const currentRange: CatalogPriceRange = {
       min_price: currentQuery.min_price,
       max_price: currentQuery.max_price,
     };

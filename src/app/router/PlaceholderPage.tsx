@@ -2,7 +2,11 @@ import { useId } from 'react';
 
 import type { AppRouteDefinition } from './route-registry';
 
-export function PlaceholderPage({ route }: { route: AppRouteDefinition }) {
+interface PlaceholderPageProps {
+  route: AppRouteDefinition;
+}
+
+export function PlaceholderPage({ route }: PlaceholderPageProps) {
   const titleId = `placeholder-title-${useId()}`;
   return (
     <section className="app-placeholder" aria-labelledby={titleId}>

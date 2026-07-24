@@ -1,4 +1,6 @@
-import type { CourseDto, CourseListDto, CourseListItemDto, LessonDto, LessonTypeDto } from './dto';
+import type {
+  CourseDto, CourseListDto, CourseListItemDto, LessonBriefDto, LessonDto, LessonTypeDto,
+} from './dto';
 import type { CatalogCourse, CatalogCourseList, Course, Lesson, LessonType } from './model';
 
 const LESSON_TYPE_BY_DTO = {
@@ -83,7 +85,7 @@ function boolean(value: unknown, context: string): boolean {
   return value;
 }
 
-function decodeLessonBrief(value: unknown): CourseListItemDto['lessons'][number] {
+function decodeLessonBrief(value: unknown): LessonBriefDto {
   const item = record(value, 'lesson');
   return { id: positiveInteger(item.id, 'lesson id'), title: string(item.title, 'lesson title') };
 }

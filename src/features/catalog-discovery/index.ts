@@ -9,6 +9,9 @@ export {
   CATALOG_PAGE_SIZE, CATALOG_SORT_VALUES, draftFromCatalogQuery, parseCatalogQuery,
   serializeCatalogQuery, toCourseListQuery, validateCatalogDraft,
 } from './query';
-export type { CatalogFilterDraft, CatalogFilterValidation, CatalogQuery, CatalogSort } from './query';
+export type {
+  CatalogFilterDraft, CatalogFilterValidation, CatalogFilterValidationErrors, CatalogPriceField,
+  CatalogPriceRange, CatalogPriceRangeDraft, CatalogQuery, CatalogSort,
+} from './query';
 export { useCatalogDiscovery } from './useCatalogDiscovery';
 export type { CatalogDiscoveryState } from './useCatalogDiscovery';

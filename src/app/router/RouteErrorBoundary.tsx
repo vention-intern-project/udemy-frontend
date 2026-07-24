@@ -12,6 +12,10 @@ interface RenderBoundaryState {
   hasError: boolean;
 }
 
+interface RouteErrorBoundaryProps {
+  children: ReactNode;
+}
+
 export class RenderErrorBoundary extends Component<RenderBoundaryProps, RenderBoundaryState> {
   state: RenderBoundaryState = { hasError: false };
 
@@ -35,7 +39,7 @@ export class RenderErrorBoundary extends Component<RenderBoundaryProps, RenderBo
   }
 }
 
-export function RouteErrorBoundary({ children }: { children: ReactNode }) {
+export function RouteErrorBoundary({ children }: RouteErrorBoundaryProps) {
   const location = useLocation();
   const resetKey = `${location.pathname}${location.search}${location.hash}`;
   return <RenderErrorBoundary resetKey={resetKey}>{children}</RenderErrorBoundary>;

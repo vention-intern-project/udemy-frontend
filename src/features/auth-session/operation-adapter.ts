@@ -8,7 +8,7 @@ import {
 import type { ApiRequestOptions } from '@shared/api';
 import type { SessionContextValue } from './SessionProvider';
 
-type SessionRequester = SessionContextValue['requestPublic'];
+type SessionOperationRequester = SessionContextValue['requestPublic'];
 
 function operationPathMatches(template: string, actual: string): boolean {
   const templateSegments = template.split('/');
@@ -39,7 +39,7 @@ function assertOperationRequest(
 export function selectOperationRequester(
   session: SessionContextValue,
   operationId: SelectedApiOperationId,
-): SessionRequester {
+): SessionOperationRequester {
   const policy = API_OPERATION_METADATA_BY_ID[operationId].authPolicy;
   if (policy === 'public') return session.requestPublic;
   if (policy === 'required') return session.requestRequired;
