@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 
 import { useQueryClient } from '@tanstack/react-query';
-import { cleanup, render } from '@testing-library/react';
+import { cleanup, render, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 
 import {
   AppQueryProvider,
+  SessionPrivateCacheLifecycle,
   appQueryClient,
   cancelAndRemovePrivateQueries,
   createAppQueryClient,
@@ -21,13 +22,43 @@ import {
   requestOperation,
   selectOperationRequester,
   type SessionContextValue,
+  type SessionState,
 } from '@features/auth-session';
 import { mutationKeys, type AuthPolicy } from '@shared/api';
+
+const sessionHook = vi.hoisted(() => ({
+  state: { status: 'anonymous' } as SessionState,
+}));
+
+vi.mock('@features/auth-session', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@features/auth-session')>();
+  return {
+    ...actual,
+    useSession: () => ({ state: sessionHook.state }),
+  };
+});
 
 afterEach(() => {
   cleanup();
   appQueryClient.clear();
+  sessionHook.state = { status: 'anonymous' };
+  vi.restoreAllMocks();
 });
+
+function authenticatedSessionState(email: string): SessionState {
+  return {
+    status: 'authenticated',
+    user: {
+      email,
+      name: 'Test',
+      surname: 'Learner',
+      role: 'student',
+      birthday: null,
+      phoneNumber: null,
+      createdAt: '2026-07-24T00:00:00Z',
+    },
+  };
+}
 
 function sessionRequests() {
   const requestPublic = vi.fn(async () => ({ ok: true }));
@@ -154,5 +185,41 @@ describe('TanStack server-state boundary', () => {
     expect(remove).toHaveBeenCalledTimes(1);
     expect(client.getQueryData(queryKeys.private.operation('old@example.com', 'API-026', 'me'))).toBeUndefined();
     expect(client.getQueryData(queryKeys.private.operation('new@example.com', 'API-026', 'me'))).toEqual({ new: true });
+  });
+
+  it('continues private cache cleanup after an earlier cancellation rejects', async () => {
+    const oldQueryKey = queryKeys.private.operation('old@example.com', 'API-026', 'me');
+    const nextQueryKey = queryKeys.private.operation('next@example.com', 'API-026', 'me');
+    appQueryClient.setQueryData(oldQueryKey, { old: true });
+    appQueryClient.setQueryData(nextQueryKey, { next: true });
+    const cancel = vi.spyOn(appQueryClient, 'cancelQueries')
+      .mockRejectedValueOnce(new Error('synthetic cancellation failure'))
+      .mockResolvedValueOnce(undefined);
+
+    sessionHook.state = authenticatedSessionState('old@example.com');
+    const view = render(
+      <AppQueryProvider>
+        <SessionPrivateCacheLifecycle />
+      </AppQueryProvider>,
+    );
+
+    sessionHook.state = authenticatedSessionState('next@example.com');
+    view.rerender(
+      <AppQueryProvider>
+        <SessionPrivateCacheLifecycle />
+      </AppQueryProvider>,
+    );
+    await waitFor(() => expect(cancel).toHaveBeenCalledTimes(1));
+
+    sessionHook.state = authenticatedSessionState('latest@example.com');
+    view.rerender(
+      <AppQueryProvider>
+        <SessionPrivateCacheLifecycle />
+      </AppQueryProvider>,
+    );
+    await waitFor(() => expect(cancel).toHaveBeenCalledTimes(2));
+
+    expect(appQueryClient.getQueryData(oldQueryKey)).toEqual({ old: true });
+    expect(appQueryClient.getQueryData(nextQueryKey)).toBeUndefined();
   });
 });

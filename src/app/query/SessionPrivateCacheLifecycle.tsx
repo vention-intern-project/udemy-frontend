@@ -27,9 +27,9 @@ export function SessionPrivateCacheLifecycle() {
     previousSubjectRef.current = subject;
     if (!previousSubject || previousSubject === subject) return;
 
-    cleanupChainRef.current = cleanupChainRef.current.then(() => (
-      cancelAndRemovePrivateQueries(queryClient, previousSubject)
-    ));
+    cleanupChainRef.current = cleanupChainRef.current
+      .then(() => cancelAndRemovePrivateQueries(queryClient, previousSubject))
+      .catch(() => undefined);
   }, [queryClient, subject]);
 
   return null;
