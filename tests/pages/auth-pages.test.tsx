@@ -15,12 +15,31 @@ import { SessionProvider, type AccessTokenStore } from '../../src/features/auth-
 import { ApiError, type ApiClient, type ApiRequestOptions } from '../../src/shared/api';
 import { ThemeProvider } from '../../src/shared/ui/theme';
 
+interface TestAccessTokenStore extends AccessTokenStore {
+  value: string | null;
+}
+
+interface RouteLayoutRaceProbeProps {
+  readonly destination: string;
+  onDestinationLayout(): void;
+}
+
+interface RenderAuthOptions {
+  readonly strict?: boolean;
+  readonly routerChild?: ReactNode;
+}
+
+interface RouteLayoutObservation {
+  readonly signalAborted: boolean;
+  readonly freshSubmitDispatched: boolean;
+}
+
 const profile: UserProfileDto = {
   email: 'learner@example.com', name: 'Ada', surname: 'Lovelace', role: 'student',
   birthday: null, phone_number: null, created_at: '2026-07-21T00:00:00Z',
 };
 
-function tokenStore(): AccessTokenStore & { value: string | null } {
+function tokenStore(): TestAccessTokenStore {
   return {
     value: null,
     get() { return this.value; },
@@ -47,10 +66,7 @@ function LocationProbe() {
 function RouteLayoutRaceProbe({
   destination,
   onDestinationLayout,
-}: {
-  destination: string;
-  onDestinationLayout(): void;
-}) {
+}: RouteLayoutRaceProbeProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const handled = useRef(false);
@@ -74,7 +90,7 @@ async function interact(action: () => Promise<unknown>) {
 function renderAuth(
   path: string,
   handler: (options: ApiRequestOptions) => Promise<unknown>,
-  options: { strict?: boolean; routerChild?: ReactNode } = {},
+  options: RenderAuthOptions = {},
 ) {
   const client = createAppQueryClient();
   const store = tokenStore();
@@ -115,9 +131,10 @@ function renderAuth(
 }
 
 type AuthWorkflow = 'signup' | 'login' | 'forgot' | 'reset';
+type TokenAuthWorkflow = Extract<AuthWorkflow, 'signup' | 'login'>;
 
 function successfulTokenResponse(
-  workflow: Extract<AuthWorkflow, 'signup' | 'login'>,
+  workflow: TokenAuthWorkflow,
   accessToken: string,
 ) {
   return workflow === 'signup'
@@ -459,7 +476,7 @@ describe('authentication pages', () => {
     ) => {
       const abandoned = createDeferred<unknown>();
       const fresh = createDeferred<unknown>();
-      const layoutObservations: Array<{ signalAborted: boolean; freshSubmitDispatched: boolean }> = [];
+      const layoutObservations: RouteLayoutObservation[] = [];
       let operationAttempt = 0;
       let abandonedSignal: AbortSignal | undefined;
       const app = renderAuth(pagePath, async (options) => {

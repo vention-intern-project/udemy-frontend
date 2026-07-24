@@ -2,6 +2,7 @@ import { useMutation } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { useLocation } from 'react-router-dom';
 
+import type { ForgotPasswordRequestDto } from '@entities/user';
 import {
   AuthFormShell, AuthLink, FormErrorAlert, compactFieldErrors, forgotPassword,
   mapAuthFailure, useAuthErrorFocus, useSubmissionAttemptLifecycle, validateEmail, type AuthFieldErrors,
@@ -11,6 +12,11 @@ import { mutationKeys } from '@shared/api';
 import { Button, Input, Notice } from '@shared/ui/primitives';
 
 const FIELD_ORDER = ['email'] as const;
+
+interface ForgotPasswordMutationVariables {
+  readonly input: ForgotPasswordRequestDto;
+  readonly signal: AbortSignal;
+}
 
 export function ForgotPasswordPage() {
   const session = useSession();
@@ -23,7 +29,7 @@ export function ForgotPasswordPage() {
   const attempts = useSubmissionAttemptLifecycle(location.key);
   const mutation = useMutation({
     mutationKey: mutationKeys.auth.forgotPassword,
-    mutationFn: ({ input, signal }: { input: { email: string }; signal: AbortSignal }) => (
+    mutationFn: ({ input, signal }: ForgotPasswordMutationVariables) => (
       forgotPassword(session, input, signal)
     ),
     gcTime: 0,

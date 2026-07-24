@@ -12,6 +12,26 @@ interface AuthFormShellProps {
   readonly footer?: ReactNode;
 }
 
+interface FormErrorAlertProps {
+  readonly summary: string;
+}
+
+interface PasswordFieldProps {
+  readonly id: string;
+  readonly label: string;
+  readonly name: string;
+  readonly autoComplete: string;
+  readonly value: string;
+  readonly error?: string;
+  readonly disabled?: boolean;
+  onChange(value: string): void;
+}
+
+interface AuthLinkProps {
+  readonly to: string;
+  readonly children: ReactNode;
+}
+
 export function AuthFormShell({
   title,
   description,
@@ -31,7 +51,7 @@ export function AuthFormShell({
   );
 }
 
-export const FormErrorAlert = forwardRef<HTMLDivElement, { summary: string }>(function FormErrorAlert({ summary }, ref) {
+export const FormErrorAlert = forwardRef<HTMLDivElement, FormErrorAlertProps>(function FormErrorAlert({ summary }, ref) {
   return (
     <div ref={ref} className="auth-form__error-alert" role="alert" tabIndex={-1}>
       {summary}
@@ -48,16 +68,7 @@ export function PasswordField({
   error,
   disabled,
   onChange,
-}: {
-  id: string;
-  label: string;
-  name: string;
-  autoComplete: string;
-  value: string;
-  error?: string;
-  disabled?: boolean;
-  onChange(value: string): void;
-}) {
+}: PasswordFieldProps) {
   const [visible, setVisible] = useState(false);
   useEffect(() => {
     if (disabled) setVisible(false);
@@ -99,7 +110,7 @@ export function PasswordField({
   );
 }
 
-export function AuthLink({ to, children }: { to: string; children: ReactNode }) {
+export function AuthLink({ to, children }: AuthLinkProps) {
   return <Link className="auth-form__link" to={to}>{children}</Link>;
 }
 
@@ -134,12 +145,14 @@ interface OwnedSubmissionAttempt extends SubmissionAttempt {
   readonly controller: AbortController;
 }
 
+interface SubmissionAttemptLifecycleState {
+  mounted: boolean;
+  nextId: number;
+  current: OwnedSubmissionAttempt | null;
+}
+
 export function useSubmissionAttemptLifecycle(ownerKey: string) {
-  const lifecycle = useRef<{
-    mounted: boolean;
-    nextId: number;
-    current: OwnedSubmissionAttempt | null;
-  }>({ mounted: false, nextId: 0, current: null });
+  const lifecycle = useRef<SubmissionAttemptLifecycleState>({ mounted: false, nextId: 0, current: null });
 
   useLayoutEffect(() => {
     const state = lifecycle.current;

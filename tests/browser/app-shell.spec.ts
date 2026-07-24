@@ -1,6 +1,9 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
 type BackendRole = 'student' | 'instructor' | 'admin';
+type ShellSurfaceViewportWidth = 320 | 390 | 768 | 1280;
+type DesktopViewportWidth = 768 | 1280;
+type MobileViewportWidth = 320 | 390;
 
 function monitorRuntime(page: Page, expectedHttpResourceErrors: readonly number[] = []) {
   const pageErrors: string[] = [];
@@ -58,7 +61,7 @@ async function expectNoHorizontalOverflow(page: Page) {
   expect(widths.body).toBeLessThanOrEqual(widths.renderedRoot + 0.5);
 }
 
-async function expectShellSurfacesAtViewportEdges(page: Page, width: 320 | 390 | 768 | 1280) {
+async function expectShellSurfacesAtViewportEdges(page: Page, width: ShellSurfaceViewportWidth) {
   await page.setViewportSize({ width, height: 900 });
   await page.goto('/');
 
@@ -277,7 +280,7 @@ async function expectBrandContainedInHeader(brand: Locator) {
   expect(containment.scrollWidth).toBeLessThanOrEqual(containment.clientWidth);
 }
 
-async function expectAnonymousDesktopHeaderGeometry(page: Page, width: 768 | 1280) {
+async function expectAnonymousDesktopHeaderGeometry(page: Page, width: DesktopViewportWidth) {
   await page.setViewportSize({ width, height: 900 });
   await page.goto('/');
 
@@ -399,7 +402,7 @@ async function expectAnonymousDesktopHeaderGeometry(page: Page, width: 768 | 128
   expect(activeLoginStyle.background).toBe(activeLoginStyle.expectedBackground);
 }
 
-async function expectAnonymousMobileNavigation(page: Page, width: 320 | 390) {
+async function expectAnonymousMobileNavigation(page: Page, width: MobileViewportWidth) {
   await page.setViewportSize({ width, height: 844 });
   await page.goto('/');
   const menu = page.getByRole('button', { name: 'Open navigation' });
@@ -422,7 +425,7 @@ async function expectAnonymousMobileNavigation(page: Page, width: 320 | 390) {
   await expectNoHorizontalOverflow(page);
 }
 
-async function expectInstructorDesktopHeaderGeometry(page: Page, width: 768 | 1280) {
+async function expectInstructorDesktopHeaderGeometry(page: Page, width: DesktopViewportWidth) {
   await page.setViewportSize({ width, height: 900 });
   await page.goto('/instructor/courses');
   await expect(page.getByRole('heading', { level: 1, name: 'Instructor courses' })).toBeVisible();

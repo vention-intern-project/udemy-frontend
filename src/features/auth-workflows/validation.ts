@@ -1,4 +1,5 @@
 import { ApiError } from '@shared/api';
+import type { LoginRequestDto } from '@entities/user';
 import type { ResetPasswordInput, SignupInput } from './api';
 
 export type AuthField = 'email' | 'name' | 'surname' | 'password' | 'passwordConfirmation' | 'role';
@@ -14,7 +15,7 @@ export function validateEmail(email: string): string | undefined {
   return required(email, 'Email') ?? (!EMAIL_PATTERN.test(email) ? 'Enter a valid email address.' : undefined);
 }
 
-export function validateLogin(input: { email: string; password: string }): AuthFieldErrors {
+export function validateLogin(input: LoginRequestDto): AuthFieldErrors {
   return {
     email: validateEmail(input.email),
     password: required(input.password, 'Password'),
@@ -87,9 +88,11 @@ export interface FormFailure {
   fields: AuthFieldErrors;
 }
 
+type AuthFailureOperation = 'signup' | 'login' | 'forgot' | 'reset';
+
 export function mapAuthFailure(
   error: unknown,
-  operation: 'signup' | 'login' | 'forgot' | 'reset',
+  operation: AuthFailureOperation,
 ): FormFailure {
   if (error instanceof ApiError && error.kind === 'offline') {
     return { summary: 'You appear to be offline. Check your connection and submit again.', fields: {} };

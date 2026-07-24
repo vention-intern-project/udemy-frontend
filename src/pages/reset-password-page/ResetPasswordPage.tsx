@@ -13,6 +13,11 @@ import { Button, Notice } from '@shared/ui/primitives';
 
 const FIELD_ORDER = ['password', 'passwordConfirmation'] as const;
 
+interface ResetPasswordMutationVariables {
+  readonly input: ResetPasswordInput;
+  readonly signal: AbortSignal;
+}
+
 export function ResetPasswordPage() {
   const session = useSession();
   const location = useLocation();
@@ -27,7 +32,7 @@ export function ResetPasswordPage() {
   const attempts = useSubmissionAttemptLifecycle(location.key);
   const mutation = useMutation({
     mutationKey: mutationKeys.auth.resetPassword,
-    mutationFn: ({ input, signal }: { input: ResetPasswordInput; signal: AbortSignal }) => (
+    mutationFn: ({ input, signal }: ResetPasswordMutationVariables) => (
       resetPassword(session, input, signal)
     ),
     gcTime: 0,

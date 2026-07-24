@@ -83,10 +83,14 @@ function FocusNavigationProbe() {
   );
 }
 
+interface RenderAppOptions {
+  readonly focusNavigationProbe?: boolean;
+}
+
 function renderApp(
   path: string,
   role?: UserRoleDto,
-  options: { focusNavigationProbe?: boolean } = {},
+  options: RenderAppOptions = {},
 ) {
   const request = vi.fn(async () => profile(role ?? 'student'));
   const client = role ? clientFor(role) : { request } as ApiClient;

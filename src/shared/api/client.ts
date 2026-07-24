@@ -3,6 +3,7 @@ import { ApiError, normalizeHttpError, normalizeTransportError } from './errors'
 export type ApiMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE';
 export type AuthPolicy = 'public' | 'optional' | 'required';
 export type QueryValue = string | number | boolean | null | undefined;
+type ApiResponseType = 'json' | 'blob';
 
 export interface ApiRequestOptions<TBody = unknown, TResponse = unknown> {
   method?: ApiMethod;
@@ -12,7 +13,7 @@ export interface ApiRequestOptions<TBody = unknown, TResponse = unknown> {
   headers?: Readonly<Record<string, string>>;
   signal?: AbortSignal;
   dedupeKey?: string;
-  responseType?: 'json' | 'blob';
+  responseType?: ApiResponseType;
   authPolicy?: AuthPolicy;
   decode?: (value: unknown) => TResponse;
 }
@@ -106,7 +107,7 @@ function safeFilename(contentDisposition: string | null): string | undefined {
 
 async function parseSuccess<TResponse>(
   response: Response,
-  responseType: 'json' | 'blob',
+  responseType: ApiResponseType,
   decode?: (value: unknown) => TResponse,
 ): Promise<TResponse> {
   if (response.status === 204) {

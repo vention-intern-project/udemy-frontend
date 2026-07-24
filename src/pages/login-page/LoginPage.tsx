@@ -2,6 +2,7 @@ import { useMutation } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { useLocation } from 'react-router-dom';
 
+import type { LoginRequestDto } from '@entities/user';
 import {
   AuthFormShell,
   AuthLink,
@@ -21,6 +22,11 @@ import { Button, Input } from '@shared/ui/primitives';
 
 const FIELD_ORDER = ['email', 'password'] as const;
 
+interface LoginMutationVariables {
+  readonly input: LoginRequestDto;
+  readonly signal: AbortSignal;
+}
+
 export function LoginPage() {
   const session = useSession();
   const location = useLocation();
@@ -32,10 +38,7 @@ export function LoginPage() {
   const attempts = useSubmissionAttemptLifecycle(location.key);
   const mutation = useMutation({
     mutationKey: mutationKeys.auth.login,
-    mutationFn: ({ input, signal }: {
-      input: { email: string; password: string };
-      signal: AbortSignal;
-    }) => login(session, input, signal),
+    mutationFn: ({ input, signal }: LoginMutationVariables) => login(session, input, signal),
     gcTime: 0,
     retry: false,
   });

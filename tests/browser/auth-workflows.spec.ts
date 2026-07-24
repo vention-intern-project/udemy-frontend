@@ -96,6 +96,7 @@ function createDeferred() {
 }
 
 type AuthWorkflow = 'signup' | 'login' | 'forgot' | 'reset';
+type PasswordRevealCssProperty = 'color' | 'background' | 'borderColor';
 
 const workflowUi = {
   signup: {
@@ -334,7 +335,7 @@ test('signup covers keyboard validation, safe 422/duplicate/offline states, pend
   await expect(page.getByLabel(/^Password/)).toHaveAttribute('type', 'password');
   await expect(page.getByRole('button', { name: 'Show password' }).first()).toHaveAttribute('aria-pressed', 'false');
   const pendingRevealStyles = async () => page.getByRole('button', { name: 'Show password' }).first().evaluate((button) => {
-    const resolve = (property: 'color' | 'background' | 'borderColor', token: string) => {
+    const resolve = (property: PasswordRevealCssProperty, token: string) => {
       const probe = document.createElement('span');
       probe.style[property] = `var(${token})`;
       document.body.append(probe);

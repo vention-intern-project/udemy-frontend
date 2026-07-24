@@ -4,11 +4,15 @@ import { useEffect, useRef } from 'react';
 import { useSession } from '@features/auth-session';
 import { isPrivateQueryForSubject } from '@shared/api';
 
+interface PrivateQueryCandidate {
+  readonly queryKey: readonly unknown[];
+}
+
 export async function cancelAndRemovePrivateQueries(
   queryClient: QueryClient,
   subject: string,
 ): Promise<void> {
-  const predicate = (query: { queryKey: readonly unknown[] }) => (
+  const predicate = (query: PrivateQueryCandidate) => (
     isPrivateQueryForSubject(query.queryKey, subject)
   );
   await queryClient.cancelQueries({ predicate });

@@ -17,6 +17,11 @@ const INITIAL: SignupInput = {
 };
 const FIELD_ORDER = ['email', 'name', 'surname', 'role', 'password', 'passwordConfirmation'] as const;
 
+interface SignupMutationVariables {
+  readonly values: SignupInput;
+  readonly signal: AbortSignal;
+}
+
 export function SignupPage() {
   const session = useSession();
   const location = useLocation();
@@ -27,7 +32,7 @@ export function SignupPage() {
   const attempts = useSubmissionAttemptLifecycle(location.key);
   const mutation = useMutation({
     mutationKey: mutationKeys.auth.signup,
-    mutationFn: ({ values, signal }: { values: SignupInput; signal: AbortSignal }) => (
+    mutationFn: ({ values, signal }: SignupMutationVariables) => (
       signup(session, values, signal)
     ),
     gcTime: 0,

@@ -4,8 +4,20 @@ import { createApiClient } from '../../../src/shared/api';
 
 type FetchArguments = Parameters<typeof fetch>;
 type FetchResult = ReturnType<typeof fetch>;
+interface Deferred<T> {
+  readonly promise: Promise<T>;
+  resolve(value: T): void;
+}
 
-function createDeferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+interface TestCartItemResponse {
+  readonly id: number;
+}
+
+interface TestCartItemRequest {
+  readonly course_id: number;
+}
+
+function createDeferred<T>(): Deferred<T> {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((resolver) => {
     resolve = resolver;
@@ -25,7 +37,7 @@ describe('fetch API client', () => {
       getAccessToken: () => 'token-value',
     });
 
-    await client.request<{ id: number }, { course_id: number }>({
+    await client.request<TestCartItemResponse, TestCartItemRequest>({
       method: 'POST',
       path: '/cart/items',
       query: { page: 1, omitted: undefined },
@@ -103,13 +115,13 @@ describe('fetch API client', () => {
       dedupeKey: 'add-course-3',
     };
 
-    const first = client.request<{ id: number }>(options);
-    const duplicate = client.request<{ id: number }>(options);
+    const first = client.request<TestCartItemResponse>(options);
+    const duplicate = client.request<TestCartItemResponse>(options);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     firstResponse.resolve(new Response(JSON.stringify({ id: 8 }), { status: 200 }));
     await expect(Promise.all([first, duplicate])).resolves.toEqual([{ id: 8 }, { id: 8 }]);
 
-    const next = client.request<{ id: number }>(options);
+    const next = client.request<TestCartItemResponse>(options);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     secondResponse.resolve(new Response(JSON.stringify({ id: 9 }), { status: 200 }));
     await expect(next).resolves.toEqual({ id: 9 });
@@ -192,7 +204,7 @@ describe('fetch API client', () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ id: 'wrong' }), { status: 200 }))
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
     const client = createApiClient({ fetch: fetchMock });
-    const decode = (value: unknown): { id: number } => {
+    const decode = (value: unknown): TestCartItemResponse => {
       if (
         typeof value !== 'object'
         || value === null

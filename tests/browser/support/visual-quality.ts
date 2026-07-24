@@ -27,12 +27,14 @@ export type VisualViewportEvidence =
   | { width: number; height: number }
   | { notApplicable: string };
 
+type RuntimeInputValue = string | number | boolean;
+
 export interface VisualScenarioEvidence {
   routes: readonly string[];
   states: readonly string[];
   viewports: readonly VisualViewportEvidence[];
   expectedOutcome: string;
-  runtimeInputs: Readonly<Record<string, string | number | boolean>>;
+  runtimeInputs: Readonly<Record<string, RuntimeInputValue>>;
 }
 
 export interface RuntimeEvidenceSnapshot {
