@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAppQueryClient } from '../../src/app/query';
 import { AppRouter } from '../../src/app/router';
 import type { UserProfileDto } from '../../src/entities/user';
+import { AuthFormShell } from '../../src/features/auth-workflows';
 import { SessionProvider, type AccessTokenStore } from '../../src/features/auth-session';
 import { ApiError, type ApiClient, type ApiRequestOptions } from '../../src/shared/api';
 import { ThemeProvider } from '../../src/shared/ui/theme';
@@ -152,6 +153,26 @@ afterEach(() => {
 });
 
 describe('authentication pages', () => {
+  it('gives each AuthFormShell a unique accessible heading relationship', () => {
+    render(
+      <>
+        <AuthFormShell title="First form" description="First description"><form /></AuthFormShell>
+        <AuthFormShell title="Second form" description="Second description"><form /></AuthFormShell>
+      </>,
+    );
+
+    const firstRegion = screen.getByRole('region', { name: 'First form' });
+    const secondRegion = screen.getByRole('region', { name: 'Second form' });
+    const firstHeading = screen.getByRole('heading', { name: 'First form' });
+    const secondHeading = screen.getByRole('heading', { name: 'Second form' });
+
+    expect(firstHeading.id).not.toBe('');
+    expect(secondHeading.id).not.toBe('');
+    expect(firstHeading.id).not.toBe(secondHeading.id);
+    expect(firstRegion.getAttribute('aria-labelledby')).toBe(firstHeading.id);
+    expect(secondRegion.getAttribute('aria-labelledby')).toBe(secondHeading.id);
+  });
+
   it.each([
     { route: '/login', passwordIds: ['password'] },
     { route: '/signup', passwordIds: ['password', 'passwordConfirmation'] },

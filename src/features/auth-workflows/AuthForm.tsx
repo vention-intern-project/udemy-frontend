@@ -1,25 +1,28 @@
-import { forwardRef, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { forwardRef, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 import { Button, Input } from '@shared/ui/primitives';
 import type { AuthField, AuthFieldErrors } from './validation';
 
+interface AuthFormShellProps {
+  readonly title: string;
+  readonly description: string;
+  readonly children: ReactNode;
+  readonly footer?: ReactNode;
+}
+
 export function AuthFormShell({
   title,
   description,
   children,
   footer,
-}: {
-  title: string;
-  description: string;
-  children: ReactNode;
-  footer?: ReactNode;
-}) {
+}: AuthFormShellProps) {
+  const headingId = useId();
   return (
-    <section className="auth-form" aria-labelledby="auth-form-title">
+    <section className="auth-form" aria-labelledby={headingId}>
       <div className="auth-form__heading">
-        <h1 id="auth-form-title">{title}</h1>
+        <h1 id={headingId}>{title}</h1>
         <p>{description}</p>
       </div>
       {children}

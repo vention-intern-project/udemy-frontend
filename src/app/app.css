@@ -140,7 +140,7 @@ button:focus-visible,
 
 .app-nav__link--signup-primary:hover {
   color: var(--action-primary-fg);
-  background: #7c3aed;
+  background: var(--action-primary-bg-hover);
 }
 
 .app-nav__link--browse-link.app-nav__link--active {

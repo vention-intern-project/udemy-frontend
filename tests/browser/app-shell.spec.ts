@@ -362,8 +362,14 @@ async function expectAnonymousDesktopHeaderGeometry(page: Page, width: 768 | 128
   expect(idleStyles[1].color).toBe(idleStyles[1].expectedColor);
   expect(idleStyles[1].background).toBe(idleStyles[1].expectedBackground);
   await signup.hover();
-  await expect.poll(() => signup.evaluate((link) => getComputedStyle(link).backgroundColor))
-    .toBe('rgb(124, 58, 237)');
+  await expect.poll(() => signup.evaluate((link) => {
+    const probe = document.createElement('span');
+    probe.style.background = 'var(--action-primary-bg-hover)';
+    document.body.append(probe);
+    const expectedBackground = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return getComputedStyle(link).backgroundColor === expectedBackground;
+  })).toBe(true);
   await signup.focus();
   await expect(signup).toBeFocused();
   const focusStyle = await signup.evaluate((link) => getComputedStyle(link).outlineStyle);
