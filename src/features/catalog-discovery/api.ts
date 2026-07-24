@@ -1,10 +1,10 @@
 import { API_OPERATION_BY_ID } from '@entities/api';
 import { decodeCourseListDto, mapCourseListDto, type CatalogCourseList } from '@entities/course';
-import { ApiError, type ApiRequestOptions } from '@shared/api';
+import { ApiError, type ApiClient } from '@shared/api';
 
 import { serializeCatalogQuery, toCourseListQuery, type CatalogQuery } from './query';
 
-export type CatalogRequester = <TResponse>(options: ApiRequestOptions) => Promise<TResponse>;
+export type CatalogRequester = ApiClient['request'];
 export type CatalogFailureKind = 'offline' | 'invalid_response' | 'request';
 
 export interface CatalogFailure {

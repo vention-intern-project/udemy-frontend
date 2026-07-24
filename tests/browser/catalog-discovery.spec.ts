@@ -721,7 +721,14 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
 
   const filters = page.getByRole('form', { name: 'Course filters' });
   await expect(filters.getByRole('heading', { name: 'Filters' })).toHaveCount(0);
-  await expect(filters.getByRole('group', { name: 'Price range:' })).toBeVisible();
+  const priceRange = filters.getByRole('group', { name: 'Price range' });
+  await expect(priceRange).toBeVisible();
+  const semanticPriceLegend = priceRange.locator(':scope > legend');
+  const visualPriceLabel = priceRange.locator('.catalog-filter-bar__legend');
+  await expect(semanticPriceLegend).toHaveText('Price range');
+  await expect(visualPriceLabel).toHaveText('Price range:');
+  await expect(visualPriceLabel).toHaveAttribute('aria-hidden', 'true');
+  expect(await semanticPriceLegend.evaluate((legend) => getComputedStyle(legend).display)).not.toBe('contents');
   await expect(filters.getByLabel('Min price')).toHaveValue('5');
   await expect(filters.getByLabel('Max price')).toHaveValue('');
   await expect(filters.getByLabel('Min price')).toHaveAttribute('placeholder', 'Min price');
@@ -891,8 +898,7 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   expect(requests[requests.length - 1]).toContain('sort=price');
   expect(requests[requests.length - 1]).toContain('page=1');
   const sortLabel = page.locator('.catalog-page__sort-label');
-  const priceLabel = filters.locator('.catalog-filter-bar__legend');
-  const labelParity = await Promise.all([priceLabel.evaluate((label) => {
+  const labelParity = await Promise.all([visualPriceLabel.evaluate((label) => {
     const style = getComputedStyle(label);
     return { color: style.color, fontSize: style.fontSize, fontWeight: style.fontWeight, lineHeight: style.lineHeight };
   }), sortLabel.evaluate((label) => {
@@ -983,7 +989,7 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   await expect(mobileMenu).toBeFocused();
   await sortTrigger.focus();
   await expect(sortTrigger).toBeFocused();
-  const mobileToolbarGeometry = await Promise.all([resultHeading.boundingBox(), toolbarControls.boundingBox(), filters.boundingBox(), page.locator('.catalog-page__sort-toolbar').boundingBox(), priceLabel.boundingBox(), sortLabel.boundingBox(), sortTrigger.boundingBox(), page.locator('.catalog-page__list').boundingBox()]);
+  const mobileToolbarGeometry = await Promise.all([resultHeading.boundingBox(), toolbarControls.boundingBox(), filters.boundingBox(), page.locator('.catalog-page__sort-toolbar').boundingBox(), visualPriceLabel.boundingBox(), sortLabel.boundingBox(), sortTrigger.boundingBox(), page.locator('.catalog-page__list').boundingBox()]);
   expect(mobileToolbarGeometry.every(Boolean)).toBe(true);
   expect(mobileToolbarGeometry[1]!.x).toBeGreaterThanOrEqual(0);
   expect(mobileToolbarGeometry[1]!.x + mobileToolbarGeometry[1]!.width).toBeLessThanOrEqual(320);
@@ -1045,7 +1051,7 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
       || (Math.abs(first.y - second.y) <= 1 && first.x + first.width <= second.x + 1)
     );
     expect(comesBefore(responsiveToolbarGeometry[1]!, responsiveToolbarGeometry[2]!)).toBe(true);
-    const responsivePriceGeometry = await Promise.all([priceLabel.boundingBox(), filters.getByLabel('Min price').boundingBox(), filters.getByLabel('Max price').boundingBox(), sortTrigger.boundingBox()]);
+    const responsivePriceGeometry = await Promise.all([visualPriceLabel.boundingBox(), filters.getByLabel('Min price').boundingBox(), filters.getByLabel('Max price').boundingBox(), sortTrigger.boundingBox()]);
     expect(responsivePriceGeometry.every(Boolean)).toBe(true);
     if (width === 768) {
       expect(Math.abs((responsivePriceGeometry[0]!.y + responsivePriceGeometry[0]!.height / 2) - (responsivePriceGeometry[1]!.y + responsivePriceGeometry[1]!.height / 2))).toBeLessThanOrEqual(1);

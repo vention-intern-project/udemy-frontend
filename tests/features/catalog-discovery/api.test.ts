@@ -1,7 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 
 import { catalogFailure, requestCatalog, type CatalogRequester } from '../../../src/features/catalog-discovery';
-import { ApiError } from '../../../src/shared/api';
+import { ApiError, type ApiClient } from '../../../src/shared/api';
 
 const validResponse = {
   items: [{ id: 1, title: 'React', description: null, price: '9.99', currency: 'USD', published_at: null, instructor: { id: 2, name: 'Ada', surname: 'Lovelace' }, lessons: [] }],
@@ -9,6 +9,10 @@ const validResponse = {
 };
 
 describe('catalog request boundary', () => {
+  it('keeps requester body, response, and decoder generics aligned with ApiClient', () => {
+    expectTypeOf<CatalogRequester>().toEqualTypeOf<ApiClient['request']>();
+  });
+
   it('uses the exact API-008 request object with the fixed page size', async () => {
     const request = vi.fn().mockResolvedValue(validResponse) as CatalogRequester;
     await expect(requestCatalog(request, { search_query: 'React', min_price: 5, max_price: 10, sort: '-price', page: 2 }, new AbortController().signal))

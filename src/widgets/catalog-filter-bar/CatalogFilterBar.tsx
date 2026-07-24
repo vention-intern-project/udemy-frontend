@@ -91,7 +91,8 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
       }}
     >
       <fieldset className="catalog-filter-bar__price-range">
-        <legend><span className="catalog-filter-bar__legend">Price range:</span></legend>
+        <legend className="ui-sr-only">Price range</legend>
+        <span className="catalog-filter-bar__legend" aria-hidden="true">Price range:</span>
         <Input
           label={<span className="ui-sr-only">Min price</span>}
           name="min_price"

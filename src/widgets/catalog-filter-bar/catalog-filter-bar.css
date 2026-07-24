@@ -18,11 +18,6 @@
   border: 0;
 }
 
-.catalog-filter-bar__price-range > legend {
-  display: contents;
-  padding: 0;
-}
-
 .catalog-filter-bar__legend {
   color: var(--text-muted);
   font-size: var(--type-label-size);

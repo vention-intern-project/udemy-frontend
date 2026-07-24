@@ -173,7 +173,13 @@ describe('CatalogPage public URL and pagination behavior', () => {
     const filters = screen.getByRole('form', { name: 'Course filters' });
     expect(filters.querySelector('input[name="search_query"], select')).toBeNull();
     expect(filters.querySelector('h2')).toBeNull();
-    expect(screen.getByRole('group', { name: 'Price range:' })).toBeTruthy();
+    const priceRange = screen.getByRole('group', { name: 'Price range' });
+    const semanticLegend = priceRange.querySelector(':scope > legend');
+    const visualPriceLabel = priceRange.querySelector('.catalog-filter-bar__legend');
+    expect(semanticLegend?.textContent).toBe('Price range');
+    expect(semanticLegend?.classList.contains('ui-sr-only')).toBe(true);
+    expect(visualPriceLabel?.textContent).toBe('Price range:');
+    expect(visualPriceLabel?.getAttribute('aria-hidden')).toBe('true');
     const minimum = screen.getByLabelText('Min price') as HTMLInputElement;
     const maximum = screen.getByLabelText('Max price') as HTMLInputElement;
     expect(minimum.placeholder).toBe('Min price');
