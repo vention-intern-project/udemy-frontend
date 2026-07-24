@@ -15,6 +15,10 @@ import {
   type EnrollmentStatus,
 } from '../../../src/entities/enrollment';
 import {
+  decodeLoginResponseDto,
+  decodeMessageResponseDto,
+  decodeRegisterResponseDto,
+  decodeUserProfileDto,
   mapUserProfileDto,
   mapUserRoleDto,
   type UserRole,
@@ -127,5 +131,50 @@ describe('wire DTO to domain mappers', () => {
     expect(() => mapLessonTypeDto('audio')).toThrow('Unsupported lesson type: audio');
     expect(() => mapEnrollmentStatusDto('cancelled')).toThrow('Unsupported enrollment status: cancelled');
     expect(() => mapUserRoleDto('owner')).toThrow('Unsupported user role: owner');
+  });
+
+  it('decodes every current auth/session success shape before mapping', () => {
+    expect(decodeUserProfileDto({
+      email: 'learner@example.test',
+      name: 'Ada',
+      surname: 'Lovelace',
+      role: 'student',
+      birthday: null,
+      phone_number: '+10000000000',
+      created_at: '2026-07-01T00:00:00Z',
+      ignored: true,
+    })).toMatchObject({ role: 'student', birthday: null, phone_number: '+10000000000' });
+    expect(decodeLoginResponseDto({ access_token: 'login-token' })).toEqual({ access_token: 'login-token' });
+    expect(decodeRegisterResponseDto({
+      user: { id: 1, email: 'learner@example.test' },
+      access_token: 'signup-token',
+      token_type: 'bearer',
+    })).toMatchObject({ user: { id: 1 }, token_type: 'bearer' });
+    expect(decodeMessageResponseDto({ message: 'ok' })).toEqual({ message: 'ok' });
+  });
+
+  it.each([
+    ['profile record', {}],
+    ['email', { email: 1, name: 'Ada', surname: 'Lovelace', role: 'student', birthday: null, phone_number: null, created_at: 'now' }],
+    ['name', { email: 'a', name: 1, surname: 'Lovelace', role: 'student', birthday: null, phone_number: null, created_at: 'now' }],
+    ['surname', { email: 'a', name: 'Ada', surname: 1, role: 'student', birthday: null, phone_number: null, created_at: 'now' }],
+    ['role', { email: 'a', name: 'Ada', surname: 'Lovelace', role: 'owner', birthday: null, phone_number: null, created_at: 'now' }],
+    ['birthday', { email: 'a', name: 'Ada', surname: 'Lovelace', role: 'student', birthday: 1, phone_number: null, created_at: 'now' }],
+    ['phone_number', { email: 'a', name: 'Ada', surname: 'Lovelace', role: 'student', birthday: null, phone_number: 1, created_at: 'now' }],
+    ['created_at', { email: 'a', name: 'Ada', surname: 'Lovelace', role: 'student', birthday: null, phone_number: null, created_at: 1 }],
+  ])('rejects a malformed user profile at %s', (_field, value) => {
+    expect(() => decodeUserProfileDto(value)).toThrow();
+  });
+
+  it.each([
+    ['login access token', () => decodeLoginResponseDto({})],
+    ['register user', () => decodeRegisterResponseDto({ access_token: 'token', token_type: 'bearer', user: null })],
+    ['register id', () => decodeRegisterResponseDto({ access_token: 'token', token_type: 'bearer', user: { id: Number.NaN, email: 'a' } })],
+    ['register email', () => decodeRegisterResponseDto({ access_token: 'token', token_type: 'bearer', user: { id: 1, email: 2 } })],
+    ['register token', () => decodeRegisterResponseDto({ access_token: 2, token_type: 'bearer', user: { id: 1, email: 'a' } })],
+    ['register token type', () => decodeRegisterResponseDto({ access_token: 'token', token_type: 2, user: { id: 1, email: 'a' } })],
+    ['message', () => decodeMessageResponseDto({ message: 1 })],
+  ])('rejects malformed auth/message payloads: %s', (_caseName, decode) => {
+    expect(decode).toThrow();
   });
 });

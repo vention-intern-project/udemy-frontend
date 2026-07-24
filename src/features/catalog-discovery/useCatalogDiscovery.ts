@@ -5,10 +5,18 @@ import type { CatalogCourseList } from '@entities/course';
 import { catalogFailure, catalogQueryKey, requestCatalog, type CatalogFailure, type CatalogRequester } from './api';
 import { parseCatalogQuery, type CatalogQuery } from './query';
 
+type CatalogDiscoveryStatus =
+  | 'initial-loading'
+  | 'populated'
+  | 'empty'
+  | 'refreshing'
+  | 'error-without-results'
+  | 'error-with-results';
+
 export interface CatalogDiscoveryState {
   data?: CatalogCourseList;
   failure?: CatalogFailure;
-  status: 'initial-loading' | 'populated' | 'empty' | 'refreshing' | 'error-without-results' | 'error-with-results';
+  status: CatalogDiscoveryStatus;
 }
 
 export function useCatalogDiscovery(query: CatalogQuery, request: CatalogRequester) {

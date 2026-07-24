@@ -3,10 +3,10 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CatalogPage } from '../../src/pages/catalog-page';
-import { SessionProvider, type AccessTokenStore } from '../../src/features/auth-session';
+import { SessionProvider, useSession, type AccessTokenStore } from '../../src/features/auth-session';
 import type { ApiClient, ApiRequestOptions } from '../../src/shared/api';
 
 afterEach(cleanup);
@@ -43,6 +43,11 @@ function HistoryControls() {
   );
 }
 
+function CatalogSessionStatus() {
+  const { state } = useSession();
+  return <output aria-label="catalog session status">{state.status}</output>;
+}
+
 function renderCatalog(request: ApiClient['request'], initialEntries: string[], initialIndex = initialEntries.length - 1) {
   return render(
     <SessionProvider client={{ request }} tokenStore={tokenStore()}>
@@ -55,6 +60,71 @@ function renderCatalog(request: ApiClient['request'], initialEntries: string[], 
 }
 
 describe('CatalogPage public URL and pagination behavior', () => {
+  it('keeps authenticated API-008 requests public and preserves the session after a catalog 401', async () => {
+    let storedToken: string | null = 'stored-access-token';
+    const clearToken = vi.fn(() => {
+      storedToken = null;
+    });
+    const store: AccessTokenStore = {
+      get: () => storedToken,
+      set: (token) => {
+        storedToken = token;
+      },
+      clear: clearToken,
+    };
+    const requestHeaders = new Map<string, Headers>();
+    const fetchImplementation: typeof fetch = async (input, init) => {
+      const requestUrl = typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url;
+      const pathname = new URL(requestUrl).pathname;
+      requestHeaders.set(pathname, new Headers(init?.headers));
+
+      if (pathname === '/me') {
+        return new Response(JSON.stringify({
+          email: 'learner@example.test',
+          name: 'Ada',
+          surname: 'Lovelace',
+          role: 'student',
+          birthday: null,
+          phone_number: null,
+          created_at: '2026-07-24T00:00:00Z',
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (pathname === '/courses') {
+        return new Response(JSON.stringify({ detail: 'Catalog unavailable' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(null, { status: 404 });
+    };
+    const fetchSpy = vi.fn(fetchImplementation);
+
+    render(
+      <SessionProvider
+        apiBaseUrl="https://api.learnhub.test"
+        fetchImplementation={fetchSpy}
+        tokenStore={store}
+      >
+        <MemoryRouter initialEntries={['/']} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+          <CatalogPage />
+          <CatalogSessionStatus />
+        </MemoryRouter>
+      </SessionProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByLabelText('catalog session status').textContent).toBe('authenticated'));
+    expect(await screen.findByText('We could not load courses')).toBeTruthy();
+    expect(requestHeaders.get('/me')?.get('Authorization')).toBe('Bearer stored-access-token');
+    expect(requestHeaders.get('/courses')?.get('Authorization')).toBeNull();
+    expect(clearToken).not.toHaveBeenCalled();
+    expect(storedToken).toBe('stored-access-token');
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
   it('renders the hero as one semantic heading with decorative background content kept out of the accessibility tree', async () => {
     const request: ApiClient['request'] = async <TResponse,>() => response() as TResponse;
     renderCatalog(request, ['/']);

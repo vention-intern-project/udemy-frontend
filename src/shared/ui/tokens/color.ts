@@ -48,7 +48,7 @@ export const ACTION_LINK = '#1D4ED8' as const;
 // Focus token
 // ---------------------------------------------------------------------------
 /** 2px outer ring with 2px offset — keyboard focus only */
-export const FOCUS_RING = '#2563EB' as const;
+export const FOCUS_RING = '#6D28D9' as const;
 export const FOCUS_RING_WIDTH = '2px' as const;
 export const FOCUS_RING_OFFSET = '2px' as const;
 

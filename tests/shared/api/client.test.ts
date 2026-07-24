@@ -4,8 +4,20 @@ import { createApiClient } from '../../../src/shared/api';
 
 type FetchArguments = Parameters<typeof fetch>;
 type FetchResult = ReturnType<typeof fetch>;
+interface Deferred<T> {
+  readonly promise: Promise<T>;
+  resolve(value: T): void;
+}
 
-function createDeferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+interface TestCartItemResponse {
+  readonly id: number;
+}
+
+interface TestCartItemRequest {
+  readonly course_id: number;
+}
+
+function createDeferred<T>(): Deferred<T> {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((resolver) => {
     resolve = resolver;
@@ -25,7 +37,7 @@ describe('fetch API client', () => {
       getAccessToken: () => 'token-value',
     });
 
-    await client.request<{ id: number }, { course_id: number }>({
+    await client.request<TestCartItemResponse, TestCartItemRequest>({
       method: 'POST',
       path: '/cart/items',
       query: { page: 1, omitted: undefined },
@@ -38,6 +50,27 @@ describe('fetch API client', () => {
     expect(init?.body).toBe(JSON.stringify({ course_id: 7 }));
     expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer token-value');
     expect(new Headers(init?.headers).get('Content-Type')).toBe('application/json');
+  });
+
+  it('suppresses stored and caller-supplied bearers for explicitly public operations', async () => {
+    const fetchMock = vi.fn<FetchArguments, FetchResult>().mockResolvedValue(new Response(
+      JSON.stringify({ access_token: 'replacement' }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+    const client = createApiClient({
+      fetch: fetchMock,
+      getAccessToken: () => 'existing-private-token',
+    });
+
+    await client.request({
+      method: 'POST',
+      path: '/login',
+      authPolicy: 'public',
+      headers: { Authorization: 'Bearer caller-supplied-token' },
+      body: { email: 'a', password: 'b' },
+    });
+
+    expect(new Headers(fetchMock.mock.calls[0][1]?.headers).get('Authorization')).toBe(null);
   });
 
   it('retries a safe GET once for offline and 500 failures', async () => {
@@ -82,13 +115,13 @@ describe('fetch API client', () => {
       dedupeKey: 'add-course-3',
     };
 
-    const first = client.request<{ id: number }>(options);
-    const duplicate = client.request<{ id: number }>(options);
+    const first = client.request<TestCartItemResponse>(options);
+    const duplicate = client.request<TestCartItemResponse>(options);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     firstResponse.resolve(new Response(JSON.stringify({ id: 8 }), { status: 200 }));
     await expect(Promise.all([first, duplicate])).resolves.toEqual([{ id: 8 }, { id: 8 }]);
 
-    const next = client.request<{ id: number }>(options);
+    const next = client.request<TestCartItemResponse>(options);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     secondResponse.resolve(new Response(JSON.stringify({ id: 9 }), { status: 200 }));
     await expect(next).resolves.toEqual({ id: 9 });
@@ -157,7 +190,7 @@ describe('fetch API client', () => {
   it('decodes successful JSON from unknown before returning it', async () => {
     const decode = vi.fn((value: unknown) => {
       expect(value).toEqual({ id: 7 });
-      return { courseId: (value as { id: number }).id };
+      return { courseId: (value as TestCartItemResponse).id };
     });
     const client = createApiClient({
       fetch: vi.fn<FetchArguments, FetchResult>().mockResolvedValue(new Response(
@@ -218,6 +251,36 @@ describe('fetch API client', () => {
     await expect(client.request({ path: '/courses' })).rejects.toMatchObject({
       kind: 'invalid_response',
       status: 200,
+    });
+  });
+
+  it('decodes successful JSON from unknown and normalizes decoder failures', async () => {
+    const fetchMock = vi.fn<FetchArguments, FetchResult>()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: 7 }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: 'wrong' }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    const client = createApiClient({ fetch: fetchMock });
+    const decode = (value: unknown): TestCartItemResponse => {
+      if (
+        typeof value !== 'object'
+        || value === null
+        || !('id' in value)
+        || typeof value.id !== 'number'
+      ) {
+        throw new TypeError('Expected numeric id');
+      }
+      return { id: value.id };
+    };
+
+    await expect(client.request({ path: '/decoded', decode })).resolves.toEqual({ id: 7 });
+    await expect(client.request({ path: '/decoded', decode })).rejects.toMatchObject({
+      kind: 'invalid_response',
+      status: 200,
+      message: 'Server returned an invalid success response',
+    });
+    await expect(client.request({ path: '/decoded', decode })).rejects.toMatchObject({
+      kind: 'invalid_response',
+      status: 204,
     });
   });
 });

@@ -41,10 +41,7 @@ export const APP_ROUTE_BY_ID = Object.freeze(Object.fromEntries(
 )) as Readonly<Record<PageId, (typeof APP_ROUTES)[number]>>;
 
 export function routeForPath(pathname: string): AppRouteDefinition | undefined {
-  return APP_ROUTES.find((route) => matchPath({
-    path: route.path,
-    end: true,
-  }, pathname));
+  return APP_ROUTES.find((route) => matchPath({ path: route.path, end: true }, pathname));
 }
 
 export function densityForPath(pathname: string): DensityMode {

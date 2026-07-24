@@ -116,6 +116,17 @@
 
 .ui-control[aria-invalid='true'] { border-color: var(--feedback-error); }
 .ui-control:disabled { color: var(--state-disabled-text); background: var(--state-disabled-bg); cursor: not-allowed; }
+.ui-control-frame { position: relative; min-width: 0; }
+.ui-control-frame__trailing-action {
+  position: absolute;
+  inset-block-start: var(--spacing-1);
+  inset-inline-end: var(--spacing-1);
+  display: flex;
+}
+.ui-input--with-trailing-action {
+  display: block;
+  padding-inline-end: calc(var(--control-height-sm) + var(--spacing-4));
+}
 .ui-textarea { min-height: 112px; resize: vertical; }
 
 .ui-button:focus-visible,

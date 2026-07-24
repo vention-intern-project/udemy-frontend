@@ -1,9 +1,11 @@
 import { ApiError, normalizeHttpError, normalizeTransportError } from './errors';
 
 export type ApiMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE';
+export type AuthPolicy = 'public' | 'optional' | 'required';
 export type QueryValue = string | number | boolean | null | undefined;
+type ApiResponseType = 'json' | 'blob';
 
-interface ApiRequestBase<TBody> {
+export interface ApiRequestOptions<TBody = unknown, TResponse = unknown> {
   method?: ApiMethod;
   path: string;
   query?: Readonly<Record<string, QueryValue>>;
@@ -11,22 +13,10 @@ interface ApiRequestBase<TBody> {
   headers?: Readonly<Record<string, string>>;
   signal?: AbortSignal;
   dedupeKey?: string;
-  responseType?: 'json' | 'blob';
+  responseType?: ApiResponseType;
+  authPolicy?: AuthPolicy;
+  decode?: (value: unknown) => TResponse;
 }
-
-declare const API_RESPONSE_UNSPECIFIED: unique symbol;
-type ApiResponseUnspecified = typeof API_RESPONSE_UNSPECIFIED;
-
-type ApiResponseDecoderOption<TResponse> =
-  [TResponse] extends [ApiResponseUnspecified]
-    ? [ApiResponseUnspecified] extends [TResponse]
-      ? {}
-      : { decode?: (value: unknown) => TResponse }
-    : { decode?: (value: unknown) => TResponse };
-
-export type ApiRequestOptions<TBody = unknown, TResponse = ApiResponseUnspecified> =
-  ApiRequestBase<TBody>
-  & ApiResponseDecoderOption<TResponse>;
 
 export interface ApiClientConfig {
   baseUrl?: string;
@@ -39,9 +29,7 @@ export interface ApiClientConfig {
 }
 
 export interface ApiClient {
-  request<TResponse, TBody = unknown>(
-    options: ApiRequestOptions<TBody, TResponse>,
-  ): Promise<TResponse>;
+  request<TResponse, TBody = unknown>(options: ApiRequestOptions<TBody, TResponse>): Promise<TResponse>;
 }
 
 export interface ApiBinaryResponse {
@@ -127,11 +115,12 @@ function safeFilename(contentDisposition: string | null): string | undefined {
 
 async function parseSuccess<TResponse>(
   response: Response,
-  responseType: 'json' | 'blob',
+  responseType: ApiResponseType,
   decode?: (value: unknown) => TResponse,
 ): Promise<TResponse> {
   if (response.status === 204) {
-    return decode ? decode(undefined) : undefined as TResponse;
+    if (responseType === 'json' && decode) return decode(undefined);
+    return undefined as TResponse;
   }
 
   if (responseType === 'blob') {
@@ -164,8 +153,11 @@ export function createApiClient(config: ApiClientConfig = {}): ApiClient {
   ): Promise<TResponse> {
     const method = options.method ?? 'GET';
     const url = buildUrl(config.baseUrl ?? '', options.path, options.query);
-    const token = config.getAccessToken?.();
+    const token = options.authPolicy === 'public' ? null : config.getAccessToken?.();
     const headers = new Headers(options.headers);
+    if (options.authPolicy === 'public') {
+      headers.delete('Authorization');
+    }
     headers.set('Accept', options.responseType === 'blob' ? '*/*' : 'application/json');
 
     const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;

@@ -7,6 +7,7 @@ export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   helpText?: ReactNode;
   error?: ReactNode;
   fieldClassName?: string;
+  trailingAction?: ReactNode;
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
@@ -16,6 +17,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
     helpText,
     error,
     fieldClassName,
+    trailingAction,
     className,
     required,
     'aria-describedby': ariaDescribedBy,
@@ -31,6 +33,23 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
     hasError: Boolean(error),
   });
 
+  const control = (
+    <input
+      {...props}
+      ref={ref}
+      id={ids.controlId}
+      required={required}
+      aria-invalid={error ? true : ariaInvalid}
+      aria-describedby={ids.describedBy}
+      className={[
+        'ui-control',
+        'ui-input',
+        trailingAction && 'ui-input--with-trailing-action',
+        className,
+      ].filter(Boolean).join(' ')}
+    />
+  );
+
   return (
     <FieldShell
       {...ids}
@@ -40,15 +59,12 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
       error={error}
       className={fieldClassName}
     >
-      <input
-        {...props}
-        ref={ref}
-        id={ids.controlId}
-        required={required}
-        aria-invalid={error ? true : ariaInvalid}
-        aria-describedby={ids.describedBy}
-        className={['ui-control', 'ui-input', className].filter(Boolean).join(' ')}
-      />
+      {trailingAction ? (
+        <div className="ui-control-frame">
+          {control}
+          <div className="ui-control-frame__trailing-action">{trailingAction}</div>
+        </div>
+      ) : control}
     </FieldShell>
   );
 });

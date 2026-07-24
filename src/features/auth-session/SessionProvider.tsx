@@ -14,10 +14,10 @@ import {
   mapUserProfileDto,
   type UserProfile,
   type UserProfileDto,
-} from '../../entities/user';
+} from '@entities/user';
 import {
   ApiError, createApiClient, type ApiClient, type ApiRequestOptions,
-} from '../../shared/api';
+} from '@shared/api';
 import {
   createBrowserAccessTokenStore,
   createExceptionSafeAccessTokenStore,
@@ -35,6 +35,9 @@ export interface SessionContextValue {
   retryBootstrap(): void;
   acceptAccessToken(token: string): void;
   clearSession(): void;
+  requestPublic<TResponse, TBody = unknown>(
+    options: ApiRequestOptions<TBody, NoInfer<TResponse>>,
+  ): Promise<TResponse>;
   requestRequired<TResponse, TBody = unknown>(
     options: ApiRequestOptions<TBody, NoInfer<TResponse>>,
   ): Promise<TResponse>;
@@ -175,7 +178,7 @@ export function SessionProvider({
     const generation = generationRef.current;
     const token = tokenStore.get();
     try {
-      return await client.request<TResponse, TBody>(forSessionGeneration(options, generation));
+      return await client.request<TResponse, TBody>(forSessionGeneration({ ...options, authPolicy: 'required' }, generation));
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
         clearSessionForSnapshot(generation, token);
@@ -190,24 +193,29 @@ export function SessionProvider({
     const generation = generationRef.current;
     const token = tokenStore.get();
     try {
-      return await client.request<TResponse, TBody>(forSessionGeneration(options, generation));
+      return await client.request<TResponse, TBody>(forSessionGeneration({ ...options, authPolicy: 'optional' }, generation));
     } catch (error) {
       if (!(error instanceof ApiError) || error.status !== 401 || !token) {
         throw error;
       }
       if (!clearSessionForSnapshot(generation, token)) throw error;
-      return client.request<TResponse, TBody>(forSessionGeneration(options, generationRef.current));
+      return client.request<TResponse, TBody>(forSessionGeneration({ ...options, authPolicy: 'public' }, generationRef.current));
     }
   }, [clearSessionForSnapshot, client, tokenStore]);
+
+  const requestPublic = useCallback(<TResponse, TBody = unknown>(
+    options: ApiRequestOptions<TBody, NoInfer<TResponse>>,
+  ): Promise<TResponse> => client.request<TResponse, TBody>({ ...options, authPolicy: 'public' }), [client]);
 
   const value = useMemo<SessionContextValue>(() => ({
     state,
     retryBootstrap,
     acceptAccessToken,
     clearSession,
+    requestPublic,
     requestRequired,
     requestOptional,
-  }), [acceptAccessToken, clearSession, requestOptional, requestRequired, retryBootstrap, state]);
+  }), [acceptAccessToken, clearSession, requestOptional, requestPublic, requestRequired, retryBootstrap, state]);
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }

@@ -40,6 +40,35 @@ interface SortControlProps {
   onChange: (sort: CatalogQuery['sort']) => void;
 }
 
+function restoreBrowserSelectedFocus(target: HTMLElement) {
+  const restore = () => {
+    const currentTarget = target.isConnected
+      ? target
+      : target instanceof HTMLInputElement && (target.name === 'min_price' || target.name === 'max_price')
+        ? document.querySelector<HTMLElement>(`input[name="${target.name}"]`)
+        : target.classList.contains('catalog-page__sort-trigger')
+          ? document.querySelector<HTMLElement>('.catalog-page__sort-trigger')
+          : null;
+    if (!currentTarget || document.activeElement === currentTarget) return;
+    if (document.activeElement instanceof HTMLElement && document.activeElement.id === 'main-content') {
+      currentTarget.focus();
+    }
+  };
+  const afterShellFocus = () => {
+    if (typeof globalThis.requestAnimationFrame === 'function') {
+      globalThis.requestAnimationFrame(restore);
+    } else {
+      globalThis.setTimeout(restore, 0);
+    }
+  };
+
+  if (typeof globalThis.requestAnimationFrame === 'function') {
+    globalThis.requestAnimationFrame(afterShellFocus);
+  } else {
+    globalThis.setTimeout(afterShellFocus, 0);
+  }
+}
+
 function sameTooltipPlacement(current: TooltipPlacement | null, next: TooltipPlacement): boolean {
   if (!current || current.mode !== next.mode) return false;
   if (current.mode === 'inline' || next.mode === 'inline') return true;
@@ -387,10 +416,13 @@ function SortControl({ value, onChange }: SortControlProps) {
 
 export function CatalogPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const pendingPriceBlurSourceRef = useRef<HTMLInputElement | null>(null);
+  const pendingPriceBlurTargetRef = useRef<HTMLElement | null>(null);
+  const pendingRouteFocusTargetRef = useRef<HTMLElement | null>(null);
   const search = searchParams.toString();
   const query = useMemo(() => parseCatalogQuery(new URLSearchParams(search)), [search]);
-  const { requestOptional } = useSession();
-  const request = useCallback<CatalogRequester>((options) => requestOptional(options), [requestOptional]);
+  const { requestPublic } = useSession();
+  const request = useCallback<CatalogRequester>((options) => requestPublic(options), [requestPublic]);
   const discovery = useCatalogDiscovery(query, request);
 
   useEffect(() => {
@@ -398,8 +430,36 @@ export function CatalogPage() {
     if (canonical !== search) setSearchParams(canonical, { replace: true });
   }, [query, search, setSearchParams]);
 
+  useEffect(() => {
+    const focusTarget = pendingRouteFocusTargetRef.current;
+    if (!focusTarget) return;
+    pendingRouteFocusTargetRef.current = null;
+    restoreBrowserSelectedFocus(focusTarget);
+  }, [search]);
+
   const navigate = useCallback((next: CatalogQuery) => {
-    setSearchParams(serializeCatalogQuery(next));
+    const blurSource = pendingPriceBlurSourceRef.current;
+    const relatedTarget = pendingPriceBlurTargetRef.current;
+    pendingPriceBlurSourceRef.current = null;
+    pendingPriceBlurTargetRef.current = null;
+
+    const commitNavigation = (focusTarget: HTMLElement | null) => {
+      pendingRouteFocusTargetRef.current = focusTarget;
+      setSearchParams(serializeCatalogQuery(next));
+    };
+    if (!blurSource) {
+      commitNavigation(null);
+      return;
+    }
+
+    globalThis.queueMicrotask(() => {
+      const settledTarget = document.activeElement instanceof HTMLElement
+        && document.activeElement !== document.body
+        && document.activeElement !== blurSource
+        ? document.activeElement
+        : relatedTarget;
+      commitNavigation(settledTarget);
+    });
   }, [setSearchParams]);
 
   const results = discovery.data;
@@ -408,7 +468,25 @@ export function CatalogPage() {
     : null;
 
   return (
-    <section className="catalog-page" aria-labelledby="catalog-page-title">
+    <section
+      className="catalog-page"
+      aria-labelledby="catalog-page-title"
+      onBlurCapture={(event) => {
+        const source = event.target;
+        if (!(source instanceof HTMLInputElement)
+          || (source.name !== 'min_price' && source.name !== 'max_price')) return;
+
+        const nextTarget = event.relatedTarget instanceof HTMLElement ? event.relatedTarget : null;
+        pendingPriceBlurSourceRef.current = source;
+        pendingPriceBlurTargetRef.current = nextTarget;
+        globalThis.setTimeout(() => {
+          if (pendingPriceBlurSourceRef.current === source) {
+            pendingPriceBlurSourceRef.current = null;
+            pendingPriceBlurTargetRef.current = null;
+          }
+        }, 0);
+      }}
+    >
       <div className="catalog-hero">
         <div className="catalog-hero__content">
           <h1 id="catalog-page-title">Master the Skills Shaping the <span className="catalog-hero__heading-break">Future</span></h1>

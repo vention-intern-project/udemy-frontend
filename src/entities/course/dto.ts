@@ -1,4 +1,4 @@
-import type { PageQueryDto, PaginationDto } from '../../shared/api';
+import type { PageQueryDto, PaginationDto } from '@shared/api';
 
 export type LessonTypeDto = 'video' | 'text' | 'pdf';
 

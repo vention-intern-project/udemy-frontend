@@ -16,12 +16,18 @@ import {
 } from '@features/catalog-discovery';
 import { Input } from '@shared/ui/primitives';
 import { useDensityMode } from '@shared/ui/theme';
-import { APP_ROUTE_BY_ID, routeForPath } from '../router/route-registry';
+import { APP_ROUTE_BY_ID, densityForPath, routeForPath } from '../router/route-registry';
+
+type NavigationItemVariant = 'browse-link' | 'signup-primary';
+type NavigationItemDesktopGroup = 'auth-actions';
+type MobileMenuFocusTarget = 'trigger' | 'main';
 
 interface NavigationItem {
   label: string;
   to: string;
   end?: boolean;
+  desktopGroup?: NavigationItemDesktopGroup;
+  variant?: NavigationItemVariant;
 }
 
 function navigationForSession(
@@ -30,9 +36,15 @@ function navigationForSession(
 ): NavigationItem[] {
   if (status.status !== 'authenticated') {
     return [
-      { label: 'Browse courses', to: '/', end: true },
-      { label: 'Sign up', to: '/signup', end: true },
-      { label: 'Log in', to: '/login', end: true },
+      { label: 'Browse courses', to: '/', end: true, variant: 'browse-link' },
+      { label: 'Log in', to: '/login', end: true, desktopGroup: 'auth-actions' },
+      {
+        label: 'Sign up',
+        to: '/signup',
+        end: true,
+        desktopGroup: 'auth-actions',
+        variant: 'signup-primary',
+      },
     ];
   }
   if (status.user.role === 'student') {
@@ -67,7 +79,11 @@ function NavigationLinks({ items, onNavigate }: {
         <li key={item.to}>
           <NavLink
             end={item.end}
-            className={({ isActive }) => isActive ? 'app-nav__link app-nav__link--active' : 'app-nav__link'}
+            className={({ isActive }) => [
+              'app-nav__link',
+              isActive ? 'app-nav__link--active' : null,
+              item.variant ? `app-nav__link--${item.variant}` : null,
+            ].filter(Boolean).join(' ')}
             onClick={(event) => {
               if (isCurrentTabNavigation(event)) onNavigate?.(item.to);
             }}
@@ -112,8 +128,8 @@ export function AppShell() {
   const catalogSearchListboxId = `catalog-search-history-${useId()}`;
   const currentLocation = `${location.pathname}${location.search}${location.hash}`;
   const previousLocationRef = useRef(currentLocation);
-  const currentRouteLocation = `${location.pathname}${location.hash}`;
-  const previousRouteLocationRef = useRef(currentRouteLocation);
+  const routeFocusIdentity = `${location.pathname}${location.search}`;
+  const previousRouteFocusIdentityRef = useRef(routeFocusIdentity);
   const courseRouteMatch = [
     APP_ROUTE_BY_ID['PAGE-011'].path,
     APP_ROUTE_BY_ID['PAGE-012'].path,
@@ -124,21 +140,52 @@ export function AppShell() {
   const layout = route?.layout ?? 'public';
   const isCatalogRoute = route?.id === 'PAGE-001';
   const isAnonymousCatalogRoute = isCatalogRoute && state.status !== 'authenticated';
+  const desktopPrimaryNavigation = navigation.filter((item) => item.desktopGroup !== 'auth-actions');
+  const desktopAuthActions = navigation.filter((item) => item.desktopGroup === 'auth-actions');
+  const hasDesktopAuthActions = desktopAuthActions.length > 0;
   const catalogDesktopPrimaryNavigation = isAnonymousCatalogRoute
-    ? navigation.filter((item) => item.label === 'Browse courses')
+    ? desktopPrimaryNavigation
     : navigation;
   const catalogDesktopAccountNavigation = isAnonymousCatalogRoute
-    ? [
-      ...navigation.filter((item) => item.label === 'Log in'),
-      ...navigation.filter((item) => item.label === 'Sign up'),
-    ]
+    ? desktopAuthActions
     : [];
-  const routeDensityMode = route?.layout === 'workspace' ? 'workspace' : 'marketplace';
+  const routeDensityMode = densityForPath(location.pathname);
   const documentTitle = route ? `${route.title} | LearnHub` : 'LearnHub';
 
   useLayoutEffect(() => {
     if (densityMode !== routeDensityMode) setDensityMode(routeDensityMode);
   }, [densityMode, routeDensityMode, setDensityMode]);
+
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    const root = document.documentElement;
+    const main = mainRef.current;
+    const syncAuthScrollbarOffset = () => {
+      const rootRect = root.getBoundingClientRect();
+      const hasRenderedRootBox = Number.isFinite(rootRect.left)
+        && Number.isFinite(rootRect.right)
+        && Number.isFinite(rootRect.width)
+        && rootRect.width > 0;
+      const signedOffset = hasRenderedRootBox
+        ? window.innerWidth / 2 - (rootRect.left + rootRect.right) / 2
+        : 0;
+      main?.style.setProperty(
+        '--auth-physical-scrollbar-offset',
+        `${Number.isFinite(signedOffset) ? signedOffset : 0}px`,
+      );
+    };
+
+    const directionObserver = new MutationObserver(syncAuthScrollbarOffset);
+    directionObserver.observe(root, { attributes: true, attributeFilter: ['dir'] });
+    window.addEventListener('resize', syncAuthScrollbarOffset);
+    syncAuthScrollbarOffset();
+    return () => {
+      window.removeEventListener('resize', syncAuthScrollbarOffset);
+      directionObserver.disconnect();
+      main?.style.removeProperty('--auth-physical-scrollbar-offset');
+    };
+  }, []);
 
   useEffect(() => {
     document.title = documentTitle;
@@ -160,16 +207,17 @@ export function AppShell() {
     if (previousLocationRef.current !== currentLocation) {
       setMobileOpen(false);
       const restoreCatalogSearchFocus = restoreCatalogSearchFocusRef.current;
-      const routeChanged = previousRouteLocationRef.current !== currentRouteLocation;
+      const routeChanged = previousRouteFocusIdentityRef.current !== routeFocusIdentity;
       restoreCatalogSearchFocusRef.current = false;
-      scheduleFocus(() => {
-        if (restoreCatalogSearchFocus) catalogSearchRef.current?.focus();
-        else if (routeChanged) mainRef.current?.focus();
-      });
+      if (restoreCatalogSearchFocus) {
+        scheduleFocus(() => catalogSearchRef.current?.focus());
+      } else if (routeChanged) {
+        scheduleFocus(() => mainRef.current?.focus());
+      }
       previousLocationRef.current = currentLocation;
-      previousRouteLocationRef.current = currentRouteLocation;
+      previousRouteFocusIdentityRef.current = routeFocusIdentity;
     }
-  }, [currentLocation, currentRouteLocation]);
+  }, [currentLocation, routeFocusIdentity]);
 
   function scheduleFocus(focus: () => void) {
     if (typeof globalThis.requestAnimationFrame === 'function') {
@@ -179,7 +227,7 @@ export function AppShell() {
     }
   }
 
-  function closeMobileMenu(focusTarget: 'trigger' | 'main') {
+  function closeMobileMenu(focusTarget: MobileMenuFocusTarget) {
     setMobileOpen(false);
     scheduleFocus(() => {
       if (focusTarget === 'trigger') menuButtonRef.current?.focus();
@@ -251,11 +299,35 @@ export function AppShell() {
         <div className="app-header__inner">
           <div className="app-header__catalog-start">
             <Link className="app-brand" to="/" aria-label="LearnHub home">
-              <span aria-hidden="true" className="app-brand__mark">L</span>
-              LearnHub
+              <svg
+                aria-hidden="true"
+                className="app-brand__mark"
+                focusable="false"
+                viewBox="0 0 32 32"
+              >
+                <rect className="app-brand__mark-outline" x="2" y="2" width="28" height="28" rx="6" />
+                <path
+                  className="app-brand__mark-book"
+                  d="M5.5 8.5c3.4.6 6.3 1.8 9.5 3.7v13.2c-3.2-1.9-6.4-3-9.5-3.4V8.5Zm21 0c-3.4.6-6.3 1.8-9.5 3.7v13.2c3.2-1.9 6.4-3 9.5-3.4V8.5Z"
+                />
+              </svg>
+              <span className="app-brand__wordmark">LearnHub</span>
             </Link>
-            <nav className="app-nav app-nav--desktop" aria-label="Primary navigation">
-              <NavigationLinks items={catalogDesktopPrimaryNavigation} />
+            <nav
+              className={hasDesktopAuthActions && !isAnonymousCatalogRoute
+                ? 'app-nav app-nav--desktop app-nav--desktop-split'
+                : 'app-nav app-nav--desktop'}
+              aria-label="Primary navigation"
+            >
+              <NavigationLinks items={isAnonymousCatalogRoute
+                ? catalogDesktopPrimaryNavigation
+                : desktopPrimaryNavigation}
+              />
+              {hasDesktopAuthActions && !isAnonymousCatalogRoute ? (
+                <div className="app-nav__auth-actions">
+                  <NavigationLinks items={desktopAuthActions} />
+                </div>
+              ) : null}
             </nav>
           </div>
           {isCatalogRoute ? (
@@ -352,7 +424,11 @@ export function AppShell() {
                 <NavigationLinks items={catalogDesktopAccountNavigation} />
               </nav>
             ) : null}
-            <div className="app-account">
+            <div className={state.status === 'authenticated'
+              ? state.user.role === 'instructor'
+                ? 'app-account app-account--instructor'
+                : 'app-account'
+              : 'app-account app-account--anonymous'}>
               {state.status === 'authenticated' ? (
                 <span title={state.user.email}>{state.user.name} - {state.user.role}</span>
               ) : null}
@@ -390,7 +466,7 @@ export function AppShell() {
           >
             <NavigationLinks
               items={navigation}
-              onNavigate={(to) => closeMobileMenu(to === currentLocation ? 'trigger' : 'main')}
+              onNavigate={(to) => closeMobileMenu(to === routeFocusIdentity ? 'trigger' : 'main')}
             />
           </nav>
         ) : null}

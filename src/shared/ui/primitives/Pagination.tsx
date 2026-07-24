@@ -1,5 +1,7 @@
 import type { CSSProperties, HTMLAttributes } from 'react';
 
+type PaginationDirectionDisplay = 'text' | 'arrows';
+
 export interface PaginationProps extends Omit<HTMLAttributes<HTMLElement>, 'onChange'> {
   currentPage: number;
   totalPages: number;
@@ -7,7 +9,7 @@ export interface PaginationProps extends Omit<HTMLAttributes<HTMLElement>, 'onCh
   label?: string;
   hasNext?: boolean;
   hasPrevious?: boolean;
-  directionDisplay?: 'text' | 'arrows';
+  directionDisplay?: PaginationDirectionDisplay;
 }
 
 type PageItem = number | 'ellipsis-start' | 'ellipsis-end';
