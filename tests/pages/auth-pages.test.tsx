@@ -384,6 +384,38 @@ describe('authentication pages', () => {
     expect(request).toHaveBeenCalledTimes(1);
   });
 
+  it('re-masks a revealed password while a failed login submission is disabled', async () => {
+    const pendingRequest = createDeferred<unknown>();
+    renderAuth('/login', async (options) => {
+      if (options.path !== '/login') throw new Error(`Unexpected path ${options.path}`);
+      return pendingRequest.promise;
+    });
+    const user = userEvent.setup();
+    await screen.findByRole('button', { name: 'Log in' });
+    await interact(() => user.type(screen.getByLabelText(/^Email/), 'learner@example.com'));
+    await interact(() => user.type(screen.getByLabelText(/^Password/), 'password'));
+    await interact(() => user.click(screen.getByRole('button', { name: 'Show password' })));
+    const password = screen.getByLabelText(/^Password/);
+    expect(password.getAttribute('type')).toBe('text');
+    expect(screen.getByRole('button', { name: 'Hide password' }).getAttribute('aria-pressed')).toBe('true');
+
+    await interact(() => user.click(screen.getByRole('button', { name: 'Log in' })));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Logging in...' }).hasAttribute('disabled')).toBe(true));
+    expect(password.getAttribute('type')).toBe('password');
+    const pendingReveal = screen.getByRole('button', { name: 'Show password' });
+    expect(pendingReveal.getAttribute('aria-pressed')).toBe('false');
+    expect(pendingReveal.hasAttribute('disabled')).toBe(true);
+
+    await act(async () => {
+      pendingRequest.reject(new ApiError({ kind: 'offline', status: null, message: 'private offline detail' }));
+      await Promise.resolve();
+    });
+    await screen.findByRole('alert');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Log in' }).hasAttribute('disabled')).toBe(false));
+    expect(password.getAttribute('type')).toBe('password');
+    expect(screen.getByRole('button', { name: 'Show password' }).getAttribute('aria-pressed')).toBe('false');
+  });
+
   it.each([
     ['signup', 'resolve', '/signup', '/signup?race=destination', '/signup', 'Create account', 'Creating account...'],
     ['signup', 'reject', '/signup', '/signup?race=destination', '/signup', 'Create account', 'Creating account...'],

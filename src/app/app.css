@@ -390,13 +390,13 @@ button:focus-visible,
   }
 
   .auth-form__role-picker::picker-icon {
-    color: var(--action-primary-bg);
+    color: var(--border-default);
     transition: color var(--duration-fast) var(--easing-standard),
       rotate var(--duration-fast) var(--easing-standard);
   }
 
   .auth-form__role-picker:open::picker-icon {
-    color: var(--action-primary-bg-pressed);
+    color: var(--text-secondary);
     rotate: 180deg;
   }
 
@@ -423,12 +423,12 @@ button:focus-visible,
   }
 
   .auth-form__role-picker option:checked {
-    color: var(--action-primary-fg);
-    background: var(--action-primary-bg);
+    color: var(--text-primary);
+    background: var(--state-disabled-bg);
   }
 
   .auth-form__role-picker option::checkmark {
-    color: var(--action-primary-fg);
+    color: var(--text-secondary);
   }
 }
 

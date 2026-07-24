@@ -400,6 +400,26 @@ describe('application routing and guards', () => {
     await waitFor(() => expect(trigger).toBe(document.activeElement));
   });
 
+  it('restores the mobile trigger after removing a hash from the current pathname and search', async () => {
+    renderApp('/instructor/courses#mobile-menu-focus', 'instructor');
+    await screen.findByRole('heading', { level: 1, name: 'Instructor courses' });
+    const user = userEvent.setup();
+    const trigger = screen.getByRole('button', { name: 'Open navigation' });
+
+    await act(async () => {
+      await user.click(trigger);
+    });
+    const currentRouteLink = within(screen.getByRole('navigation', { name: 'Mobile navigation' }))
+      .getByRole('link', { name: 'Instructor courses' });
+    await act(async () => {
+      await user.click(currentRouteLink);
+    });
+
+    await waitFor(() => expect(screen.getByLabelText('current location').textContent).toBe('/instructor/courses'));
+    await waitFor(() => expect(screen.queryByRole('navigation', { name: 'Mobile navigation' })).toBe(null));
+    await waitFor(() => expect(trigger).toBe(document.activeElement));
+  });
+
   it('renders product copy without workflow or internal page metadata', async () => {
     const view = renderApp('/login');
     await screen.findByRole('heading', { level: 1, name: 'Log in' });

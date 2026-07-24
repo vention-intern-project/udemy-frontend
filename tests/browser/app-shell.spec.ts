@@ -559,7 +559,7 @@ test('supports keyboard-operated mobile navigation and focus restoration', async
   const assertRuntimeClean = monitorRuntime(page);
   await mockAuthenticatedSession(page, 'instructor');
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/instructor/courses');
+  await page.goto('/instructor/courses#mobile-menu-focus');
   await expect(page.getByRole('heading', { level: 1, name: 'Instructor courses' })).toBeVisible();
   const brand = page.getByRole('link', { name: 'LearnHub home' });
   const profile = page.getByText('Indira - instructor', { exact: true });
@@ -591,6 +591,7 @@ test('supports keyboard-operated mobile navigation and focus restoration', async
   await page.keyboard.press('Enter');
   await expect(page.getByRole('navigation', { name: 'Mobile navigation' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Open navigation' })).toBeFocused();
+  await expect(page).toHaveURL(/\/instructor\/courses$/);
   await expectNoHorizontalOverflow(page);
 
   await page.setViewportSize({ width: 320, height: 740 });

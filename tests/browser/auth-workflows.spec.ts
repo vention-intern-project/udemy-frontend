@@ -331,6 +331,8 @@ test('signup covers keyboard validation, safe 422/duplicate/offline states, pend
   await expect(page.getByRole('button', { name: 'Creating account...' })).toBeDisabled();
   await expect(page.getByLabel(/^Email/)).toBeDisabled();
   await expect.poll(() => attempts).toBe(4);
+  await expect(page.getByLabel(/^Password/)).toHaveAttribute('type', 'password');
+  await expect(page.getByRole('button', { name: 'Show password' }).first()).toHaveAttribute('aria-pressed', 'false');
   const pendingRevealStyles = async () => page.getByRole('button', { name: 'Show password' }).first().evaluate((button) => {
     const resolve = (property: 'color' | 'background' | 'borderColor', token: string) => {
       const probe = document.createElement('span');
@@ -363,6 +365,36 @@ test('signup covers keyboard validation, safe 422/duplicate/offline states, pend
   await expect(page).toHaveURL(/\/learning$/);
   await expect(page.getByRole('heading', { name: 'My learning' })).toBeVisible();
   expect(attempts).toBe(4);
+});
+
+test('keeps a re-masked password private after a pending login re-enables the same form', async ({ page }) => {
+  allowHttpStatuses(page, 401);
+  const loginGate = createDeferred();
+  await page.route('**/login', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    await loginGate.promise;
+    await fulfillJson(route, 401, { detail: 'HOSTILE_LOGIN_CREDENTIAL_DETAIL' });
+  });
+
+  await page.goto('/login');
+  await page.getByLabel(/^Email/).fill('learner@example.com');
+  await page.getByLabel(/^Password/).fill('password');
+  await page.getByRole('button', { name: 'Show password' }).click();
+  const password = page.getByLabel(/^Password/);
+  await expect(password).toHaveAttribute('type', 'text');
+  await expect(page.getByRole('button', { name: 'Hide password' })).toHaveAttribute('aria-pressed', 'true');
+
+  await page.getByRole('button', { name: 'Log in' }).click();
+  await expect(page.getByRole('button', { name: 'Logging in...' })).toBeDisabled();
+  await expect(password).toHaveAttribute('type', 'password');
+  await expect(page.getByRole('button', { name: 'Show password' })).toHaveAttribute('aria-pressed', 'false');
+
+  loginGate.resolve();
+  await expect(page.getByRole('alert')).toContainText('email or password');
+  await expect(page.getByRole('button', { name: 'Log in' })).toBeEnabled();
+  await expect(password).toHaveAttribute('type', 'password');
+  await expect(page.getByRole('button', { name: 'Show password' })).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('body')).not.toContainText('HOSTILE_LOGIN_CREDENTIAL_DETAIL');
 });
 
 test('keeps the Role control native while progressively applying purple picker and reveal states', async ({ page }) => {

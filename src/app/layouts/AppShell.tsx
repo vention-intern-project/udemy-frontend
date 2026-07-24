@@ -74,7 +74,6 @@ export function AppShell() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const mainRef = useRef<HTMLElement>(null);
-  const currentLocation = `${location.pathname}${location.search}${location.hash}`;
   const routeFocusIdentity = `${location.pathname}${location.search}`;
   const previousRouteFocusIdentityRef = useRef(routeFocusIdentity);
   const courseRouteMatch = [
@@ -222,7 +221,7 @@ export function AppShell() {
           >
             <NavigationLinks
               items={navigation}
-              onNavigate={(to) => closeMobileMenu(to === currentLocation ? 'trigger' : 'main')}
+              onNavigate={(to) => closeMobileMenu(to === routeFocusIdentity ? 'trigger' : 'main')}
             />
           </nav>
         ) : null}

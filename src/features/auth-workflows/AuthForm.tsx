@@ -56,6 +56,9 @@ export function PasswordField({
   onChange(value: string): void;
 }) {
   const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    if (disabled) setVisible(false);
+  }, [disabled]);
   return (
     <div className="auth-form__password">
       <Input
