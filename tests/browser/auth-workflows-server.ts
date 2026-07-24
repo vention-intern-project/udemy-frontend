@@ -4,6 +4,7 @@ export default async function startAuthWorkflowsServer() {
   const server = await createServer({
     clearScreen: false,
     logLevel: 'warn',
+    envFile: false,
     appType: 'spa',
     server: { host: '127.0.0.1', port: 4175, strictPort: true },
   });

@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import {
+  act, cleanup, render, screen, waitFor, within,
+} from '@testing-library/react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
@@ -36,9 +38,14 @@ function store(token: string | null): AccessTokenStore {
 
 function clientFor(role: UserRoleDto): ApiClient {
   return {
-    request: async <TResponse, TBody = unknown>(_options: ApiRequestOptions<TBody>) => (
-      profile(role) as TResponse
-    ),
+    request: async <TResponse, TBody = unknown>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ): Promise<TResponse> => {
+      const value: unknown = profile(role);
+      return 'decode' in options && options.decode
+        ? options.decode(value)
+        : value as TResponse;
+    },
   };
 }
 
@@ -117,6 +124,8 @@ function renderApp(
 
 afterEach(() => {
   cleanup();
+  globalThis.localStorage.clear();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -165,20 +174,63 @@ describe('application routing and guards', () => {
 
   it('shows only guest navigation to an anonymous user', async () => {
     renderApp('/');
-    await screen.findByRole('heading', { level: 1, name: 'Course catalog' });
+    await screen.findByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' });
+    const catalogSearch = screen.getByRole('search', { name: 'Course catalog search' });
+    const headerSearch = within(catalogSearch).getByLabelText('Search courses');
+    expect(headerSearch.getAttribute('placeholder'))
+      .toBe('Search courses, topics, or instructors');
+    const label = catalogSearch.querySelector('label.ui-field__label');
+    expect(label?.querySelector('.ui-sr-only')?.textContent).toBe('Search courses');
+    const icon = catalogSearch.querySelector('svg.app-catalog-search__icon');
+    expect(icon?.getAttribute('aria-hidden')).toBe('true');
+    expect(icon?.getAttribute('focusable')).toBe('false');
+    expect(icon?.getAttribute('role')).toBe(null);
+    expect(within(catalogSearch).queryByRole('button', { name: 'Search' })).toBeNull();
+    expect(headerSearch.getAttribute('role')).toBe('combobox');
+    expect(headerSearch.getAttribute('aria-autocomplete')).toBe('list');
+    expect(headerSearch.getAttribute('autocomplete')).toBe('off');
+    expect(headerSearch.getAttribute('aria-expanded')).toBe('false');
+    expect(headerSearch.getAttribute('aria-controls')).toBe(null);
     const navigation = screen.getByRole('navigation', { name: 'Primary navigation' });
-    const links = within(navigation).getAllByRole('link');
-    expect(links.map((link) => link.textContent)).toEqual(['Browse courses', 'Log in', 'Sign up']);
-    expect(within(navigation).getByRole('link', { name: 'Browse courses' }).className)
-      .toContain('app-nav__link--browse-link');
-    expect(within(navigation).getByRole('link', { name: 'Sign up' }).className)
-      .toContain('app-nav__link--signup-primary');
+    const browse = within(navigation).getByRole('link', { name: 'Browse courses' });
+    expect(browse).toBeTruthy();
+    expect(browse.className).toContain('app-nav__link--browse-link');
+    const accountNavigation = screen.getByRole('navigation', { name: 'Account navigation' });
+    const logIn = within(accountNavigation).getByRole('link', { name: 'Log in' });
+    const signUp = within(accountNavigation).getByRole('link', { name: 'Sign up' });
+    expect(logIn.getAttribute('href')).toBe('/login');
+    expect(signUp.getAttribute('href')).toBe('/signup');
+    expect(browse.getAttribute('aria-current')).toBe('page');
+    expect(logIn.getAttribute('aria-current')).toBe(null);
+    expect(signUp.getAttribute('aria-current')).toBe(null);
+    expect(signUp.className).toContain('app-nav__link--signup-primary');
+    const header = catalogSearch.closest('header');
+    expect(header).toBeTruthy();
+    expect(header?.classList.contains('app-header--anonymous-catalog')).toBe(true);
+    const headerInner = header!.querySelector('.app-header__inner');
+    expect(Array.from(headerInner?.children ?? []).map((child) => child.className)).toEqual([
+      'app-header__catalog-start',
+      'app-catalog-search',
+      'app-header__catalog-end',
+    ]);
+    expect(headerInner?.querySelector('.app-header__catalog-start')?.contains(navigation)).toBe(true);
+    expect(headerInner?.querySelector('.app-header__catalog-end')?.contains(accountNavigation)).toBe(true);
+    expect(Array.from(header!.querySelectorAll('a, input')).map((element) => {
+      if (element instanceof HTMLInputElement) return element.getAttribute('aria-label') ?? element.name;
+      return element.getAttribute('aria-label') ?? element.textContent?.trim();
+    })).toEqual(['LearnHub home', 'Browse courses', 'search_query', 'Log in', 'Sign up']);
     expect(within(navigation).queryByRole('link', { name: 'Cart' })).toBe(null);
     expect(within(navigation).queryByRole('link', { name: 'Instructor courses' })).toBe(null);
   });
 
+  it('does not render the catalog search on a non-catalog route', async () => {
+    renderApp('/login');
+    await screen.findByRole('heading', { level: 1, name: 'Log in' });
+    expect(screen.queryByRole('search', { name: 'Course catalog search' })).toBe(null);
+  });
+
   it.each([
-    ['anonymous', '/', undefined, 'Course catalog'],
+    ['anonymous', '/', undefined, 'Master the Skills Shaping the Future'],
     ['authenticated', '/learning', 'student', 'My learning'],
   ] as const)('renders one complete accessible brand in the %s header', async (
     _session,
@@ -232,13 +284,57 @@ describe('application routing and guards', () => {
     renderApp('/learning', 'student');
     await screen.findByRole('heading', { level: 1, name: 'My learning' });
     await waitFor(() => expect(document.documentElement.getAttribute('data-density')).toBe('workspace'));
+    await waitFor(() => expect(document.title).toBe('My learning | LearnHub'));
 
     const user = userEvent.setup();
     await act(async () => {
       await user.click(screen.getByRole('link', { name: 'LearnHub home' }));
     });
-    await screen.findByRole('heading', { level: 1, name: 'Course catalog' });
+    await screen.findByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' });
     await waitFor(() => expect(document.documentElement.getAttribute('data-density')).toBe('marketplace'));
+    await waitFor(() => expect(document.title).toBe('Course catalog | LearnHub'));
+    await waitFor(() => expect(screen.getByRole('main')).toBe(document.activeElement));
+  });
+
+  it('removes the recent-search outside-pointer listener when the open draft has zero matches', async () => {
+    globalThis.localStorage.setItem(
+      'learnhub.catalog-search-history',
+      JSON.stringify(['React Basics', 'TypeScript']),
+    );
+    const addEventListener = vi.spyOn(document, 'addEventListener');
+    const removeEventListener = vi.spyOn(document, 'removeEventListener');
+    renderApp('/');
+    await screen.findByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' });
+    const user = userEvent.setup();
+    const input = screen.getByRole('combobox', { name: 'Search courses' });
+
+    await act(async () => { await user.click(input); });
+    const listbox = await screen.findByRole('listbox', { name: 'Recent searches' });
+    expect(input.getAttribute('aria-controls')).toBe(listbox.id);
+    const pointerListener = [...addEventListener.mock.calls]
+      .reverse()
+      .find(([type]) => type === 'pointerdown')?.[1];
+    expect(pointerListener).toBeTruthy();
+
+    await act(async () => {
+      await user.clear(input);
+      await user.type(input, 'no matching history');
+    });
+    await waitFor(() => expect(screen.queryByRole('listbox', { name: 'Recent searches' })).toBeNull());
+    expect(input.getAttribute('aria-expanded')).toBe('false');
+    expect(input.getAttribute('aria-controls')).toBeNull();
+    await waitFor(() => expect(removeEventListener).toHaveBeenCalledWith('pointerdown', pointerListener, true));
+  });
+
+  it.each([
+    ['/LOGIN/', undefined, 'Log in | LearnHub'],
+    ['/Learning/', 'student' as const, 'My learning | LearnHub'],
+    ['/instructor/courses/ABC/edit/', 'instructor' as const, 'Edit course | LearnHub'],
+  ])('applies Router-parity metadata and title for %s', async (path, role, expectedTitle) => {
+    renderApp(path, role);
+    await waitFor(() => expect(document.title).toBe(expectedTitle));
+    expect(document.querySelector('.app-shell')?.getAttribute('data-layout'))
+      .toBe(role ? 'workspace' : 'auth');
   });
 
   it.each([
@@ -306,7 +402,7 @@ describe('application routing and guards', () => {
 
   it('gives admin no invented workspace and redirects guest-only routes home', async () => {
     renderApp('/login', 'admin');
-    await screen.findByRole('heading', { level: 1, name: 'Course catalog' });
+    await screen.findByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' });
     expect(screen.getByLabelText('current location').textContent).toBe('/');
     const navigation = screen.getByRole('navigation', { name: 'Primary navigation' });
     expect(within(navigation).queryAllByRole('link')).toHaveLength(0);
@@ -315,11 +411,12 @@ describe('application routing and guards', () => {
   it('renders a not-found state for unknown routes', async () => {
     renderApp('/does-not-exist');
     expect(await screen.findByRole('heading', { level: 1, name: 'Page not found' })).toBeTruthy();
+    await waitFor(() => expect(document.title).toBe('LearnHub'));
   });
 
   it('exposes the skip link and semantic landmarks', async () => {
     renderApp('/');
-    await screen.findByRole('heading', { level: 1, name: 'Course catalog' });
+    await screen.findByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' });
     expect(screen.getByRole('link', { name: 'Skip to main content' }).getAttribute('href'))
       .toBe('#main-content');
     expect(screen.getByRole('banner')).toBeTruthy();
@@ -335,7 +432,7 @@ describe('application routing and guards', () => {
     });
     const view = renderApp('/', undefined, { focusNavigationProbe: true });
     const user = userEvent.setup();
-    await screen.findByRole('heading', { level: 1, name: 'Course catalog' });
+    await screen.findByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' });
 
     const firstTarget = screen.getByLabelText('Focus fragment target');
     const secondTarget = screen.getByLabelText('Second fragment target');

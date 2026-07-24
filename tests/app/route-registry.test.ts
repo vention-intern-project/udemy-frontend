@@ -44,6 +44,25 @@ describe('application route registry', () => {
     expect(densityForPath('/unknown')).toBe('marketplace');
   });
 
+  it.each([
+    ['/LOGIN', 'PAGE-004'],
+    ['/login/', 'PAGE-004'],
+    ['/Learning/', 'PAGE-008'],
+    ['/instructor/COURSES', 'PAGE-010'],
+    ['/instructor/courses/ABC/edit/', 'PAGE-011'],
+    ['/instructor/courses/a%2Fb/enrollments', 'PAGE-012'],
+  ] as const)('matches installed Router semantics for %s', (pathname, expectedId) => {
+    expect(routeForPath(pathname)?.id).toBe(expectedId);
+  });
+
+  it.each([
+    '/login/help',
+    '/learning/enrollments/42/extra',
+    '/instructor/courses/42',
+  ])('keeps exact-ended nonmatches for %s', (pathname) => {
+    expect(routeForPath(pathname)).toBeUndefined();
+  });
+
   it('uses React Router semantics for canonical, case, trailing-slash, and parameter variants', () => {
     for (const route of APP_ROUTES) {
       const canonical = route.path.replace(/:[^/]+/g, 'Example-42');

@@ -236,6 +236,9 @@
 }
 .ui-pagination__button[aria-current='page'] { color: var(--action-primary-fg); background: var(--action-primary-bg); border-color: var(--action-primary-bg); }
 .ui-pagination__button:disabled { color: var(--state-disabled-text); background: var(--state-disabled-bg); cursor: not-allowed; }
+.ui-pagination__button--direction { background: transparent; border-width: 0; }
+.ui-pagination__button--direction:disabled { background: transparent; border-width: 0; }
+.ui-pagination__button--direction:not(:disabled):hover { color: var(--action-primary-bg); }
 .ui-pagination__ellipsis { min-width: var(--control-height-sm); text-align: center; }
 
 @media (prefers-reduced-motion: reduce) {

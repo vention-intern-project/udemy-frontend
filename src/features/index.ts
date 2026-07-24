@@ -3,3 +3,4 @@
 // Forbidden imports: app, pages, widgets
 export * from './auth-session';
 export * from './auth-workflows';
+export * from './catalog-discovery';

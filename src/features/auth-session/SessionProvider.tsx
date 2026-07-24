@@ -36,13 +36,13 @@ export interface SessionContextValue {
   acceptAccessToken(token: string): void;
   clearSession(): void;
   requestPublic<TResponse, TBody = unknown>(
-    options: ApiRequestOptions<TBody, TResponse>,
+    options: ApiRequestOptions<TBody, NoInfer<TResponse>>,
   ): Promise<TResponse>;
   requestRequired<TResponse, TBody = unknown>(
-    options: ApiRequestOptions<TBody, TResponse>,
+    options: ApiRequestOptions<TBody, NoInfer<TResponse>>,
   ): Promise<TResponse>;
   requestOptional<TResponse, TBody = unknown>(
-    options: ApiRequestOptions<TBody, TResponse>,
+    options: ApiRequestOptions<TBody, NoInfer<TResponse>>,
   ): Promise<TResponse>;
 }
 
@@ -173,7 +173,7 @@ export function SessionProvider({
   }, [tokenStore]);
 
   const requestRequired = useCallback(async <TResponse, TBody = unknown>(
-    options: ApiRequestOptions<TBody, TResponse>,
+    options: ApiRequestOptions<TBody, NoInfer<TResponse>>,
   ): Promise<TResponse> => {
     const generation = generationRef.current;
     const token = tokenStore.get();
@@ -188,7 +188,7 @@ export function SessionProvider({
   }, [clearSessionForSnapshot, client, tokenStore]);
 
   const requestOptional = useCallback(async <TResponse, TBody = unknown>(
-    options: ApiRequestOptions<TBody, TResponse>,
+    options: ApiRequestOptions<TBody, NoInfer<TResponse>>,
   ): Promise<TResponse> => {
     const generation = generationRef.current;
     const token = tokenStore.get();
@@ -204,7 +204,7 @@ export function SessionProvider({
   }, [clearSessionForSnapshot, client, tokenStore]);
 
   const requestPublic = useCallback(<TResponse, TBody = unknown>(
-    options: ApiRequestOptions<TBody, TResponse>,
+    options: ApiRequestOptions<TBody, NoInfer<TResponse>>,
   ): Promise<TResponse> => client.request<TResponse, TBody>({ ...options, authPolicy: 'public' }), [client]);
 
   const value = useMemo<SessionContextValue>(() => ({

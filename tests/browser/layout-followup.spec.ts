@@ -10,6 +10,7 @@ import {
   type VisualQualityRuntime,
   type VisualScenarioEvidence,
 } from './support/visual-quality';
+import { installCatalogFixture } from './support/catalog-fixture';
 
 interface RectGeometry {
   left: number;
@@ -37,12 +38,16 @@ interface LayoutGeometry {
   clippedControls: string[];
 }
 
-interface CatalogSpacing {
-  padding: number;
-  panelTopToHeading: number;
-  headingToDescription: number;
-  descriptionToNote: number;
-  noteToPanelBottom: number;
+interface CatalogGeometry {
+  hero: RectGeometry;
+  heroHeight: number;
+  titleLeft: number;
+  titleTop: number;
+  descriptionGap: number;
+  content: RectGeometry;
+  contentPaddingLeft: number;
+  contentPaddingRight: number;
+  results: RectGeometry;
 }
 
 interface PasswordFieldGeometry {
@@ -80,6 +85,7 @@ test.beforeEach(async ({ page }, testInfo) => {
     capabilityFiles,
     command: directCommand,
   }));
+  await installCatalogFixture(page);
 });
 
 test.afterEach(async ({ page }) => {
@@ -123,7 +129,7 @@ async function captureLayout(page: Page): Promise<LayoutGeometry> {
     };
     const header = document.querySelector('.app-header__inner');
     const main = document.querySelector('.app-main');
-    const panel = document.querySelector('.auth-form, .app-placeholder');
+    const panel = document.querySelector('.auth-form, .app-placeholder, .catalog-page__discovery-layout');
     if (!header || !main || !panel) throw new Error('Layout geometry targets are unavailable');
     const panelStyle = getComputedStyle(panel);
     const heading = panel.querySelector('.auth-form__heading');
@@ -189,23 +195,39 @@ async function captureStateLayout(page: Page): Promise<StateLayoutGeometry> {
   });
 }
 
-async function captureCatalogSpacing(page: Page): Promise<CatalogSpacing> {
-  return page.locator('.app-placeholder').evaluate((panel) => {
-    const heading = panel.querySelector('h1');
-    const paragraphs = panel.querySelectorAll('p');
-    const description = paragraphs[0];
-    const note = panel.querySelector('.app-placeholder__note');
-    if (!heading || !description || !note) throw new Error('Catalog spacing targets are unavailable');
-    const panelRect = panel.getBoundingClientRect();
+async function captureCatalogGeometry(page: Page): Promise<CatalogGeometry> {
+  return page.locator('.catalog-page').evaluate((catalog) => {
+    const rect = (element: Element): RectGeometry => {
+      const value = element.getBoundingClientRect();
+      return {
+        left: value.left,
+        right: value.right,
+        width: value.width,
+        centerX: (value.left + value.right) / 2,
+      };
+    };
+    const hero = catalog.querySelector('.catalog-hero');
+    const heading = hero?.querySelector('h1');
+    const description = hero?.querySelector('p');
+    const content = catalog.querySelector('.catalog-page__content');
+    const results = content?.querySelector('.catalog-page__discovery-layout');
+    if (!hero || !heading || !description || !content || !results) {
+      throw new Error('Catalog geometry targets are unavailable');
+    }
+    const heroRect = hero.getBoundingClientRect();
     const headingRect = heading.getBoundingClientRect();
     const descriptionRect = description.getBoundingClientRect();
-    const noteRect = note.getBoundingClientRect();
+    const contentStyle = getComputedStyle(content);
     return {
-      padding: Number.parseFloat(getComputedStyle(panel).paddingLeft),
-      panelTopToHeading: headingRect.top - panelRect.top,
-      headingToDescription: descriptionRect.top - headingRect.bottom,
-      descriptionToNote: noteRect.top - descriptionRect.bottom,
-      noteToPanelBottom: panelRect.bottom - noteRect.bottom,
+      hero: rect(hero),
+      heroHeight: heroRect.height,
+      titleLeft: headingRect.left,
+      titleTop: headingRect.top - heroRect.top,
+      descriptionGap: descriptionRect.top - headingRect.bottom,
+      content: rect(content),
+      contentPaddingLeft: Number.parseFloat(contentStyle.paddingLeft),
+      contentPaddingRight: Number.parseFloat(contentStyle.paddingRight),
+      results: rect(results),
     };
   });
 }
@@ -280,7 +302,7 @@ function expectCleanStateLayout(geometry: StateLayoutGeometry, width: number) {
 }
 
 const routeCases = [
-  { path: '/', heading: 'Course catalog', submitName: null, firstInvalidLabel: null },
+  { path: '/', heading: 'Master the Skills Shaping the Future', submitName: null, firstInvalidLabel: null },
   { path: '/login', heading: 'Log in', submitName: 'Log in', firstInvalidLabel: /^Email/ },
   { path: '/signup', heading: 'Create account', submitName: 'Create account', firstInvalidLabel: /^Email/ },
   { path: '/forgot-password', heading: 'Forgot password', submitName: 'Continue', firstInvalidLabel: /^Email/ },
@@ -409,17 +431,23 @@ for (const width of [320, 390, 768, 1280, 1440]) {
     for (const routeCase of routeCases) {
       await page.goto(routeCase.path);
       await expect(page.getByRole('heading', { level: 1, name: routeCase.heading })).toBeVisible();
+      if (routeCase.path === '/') {
+        await expect(page.getByRole('heading', { level: 2, name: 'Found 1 course' })).toBeVisible();
+      }
       const normal = await captureLayout(page);
       expectCleanLayout(normal, width);
       routeCenters.push(normal.panel.centerX);
 
       if (routeCase.path === '/') {
-        const spacing = await captureCatalogSpacing(page);
-        expect(spacing.padding).toBe(32);
-        expect(spacing.panelTopToHeading).toBe(41);
-        expect(spacing.headingToDescription).toBe(16);
-        expect(spacing.descriptionToNote).toBe(24);
-        expect(spacing.noteToPanelBottom).toBe(47);
+        const geometry = await captureCatalogGeometry(page);
+        expect(Math.abs(geometry.hero.left)).toBeLessThanOrEqual(1);
+        expect(Math.abs(geometry.hero.right - width)).toBeLessThanOrEqual(1);
+        expect(geometry.heroHeight).toBeCloseTo(320, 0);
+        expect(geometry.titleTop).toBe(width >= 768 ? 84 : 48);
+        expect(geometry.descriptionGap).toBe(12);
+        expect(Math.abs(geometry.results.left - geometry.content.left - geometry.contentPaddingLeft)).toBeLessThanOrEqual(1);
+        expect(Math.abs(geometry.content.right - geometry.results.right - geometry.contentPaddingRight)).toBeLessThanOrEqual(1);
+        expect(Math.abs(geometry.titleLeft - geometry.results.left)).toBeLessThanOrEqual(1);
       }
 
       if (routeCase.submitName && routeCase.firstInvalidLabel) {
@@ -562,6 +590,7 @@ for (const width of [320, 390]) {
     });
     await page.setViewportSize({ width, height: 600 });
     await page.goto('/');
+    await expect(page.getByRole('heading', { level: 2, name: 'Found 1 course' })).toBeVisible();
     const closed = await captureLayout(page);
     expectCleanLayout(closed, width);
 
@@ -600,6 +629,7 @@ test('mobile navigation yields to desktop navigation at the 768px transition', a
   });
   await page.setViewportSize({ width: 390, height: 600 });
   await page.goto('/');
+  await expect(page.getByRole('heading', { level: 2, name: 'Found 1 course' })).toBeVisible();
   const trigger = page.getByRole('button', { name: 'Open navigation', exact: true });
   await trigger.focus();
   await page.keyboard.press('Enter');
@@ -710,7 +740,11 @@ for (const width of [320, 390, 768, 1280, 1440]) {
     await expect(retry).toBeFocused();
     expect(await retry.evaluate((button) => button.matches(':focus-visible'))).toBe(true);
     await page.keyboard.press('Enter');
-    await expect(page.getByRole('heading', { level: 1, name: 'Course catalog' })).toBeVisible();
+    await expect(page.getByRole('heading', {
+      level: 1,
+      name: 'Master the Skills Shaping the Future',
+    })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 2, name: 'Found 1 course' })).toBeVisible();
     if (width < 768) {
       await expect(page.getByRole('button', { name: 'Open navigation', exact: true })).toBeVisible();
       await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toHaveCount(0);

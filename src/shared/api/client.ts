@@ -66,6 +66,14 @@ function shouldRetry(method: ApiMethod, error: ApiError, attempt: number, maxAtt
   return error.kind === 'offline' || error.status === 500;
 }
 
+function responseDecoder<TBody, TResponse>(
+  options: ApiRequestOptions<TBody, TResponse>,
+): ((value: unknown) => TResponse) | undefined {
+  return 'decode' in options
+    ? options.decode as ((value: unknown) => TResponse) | undefined
+    : undefined;
+}
+
 function normalizeContentType(headerValue: string | null, blob: Blob): string | null {
   const contentType = (headerValue ?? blob.type).split(';', 1)[0].trim().toLowerCase();
   return contentType === '' ? null : contentType;
@@ -195,7 +203,7 @@ export function createApiClient(config: ApiClientConfig = {}): ApiClient {
           return await parseSuccess<TResponse>(
             response,
             options.responseType ?? 'json',
-            options.decode,
+            responseDecoder(options),
           );
         } catch (error) {
           throw new ApiError({

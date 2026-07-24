@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
+import { installCatalogFixture } from './support/catalog-fixture';
 
 interface RuntimeEvidence {
   pageErrors: string[];
@@ -21,6 +22,7 @@ test.beforeEach(async ({ page }) => {
   page.on('console', (message) => {
     if (message.type() === 'error') evidence.consoleErrors.push(message.text());
   });
+  await installCatalogFixture(page);
 });
 
 test.afterEach(async ({ page }) => {
@@ -165,9 +167,12 @@ for (const width of [320, 390, 768, 1280]) {
 
     await page.getByRole('link', { name: 'LearnHub home' }).click();
     await expect(page).toHaveURL(/\/$/);
-    const catalogPanel = page.getByRole('main').locator('section').filter({
-      has: page.getByRole('heading', { name: 'Course catalog' }),
-    });
+    await expect(page.getByRole('heading', {
+      level: 1,
+      name: 'Master the Skills Shaping the Future',
+    })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 2, name: 'Found 1 course' })).toBeVisible();
+    const catalogPanel = page.locator('.catalog-page__content');
     const catalogCenterX = await getPanelCenterX(catalogPanel);
     await expectNoHorizontalOverflow(page);
 

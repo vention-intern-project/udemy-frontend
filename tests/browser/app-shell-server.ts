@@ -4,6 +4,7 @@ export default async function startAppShellServer() {
   const server = await createServer({
     clearScreen: false,
     logLevel: 'warn',
+    envFile: false,
     appType: 'spa',
     server: {
       host: '127.0.0.1',

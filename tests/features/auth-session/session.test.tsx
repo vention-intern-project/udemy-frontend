@@ -42,13 +42,17 @@ function tokenStore(initial: string | null): AccessTokenStore & { value: string 
   };
 }
 
-function clientFrom(handler: (options: ApiRequestOptions) => Promise<unknown>): ApiClient {
+type TestApiRequestOptions = ApiRequestOptions<unknown, unknown>;
+
+function clientFrom(handler: (options: TestApiRequestOptions) => Promise<unknown>): ApiClient {
   return {
     request: async <TResponse, TBody = unknown>(
       options: ApiRequestOptions<TBody, TResponse>,
-    ) => {
+    ): Promise<TResponse> => {
       const value = await handler(options);
-      return options.decode ? options.decode(value) : value as TResponse;
+      return 'decode' in options && options.decode
+        ? options.decode(value)
+        : value as TResponse;
     },
   };
 }
@@ -157,6 +161,31 @@ describe('SessionProvider', () => {
     expect(screen.getByText('+10000000000')).toBeTruthy();
     expect(request).toHaveBeenCalledTimes(1);
     expect(request.mock.calls[0]?.[0]).toMatchObject({ path: '/me' });
+    expect((request.mock.calls[0]?.[0] as TestApiRequestOptions).decode)
+      .toEqual(expect.any(Function));
+  });
+
+  it('rejects malformed successful /me data without authenticating or clearing the token', async () => {
+    const store = tokenStore('potentially-valid-token');
+    const fetchImplementation = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+      .mockResolvedValue(new Response(
+        JSON.stringify({ role: 'student' }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ));
+    render(
+      <SessionProvider
+        apiBaseUrl="https://api.learnhub.test"
+        fetchImplementation={fetchImplementation}
+        tokenStore={store}
+      >
+        <SessionStatus />
+      </SessionProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByLabelText('session status').textContent).toBe('error'));
+    expect(screen.getByLabelText('session role').textContent).toBe('none');
+    expect(store.value).toBe('potentially-valid-token');
+    expect(fetchImplementation).toHaveBeenCalledTimes(1);
   });
 
   it('does not establish a session from a malformed successful /me payload', async () => {

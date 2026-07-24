@@ -187,6 +187,62 @@ describe('fetch API client', () => {
     });
   });
 
+  it('decodes successful JSON from unknown before returning it', async () => {
+    const decode = vi.fn((value: unknown) => {
+      expect(value).toEqual({ id: 7 });
+      return { courseId: (value as TestCartItemResponse).id };
+    });
+    const client = createApiClient({
+      fetch: vi.fn<FetchArguments, FetchResult>().mockResolvedValue(new Response(
+        JSON.stringify({ id: 7 }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      )),
+    });
+
+    await expect(client.request({
+      path: '/courses/7',
+      decode,
+    })).resolves.toEqual({ courseId: 7 });
+    expect(decode).toHaveBeenCalledTimes(1);
+  });
+
+  it('normalizes successful decoder failures with the HTTP status', async () => {
+    const client = createApiClient({
+      fetch: vi.fn<FetchArguments, FetchResult>().mockResolvedValue(new Response(
+        JSON.stringify({ role: 'owner' }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      )),
+    });
+
+    await expect(client.request({
+      path: '/me',
+      decode: () => {
+        throw new TypeError('Invalid profile role');
+      },
+    })).rejects.toMatchObject({
+      kind: 'invalid_response',
+      status: 200,
+      message: 'Server returned an invalid success response',
+    });
+  });
+
+  it('passes undefined to a decoder for an empty successful response', async () => {
+    const decode = vi.fn((value: unknown) => {
+      expect(value).toBeUndefined();
+      return 'decoded-empty';
+    });
+    const client = createApiClient({
+      fetch: vi.fn<FetchArguments, FetchResult>().mockResolvedValue(new Response(null, { status: 204 })),
+    });
+
+    await expect(client.request({
+      method: 'DELETE',
+      path: '/cart',
+      decode,
+    })).resolves.toBe('decoded-empty');
+    expect(decode).toHaveBeenCalledTimes(1);
+  });
+
   it('distinguishes malformed success payloads from offline failures', async () => {
     const client = createApiClient({
       fetch: vi.fn<FetchArguments, FetchResult>().mockResolvedValue(new Response('not-json', { status: 200 })),

@@ -1,13 +1,25 @@
-import type { HTMLAttributes } from 'react';
+import type { CSSProperties, HTMLAttributes } from 'react';
+
+type PaginationDirectionDisplay = 'text' | 'arrows';
 
 export interface PaginationProps extends Omit<HTMLAttributes<HTMLElement>, 'onChange'> {
   currentPage: number;
   totalPages: number;
   onPageChange: (page: number) => void;
   label?: string;
+  hasNext?: boolean;
+  hasPrevious?: boolean;
+  directionDisplay?: PaginationDirectionDisplay;
 }
 
 type PageItem = number | 'ellipsis-start' | 'ellipsis-end';
+
+const currentPageStyle = {
+  color: 'var(--action-primary-fg)',
+  background: 'var(--action-primary-bg)',
+  borderColor: 'var(--action-primary-bg)',
+  cursor: 'default',
+} satisfies CSSProperties;
 
 function pageItems(currentPage: number, totalPages: number): PageItem[] {
   if (!Number.isSafeInteger(currentPage) || !Number.isSafeInteger(totalPages)) return [1];
@@ -36,22 +48,40 @@ export function Pagination({
   totalPages,
   onPageChange,
   label = 'Pagination',
+  hasNext,
+  hasPrevious,
+  directionDisplay = 'text',
   className,
   ...props
 }: PaginationProps) {
   const safeTotal = positiveSafeInteger(totalPages) ?? 1;
-  const safeCurrent = Math.min(positiveSafeInteger(currentPage) ?? 1, safeTotal);
+  const positiveCurrent = positiveSafeInteger(currentPage) ?? 1;
+  const usesServerAvailability = hasNext !== undefined || hasPrevious !== undefined;
+  const safeCurrent = usesServerAvailability
+    ? positiveCurrent
+    : Math.min(positiveCurrent, safeTotal);
+  const previousTarget = positiveSafeInteger(safeCurrent - 1);
+  const nextTarget = positiveSafeInteger(safeCurrent + 1);
+  const previousAvailable = previousTarget !== undefined && (hasPrevious ?? safeCurrent !== 1);
+  const nextAvailable = nextTarget !== undefined && (hasNext ?? safeCurrent !== safeTotal);
 
-  const changePage = (page: number) => {
+  const changePage = (page: number, allowBeyondTotal = false) => {
     if (
       Number.isSafeInteger(page)
       && page !== safeCurrent
       && page >= 1
-      && page <= safeTotal
+      && (allowBeyondTotal || page <= safeTotal)
+      && (page >= safeCurrent || previousAvailable)
+      && (page <= safeCurrent || nextAvailable)
     ) {
       onPageChange(page);
     }
   };
+
+  const pageAvailable = (page: number) => (
+    (page >= safeCurrent || previousAvailable)
+    && (page <= safeCurrent || nextAvailable)
+  );
 
   return (
     <nav {...props} aria-label={label} className={['ui-pagination', className].filter(Boolean).join(' ')}>
@@ -60,12 +90,14 @@ export function Pagination({
       </span>
       <button
         type="button"
-        className="ui-pagination__button"
-        disabled={safeCurrent === 1}
-        onClick={() => changePage(safeCurrent - 1)}
+        className={['ui-pagination__button', directionDisplay === 'arrows' && 'ui-pagination__button--direction'].filter(Boolean).join(' ')}
+        disabled={!previousAvailable}
+        onClick={() => {
+          if (previousAvailable && previousTarget !== undefined) changePage(previousTarget, true);
+        }}
         aria-label="Go to previous page"
       >
-        Previous
+        {directionDisplay === 'arrows' ? <span aria-hidden="true">&lt;</span> : 'Previous'}
       </button>
       <div className="ui-pagination__pages">
         {pageItems(safeCurrent, safeTotal).map((item) =>
@@ -76,6 +108,8 @@ export function Pagination({
               className="ui-pagination__button"
               aria-label={`Go to page ${item}`}
               aria-current={item === safeCurrent ? 'page' : undefined}
+              disabled={item === safeCurrent || !pageAvailable(item)}
+              style={item === safeCurrent ? currentPageStyle : undefined}
               onClick={() => changePage(item)}
             >
               {item}
@@ -87,12 +121,14 @@ export function Pagination({
       </div>
       <button
         type="button"
-        className="ui-pagination__button"
-        disabled={safeCurrent === safeTotal}
-        onClick={() => changePage(safeCurrent + 1)}
+        className={['ui-pagination__button', directionDisplay === 'arrows' && 'ui-pagination__button--direction'].filter(Boolean).join(' ')}
+        disabled={!nextAvailable}
+        onClick={() => {
+          if (nextAvailable && nextTarget !== undefined) changePage(nextTarget, true);
+        }}
         aria-label="Go to next page"
       >
-        Next
+        {directionDisplay === 'arrows' ? <span aria-hidden="true">&gt;</span> : 'Next'}
       </button>
     </nav>
   );
