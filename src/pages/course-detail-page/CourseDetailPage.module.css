@@ -104,6 +104,21 @@
   align-content: start;
 }
 
+.outlineRecovery {
+  display: grid;
+  gap: var(--spacing-3);
+}
+
+.outlineRecovery p {
+  margin: 0;
+}
+
+.outlineRecoveryActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+}
+
 .price {
   overflow-wrap: anywhere;
   font-family: var(--font-family-numeric);

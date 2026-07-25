@@ -265,7 +265,51 @@ test('recovers detail and outline independently with keyboard focus and polite s
   await expect(page.getByRole('status').filter({ hasText: 'Course details recovered.' }))
     .toHaveText('Course details recovered.');
 
-  const outlineRetry = page.getByRole('button', { name: 'Try again' });
+  const outlineSection = page.locator('section[aria-labelledby="course-outline-heading"]');
+  const outlineRecovery = outlineSection.getByRole('alert');
+  const outlineRecoveryMessage = outlineRecovery.locator('p').filter({ hasText: 'Please try again.' });
+  const outlineRetry = outlineRecovery.getByRole('button', { name: 'Try again' });
+  await expect(outlineRecoveryMessage).toHaveText('Please try again.');
+  await expect(outlineRetry).toBeVisible();
+  const recoverySnapshot = await outlineRecovery.ariaSnapshot();
+  expect(recoverySnapshot).toMatch(/- paragraph: Please try again\.\s+- button "Try again"/);
+
+  for (const width of [320, 640]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(outlineRecoveryMessage).toBeVisible();
+    await expect(outlineRetry).toBeVisible();
+    const geometry = await outlineRecovery.evaluate((notice) => {
+      const message = notice.querySelector('p');
+      const action = notice.querySelector('button');
+      const actionRow = message?.nextElementSibling;
+      if (!message || !action || !(actionRow instanceof HTMLElement) || !actionRow.contains(action)) {
+        throw new Error('Outline recovery structure is incomplete');
+      }
+      const noticeBox = notice.getBoundingClientRect();
+      const messageBox = message.getBoundingClientRect();
+      const actionBox = action.getBoundingClientRect();
+      return {
+        viewportWidth: window.innerWidth,
+        documentWidth: document.documentElement.scrollWidth,
+        bodyWidth: document.body.scrollWidth,
+        actionFlexWrap: getComputedStyle(actionRow).flexWrap,
+        noticeBox: { left: noticeBox.left, right: noticeBox.right },
+        messageBox: { left: messageBox.left, right: messageBox.right, bottom: messageBox.bottom },
+        actionBox: { left: actionBox.left, right: actionBox.right, top: actionBox.top },
+      };
+    });
+    expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewportWidth);
+    expect(geometry.bodyWidth).toBeLessThanOrEqual(geometry.viewportWidth);
+    expect(geometry.actionFlexWrap).toBe('wrap');
+    expect(geometry.noticeBox.left).toBeGreaterThanOrEqual(0);
+    expect(geometry.noticeBox.right).toBeLessThanOrEqual(geometry.viewportWidth);
+    expect(geometry.messageBox.left).toBeGreaterThanOrEqual(geometry.noticeBox.left);
+    expect(geometry.messageBox.right).toBeLessThanOrEqual(geometry.noticeBox.right);
+    expect(geometry.actionBox.left).toBeGreaterThanOrEqual(geometry.noticeBox.left);
+    expect(geometry.actionBox.right).toBeLessThanOrEqual(geometry.noticeBox.right);
+    expect(geometry.messageBox.bottom).toBeLessThan(geometry.actionBox.top);
+  }
+
   await outlineRetry.focus();
   outlineAvailable = true;
   await outlineRetry.press('Enter');

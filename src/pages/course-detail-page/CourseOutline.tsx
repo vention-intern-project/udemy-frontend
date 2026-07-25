@@ -30,7 +30,16 @@ export function CourseOutline({
           <Skeleton height="72px" width="100%" shape="rect" />
         </SkeletonGroup>
       ) : null}
-      {failure ? <Notice tone="error" title={failure.title}>{failure.message}<Button variant="secondary" onClick={onRetry}>Try again</Button></Notice> : null}
+      {failure ? (
+        <Notice tone="error" title={failure.title}>
+          <div className={styles.outlineRecovery}>
+            <p>{failure.message}</p>
+            <div className={styles.outlineRecoveryActions}>
+              <Button variant="secondary" onClick={onRetry}>Try again</Button>
+            </div>
+          </div>
+        </Notice>
+      ) : null}
       {items?.length === 0 ? <p className={styles.empty}>No lessons have been added yet.</p> : null}
       {items && items.length > 0 ? (
         <ol className={styles.lessonList}>

@@ -189,6 +189,7 @@ describe('CourseDetailPage', () => {
     const user = userEvent.setup();
 
     expect(await screen.findByText('We could not load this course')).toBeTruthy();
+    expect(screen.getByText('Please try again.', { selector: 'p' })).toBeTruthy();
     const retry = screen.getByRole('button', { name: 'Try again' });
     retry.focus();
     await act(async () => { await user.keyboard('{Enter}'); });
