@@ -18,15 +18,27 @@ import styles from './CatalogPage.module.css';
 import { CourseCard } from './CourseCard';
 import { SortControl } from './SortControl';
 
+function resolveBrowserSelectedFocusTarget(target: HTMLElement) {
+  if (target.isConnected) return target;
+  if (target instanceof HTMLInputElement && (target.name === 'min_price' || target.name === 'max_price')) {
+    return document.querySelector<HTMLElement>(`input[name="${target.name}"]`);
+  }
+  if (target.dataset.part === 'catalog-sort-trigger' || target.dataset.part === 'catalog-sort-listbox') {
+    return document.querySelector<HTMLElement>('[data-part="catalog-sort-trigger"]');
+  }
+  return null;
+}
+
+function getActiveCatalogSortListbox() {
+  const activeElement = document.activeElement;
+  return activeElement instanceof HTMLElement && activeElement.dataset.part === 'catalog-sort-listbox'
+    ? activeElement
+    : null;
+}
+
 function restoreBrowserSelectedFocus(target: HTMLElement) {
   const restore = () => {
-    const currentTarget = target.isConnected
-      ? target
-      : target instanceof HTMLInputElement && (target.name === 'min_price' || target.name === 'max_price')
-        ? document.querySelector<HTMLElement>(`input[name="${target.name}"]`)
-        : target.dataset.part === 'catalog-sort-trigger'
-          ? document.querySelector<HTMLElement>('[data-part="catalog-sort-trigger"]')
-          : null;
+    const currentTarget = resolveBrowserSelectedFocusTarget(target);
     if (!currentTarget || document.activeElement === currentTarget) return;
     if (document.activeElement instanceof HTMLElement && document.activeElement.id === 'main-content') {
       currentTarget.focus();
@@ -79,7 +91,7 @@ export function CatalogPage() {
       setSearchParams(serializeCatalogQuery(next));
     };
     if (!blurSource) {
-      commitNavigation(null);
+      commitNavigation(getActiveCatalogSortListbox());
       return;
     }
     globalThis.queueMicrotask(() => {

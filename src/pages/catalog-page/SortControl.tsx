@@ -126,6 +126,7 @@ export function SortControl({ value, onChange }: SortControlProps) {
         <div
           ref={setListboxRef}
           className={styles.listbox}
+          data-part="catalog-sort-listbox"
           id={listboxId}
           role="listbox"
           aria-label="Sort by options"

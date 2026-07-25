@@ -911,6 +911,7 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   await expect(page).toHaveURL(/search_query=React&min_price=5&sort=price/);
   expect(requests[requests.length - 1]).toContain('sort=price');
   expect(requests[requests.length - 1]).toContain('page=1');
+  await expect(sortTrigger).toBeFocused();
   const sortLabel = page.getByText('Sort by:', { exact: true });
   const labelParity = await Promise.all([visualPriceLabel.evaluate((label) => {
     const style = getComputedStyle(label);

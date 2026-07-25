@@ -9,7 +9,10 @@ import { CatalogPage } from '../../src/pages/catalog-page';
 import { SessionProvider, useSession, type AccessTokenStore } from '../../src/features/auth-session';
 import type { ApiClient, ApiRequestOptions } from '../../src/shared/api';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 const catalogItem = {
   id: 7, title: 'React', description: null, price: '9.99', currency: 'USD', published_at: null,
@@ -52,7 +55,9 @@ function renderCatalog(request: ApiClient['request'], initialEntries: string[], 
   return render(
     <SessionProvider client={{ request }} tokenStore={tokenStore()}>
       <MemoryRouter initialEntries={initialEntries} initialIndex={initialIndex} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
-        <CatalogPage />
+        <main id="main-content" tabIndex={-1}>
+          <CatalogPage />
+        </main>
         <HistoryControls />
       </MemoryRouter>
     </SessionProvider>,
@@ -226,6 +231,11 @@ describe('CatalogPage public URL and pagination behavior', () => {
   });
 
   it('canonicalizes legacy sort before its request, applies sort immediately, and applies a changed price range on blur', async () => {
+    const animationFrames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => {
+      animationFrames.push(callback);
+      return animationFrames.length;
+    }));
     const user = userEvent.setup();
     const requests: ApiRequestOptions[] = [];
     const request: ApiClient['request'] = async <TResponse,>(options: ApiRequestOptions) => {
@@ -297,9 +307,20 @@ describe('CatalogPage public URL and pagination behavior', () => {
     });
     const keyboardListbox = await screen.findByRole('listbox', { name: 'Sort by options' });
     expect(keyboardListbox).toBe(document.activeElement);
+    expect(keyboardListbox.getAttribute('data-part')).toBe('catalog-sort-listbox');
     await act(async () => { await user.keyboard('{ArrowDown}{Enter}'); });
     await waitFor(() => expect(screen.getByLabelText('catalog location').textContent).toBe('/?search_query=React&sort=price'));
     await waitFor(() => expect(requests[requests.length - 1]?.query).toEqual({ search_query: 'React', min_price: undefined, max_price: undefined, sort: 'price', page: 1, page_size: 20 }));
+    expect(keyboardListbox.isConnected).toBe(false);
+    await waitFor(() => expect(animationFrames).toHaveLength(1));
+    const mainContent = document.getElementById('main-content');
+    if (!mainContent) throw new Error('Route focus target is missing.');
+    mainContent.focus();
+    expect(mainContent).toBe(document.activeElement);
+    await act(async () => { animationFrames.shift()?.(0); });
+    expect(animationFrames).toHaveLength(1);
+    await act(async () => { animationFrames.shift()?.(0); });
+    expect(screen.getByRole('button', { name: 'Sort by: Low to High' })).toBe(document.activeElement);
 
     await act(async () => {
       await user.type(screen.getByLabelText('Min price'), '5');
