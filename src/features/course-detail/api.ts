@@ -94,28 +94,31 @@ export async function requestEnrollments(session: SessionContextValue, signal: A
   let pageSize = PAGE_SIZE;
   do {
     const requestedPage = page;
-    const list = await requestOperation<EnrollmentList>(session, 'API-021', {
+    await requestOperation<EnrollmentList>(session, 'API-021', {
       path: '/enrollments/my', query: { page: requestedPage, page_size: PAGE_SIZE }, signal,
-      decode: (value) => mapEnrollmentListDto(decodeEnrollmentListDto(value)),
+      decode: (value) => {
+        const decoded = mapEnrollmentListDto(decodeEnrollmentListDto(value));
+        if (decoded.page !== requestedPage || decoded.pageSize !== PAGE_SIZE) {
+          throw new TypeError('Invalid enrollment aggregate cursor');
+        }
+        if (requestedPage === 1) {
+          pages = decoded.pages;
+          total = decoded.total;
+          pageSize = decoded.pageSize;
+        } else if (decoded.pages !== pages || decoded.total !== total || decoded.pageSize !== pageSize) {
+          throw new TypeError('Invalid enrollment aggregate metadata');
+        }
+        for (const item of decoded.items) {
+          if (enrollmentIds.has(item.id) || courseIds.has(item.courseId)) {
+            throw new TypeError('Invalid enrollment aggregate identity');
+          }
+          enrollmentIds.add(item.id);
+          courseIds.add(item.courseId);
+          items.push(item);
+        }
+        return decoded;
+      },
     });
-    if (list.page !== requestedPage || list.pageSize !== PAGE_SIZE) {
-      throw new TypeError('Invalid enrollment aggregate cursor');
-    }
-    if (requestedPage === 1) {
-      pages = list.pages;
-      total = list.total;
-      pageSize = list.pageSize;
-    } else if (list.pages !== pages || list.total !== total || list.pageSize !== pageSize) {
-      throw new TypeError('Invalid enrollment aggregate metadata');
-    }
-    for (const item of list.items) {
-      if (enrollmentIds.has(item.id) || courseIds.has(item.courseId)) {
-        throw new TypeError('Invalid enrollment aggregate identity');
-      }
-      enrollmentIds.add(item.id);
-      courseIds.add(item.courseId);
-      items.push(item);
-    }
     page += 1;
   } while (page <= pages);
   if (items.length !== total) {

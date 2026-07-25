@@ -99,6 +99,19 @@ function decodingRequester(
   };
 }
 
+function transportRequester(payloads: readonly unknown[]): SessionContextValue['requestRequired'] {
+  let call = 0;
+  const client = createApiClient({
+    baseUrl: 'https://api.example.test',
+    fetch: async () => {
+      const payload = payloads[call];
+      call += 1;
+      return new Response(JSON.stringify(payload), { status: 200 });
+    },
+  });
+  return (options) => client.request(options);
+}
+
 describe('course-detail API trust boundaries', () => {
   it.each([
     ['API-020', enrollFree, enrollment(4, 7)],
@@ -194,12 +207,32 @@ describe('course-detail API trust boundaries', () => {
   });
 
   it.each([
-    ['response page mismatch', [enrollmentPage(2, [enrollment(101)], 101, 2)]],
-    ['changed total', [enrollmentPage(1, Array.from({ length: 100 }, (_, index) => enrollment(index + 1)), 101, 2), enrollmentPage(2, [enrollment(101)], 102, 2)]],
-    ['changed pages', [enrollmentPage(1, Array.from({ length: 100 }, (_, index) => enrollment(index + 1)), 101, 2), { ...enrollmentPage(2, [enrollment(101)], 101, 2), pages: 3, has_next: true }]],
-    ['changed page size', [enrollmentPage(1, Array.from({ length: 100 }, (_, index) => enrollment(index + 1)), 101, 2), { ...enrollmentPage(2, [enrollment(101)], 101, 2), page_size: 99 }]],
-    ['duplicate enrollment id', [enrollmentPage(1, Array.from({ length: 100 }, (_, index) => enrollment(index + 1)), 101, 2), enrollmentPage(2, [enrollment(1, 101)], 101, 2)]],
-    ['duplicate course identity', [enrollmentPage(1, Array.from({ length: 100 }, (_, index) => enrollment(index + 1)), 101, 2), enrollmentPage(2, [enrollment(101, 1)], 101, 2)]],
+    ['response page mismatch', [enrollmentPage(2, [enrollment(101)], 101, 2)], 'Invalid enrollment aggregate cursor'],
+    ['changed total', [enrollmentPage(1, Array.from({ length: 100 }, (_, index) => enrollment(index + 1)), 101, 2), enrollmentPage(2, [enrollment(101)], 102, 2)], 'Invalid enrollment aggregate metadata'],
+    ['changed pages', [enrollmentPage(1, Array.from({ length: 100 }, (_, index) => enrollment(index + 1)), 101, 2), enrollmentPage(2, [enrollment(101)], 201, 3)], 'Invalid enrollment aggregate metadata'],
+    ['changed page size', [enrollmentPage(1, Array.from({ length: 100 }, (_, index) => enrollment(index + 1)), 101, 2), { ...enrollmentPage(2, [enrollment(101)], 101, 2), page_size: 99 }], 'Invalid enrollment aggregate cursor'],
+    ['duplicate enrollment id', [enrollmentPage(1, Array.from({ length: 100 }, (_, index) => enrollment(index + 1)), 101, 2), enrollmentPage(2, [enrollment(1, 101)], 101, 2)], 'Invalid enrollment aggregate identity'],
+    ['duplicate course identity', [enrollmentPage(1, Array.from({ length: 100 }, (_, index) => enrollment(index + 1)), 101, 2), enrollmentPage(2, [enrollment(101, 1)], 101, 2)], 'Invalid enrollment aggregate identity'],
+  ])('normalizes an unsafe enrollment aggregate: %s', async (_caseName, payloads, causeMessage) => {
+    const error = await requestEnrollments(
+      sessionWithRequester(transportRequester(payloads)),
+      new AbortController().signal,
+    ).catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(ApiError);
+    if (!(error instanceof ApiError)) throw new TypeError('Expected ApiError');
+    expect(error).toMatchObject({
+      kind: 'invalid_response',
+      status: 200,
+      message: 'Server returned an invalid success response',
+    });
+    expect(error.originalCause).toBeInstanceOf(TypeError);
+    if (causeMessage !== undefined) {
+      expect(error.originalCause).toMatchObject({ message: causeMessage });
+    }
+  });
+
+  it.each([
     ['invalid page bounds', [{ ...enrollmentPage(1, [], 0, 0), page: 2, has_previous: true }]],
     ['items exceed total', [{ ...enrollmentPage(1, [enrollment(1)], 0, 0) }]],
     ['invalid pagination flags', [{ ...enrollmentPage(1, [enrollment(1)], 1, 1), has_next: true }]],
