@@ -172,7 +172,7 @@ for (const width of [320, 390, 768, 1280]) {
       name: 'Master the Skills Shaping the Future',
     })).toBeVisible();
     await expect(page.getByRole('heading', { level: 2, name: 'Found 1 course' })).toBeVisible();
-    const catalogPanel = page.locator('.catalog-page__content');
+    const catalogPanel = page.locator('[data-part="catalog-content"]');
     const catalogCenterX = await getPanelCenterX(catalogPanel);
     await expectNoHorizontalOverflow(page);
 
@@ -413,7 +413,6 @@ test('keeps the Role control native while progressively applying purple picker a
     return {
       tagName: select.tagName,
       native: true,
-      className: select.className,
       values: Array.from(select.options, (option) => option.value),
       supportsCustomPicker: CSS.supports('appearance', 'base-select')
         && CSS.supports('selector(::picker(select))'),
@@ -422,7 +421,6 @@ test('keeps the Role control native while progressively applying purple picker a
   });
   expect(roleContract.tagName).toBe('SELECT');
   expect(roleContract.native).toBe(true);
-  expect(roleContract.className).toContain('auth-form__role-picker');
   expect(roleContract.values).toEqual(['student', 'instructor', 'admin']);
   expect(roleContract.supportsCustomPicker).toBe(true);
   expect(roleContract.appearance).toBe('base-select');

@@ -1,7 +1,7 @@
 import { useId, type ReactNode } from 'react';
 
 import { Button } from './Button';
-import { Dialog } from './Dialog';
+import { Dialog, DialogActions } from './Dialog';
 import { Notice } from './Notice';
 
 export interface DestructiveConfirmationProps {
@@ -42,7 +42,7 @@ export function DestructiveConfirmation({
       {showError ? (
         <Notice id={errorId} tone="error" title="Unable to complete action">{error}</Notice>
       ) : null}
-      <div className="ui-dialog__actions">
+      <DialogActions>
         <Button variant="secondary" onClick={onCancel} disabled={confirming}>
           {cancelLabel}
         </Button>
@@ -57,7 +57,7 @@ export function DestructiveConfirmation({
         >
           {confirmLabel}
         </Button>
-      </div>
+      </DialogActions>
     </Dialog>
   );
 }

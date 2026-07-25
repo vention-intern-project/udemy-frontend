@@ -1,10 +1,86 @@
 import { expect, test, type Locator, type Page, type Request } from '@playwright/test';
+import {
+  breakpointTokens,
+  colorTokens,
+  densityTokens,
+  motionTokens,
+  spacingTokens,
+  typographyTokens,
+  zIndexTokens,
+} from '@shared/ui/tokens';
 import { installCatalogFixture } from './support/catalog-fixture';
 
 type BackendRole = 'student' | 'instructor' | 'admin';
-type ShellSurfaceViewportWidth = 320 | 390 | 768 | 1280;
+type ShellSurfaceViewportWidth = 320 | 390 | 768 | 1280 | 1440;
 type DesktopViewportWidth = 768 | 1280;
 type MobileViewportWidth = 320 | 390;
+
+interface RepresentativeTokenSnapshot {
+  density: string | null;
+  colorCanvas: string;
+  textPrimary: string;
+  fontFamilyBase: string;
+  spacing2: string;
+  controlHeightMd: string;
+  durationBase: string;
+  breakpointMd: string;
+  zDropdown: string;
+  densityCardInner: string;
+  htmlColor: string;
+  htmlBackgroundColor: string;
+  htmlFontFamily: string;
+  bodyBackgroundColor: string;
+}
+
+async function readRepresentativeTokenSnapshot(
+  page: Page,
+): Promise<RepresentativeTokenSnapshot> {
+  return page.evaluate(() => {
+    const root = document.documentElement;
+    const rootStyle = getComputedStyle(root);
+    const bodyStyle = getComputedStyle(document.body);
+    const readToken = (name: string) => rootStyle.getPropertyValue(name).trim();
+
+    return {
+      density: root.getAttribute('data-density'),
+      colorCanvas: readToken('--color-canvas'),
+      textPrimary: readToken('--text-primary'),
+      fontFamilyBase: readToken('--font-family-base'),
+      spacing2: readToken('--spacing-2'),
+      controlHeightMd: readToken('--control-height-md'),
+      durationBase: readToken('--duration-base'),
+      breakpointMd: readToken('--bp-md'),
+      zDropdown: readToken('--z-dropdown'),
+      densityCardInner: readToken('--density-card-inner'),
+      htmlColor: rootStyle.color,
+      htmlBackgroundColor: rootStyle.backgroundColor,
+      htmlFontFamily: rootStyle.fontFamily,
+      bodyBackgroundColor: bodyStyle.backgroundColor,
+    };
+  });
+}
+
+async function resolveBrowserColor(page: Page, value: string) {
+  return page.evaluate((color) => {
+    const probe = document.createElement('span');
+    probe.style.color = color;
+    document.body.append(probe);
+    const resolved = getComputedStyle(probe).color;
+    probe.remove();
+    return resolved;
+  }, value);
+}
+
+async function resolveBrowserFontFamily(page: Page, value: string) {
+  return page.evaluate((fontFamily) => {
+    const probe = document.createElement('span');
+    probe.style.fontFamily = fontFamily;
+    document.body.append(probe);
+    const resolved = getComputedStyle(probe).fontFamily;
+    probe.remove();
+    return resolved;
+  }, value);
+}
 
 function monitorRuntime(page: Page, expectedHttpResourceErrors: readonly number[] = []) {
   const pageErrors: string[] = [];
@@ -71,7 +147,7 @@ async function expectNoHorizontalOverflow(page: Page) {
 async function expectShellSurfacesAtViewportEdges(page: Page, width: ShellSurfaceViewportWidth) {
   await page.setViewportSize({ width, height: 900 });
   await page.goto('/');
-  await page.locator('.app-footer').evaluate((footer) => footer.scrollIntoView({
+  await page.getByRole('contentinfo').evaluate((footer) => footer.scrollIntoView({
     block: 'center',
     inline: 'nearest',
   }));
@@ -80,8 +156,8 @@ async function expectShellSurfacesAtViewportEdges(page: Page, width: ShellSurfac
   )));
 
   const geometry = await page.evaluate(() => {
-    const header = document.querySelector('.app-header');
-    const footer = document.querySelector('.app-footer');
+    const header = document.querySelector('[data-app-shell-header]');
+    const footer = document.querySelector('footer');
     if (!(header instanceof HTMLElement) || !(footer instanceof HTMLElement)) {
       throw new Error('Shell surface geometry targets are unavailable');
     }
@@ -173,12 +249,12 @@ async function expectBrandComposition(brand: Locator) {
   await expect(brand).toHaveText('LearnHub');
 
   const metrics = await brand.evaluate((link) => {
-    const marks = link.querySelectorAll('svg.app-brand__mark');
-    const wordmarks = link.querySelectorAll('.app-brand__wordmark');
+    const marks = link.querySelectorAll(':scope > svg[aria-hidden="true"]');
+    const wordmarks = link.querySelectorAll(':scope > span');
     const mark = marks.item(0);
     const wordmark = wordmarks.item(0);
-    const outline = mark?.querySelector('.app-brand__mark-outline');
-    const book = mark?.querySelector('.app-brand__mark-book');
+    const outline = mark?.querySelector('rect');
+    const book = mark?.querySelector('path');
     if (
       marks.length !== 1
       || wordmarks.length !== 1
@@ -280,7 +356,8 @@ async function expectBrandFocusTreatment(page: Page, brand: Locator) {
 
 async function expectBrandContainedInHeader(brand: Locator) {
   const containment = await brand.evaluate((link) => {
-    const inner = link.closest('.app-header__inner');
+    const header = link.closest('[data-app-shell-header]');
+    const inner = header?.firstElementChild;
     if (!(inner instanceof HTMLElement)) throw new Error('Header containment target is unavailable');
     const linkRect = link.getBoundingClientRect();
     const innerRect = inner.getBoundingClientRect();
@@ -321,7 +398,8 @@ async function expectAnonymousDesktopHeaderGeometry(page: Page, width: DesktopVi
     requiredBoundingBox(signup),
   ]);
   const headerContentRight = await brand.evaluate((link) => {
-    const inner = link.closest('.app-header__inner');
+    const header = link.closest('[data-app-shell-header]');
+    const inner = header?.firstElementChild;
     if (!(inner instanceof HTMLElement)) throw new Error('Header geometry target is unavailable');
     const rect = inner.getBoundingClientRect();
     return rect.right - Number.parseFloat(getComputedStyle(inner).paddingRight);
@@ -466,7 +544,8 @@ async function expectInstructorDesktopHeaderGeometry(page: Page, width: DesktopV
 
 async function expectMenuAtHeaderContentEdge(page: Page) {
   const offset = await page.getByRole('button', { name: 'Open navigation' }).evaluate((button) => {
-    const inner = button.closest('.app-header__inner');
+    const header = button.closest('[data-app-shell-header]');
+    const inner = header?.firstElementChild;
     if (!(inner instanceof HTMLElement)) throw new Error('Header geometry target is unavailable');
     const innerRect = inner.getBoundingClientRect();
     const buttonRect = button.getBoundingClientRect();
@@ -480,7 +559,7 @@ async function expectMobileMenuGeometry(page: Page) {
   const metrics = await page.getByRole('button', { name: 'Open navigation' }).evaluate((button) => {
     const labels = button.querySelectorAll('[aria-hidden="true"]');
     const label = labels.item(0);
-    const header = button.closest('.app-header');
+    const header = button.closest('[data-app-shell-header]');
     if (
       labels.length !== 1
       || !(label instanceof HTMLElement)
@@ -579,7 +658,7 @@ test('keeps anonymous mobile navigation in visual and keyboard order', async ({ 
 
 test('keeps header and footer surfaces at the physical viewport edges without symmetric gutters', async ({ page }) => {
   const assertRuntimeClean = monitorRuntime(page);
-  for (const width of [320, 390, 768, 1280] as const) {
+  for (const width of [320, 390, 768, 1280, 1440] as const) {
     await expectShellSurfacesAtViewportEdges(page, width);
   }
   assertRuntimeClean();
@@ -592,6 +671,62 @@ test('keeps the complete LearnHub brand accessible when authenticated', async ({
   await page.goto('/learning');
   const brand = page.getByRole('link', { name: 'LearnHub home' });
   await expectBrandComposition(brand);
+  await expectNoHorizontalOverflow(page);
+  assertRuntimeClean();
+});
+
+test('exposes representative production tokens across marketplace and workspace density', async ({ page }) => {
+  const assertRuntimeClean = monitorRuntime(page);
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto('/');
+
+  const marketplace = await readRepresentativeTokenSnapshot(page);
+  const expectedCanvasColor = await resolveBrowserColor(
+    page,
+    colorTokens['--color-canvas'],
+  );
+  const expectedTextColor = await resolveBrowserColor(
+    page,
+    colorTokens['--text-primary'],
+  );
+  const expectedFontFamily = await resolveBrowserFontFamily(
+    page,
+    typographyTokens['--font-family-base'],
+  );
+
+  expect(marketplace.density).toBe('marketplace');
+  expect(marketplace.colorCanvas.toLowerCase())
+    .toBe(colorTokens['--color-canvas'].toLowerCase());
+  expect(marketplace.textPrimary.toLowerCase())
+    .toBe(colorTokens['--text-primary'].toLowerCase());
+  expect(marketplace.fontFamilyBase).toBe(typographyTokens['--font-family-base']);
+  expect(marketplace.spacing2).toBe(spacingTokens['--spacing-2']);
+  expect(marketplace.controlHeightMd).toBe(spacingTokens['--control-height-md']);
+  expect(marketplace.durationBase).toBe(motionTokens['--duration-base']);
+  expect(marketplace.breakpointMd).toBe(breakpointTokens['--bp-md']);
+  expect(marketplace.zDropdown).toBe(zIndexTokens['--z-dropdown']);
+  expect(marketplace.densityCardInner)
+    .toBe(densityTokens.marketplace.cardInnerPadding);
+  expect(marketplace.htmlColor).toBe(expectedTextColor);
+  expect(marketplace.htmlBackgroundColor).toBe(expectedCanvasColor);
+  expect(marketplace.bodyBackgroundColor).toBe(expectedCanvasColor);
+  expect(marketplace.htmlFontFamily).toBe(expectedFontFamily);
+
+  await mockAuthenticatedSession(page, 'instructor');
+  await page.goto('/instructor/courses');
+  await expect(page.getByRole('heading', { level: 1, name: 'Instructor courses' }))
+    .toBeVisible();
+
+  const workspace = await readRepresentativeTokenSnapshot(page);
+  expect(workspace.density).toBe('workspace');
+  expect(workspace.densityCardInner)
+    .toBe(densityTokens.workspace.cardInnerPadding);
+  expect(workspace.colorCanvas).toBe(marketplace.colorCanvas);
+  expect(workspace.spacing2).toBe(marketplace.spacing2);
+  expect(workspace.controlHeightMd).toBe(marketplace.controlHeightMd);
+  expect(workspace.durationBase).toBe(marketplace.durationBase);
+  expect(workspace.breakpointMd).toBe(marketplace.breakpointMd);
+  expect(workspace.zDropdown).toBe(marketplace.zDropdown);
   await expectNoHorizontalOverflow(page);
   assertRuntimeClean();
 });
@@ -649,7 +784,7 @@ test('keeps Router metadata, layout, density, and titles aligned for a case/trai
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto('/instructor/COURSES/ABC/edit/');
   await expect(page.getByRole('heading', { level: 1, name: 'Edit course' })).toBeVisible();
-  await expect(page.locator('.app-shell')).toHaveAttribute('data-layout', 'workspace');
+  await expect(page.locator('[data-layout]')).toHaveAttribute('data-layout', 'workspace');
   await expect(page.locator('html')).toHaveAttribute('data-density', 'workspace');
   await expect(page).toHaveTitle('Edit course | LearnHub');
   await expectNoHorizontalOverflow(page);
@@ -868,6 +1003,28 @@ test('renders the not-found route at mobile width without overflow', async ({ pa
   await expect(page.getByRole('link', { name: 'Skip to main content' })).toHaveAttribute('href', '#main-content');
   await expectNoHorizontalOverflow(page);
   await page.setViewportSize({ width: 320, height: 740 });
+  await expectNoHorizontalOverflow(page);
+  assertRuntimeClean();
+});
+
+test('removes non-essential shell transitions when reduced motion is requested', async ({ page }) => {
+  const assertRuntimeClean = monitorRuntime(page);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.setViewportSize({ width: 1280, height: 844 });
+  await page.goto('/');
+
+  const transitions = await page.evaluate(() => {
+    const skipLink = document.querySelector('a[href="#main-content"]');
+    const navigationLink = document.querySelector('nav[aria-label="Primary navigation"] a');
+    if (!(skipLink instanceof HTMLElement) || !(navigationLink instanceof HTMLElement)) {
+      throw new Error('Reduced-motion shell targets are unavailable');
+    }
+    return {
+      skipLink: getComputedStyle(skipLink).transitionDuration,
+      navigationLink: getComputedStyle(navigationLink).transitionDuration,
+    };
+  });
+  expect(transitions).toEqual({ skipLink: '0s', navigationLink: '0s' });
   await expectNoHorizontalOverflow(page);
   assertRuntimeClean();
 });

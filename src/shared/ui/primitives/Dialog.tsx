@@ -13,6 +13,7 @@ import {
   getFocusableElements,
   isTabbableElement,
 } from '../../accessibility/focus';
+import styles from './Dialog.module.css';
 
 interface DialogOwner {
   id: symbol;
@@ -60,6 +61,14 @@ export interface DialogProps {
   closeOnBackdrop?: boolean;
   busy?: boolean;
   className?: string;
+}
+
+interface DialogActionsProps {
+  children: ReactNode;
+}
+
+export function DialogActions({ children }: DialogActionsProps) {
+  return <div className={[styles.actions, 'ui-dialog__actions'].join(' ')}>{children}</div>;
 }
 
 export function Dialog({
@@ -158,7 +167,11 @@ export function Dialog({
   };
 
   return (
-    <div className="ui-dialog-backdrop" onMouseDown={handleBackdrop}>
+    <div
+      className={[styles.backdrop, 'ui-dialog-backdrop'].join(' ')}
+      data-part="backdrop"
+      onMouseDown={handleBackdrop}
+    >
       <div
         ref={dialogRef}
         role="dialog"
@@ -168,13 +181,13 @@ export function Dialog({
         aria-busy={busy || undefined}
         tabIndex={-1}
         onKeyDown={handleKeyDown}
-        className={['ui-dialog', className].filter(Boolean).join(' ')}
+        className={[styles.dialog, 'ui-dialog', className].filter(Boolean).join(' ')}
       >
-        <div className="ui-dialog__header">
-          <h2 className="ui-dialog__title" id={titleId}>{title}</h2>
+        <div className={[styles.header, 'ui-dialog__header'].join(' ')}>
+          <h2 className={[styles.title, 'ui-dialog__title'].join(' ')} id={titleId}>{title}</h2>
           {showCloseButton ? (
             <button
-              className="ui-dialog__close"
+              className={[styles.close, 'ui-dialog__close'].join(' ')}
               type="button"
               aria-label={closeLabel}
               onClick={onClose}
@@ -184,8 +197,12 @@ export function Dialog({
             </button>
           ) : null}
         </div>
-        {description ? <div className="ui-dialog__description" id={descriptionId}>{description}</div> : null}
-        <div className="ui-dialog__body">{children}</div>
+        {description ? (
+          <div className={[styles.description, 'ui-dialog__description'].join(' ')} id={descriptionId}>
+            {description}
+          </div>
+        ) : null}
+        <div className={[styles.body, 'ui-dialog__body'].join(' ')}>{children}</div>
       </div>
     </div>
   );

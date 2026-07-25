@@ -10,6 +10,7 @@ import {
 import { useSession } from '@features/auth-session';
 import { mutationKeys } from '@shared/api';
 import { Button, Notice } from '@shared/ui/primitives';
+import styles from './ResetPasswordPage.module.css';
 
 const FIELD_ORDER = ['password', 'passwordConfirmation'] as const;
 
@@ -80,8 +81,8 @@ export function ResetPasswordPage() {
           Your password has been updated. <AuthLink to="/login">Log in with your new password</AuthLink>.
         </Notice>
       ) : (
-        <form className="auth-form__fields" noValidate onSubmit={submit}>
-          <p className="auth-form__token-help">Your reset link supplies a private token. It stays hidden while you complete this form.</p>
+        <form noValidate onSubmit={submit}>
+          <p className={styles.tokenHelp}>Your reset link supplies a private token. It stays hidden while you complete this form.</p>
           {summary && Object.keys(fieldErrors).length === 0 ? <FormErrorAlert ref={summaryRef} summary={summary} /> : null}
           <PasswordField id="password" name="newPassword" label="New password" autoComplete="new-password"
             value={newPassword} error={fieldErrors.password} disabled={mutation.isPending} onChange={setNewPassword} />

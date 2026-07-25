@@ -4,6 +4,8 @@ import { Link } from 'react-router-dom';
 import type { CatalogCourse } from '@entities/course';
 import { Button } from '@shared/ui/primitives';
 
+import styles from './CourseCard.module.css';
+
 const DECIMAL_PRICE = /^(?:0|[1-9]\d*)(?:\.\d+)?$/;
 const CURRENCY_CODE = /^[A-Z]{3}$/;
 const TOOLTIP_VIEWPORT_GUTTER = 12;
@@ -52,7 +54,7 @@ export function CourseCard({ course }: CourseCardProps) {
     if (!link || !tooltip) return;
     const clientWidth = document.documentElement.clientWidth; const clientHeight = document.documentElement.clientHeight;
     const linkRect = link.getBoundingClientRect();
-    const headerBottom = document.querySelector<HTMLElement>('.app-header')?.getBoundingClientRect().bottom ?? 0;
+    const headerBottom = document.querySelector<HTMLElement>('[data-app-shell-header]')?.getBoundingClientRect().bottom ?? 0;
     const availableRight = clientWidth - linkRect.right; const availableLeft = linkRect.left;
     const side = availableRight >= TOOLTIP_PREFERRED_WIDTH + TOOLTIP_CONNECTOR_WIDTH + TOOLTIP_VIEWPORT_GUTTER || availableRight >= availableLeft ? 'right' : 'left';
     const availableSide = side === 'right' ? availableRight : availableLeft;
@@ -86,5 +88,68 @@ export function CourseCard({ course }: CourseCardProps) {
     '--catalog-tooltip-left': `${tooltipPlacement.left}px`, '--catalog-tooltip-top': `${tooltipPlacement.top}px`, '--catalog-tooltip-width': `${tooltipPlacement.width}px`,
   } as CSSProperties : undefined;
   const actionLabel = !course.isPublished ? 'Not available' : /^0(?:\.0+)?$/.test(course.price) ? 'Enroll Free' : 'Add to cart';
-  return <li className="catalog-page__item"><article className="catalog-card"><Link ref={linkRef} className="catalog-card__link" to={`/courses/${course.id}`} aria-label={course.title} aria-describedby={statusExplanationId} onPointerEnter={() => setIsPointerOver(true)} onPointerLeave={() => setIsPointerOver(false)} onFocus={() => setIsLinkFocused(true)} onBlur={() => setIsLinkFocused(false)}><div className="catalog-card__preview"><span className="catalog-card__preview-cue">{previewCue}</span></div><div className="catalog-card__body"><h3 className="catalog-card__title">{course.title}</h3><div className="catalog-card__meta"><span className="catalog-card__byline">{course.instructorName}</span><span className="catalog-card__meta-separator" aria-hidden="true"> · </span><span className="catalog-card__lesson-count">{course.totalLessonCount} lesson{course.totalLessonCount === 1 ? '' : 's'}</span></div></div><span ref={tooltipRef} className={['catalog-card__tooltip', tooltipPlacement?.mode === 'side' ? `catalog-card__tooltip--${tooltipPlacement.side}` : 'catalog-card__tooltip--inline', tooltipOpen && 'catalog-card__tooltip--open'].filter(Boolean).join(' ')} id={statusExplanationId} role="tooltip" style={tooltipStyle}>{tooltipNotice ? <span className="catalog-card__tooltip-notice">{tooltipNotice}</span> : null}<span className="catalog-card__tooltip-course" aria-hidden="true">About {course.title}</span><span className="catalog-card__tooltip-description">{description}</span></span><div className="catalog-card__price"><data value={course.price}>{formatCatalogPrice(course.price, course.currency)}</data></div></Link><div className="catalog-card__actions"><Button type="button" disabled className="catalog-card__action-button">{actionLabel}</Button></div></article></li>;
+  const tooltipPlacementClass = tooltipPlacement?.mode === 'side'
+    ? tooltipPlacement.side === 'left' ? styles.tooltipLeft : styles.tooltipRight
+    : styles.tooltipInline;
+  const tooltipPlacementName = tooltipPlacement?.mode === 'side' ? tooltipPlacement.side : 'inline';
+
+  return (
+    <li className={styles.item}>
+      <article className={styles.card} data-part="course-card">
+        <Link
+          ref={linkRef}
+          className={styles.link}
+          to={`/courses/${course.id}`}
+          aria-label={course.title}
+          aria-describedby={statusExplanationId}
+          onPointerEnter={() => setIsPointerOver(true)}
+          onPointerLeave={() => setIsPointerOver(false)}
+          onFocus={() => setIsLinkFocused(true)}
+          onBlur={() => setIsLinkFocused(false)}
+        >
+          <div className={styles.preview} data-part="course-card-preview">
+            <span className={styles.previewCue}>{previewCue}</span>
+          </div>
+          <div className={styles.body} data-part="course-card-body">
+            <h3 className={styles.title}>{course.title}</h3>
+            <div className={styles.metadata} data-part="course-card-metadata">
+              <span className={styles.byline}>{course.instructorName}</span>
+              <span
+                className={styles.metadataSeparator}
+                data-part="course-card-metadata-separator"
+                aria-hidden="true"
+              >
+                {' · '}
+              </span>
+              <span className={styles.lessonCount}>
+                {course.totalLessonCount} lesson{course.totalLessonCount === 1 ? '' : 's'}
+              </span>
+            </div>
+          </div>
+          <span
+            ref={tooltipRef}
+            className={[
+              styles.tooltip,
+              tooltipPlacementClass,
+              tooltipOpen && styles.tooltipOpen,
+            ].filter(Boolean).join(' ')}
+            data-placement={tooltipPlacementName}
+            id={statusExplanationId}
+            role="tooltip"
+            style={tooltipStyle}
+          >
+            {tooltipNotice ? <span className={styles.tooltipNotice}>{tooltipNotice}</span> : null}
+            <span className={styles.tooltipCourse} aria-hidden="true">About {course.title}</span>
+            <span className={styles.tooltipDescription}>{description}</span>
+          </span>
+          <div className={styles.price} data-part="course-card-price">
+            <data value={course.price}>{formatCatalogPrice(course.price, course.currency)}</data>
+          </div>
+        </Link>
+        <div className={styles.actions} data-part="course-card-actions">
+          <Button type="button" disabled className={styles.actionButton}>{actionLabel}</Button>
+        </div>
+      </article>
+    </li>
+  );
 }

@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 
 import { Button, Input } from '@shared/ui/primitives';
 import type { AuthField, AuthFieldErrors } from './validation';
+import styles from './AuthForm.module.css';
 
 interface AuthFormShellProps {
   readonly title: string;
@@ -40,20 +41,20 @@ export function AuthFormShell({
 }: AuthFormShellProps) {
   const headingId = useId();
   return (
-    <section className="auth-form" aria-labelledby={headingId}>
-      <div className="auth-form__heading">
+    <section className={styles.root} aria-labelledby={headingId}>
+      <div className={styles.heading}>
         <h1 id={headingId}>{title}</h1>
         <p>{description}</p>
       </div>
       {children}
-      {footer ? <div className="auth-form__footer">{footer}</div> : null}
+      {footer ? <div className={styles.footer}>{footer}</div> : null}
     </section>
   );
 }
 
 export const FormErrorAlert = forwardRef<HTMLDivElement, FormErrorAlertProps>(function FormErrorAlert({ summary }, ref) {
   return (
-    <div ref={ref} className="auth-form__error-alert" role="alert" tabIndex={-1}>
+    <div ref={ref} className={styles.errorAlert} role="alert" tabIndex={-1}>
       {summary}
     </div>
   );
@@ -74,7 +75,7 @@ export function PasswordField({
     if (disabled) setVisible(false);
   }, [disabled]);
   return (
-    <div className="auth-form__password">
+    <div className={styles.password}>
       <Input
         id={id}
         label={label}
@@ -88,7 +89,7 @@ export function PasswordField({
         onChange={(event) => onChange(event.currentTarget.value)}
         trailingAction={(
           <Button
-            className="auth-form__reveal"
+            className={styles.reveal}
             variant="ghost"
             size="sm"
             type="button"
@@ -111,7 +112,7 @@ export function PasswordField({
 }
 
 export function AuthLink({ to, children }: AuthLinkProps) {
-  return <Link className="auth-form__link" to={to}>{children}</Link>;
+  return <Link className={styles.link} to={to}>{children}</Link>;
 }
 
 export function useAuthErrorFocus(

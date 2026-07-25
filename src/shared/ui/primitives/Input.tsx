@@ -1,6 +1,7 @@
 import { forwardRef, type InputHTMLAttributes, type ReactNode } from 'react';
 
 import { FieldShell, useFieldA11y } from './Field';
+import styles from './Input.module.css';
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label: ReactNode;
@@ -42,11 +43,14 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
       aria-invalid={error ? true : ariaInvalid}
       aria-describedby={ids.describedBy}
       className={[
+        styles.control,
+        trailingAction && styles.withTrailingAction,
         'ui-control',
         'ui-input',
         trailingAction && 'ui-input--with-trailing-action',
         className,
       ].filter(Boolean).join(' ')}
+      data-part="control"
     />
   );
 
@@ -60,9 +64,17 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
       className={fieldClassName}
     >
       {trailingAction ? (
-        <div className="ui-control-frame">
+        <div
+          className={[styles.controlFrame, 'ui-control-frame'].join(' ')}
+          data-part="control-frame"
+        >
           {control}
-          <div className="ui-control-frame__trailing-action">{trailingAction}</div>
+          <div
+            className={[styles.trailingAction, 'ui-control-frame__trailing-action'].join(' ')}
+            data-part="trailing-action"
+          >
+            {trailingAction}
+          </div>
         </div>
       ) : control}
     </FieldShell>

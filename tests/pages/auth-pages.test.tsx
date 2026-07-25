@@ -211,13 +211,12 @@ describe('authentication pages', () => {
       expect(button?.getAttribute('aria-controls')).toBe(passwordId);
       expect(button?.getAttribute('aria-label')).toBe('Show password');
       expect(button?.getAttribute('aria-pressed')).toBe('false');
-      expect(button?.querySelector('svg')?.classList.contains('lucide-eye')).toBe(true);
       expect(button?.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
       expect(button?.querySelector('svg')?.getAttribute('focusable')).toBe('false');
     }
 
     const email = screen.queryByLabelText(/^Email/);
-    if (email) expect(email.closest('.ui-control-frame')).toBe(null);
+    if (email) expect(email.closest('[data-part="control-frame"]')).toBe(null);
 
     for (const passwordId of passwordIds) {
       const input = document.getElementById(passwordId) as HTMLInputElement;
@@ -228,7 +227,7 @@ describe('authentication pages', () => {
       expect(input.type).toBe('text');
       expect(button.getAttribute('aria-label')).toBe('Hide password');
       expect(button.getAttribute('aria-pressed')).toBe('true');
-      expect(button.querySelector('svg')?.classList.contains('lucide-eye-off')).toBe(true);
+      expect(button.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
       passwordIds.filter((id) => id !== passwordId).forEach((id) => {
         expect((document.getElementById(id) as HTMLInputElement).type).toBe('password');
       });
@@ -299,9 +298,7 @@ describe('authentication pages', () => {
     const role = screen.getByRole('combobox', { name: 'Role' }) as HTMLSelectElement;
 
     expect(role).toBeInstanceOf(HTMLSelectElement);
-    expect([...role.classList]).toEqual(expect.arrayContaining([
-      'ui-control', 'ui-select', 'auth-form__role-picker',
-    ]));
+    expect(role.getAttribute('data-part')).toBe('control');
     expect(role.required).toBe(true);
     expect(role.value).toBe('student');
     expect(Array.from(role.options, ({ value, text }) => ({ value, text }))).toEqual([

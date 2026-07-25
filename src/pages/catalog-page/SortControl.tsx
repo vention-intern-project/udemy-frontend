@@ -2,6 +2,8 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react';
 
 import { CATALOG_SORT_VALUES, type CatalogSort } from '@features/catalog-discovery';
 
+import styles from './SortControl.module.css';
+
 const SORT_LABEL: Readonly<Record<CatalogSort, string>> = {
   created_at: 'Oldest',
   '-created_at': 'Newest',
@@ -71,7 +73,8 @@ export function SortControl({ value, onChange }: SortControlProps) {
   return (
     <div
       ref={rootRef}
-      className={['catalog-page__sort-control', open && 'catalog-page__sort-control--open'].filter(Boolean).join(' ')}
+      className={[styles.control, open && styles.controlOpen].filter(Boolean).join(' ')}
+      data-part="catalog-sort-control"
       onPointerEnter={(event) => {
         finePointerHoverRef.current = supportsFinePointerHover(event.pointerType);
         if (finePointerHoverRef.current) openList(selectedIndex);
@@ -86,7 +89,8 @@ export function SortControl({ value, onChange }: SortControlProps) {
     >
       <button
         ref={triggerRef}
-        className="catalog-page__sort-trigger"
+        className={styles.trigger}
+        data-part="catalog-sort-trigger"
         type="button"
         aria-label={`Sort by: ${SORT_LABEL[value]}`}
         aria-haspopup="listbox"
@@ -116,12 +120,13 @@ export function SortControl({ value, onChange }: SortControlProps) {
         }}
       >
         <span>{SORT_LABEL[value]}</span>
-        <span className="catalog-page__sort-chevron" aria-hidden="true" />
+        <span className={styles.chevron} data-part="catalog-sort-chevron" aria-hidden="true" />
       </button>
       {open ? (
         <div
           ref={setListboxRef}
-          className="catalog-page__sort-listbox"
+          className={styles.listbox}
+          data-part="catalog-sort-listbox"
           id={listboxId}
           role="listbox"
           aria-label="Sort by options"
@@ -155,14 +160,14 @@ export function SortControl({ value, onChange }: SortControlProps) {
             <div
               key={sort}
               id={`${listboxId}-option-${index}`}
-              className={['catalog-page__sort-option', activeIndex === index && 'catalog-page__sort-option--active'].filter(Boolean).join(' ')}
+              className={[styles.option, activeIndex === index && styles.optionActive].filter(Boolean).join(' ')}
               role="option"
               aria-selected={value === sort}
               onPointerDown={(event) => event.preventDefault()}
               onMouseEnter={() => setActive(index)}
               onClick={() => select(index)}
             >
-              <span className="catalog-page__sort-radio" aria-hidden="true" />
+              <span className={styles.radio} data-part="catalog-sort-radio" aria-hidden="true" />
               {SORT_LABEL[sort]}
             </div>
           ))}

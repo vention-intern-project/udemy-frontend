@@ -9,7 +9,10 @@ import { CatalogPage } from '../../src/pages/catalog-page';
 import { SessionProvider, useSession, type AccessTokenStore } from '../../src/features/auth-session';
 import type { ApiClient, ApiRequestOptions } from '../../src/shared/api';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 const catalogItem = {
   id: 7, title: 'React', description: null, price: '9.99', currency: 'USD', published_at: null,
@@ -52,7 +55,9 @@ function renderCatalog(request: ApiClient['request'], initialEntries: string[], 
   return render(
     <SessionProvider client={{ request }} tokenStore={tokenStore()}>
       <MemoryRouter initialEntries={initialEntries} initialIndex={initialIndex} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
-        <CatalogPage />
+        <main id="main-content" tabIndex={-1}>
+          <CatalogPage />
+        </main>
         <HistoryControls />
       </MemoryRouter>
     </SessionProvider>,
@@ -134,7 +139,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(heading.textContent).toBe('Master the Skills Shaping the Future');
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
     expect(screen.getByText('Browse courses crafted by industry experts. Advance your career in technology, design, business, and leadership.')).toBeTruthy();
-    expect(document.querySelector('.catalog-hero img')).toBeNull();
+    expect(document.querySelector('[data-part="catalog-hero"] img')).toBeNull();
   });
 
   it('renders one whole-card link with a unified tooltip and disabled cart action without mutations', async () => {
@@ -162,50 +167,49 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(reactLink.getAttribute('href')).toBe('/courses/7');
     expect(screen.getByRole('heading', { level: 3, name: 'React' })).toBeTruthy();
     expect(screen.getByText('$94.99')).toBeTruthy();
-    expect(reactCard?.querySelector('.catalog-card__preview-cue')?.textContent).toBe('View Draft');
-    expect(reactCard?.querySelector('.catalog-card__body .catalog-card__description')).toBeNull();
-    expect(reactCard?.querySelector('.catalog-card__details-cue')).toBeNull();
-    expect(reactCard?.querySelector('.catalog-card__summary')).toBeNull();
-    const reactMetadata = reactCard?.querySelector('.catalog-card__meta');
+    expect(within(reactCard as HTMLElement).getByText('View Draft', { exact: true })).toBeTruthy();
+    expect(reactCard?.querySelector('[data-part="course-card-body"] p')).toBeNull();
+    const reactMetadata = reactCard?.querySelector('[data-part="course-card-metadata"]');
     expect(reactMetadata?.textContent).toBe('Ada Lovelace · 4 lessons');
     expect(reactMetadata?.querySelectorAll('p')).toHaveLength(0);
-    expect(reactMetadata?.querySelector('.catalog-card__byline')?.textContent).toBe('Ada Lovelace');
+    expect(within(reactMetadata as HTMLElement).getByText('Ada Lovelace', { exact: true })).toBeTruthy();
     expect(reactMetadata?.textContent).not.toContain('by ');
-    expect(reactMetadata?.querySelectorAll('.catalog-card__meta-separator')).toHaveLength(1);
-    expect(reactMetadata?.querySelector('.catalog-card__meta-separator')?.textContent).toBe(' · ');
-    expect(reactMetadata?.querySelector('.catalog-card__meta-separator')?.getAttribute('aria-hidden')).toBe('true');
-    expect(reactMetadata?.querySelector('.catalog-card__lesson-count')?.textContent).toBe('4 lessons');
-    expect(reactCard?.querySelector('.catalog-card__meta')?.textContent).not.toContain('Instructor');
+    const metadataSeparator = reactMetadata?.querySelector('[data-part="course-card-metadata-separator"]');
+    expect(reactMetadata?.querySelectorAll('[data-part="course-card-metadata-separator"]')).toHaveLength(1);
+    expect(metadataSeparator?.textContent).toBe(' · ');
+    expect(metadataSeparator?.getAttribute('aria-hidden')).toBe('true');
+    expect(within(reactMetadata as HTMLElement).getByText('4 lessons', { exact: true })).toBeTruthy();
+    expect(reactMetadata?.textContent).not.toContain('Instructor');
     const draftExplanationId = reactLink.getAttribute('aria-describedby');
     expect(draftExplanationId).toBeTruthy();
     const tooltip = document.getElementById(draftExplanationId ?? '');
     expect(tooltip?.getAttribute('role')).toBe('tooltip');
     expect(tooltip?.firstElementChild?.textContent).toBe('This course is not available for enrollment yet.');
-    expect(tooltip?.querySelector('.catalog-card__tooltip-notice')?.textContent).toBe('This course is not available for enrollment yet.');
-    expect(tooltip?.querySelector('.catalog-card__tooltip-course')?.getAttribute('aria-hidden')).toBe('true');
-    expect(tooltip?.querySelector('.catalog-card__tooltip-course')?.textContent).toBe('About React');
+    expect(tooltip?.firstElementChild?.textContent).toBe('This course is not available for enrollment yet.');
+    expect(tooltip?.children.item(1)?.getAttribute('aria-hidden')).toBe('true');
+    expect(tooltip?.children.item(1)?.textContent).toBe('About React');
     expect(tooltip?.textContent).toContain('A concise course description.');
     expect(tooltip?.textContent).not.toContain('published_at');
     expect(tooltip?.textContent).not.toContain('Draft means this course');
     expect(tooltip?.style.getPropertyValue('--catalog-tooltip-tail-top')).toBe('');
-    expect(tooltip?.classList.contains('catalog-card__tooltip--inline')).toBe(true);
-    const price = reactCard?.querySelector('.catalog-card__price');
+    expect(tooltip?.getAttribute('data-placement')).toBe('inline');
+    const price = reactCard?.querySelector('[data-part="course-card-price"]');
     if (!tooltip || !price) throw new Error('Card tooltip and price are required.');
     expect(tooltip.compareDocumentPosition(price) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const publishedLink = screen.getByRole('link', { name: 'TypeScript' });
     const publishedTooltip = document.getElementById(publishedLink.getAttribute('aria-describedby') ?? '');
-    expect(publishedLink.closest('article')?.querySelector('.catalog-card__preview-cue')?.textContent).toBe('View details');
+    expect(within(publishedLink.closest('article') as HTMLElement).getByText('View details', { exact: true })).toBeTruthy();
     expect(publishedTooltip?.textContent).not.toContain('Published means this course');
     expect(publishedTooltip?.textContent).not.toContain('published_at');
     expect(screen.getByText('No course description is available.')).toBeTruthy();
-    expect(Array.from(document.querySelectorAll('.catalog-card__price')).some((price) => price.textContent === 'UZS\u00A00.00')).toBe(true);
+    expect(Array.from(document.querySelectorAll('[data-part="course-card-price"]')).some((price) => price.textContent === 'UZS\u00A00.00')).toBe(true);
     expect(screen.getByText('Price unavailable')).toBeTruthy();
     const cartButton = reactCard?.querySelector('button') as HTMLButtonElement;
     expect(cartButton.textContent).toContain('Not available');
     expect(cartButton.disabled).toBe(true);
-    expect(cartButton.closest('.catalog-card__actions')).toBeTruthy();
+    expect(cartButton.closest('[data-part="course-card-actions"]')).toBeTruthy();
     const freeCard = screen.getByRole('link', { name: 'TypeScript' }).closest('article');
-    expect(freeCard?.querySelector('.catalog-card__meta')?.textContent).toBe('Ada Lovelace · 1 lesson');
+    expect(freeCard?.querySelector('[data-part="course-card-metadata"]')?.textContent).toBe('Ada Lovelace · 1 lesson');
     expect((freeCard?.querySelector('button') as HTMLButtonElement).textContent).toContain('Enroll Free');
     expect((freeCard?.querySelector('button') as HTMLButtonElement).disabled).toBe(true);
     const draftFreeCard = screen.getByRole('link', { name: 'Draft free' }).closest('article');
@@ -216,9 +220,9 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect((publishedPaidCard?.querySelector('button') as HTMLButtonElement).disabled).toBe(true);
     const pluralResultHeading = screen.getByRole('heading', { level: 2, name: 'Found 5 courses' });
     expect(pluralResultHeading.textContent).toBe('Found 5 courses');
-    expect(pluralResultHeading.querySelector('.catalog-page__results-prefix')?.textContent).toBe('Found ');
-    expect(pluralResultHeading.querySelector('strong.catalog-page__results-total')?.textContent).toBe('5');
-    expect(pluralResultHeading.querySelector('.catalog-page__results-suffix')?.textContent).toBe(' courses');
+    expect(pluralResultHeading.firstChild?.textContent).toBe('Found ');
+    expect(pluralResultHeading.querySelector('strong')?.textContent).toBe('5');
+    expect(pluralResultHeading.lastChild?.textContent).toBe(' courses');
     expect(pluralResultHeading.querySelector('strong')?.textContent).not.toContain('courses');
 
     const next = screen.getByRole('button', { name: 'Go to next page' });
@@ -227,6 +231,11 @@ describe('CatalogPage public URL and pagination behavior', () => {
   });
 
   it('canonicalizes legacy sort before its request, applies sort immediately, and applies a changed price range on blur', async () => {
+    const animationFrames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => {
+      animationFrames.push(callback);
+      return animationFrames.length;
+    }));
     const user = userEvent.setup();
     const requests: ApiRequestOptions[] = [];
     const request: ApiClient['request'] = async <TResponse,>(options: ApiRequestOptions) => {
@@ -245,31 +254,29 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(filters.querySelector('h2')).toBeNull();
     const priceRange = screen.getByRole('group', { name: 'Price range' });
     const semanticLegend = priceRange.querySelector(':scope > legend');
-    const visualPriceLabel = priceRange.querySelector('.catalog-filter-bar__legend');
+    const visualPriceLabel = priceRange.querySelector('[data-part="catalog-filter-price-label"]');
     expect(semanticLegend?.textContent).toBe('Price range');
-    expect(semanticLegend?.classList.contains('ui-sr-only')).toBe(true);
+    expect(semanticLegend?.getAttribute('class')).toBeTruthy();
     expect(visualPriceLabel?.textContent).toBe('Price range:');
     expect(visualPriceLabel?.getAttribute('aria-hidden')).toBe('true');
     const minimum = screen.getByLabelText('Min price') as HTMLInputElement;
     const maximum = screen.getByLabelText('Max price') as HTMLInputElement;
     expect(minimum.placeholder).toBe('Min price');
     expect(maximum.placeholder).toBe('Max price');
-    expect(minimum.closest('.catalog-filter-bar__field')?.querySelector('.ui-sr-only')?.textContent).toBe('Min price');
-    expect(maximum.closest('.catalog-filter-bar__field')?.querySelector('.ui-sr-only')?.textContent).toBe('Max price');
+    expect(minimum.labels?.item(0)?.textContent).toBe('Min price');
+    expect(maximum.labels?.item(0)?.textContent).toBe('Max price');
     expect(within(filters).queryByRole('button', { name: /apply/i })).toBeNull();
-    expect(filters.querySelector('.catalog-filter-bar__action')).toBeNull();
     expect(screen.queryByLabelText('Search courses')).toBeNull();
     const sortTrigger = screen.getByRole('button', { name: 'Sort by: Newest' });
-    expect(sortTrigger.closest('.catalog-page__sort-field')).toBeTruthy();
+    expect(sortTrigger.getAttribute('data-part')).toBe('catalog-sort-trigger');
     expect(sortTrigger.getAttribute('aria-controls')).toBe(null);
-    expect(document.querySelector('.catalog-page__sort-select')).toBeNull();
-    const toolbarControls = document.querySelector('.catalog-page__toolbar-controls');
+    const toolbarControls = document.querySelector('[data-part="catalog-toolbar-controls"]');
     expect(toolbarControls).toBeTruthy();
+    expect(within(toolbarControls as HTMLElement).queryByRole('combobox')).toBeNull();
     expect(Array.from(toolbarControls?.children ?? [])).toEqual([
       filters,
-      sortTrigger.closest('.catalog-page__sort-toolbar'),
+      sortTrigger.closest('[data-part="catalog-sort-toolbar"]'),
     ]);
-    expect(document.querySelector('.catalog-page__filter-sidebar')).toBeNull();
     await act(async () => { await user.hover(sortTrigger); });
     const listbox = screen.getByRole('listbox', { name: 'Sort by options' });
     expect(sortTrigger.getAttribute('aria-haspopup')).toBe('listbox');
@@ -282,16 +289,16 @@ describe('CatalogPage public URL and pagination behavior', () => {
     ]);
     expect(sortOptions.map((option) => option.getAttribute('aria-selected'))).toEqual(['false', 'true', 'false', 'false', 'false', 'false']);
     expect(listbox.querySelectorAll('input[type="radio"]')).toHaveLength(0);
-    expect(listbox.querySelectorAll('.catalog-page__sort-radio')).toHaveLength(6);
+    expect(listbox.querySelectorAll('[data-part="catalog-sort-radio"]')).toHaveLength(6);
     await act(async () => { await user.unhover(sortTrigger); });
     expect(screen.queryByRole('listbox', { name: 'Sort by options' })).toBeNull();
     expect(sortTrigger.getAttribute('aria-expanded')).toBe('false');
     expect(sortTrigger.getAttribute('aria-controls')).toBe(null);
     const singularResultHeading = screen.getByRole('heading', { level: 2, name: 'Found 1 course' });
     expect(singularResultHeading.textContent).toBe('Found 1 course');
-    expect(singularResultHeading.querySelector('.catalog-page__results-prefix')?.textContent).toBe('Found ');
-    expect(singularResultHeading.querySelector('strong.catalog-page__results-total')?.textContent).toBe('1');
-    expect(singularResultHeading.querySelector('.catalog-page__results-suffix')?.textContent).toBe(' course');
+    expect(singularResultHeading.firstChild?.textContent).toBe('Found ');
+    expect(singularResultHeading.querySelector('strong')?.textContent).toBe('1');
+    expect(singularResultHeading.lastChild?.textContent).toBe(' course');
     expect(singularResultHeading.querySelector('strong')?.textContent).not.toContain('course');
 
     await act(async () => {
@@ -300,9 +307,20 @@ describe('CatalogPage public URL and pagination behavior', () => {
     });
     const keyboardListbox = await screen.findByRole('listbox', { name: 'Sort by options' });
     expect(keyboardListbox).toBe(document.activeElement);
+    expect(keyboardListbox.getAttribute('data-part')).toBe('catalog-sort-listbox');
     await act(async () => { await user.keyboard('{ArrowDown}{Enter}'); });
     await waitFor(() => expect(screen.getByLabelText('catalog location').textContent).toBe('/?search_query=React&sort=price'));
     await waitFor(() => expect(requests[requests.length - 1]?.query).toEqual({ search_query: 'React', min_price: undefined, max_price: undefined, sort: 'price', page: 1, page_size: 20 }));
+    expect(keyboardListbox.isConnected).toBe(false);
+    await waitFor(() => expect(animationFrames).toHaveLength(1));
+    const mainContent = document.getElementById('main-content');
+    if (!mainContent) throw new Error('Route focus target is missing.');
+    mainContent.focus();
+    expect(mainContent).toBe(document.activeElement);
+    await act(async () => { animationFrames.shift()?.(0); });
+    expect(animationFrames).toHaveLength(1);
+    await act(async () => { animationFrames.shift()?.(0); });
+    expect(screen.getByRole('button', { name: 'Sort by: Low to High' })).toBe(document.activeElement);
 
     await act(async () => {
       await user.type(screen.getByLabelText('Min price'), '5');
@@ -381,6 +399,58 @@ describe('CatalogPage public URL and pagination behavior', () => {
     }));
   });
 
+  it('links an inverted-range error to Max price, then applies Enter once and clears to a max-only range', async () => {
+    const user = userEvent.setup();
+    const requests: ApiRequestOptions[] = [];
+    const request: ApiClient['request'] = async <TResponse,>(options: ApiRequestOptions) => {
+      requests.push(options);
+      return response() as TResponse;
+    };
+    renderCatalog(request, ['/']);
+
+    await screen.findByRole('link', { name: 'React' });
+    const minimum = screen.getByLabelText('Min price') as HTMLInputElement;
+    const maximum = screen.getByLabelText('Max price') as HTMLInputElement;
+
+    await act(async () => {
+      await user.type(minimum, '10');
+      await user.click(maximum);
+    });
+    await waitFor(() => expect(screen.getByLabelText('catalog location').textContent).toBe('/?min_price=10'));
+    await waitFor(() => expect(requests).toHaveLength(2));
+
+    await act(async () => {
+      await user.type(maximum, '5');
+      await user.tab();
+    });
+    await screen.findByText('Maximum price must be at least the minimum price.');
+    expect(maximum.getAttribute('aria-invalid')).toBe('true');
+    expect(maximum.getAttribute('aria-describedby')).toContain('-error');
+    expect(screen.getByLabelText('catalog location').textContent).toBe('/?min_price=10');
+    expect(requests).toHaveLength(2);
+
+    await act(async () => {
+      await user.clear(maximum);
+      await user.type(maximum, '15');
+      await user.keyboard('{Enter}');
+    });
+    await waitFor(() => expect(screen.getByLabelText('catalog location').textContent).toBe('/?min_price=10&max_price=15'));
+    await waitFor(() => expect(requests).toHaveLength(3));
+    await act(async () => { await user.tab(); });
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    expect(requests).toHaveLength(3);
+
+    await act(async () => {
+      await user.clear(minimum);
+      await user.click(maximum);
+    });
+    await waitFor(() => expect(screen.getByLabelText('catalog location').textContent).toBe('/?max_price=15'));
+    await waitFor(() => expect(requests).toHaveLength(4));
+    expect(requests[3]?.query).toEqual({
+      search_query: undefined, min_price: undefined, max_price: 15, sort: 'created_at', page: 1, page_size: 20,
+    });
+  });
+
   it('does not navigate for a normalized no-op and removes a cleared bound while preserving search and sort', async () => {
     const user = userEvent.setup();
     const requests: ApiRequestOptions[] = [];
@@ -435,7 +505,6 @@ describe('CatalogPage public URL and pagination behavior', () => {
     await screen.findByRole('link', { name: 'React' });
     const next = screen.getByRole('button', { name: 'Go to next page' }) as HTMLButtonElement;
     expect(next.textContent).toBe('>');
-    expect(next.classList.contains('ui-pagination__button--direction')).toBe(true);
     const pageOne = screen.getByRole('button', { name: 'Go to page 1' }) as HTMLButtonElement;
     const pageThree = screen.getByRole('button', { name: 'Go to page 3' }) as HTMLButtonElement;
     expect(next.disabled).toBe(true);

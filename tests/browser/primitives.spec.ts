@@ -250,7 +250,7 @@ test('keeps destructive confirmation modal while pending and announces one recov
   await expect(pendingConfirm).toBeDisabled();
   await expect(dialog.getByRole('status')).toHaveText('Destructive action in progress');
 
-  const backdrop = page.locator('.ui-dialog-backdrop');
+  const backdrop = page.locator('[data-part="backdrop"]');
   await backdrop.click({ position: { x: 2, y: 2 } });
   await expect(dialog).toBeVisible();
 
@@ -282,10 +282,10 @@ test('disables spinner and skeleton animations when reduced motion is requested'
 
   expect(await page.evaluate(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches)).toBe(true);
 
-  const spinner = page.locator('.ui-button__spinner');
+  const spinner = page.locator('[data-part="spinner"]');
   await expect(spinner).toHaveCSS('animation-name', 'none');
 
-  const skeletons = page.locator('.ui-skeleton');
+  const skeletons = page.locator('[data-part="skeleton"]');
   await expect(skeletons).toHaveCount(3);
   for (let index = 0; index < await skeletons.count(); index += 1) {
     await expect(skeletons.nth(index)).toHaveCSS('animation-name', 'none');

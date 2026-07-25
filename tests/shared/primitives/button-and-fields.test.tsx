@@ -4,7 +4,13 @@ import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { Button, Input, Select, Textarea } from '../../../src/shared/ui/primitives';
+import {
+  Button,
+  Input,
+  Select,
+  Textarea,
+  VisuallyHidden,
+} from '../../../src/shared/ui/primitives';
 
 afterEach(cleanup);
 
@@ -20,6 +26,7 @@ describe('Button', () => {
     await user.keyboard(' ');
 
     expect(onClick).toHaveBeenCalledTimes(2);
+    expect(button.closest('[data-part="button-wrapper"]')).toBeTruthy();
   });
 
   it('exposes and announces loading state while preventing duplicate activation', async () => {
@@ -81,6 +88,9 @@ describe('form primitives', () => {
     expect(input.getAttribute('aria-invalid')).toBe('true');
     expect(descriptions).toContain('Use your work email');
     expect(descriptions).toContain('Email is invalid');
+    expect(input.getAttribute('data-part')).toBe('control');
+    expect(input.closest('[data-part="field"]')?.querySelector('[data-part="label"]'))
+      .toBeTruthy();
   });
 
   it('provides visible labels for Select and Textarea', () => {
@@ -127,5 +137,18 @@ describe('form primitives', () => {
       .toBe('true');
     expect(screen.getByRole('textbox', { name: 'Textarea error state' }).getAttribute('aria-invalid'))
       .toBe('true');
+  });
+});
+
+describe('VisuallyHidden', () => {
+  it('preserves the requested semantic element', () => {
+    render(
+      <fieldset>
+        <VisuallyHidden as="legend">Price range</VisuallyHidden>
+      </fieldset>,
+    );
+
+    const legend = screen.getByText('Price range');
+    expect(legend.tagName).toBe('LEGEND');
   });
 });

@@ -52,14 +52,14 @@ test('renders a semantic full-width catalog hero at scrollable physical client e
   const heading = page.getByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' });
   await expect(heading).toBeVisible();
   await expect(page.getByText('Browse courses crafted by industry experts. Advance your career in technology, design, business, and leadership.')).toBeVisible();
-  await expect(page.locator('.catalog-hero img')).toHaveCount(0);
+  await expect(page.locator('[data-part="catalog-hero"] img')).toHaveCount(0);
   const settledRequestCount = requests.length;
 
   const desktopGeometry = await page.evaluate(() => {
-    const hero = document.querySelector<HTMLElement>('.catalog-hero');
-    const header = document.querySelector<HTMLElement>('.app-header');
+    const hero = document.querySelector<HTMLElement>('[data-part="catalog-hero"]');
+    const header = document.querySelector<HTMLElement>('[data-app-shell-header]');
     const title = document.querySelector<HTMLElement>('#catalog-page-title');
-    const content = document.querySelector<HTMLElement>('.catalog-page__content');
+    const content = document.querySelector<HTMLElement>('[data-part="catalog-content"]');
     if (!hero || !header || !title || !content) throw new Error('Catalog hero geometry targets are missing.');
     const heroRect = hero.getBoundingClientRect();
     const headerRect = header.getBoundingClientRect();
@@ -93,9 +93,9 @@ test('renders a semantic full-width catalog hero at scrollable physical client e
     await page.setViewportSize({ width, height: 900 });
     await expect(heading).toBeVisible();
     const geometry = await page.evaluate(() => {
-      const hero = document.querySelector<HTMLElement>('.catalog-hero');
+      const hero = document.querySelector<HTMLElement>('[data-part="catalog-hero"]');
       const title = document.querySelector<HTMLElement>('#catalog-page-title');
-      const content = document.querySelector<HTMLElement>('.catalog-page__content');
+      const content = document.querySelector<HTMLElement>('[data-part="catalog-content"]');
       if (!hero || !title || !content) throw new Error('Catalog hero geometry targets are missing.');
       const heroRect = hero.getBoundingClientRect();
       const titleRect = title.getBoundingClientRect();
@@ -157,40 +157,44 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
   await page.goto('/');
   const reactLink = page.getByRole('link', { name: /React/ });
   await expect(reactLink).toBeVisible();
-  await expect(page.locator('.catalog-card')).toHaveCount(5);
-  await expect(page.locator('.catalog-card video, .catalog-card audio, .catalog-card img, .catalog-card iframe')).toHaveCount(0);
+  await expect(page.locator('[data-part="course-card"]')).toHaveCount(5);
+  await expect(page.locator('[data-part="course-card"] video, [data-part="course-card"] audio, [data-part="course-card"] img, [data-part="course-card"] iframe')).toHaveCount(0);
   await expect(page.getByText('$94.99')).toBeVisible();
   await expect(page.getByText('UZS\u00A00.00')).toBeVisible();
   await expect(page.getByText('Price unavailable')).toBeVisible();
-  await expect(page.locator('.catalog-card__body .catalog-card__description')).toHaveCount(0);
-  await expect(page.locator('.catalog-card__tooltip')).toHaveCount(5);
-  expect(await page.locator('.catalog-card__tooltip').first().evaluate((tooltip) => ({
+  await expect(page.locator('[data-part="course-card-body"] p')).toHaveCount(0);
+  await expect(page.getByRole('tooltip')).toHaveCount(5);
+  expect(await page.getByRole('tooltip').first().evaluate((tooltip) => ({
     pointerEvents: getComputedStyle(tooltip).pointerEvents,
-    interceptsTopLeft: document.elementFromPoint(16, 16)?.closest('.catalog-card__tooltip') === tooltip,
+    interceptsTopLeft: document.elementFromPoint(16, 16)?.closest('[role="tooltip"]') === tooltip,
   }))).toEqual({ pointerEvents: 'none', interceptsTopLeft: false });
   await expect(page.getByText('View details', { exact: true })).toHaveCount(2);
   await expect(page.getByText('View Draft', { exact: true })).toHaveCount(3);
-  await expect(page.locator('.catalog-card__preview-cue')).toHaveCount(5);
-  await expect(page.locator('.catalog-card__details-cue')).toHaveCount(0);
+  await expect(page.getByText(/^(View details|View Draft)$/)).toHaveCount(5);
 
-  for (const width of [320, 768, 1280, 1440]) {
+  for (const width of [320, 390, 768, 1100, 1280, 1440]) {
     await page.setViewportSize({ width, height: 900 });
-    const geometry = await page.locator('.catalog-card').evaluateAll((cards) => cards.map((card) => {
+    const gridColumnCount = await page.locator('[data-part="catalog-result-list"]').evaluate((list) => (
+      getComputedStyle(list).gridTemplateColumns.split(' ').filter(Boolean).length
+    ));
+    expect(gridColumnCount).toBe(width >= 1100 ? 3 : width >= 768 ? 2 : 1);
+    expect(gridColumnCount).toBeLessThan(4);
+    const geometry = await page.locator('[data-part="course-card"]').evaluateAll((cards) => cards.map((card) => {
       const rect = card.getBoundingClientRect();
-      const preview = card.querySelector<HTMLElement>('.catalog-card__preview');
-      const body = card.querySelector<HTMLElement>('.catalog-card__body');
-      const price = card.querySelector<HTMLElement>('.catalog-card__price');
-      const link = card.querySelector<HTMLElement>('.catalog-card__link');
-      const title = card.querySelector<HTMLElement>('.catalog-card__title');
-      const meta = card.querySelector<HTMLElement>('.catalog-card__meta');
-      const separator = card.querySelector<HTMLElement>('.catalog-card__meta-separator');
-      const action = card.querySelector<HTMLElement>('.catalog-card__actions .ui-button-wrap');
+      const preview = card.querySelector<HTMLElement>('[data-part="course-card-preview"]');
+      const body = card.querySelector<HTMLElement>('[data-part="course-card-body"]');
+      const price = card.querySelector<HTMLElement>('[data-part="course-card-price"]');
+      const link = card.querySelector<HTMLElement>('a[aria-describedby]');
+      const title = card.querySelector<HTMLElement>('h3');
+      const meta = card.querySelector<HTMLElement>('[data-part="course-card-metadata"]');
+      const separator = card.querySelector<HTMLElement>('[data-part="course-card-metadata-separator"]');
+      const action = card.querySelector<HTMLElement>('[data-part="course-card-actions"] [data-part="button-wrapper"]');
       if (!preview || !body || !price || !link || !title || !meta || !separator || !action) throw new Error('Catalog card geometry targets are missing.');
       const bodyStyle = getComputedStyle(body);
       const titleStyle = getComputedStyle(title);
       const metaStyle = getComputedStyle(meta);
       const priceStyle = getComputedStyle(price);
-      const actionButton = action.querySelector<HTMLElement>('.catalog-card__action-button');
+      const actionButton = action.querySelector<HTMLElement>('button');
       if (!actionButton) throw new Error('Catalog action button is missing.');
       const actionStyle = getComputedStyle(actionButton);
       const priceRect = price.getBoundingClientRect();
@@ -224,7 +228,7 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
         metadataClientHeight: meta.clientHeight,
         metadataWhiteSpace: metaStyle.whiteSpace,
         metadataDisplay: metaStyle.display,
-        lessonWhiteSpace: getComputedStyle(meta.querySelector<HTMLElement>('.catalog-card__lesson-count')!).whiteSpace,
+        lessonWhiteSpace: getComputedStyle(meta.lastElementChild as HTMLElement).whiteSpace,
         separatorFontSize: separatorStyle.fontSize,
         separatorHeight: separatorRect.height,
         separatorMarginInlineStart: separatorStyle.marginInlineStart,
@@ -266,7 +270,7 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
 
   const longTitleLink = page.getByRole('link', { name: longTitle });
   await expect(longTitleLink).toBeVisible();
-  const longTitleGeometry = await longTitleLink.locator('.catalog-card__title').evaluate((title) => {
+  const longTitleGeometry = await longTitleLink.getByRole('heading', { level: 3 }).evaluate((title) => {
     const style = getComputedStyle(title);
     const lineHeight = Number.parseFloat(style.lineHeight);
     return {
@@ -288,48 +292,48 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
   expect(longTitleGeometry.height).toBeLessThanOrEqual(longTitleGeometry.lineHeight * 2 + 1);
   expect(longTitleGeometry.scrollHeight).toBeGreaterThan(longTitleGeometry.clientHeight);
 
-  const reactCard = page.locator('.catalog-card').filter({ has: page.getByRole('heading', { level: 3, name: 'React' }) });
-  await expect(reactCard.locator('.catalog-card__meta')).toHaveText('Ada Lovelace · 4 lessons');
-  await expect(reactCard.locator('.catalog-card__meta p')).toHaveCount(0);
-  await expect(reactCard.locator('.catalog-card__meta')).not.toContainText('by ');
-  await expect(reactCard.locator('.catalog-card__meta-separator')).toHaveCount(1);
-  await expect(reactCard.locator('.catalog-card__meta-separator')).toHaveText(' · ');
-  await expect(reactCard.locator('.catalog-card__meta-separator')).toHaveAttribute('aria-hidden', 'true');
-  await expect(reactCard.locator('.catalog-card__meta')).not.toContainText('Instructor');
-  await expect(page.locator('.catalog-card').filter({ has: page.getByRole('heading', { level: 3, name: 'TypeScript' }) }).locator('.catalog-card__meta')).toHaveText('Ada Lovelace · 1 lesson');
+  const reactCard = page.locator('[data-part="course-card"]').filter({ has: page.getByRole('heading', { level: 3, name: 'React' }) });
+  await expect(reactCard.locator('[data-part="course-card-metadata"]')).toHaveText('Ada Lovelace · 4 lessons');
+  await expect(reactCard.locator('[data-part="course-card-metadata"] p')).toHaveCount(0);
+  await expect(reactCard.locator('[data-part="course-card-metadata"]')).not.toContainText('by ');
+  await expect(reactCard.locator('[data-part="course-card-metadata-separator"]')).toHaveCount(1);
+  await expect(reactCard.locator('[data-part="course-card-metadata-separator"]')).toHaveText(' · ');
+  await expect(reactCard.locator('[data-part="course-card-metadata-separator"]')).toHaveAttribute('aria-hidden', 'true');
+  await expect(reactCard.locator('[data-part="course-card-metadata"]')).not.toContainText('Instructor');
+  await expect(page.locator('[data-part="course-card"]').filter({ has: page.getByRole('heading', { level: 3, name: 'TypeScript' }) }).locator('[data-part="course-card-metadata"]')).toHaveText('Ada Lovelace · 1 lesson');
   await reactCard.hover();
-  const reactTooltip = reactCard.locator('.catalog-card__tooltip');
+  const reactTooltip = reactCard.getByRole('tooltip');
   await expect(reactTooltip).toHaveCSS('opacity', '1');
   await expect(reactTooltip.locator(':scope > :first-child')).toHaveText('This course is not available for enrollment yet.');
   await expect(reactTooltip).toHaveText(/^This course is not available for enrollment yet\.About ReactA concise course description\.$/);
   await expect(reactTooltip).toContainText('A concise course description.');
-  await expect(reactTooltip.locator('.catalog-card__tooltip-course')).toHaveText('About React');
-  await expect(reactTooltip.locator('.catalog-card__tooltip-course')).toHaveAttribute('aria-hidden', 'true');
+  await expect(reactTooltip.locator(':scope > [aria-hidden="true"]')).toHaveText('About React');
+  await expect(reactTooltip.locator(':scope > [aria-hidden="true"]')).toHaveAttribute('aria-hidden', 'true');
   await expect(reactTooltip).not.toContainText('published_at');
   await expect(reactTooltip).not.toContainText('Draft means this course');
-  await expect(reactTooltip).toHaveClass(/catalog-card__tooltip--right/);
-  const publishedCard = page.locator('.catalog-card').filter({ has: page.getByRole('heading', { level: 3, name: 'TypeScript' }) });
+  await expect(reactTooltip).toHaveAttribute('data-placement', 'right');
+  const publishedCard = page.locator('[data-part="course-card"]').filter({ has: page.getByRole('heading', { level: 3, name: 'TypeScript' }) });
   await publishedCard.hover();
-  const publishedTooltip = publishedCard.locator('.catalog-card__tooltip');
+  const publishedTooltip = publishedCard.getByRole('tooltip');
   await expect(publishedTooltip).toHaveCSS('opacity', '1');
   await expect(publishedTooltip).not.toContainText('Published means this course');
   await expect(publishedTooltip).not.toContainText('published_at');
   await reactCard.hover();
   const rightPlacement = await reactTooltip.evaluate((tooltip) => {
     const rect = tooltip.getBoundingClientRect();
-    const headerBottom = document.querySelector<HTMLElement>('.app-header')?.getBoundingClientRect().bottom ?? 0;
+    const headerBottom = document.querySelector<HTMLElement>('[data-app-shell-header]')?.getBoundingClientRect().bottom ?? 0;
     const centreX = rect.left + (rect.width / 2);
     const centreY = rect.top + (rect.height / 2);
     const hit = document.elementFromPoint(centreX, centreY);
-    const sourceCard = tooltip.closest('.catalog-card');
+    const sourceCard = tooltip.closest('[data-part="course-card"]');
     const hasNeighborBelow = document.elementsFromPoint(centreX, centreY).some((element) => {
-      const card = element.closest('.catalog-card');
+      const card = element.closest('[data-part="course-card"]');
       return card !== null && card !== sourceCard;
     });
     return {
       left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom,
       clientWidth: document.documentElement.clientWidth, clientHeight: document.documentElement.clientHeight,
-      headerBottom, hitInsideTooltip: hit?.closest('.catalog-card__tooltip') === tooltip, hasNeighborBelow,
+      headerBottom, hitInsideTooltip: hit?.closest('[role="tooltip"]') === tooltip, hasNeighborBelow,
       tailBorderRightWidth: getComputedStyle(tooltip, '::before').borderRightWidth,
       tailTop: getComputedStyle(tooltip, '::before').top,
       tailTransform: getComputedStyle(tooltip, '::before').transform,
@@ -350,10 +354,10 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
   expect(rightPlacement.transitionProperty).not.toContain('transform');
   expect(rightPlacement.tailPositionVariable).toBe('');
 
-  const rightmostCard = page.locator('.catalog-card').filter({ has: page.getByRole('heading', { level: 3, name: longTitle }) });
+  const rightmostCard = page.locator('[data-part="course-card"]').filter({ has: page.getByRole('heading', { level: 3, name: longTitle }) });
   await rightmostCard.hover();
-  await expect(rightmostCard.locator('.catalog-card__tooltip')).toHaveClass(/catalog-card__tooltip--left/);
-  expect(await rightmostCard.locator('.catalog-card__tooltip').evaluate((tooltip) => getComputedStyle(tooltip, '::before').borderLeftWidth)).toBe('8px');
+  await expect(rightmostCard.getByRole('tooltip')).toHaveAttribute('data-placement', 'left');
+  expect(await rightmostCard.getByRole('tooltip').evaluate((tooltip) => getComputedStyle(tooltip, '::before').borderLeftWidth)).toBe('8px');
   await reactLink.focus();
   expect(await reactLink.evaluate((element) => element.matches(':focus-visible'))).toBe(true);
   await expect(reactTooltip).toHaveCSS('opacity', '1');
@@ -361,8 +365,8 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
 
   const cartButton = reactCard.getByRole('button', { name: 'Not available' });
   const freeButton = publishedCard.getByRole('button', { name: 'Enroll Free' });
-  const draftFreeButton = page.locator('.catalog-card').filter({ has: page.getByRole('heading', { level: 3, name: 'Draft free' }) }).getByRole('button', { name: 'Not available' });
-  const paidButton = page.locator('.catalog-card').filter({ has: page.getByRole('heading', { level: 3, name: 'Published paid' }) }).getByRole('button', { name: 'Add to cart' });
+  const draftFreeButton = page.locator('[data-part="course-card"]').filter({ has: page.getByRole('heading', { level: 3, name: 'Draft free' }) }).getByRole('button', { name: 'Not available' });
+  const paidButton = page.locator('[data-part="course-card"]').filter({ has: page.getByRole('heading', { level: 3, name: 'Published paid' }) }).getByRole('button', { name: 'Add to cart' });
   await expect(cartButton).toBeDisabled();
   await expect(freeButton).toBeDisabled();
   await expect(draftFreeButton).toBeDisabled();
@@ -385,8 +389,8 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
 
   await reactLink.focus();
   await page.setViewportSize({ width: 320, height: 900 });
-  await expect(reactTooltip).toHaveClass(/catalog-card__tooltip--inline/);
-  expect(await reactTooltip.evaluate((tooltip) => tooltip.parentElement?.lastElementChild?.classList.contains('catalog-card__price'))).toBe(true);
+  await expect(reactTooltip).toHaveAttribute('data-placement', 'inline');
+  expect(await reactTooltip.evaluate((tooltip) => tooltip.parentElement?.lastElementChild?.getAttribute('data-part'))).toBe('course-card-price');
   expect(await reactTooltip.evaluate((tooltip) => getComputedStyle(tooltip, '::before').content)).toBe('none');
   await expect(reactTooltip).toBeVisible();
   const narrowPlacement = await reactTooltip.evaluate((tooltip) => ({
@@ -406,11 +410,11 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.evaluate(() => { document.body.style.minHeight = '2000px'; });
   await reactLink.focus();
-  await expect(reactTooltip).toHaveClass(/catalog-card__tooltip--right/);
+  await expect(reactTooltip).toHaveAttribute('data-placement', 'right');
   const readSideTooltipGeometry = () => reactTooltip.evaluate((tooltip) => {
-    const source = tooltip.closest<HTMLElement>('.catalog-card');
-    const link = tooltip.closest<HTMLElement>('.catalog-card__link');
-    const header = document.querySelector<HTMLElement>('.app-header');
+    const source = tooltip.closest<HTMLElement>('[data-part="course-card"]');
+    const link = tooltip.closest<HTMLElement>('a[aria-describedby]');
+    const header = document.querySelector<HTMLElement>('[data-app-shell-header]');
     if (!source || !link || !header) throw new Error('Tooltip geometry targets are missing.');
     const tooltipRect = tooltip.getBoundingClientRect();
     const sourceRect = source.getBoundingClientRect();
@@ -467,8 +471,6 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
   const previous = page.getByRole('button', { name: 'Go to previous page' });
   await expect(previous).toHaveText('<');
   await expect(next).toHaveText('>');
-  await expect(previous).toHaveClass(/ui-pagination__button--direction/);
-  await expect(next).toHaveClass(/ui-pagination__button--direction/);
   const paginationStyles = await page.evaluate(() => {
     const previousButton = document.querySelector<HTMLButtonElement>('[aria-label="Go to previous page"]');
     const nextButton = document.querySelector<HTMLButtonElement>('[aria-label="Go to next page"]');
@@ -618,9 +620,13 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   await expect(catalogSearch.getByRole('button', { name: 'Search' })).toHaveCount(0);
   const headerSearchGeometry = await catalogSearch.evaluate((form) => {
     const input = form.querySelector<HTMLInputElement>('input[name="search_query"]');
-    const label = form.querySelector<HTMLLabelElement>('label.ui-field__label');
-    const icon = form.querySelector<SVGElement>('svg.app-catalog-search__icon');
+    const label = form.querySelector<HTMLLabelElement>('label');
+    const icon = form.querySelector<SVGElement>('svg[aria-hidden="true"]');
     if (!input || !label || !icon) throw new Error('Label-free catalog search hooks are missing.');
+    const hiddenLabel = label.firstElementChild;
+    if (!(hiddenLabel instanceof HTMLElement) || label.childElementCount !== 1) {
+      throw new Error('Catalog search label must contain one semantic hidden child.');
+    }
     const resolveColor = (token: string) => {
       const probe = document.createElement('span');
       probe.style.color = `var(${token})`;
@@ -631,12 +637,12 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
     };
     const inputRect = input.getBoundingClientRect();
     const iconRect = icon.getBoundingClientRect();
-    const labelRect = label.getBoundingClientRect();
+    const hiddenLabelRect = hiddenLabel.getBoundingClientRect();
     const iconStyle = getComputedStyle(icon);
     const inputStyle = getComputedStyle(input);
     return {
-      labelHiddenContent: label.querySelector('.ui-sr-only')?.textContent,
-      labelVisibleHeight: labelRect.height,
+      labelHiddenContent: hiddenLabel.textContent,
+      labelHiddenHeight: hiddenLabelRect.height,
       iconAriaHidden: icon.getAttribute('aria-hidden'),
       iconFocusable: icon.getAttribute('focusable'),
       iconRole: icon.getAttribute('role'),
@@ -650,7 +656,7 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
     };
   });
   expect(headerSearchGeometry.labelHiddenContent).toBe('Search courses');
-  expect(headerSearchGeometry.labelVisibleHeight).toBeLessThanOrEqual(1);
+  expect(headerSearchGeometry.labelHiddenHeight).toBeLessThanOrEqual(1);
   expect(headerSearchGeometry.iconAriaHidden).toBe('true');
   expect(headerSearchGeometry.iconFocusable).toBe('false');
   expect(headerSearchGeometry.iconRole).toBe(null);
@@ -660,16 +666,14 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   expect(headerSearchGeometry.iconBeforeText).toBe(true);
   expect(headerSearchGeometry.iconInputCentreDelta).toBeLessThanOrEqual(1);
   expect(headerSearchGeometry.inputBorderRadius).toBe('9999px');
-  const anonymousCatalogHeader = await page.locator('.app-header').evaluate((header) => {
-    const inner = header.querySelector<HTMLElement>('.app-header__inner');
-    const form = header.querySelector<HTMLElement>('.app-catalog-search');
-    const start = header.querySelector<HTMLElement>('.app-header__catalog-start');
-    const end = header.querySelector<HTMLElement>('.app-header__catalog-end');
+  const anonymousCatalogHeader = await page.locator('[data-app-shell-header]').evaluate((header) => {
+    const inner = header.firstElementChild as HTMLElement | null;
+    const form = header.querySelector<HTMLElement>('form[role="search"]');
     const browse = Array.from(header.querySelectorAll<HTMLAnchorElement>('a')).find((link) => link.textContent?.trim() === 'Browse courses');
     const search = header.querySelector<HTMLInputElement>('input[name="search_query"]');
     const logIn = Array.from(header.querySelectorAll<HTMLAnchorElement>('a')).find((link) => link.textContent?.trim() === 'Log in');
     const signUp = Array.from(header.querySelectorAll<HTMLAnchorElement>('a')).find((link) => link.textContent?.trim() === 'Sign up');
-    if (!inner || !form || !start || !end || !browse || !search || !logIn || !signUp) throw new Error('Anonymous catalog header controls are missing.');
+    if (!inner || !form || !browse || !search || !logIn || !signUp) throw new Error('Anonymous catalog header controls are missing.');
     const sequence = Array.from(header.querySelectorAll('a, input')).map((element) => {
       if (element instanceof HTMLInputElement) return element.name;
       return element.getAttribute('aria-label') ?? element.textContent?.trim();
@@ -684,7 +688,8 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
       sequence,
       hrefs: [browse.getAttribute('href'), logIn.getAttribute('href'), signUp.getAttribute('href')],
       current: [browse.getAttribute('aria-current'), logIn.getAttribute('aria-current'), signUp.getAttribute('aria-current')],
-      directChildren: Array.from(inner.children).map((child) => child.className),
+      directChildCount: inner.children.length,
+      searchFormIndex: Array.from(inner.children).indexOf(form),
       clientWidth: document.documentElement.clientWidth,
       formCenterDelta: Math.abs((formRect.left + formRect.width / 2) - (innerRect.left + innerRect.width / 2)),
       inputCenterDelta: Math.abs((searchRect.left + searchRect.width / 2) - (innerRect.left + innerRect.width / 2)),
@@ -698,7 +703,8 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   expect(anonymousCatalogHeader.sequence).toEqual(['LearnHub home', 'Browse courses', 'search_query', 'Log in', 'Sign up']);
   expect(anonymousCatalogHeader.hrefs).toEqual(['/', '/login', '/signup']);
   expect(anonymousCatalogHeader.current).toEqual(['page', null, null]);
-  expect(anonymousCatalogHeader.directChildren).toEqual(['app-header__catalog-start', 'app-catalog-search', 'app-header__catalog-end']);
+  expect(anonymousCatalogHeader.directChildCount).toBe(3);
+  expect(anonymousCatalogHeader.searchFormIndex).toBe(1);
   expect(anonymousCatalogHeader.formCenterDelta).toBeLessThanOrEqual(1);
   expect(anonymousCatalogHeader.inputCenterDelta).toBeLessThanOrEqual(1);
   expect(anonymousCatalogHeader.browseSearchGap).toBeGreaterThan(0);
@@ -715,7 +721,7 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   await page.keyboard.press('Tab');
   await expect(page.getByRole('link', { name: 'Sign up' })).toBeFocused();
   await expect(page.getByRole('link', { name: 'React' })).toHaveAttribute('href', '/courses/7');
-  await expect(page.locator('.catalog-card__meta').getByText('Ada Lovelace', { exact: true })).toBeVisible();
+  await expect(page.locator('[data-part="course-card-metadata"]').getByText('Ada Lovelace', { exact: true })).toBeVisible();
   await expect(page.getByText('1 lesson', { exact: true })).toBeVisible();
   expect(requests[0]).toContain('page_size=20');
 
@@ -724,37 +730,41 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   const priceRange = filters.getByRole('group', { name: 'Price range' });
   await expect(priceRange).toBeVisible();
   const semanticPriceLegend = priceRange.locator(':scope > legend');
-  const visualPriceLabel = priceRange.locator('.catalog-filter-bar__legend');
+  const visualPriceLabel = priceRange.locator('[data-part="catalog-filter-price-label"]');
   await expect(semanticPriceLegend).toHaveText('Price range');
   await expect(visualPriceLabel).toHaveText('Price range:');
   await expect(visualPriceLabel).toHaveAttribute('aria-hidden', 'true');
   expect(await semanticPriceLegend.evaluate((legend) => getComputedStyle(legend).display)).not.toBe('contents');
-  await expect(filters.getByLabel('Min price')).toHaveValue('5');
-  await expect(filters.getByLabel('Max price')).toHaveValue('');
-  await expect(filters.getByLabel('Min price')).toHaveAttribute('placeholder', 'Min price');
-  await expect(filters.getByLabel('Max price')).toHaveAttribute('placeholder', 'Max price');
+  const initialMinimum = filters.getByLabel('Min price');
+  const initialMaximum = filters.getByLabel('Max price');
+  await expect(initialMinimum).toHaveValue('5');
+  await expect(initialMaximum).toHaveValue('');
+  await expect(initialMinimum).toHaveAttribute('placeholder', 'Min price');
+  await expect(initialMaximum).toHaveAttribute('placeholder', 'Max price');
+  for (const input of [initialMinimum, initialMaximum]) {
+    await expect(input).toHaveAttribute('data-part', 'control');
+    await expect(input.locator('xpath=..')).toHaveAttribute('data-part', 'field');
+    await expect(input.locator('xpath=..').locator(':scope > label')).toHaveAttribute('data-part', 'label');
+  }
   await expect(filters.getByRole('button', { name: /apply/i })).toHaveCount(0);
-  await expect(filters.locator('.catalog-filter-bar__action')).toHaveCount(0);
   expect(await filters.locator('input[name="search_query"], select').count()).toBe(0);
-  const sortTrigger = page.locator('.catalog-page__sort-trigger');
+  const sortTrigger = page.locator('[data-part="catalog-sort-trigger"]');
   await expect(sortTrigger).toHaveAccessibleName('Sort by: Newest');
-  const toolbarControls = page.locator('.catalog-page__toolbar-controls');
+  const toolbarControls = page.locator('[data-part="catalog-toolbar-controls"]');
   await expect(toolbarControls).toHaveCount(1);
-  expect(await toolbarControls.evaluate((controls) => Array.from(controls.children).map((child) => child.className))).toEqual([
-    'catalog-filter-bar',
-    'catalog-page__sort-toolbar',
-  ]);
-  await expect(page.locator('.catalog-page__filter-sidebar')).toHaveCount(0);
+  await expect(toolbarControls.getByRole('combobox')).toHaveCount(0);
+  expect(await toolbarControls.evaluate((controls) => Array.from(controls.children).map((child) => (
+    child instanceof HTMLFormElement ? child.getAttribute('aria-label') : child.getAttribute('data-part')
+  )))).toEqual(['Course filters', 'catalog-sort-toolbar']);
   const resultHeading = page.getByRole('heading', { level: 2, name: 'Found 1 course' });
   await expect(resultHeading).toHaveText('Found 1 course');
-  await expect(resultHeading.locator('.catalog-page__results-prefix')).toHaveText('Found ');
-  await expect(resultHeading.locator('strong.catalog-page__results-total')).toHaveText('1');
-  await expect(resultHeading.locator('.catalog-page__results-suffix')).toHaveText(' course');
+  await expect(resultHeading.locator('strong')).toHaveText('1');
   await expect(resultHeading.locator('strong')).not.toContainText('course');
   const resultTypography = await resultHeading.evaluate((heading) => {
-    const total = heading.querySelector<HTMLElement>('.catalog-page__results-total');
-    const suffix = heading.querySelector<HTMLElement>('.catalog-page__results-suffix');
-    const sortLabel = document.querySelector<HTMLElement>('.catalog-page__sort-label');
+    const total = heading.querySelector<HTMLElement>('strong');
+    const suffix = heading.lastElementChild as HTMLElement | null;
+    const sortLabel = Array.from(document.querySelectorAll<HTMLElement>('span'))
+      .find((element) => element.textContent === 'Sort by:');
     if (!total || !suffix || !sortLabel) throw new Error('Result-toolbar typography targets are missing.');
     const resolveColor = (token: string) => {
       const probe = document.createElement('span');
@@ -777,9 +787,8 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   expect(resultTypography.suffix.fontWeight).toBe('400');
   const sortUrlBeforeHover = page.url();
   const requestCountBeforeHover = requests.length;
-  const sortIdle = await page.locator('.catalog-page__sort-field').evaluate((field) => {
-    const trigger = field.querySelector<HTMLElement>('.catalog-page__sort-trigger');
-    const chevron = field.querySelector<HTMLElement>('.catalog-page__sort-chevron');
+  const sortIdle = await sortTrigger.evaluate((trigger) => {
+    const chevron = trigger.querySelector<HTMLElement>('[data-part="catalog-sort-chevron"]');
     if (!trigger || !chevron) throw new Error('Custom sort trigger or chevron is missing.');
     const resolveColor = (token: string) => {
       const probe = document.createElement('span'); probe.style.color = `var(${token})`; document.body.append(probe);
@@ -803,7 +812,7 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   expect(sortIdle.transition).toContain('color');
   expect(sortIdle.duration).not.toBe('0s');
   const focusedCourseLink = page.getByRole('link', { name: 'React' });
-  const focusedCourseTooltip = focusedCourseLink.locator('.catalog-card__tooltip');
+  const focusedCourseTooltip = focusedCourseLink.locator('xpath=..').getByRole('tooltip');
   await focusedCourseLink.focus();
   await expect(focusedCourseTooltip).toHaveCSS('opacity', '1');
   await sortTrigger.hover();
@@ -813,8 +822,8 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   await expect(sortListbox.getByRole('option')).toHaveCount(6);
   await expect(sortListbox.getByRole('option', { name: 'Newest' })).toHaveAttribute('aria-selected', 'true');
   await page.waitForTimeout(200);
-  const sortGeometry = await Promise.all([sortTrigger.boundingBox(), sortListbox.boundingBox(), page.locator('.catalog-page__sort-field').evaluate((field) => {
-    const trigger = field.querySelector<HTMLElement>('.catalog-page__sort-trigger'); const chevron = field.querySelector<HTMLElement>('.catalog-page__sort-chevron');
+  const sortGeometry = await Promise.all([sortTrigger.boundingBox(), sortListbox.boundingBox(), sortTrigger.evaluate((trigger) => {
+    const chevron = trigger.querySelector<HTMLElement>('[data-part="catalog-sort-chevron"]');
     if (!trigger || !chevron) throw new Error('Custom sort geometry targets are missing.');
     const resolveColor = (token: string) => { const probe = document.createElement('span'); probe.style.color = `var(${token})`; document.body.append(probe); const color = getComputedStyle(probe).color; probe.remove(); return color; };
     const triggerRect = trigger.getBoundingClientRect(); const rect = chevron.getBoundingClientRect(); const style = getComputedStyle(chevron); const matrix = new DOMMatrixReadOnly(style.transform);
@@ -834,7 +843,8 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   expect(requests).toHaveLength(requestCountBeforeHover);
   const lowToHighOption = sortListbox.getByRole('option', { name: 'Low to High' });
   await lowToHighOption.evaluate((option) => {
-    const tooltip = document.querySelector<HTMLElement>('.catalog-card__tooltip--open');
+    const describedBy = document.activeElement?.getAttribute('aria-describedby');
+    const tooltip = describedBy ? document.getElementById(describedBy) : null;
     const rect = option.getBoundingClientRect();
     if (!tooltip) throw new Error('Focused course tooltip is required for Sort layering coverage.');
     tooltip.style.setProperty('transform', `translate3d(${rect.left}px, ${rect.top}px, 0)`, 'important');
@@ -843,12 +853,15 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   const sortHit = await lowToHighOption.evaluate((option) => {
     const rect = option.getBoundingClientRect();
     const hit = document.elementFromPoint(rect.left + (rect.width / 2), rect.top + (rect.height / 2));
-    return { listboxHit: hit?.closest('[role="listbox"]') === option.closest('[role="listbox"]'), tooltipHit: Boolean(hit?.closest('.catalog-card__tooltip')) };
+    return { listboxHit: hit?.closest('[role="listbox"]') === option.closest('[role="listbox"]'), tooltipHit: Boolean(hit?.closest('[role="tooltip"]')) };
   });
   expect(sortHit).toEqual({ listboxHit: true, tooltipHit: false });
   await expect(sortTrigger).toHaveAttribute('aria-expanded', 'true');
-  await lowToHighOption.evaluate(() => document.querySelector<HTMLElement>('.catalog-card__tooltip--open')?.style.removeProperty('transform'));
-  await expect(lowToHighOption).toHaveClass(/catalog-page__sort-option--active/);
+  await lowToHighOption.evaluate(() => {
+    const describedBy = document.activeElement?.getAttribute('aria-describedby');
+    if (describedBy) document.getElementById(describedBy)?.style.removeProperty('transform');
+  });
+  await expect(sortListbox).toHaveAttribute('aria-activedescendant', await lowToHighOption.getAttribute('id') ?? '');
   const purple = 'rgb(109, 40, 217)';
   for (const target of [filters.getByLabel('Min price'), filters.getByLabel('Max price'), sortTrigger, focusedCourseLink]) {
     await target.focus();
@@ -863,10 +876,11 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   await expect(sortListbox).toHaveCSS('border-color', purple);
   const optionGeometry = await sortListbox.evaluate((listbox) => {
     const selected = Array.from(listbox.querySelectorAll<HTMLElement>('[role="option"]')).find((option) => option.getAttribute('aria-selected') === 'true');
-    const active = listbox.querySelector<HTMLElement>('.catalog-page__sort-option--active');
+    const activeId = listbox.getAttribute('aria-activedescendant');
+    const active = activeId ? document.getElementById(activeId) : null;
     const unselected = Array.from(listbox.querySelectorAll<HTMLElement>('[role="option"]')).find((option) => option.getAttribute('aria-selected') === 'false');
     if (!selected || !unselected || !active) throw new Error('Custom sort option states are missing.');
-    const selectedRadio = selected.querySelector<HTMLElement>('.catalog-page__sort-radio'); const unselectedRadio = unselected.querySelector<HTMLElement>('.catalog-page__sort-radio');
+    const selectedRadio = selected.querySelector<HTMLElement>('[data-part="catalog-sort-radio"]'); const unselectedRadio = unselected.querySelector<HTMLElement>('[data-part="catalog-sort-radio"]');
     if (!selectedRadio || !unselectedRadio) throw new Error('Custom sort radio visuals are missing.');
     const resolveColor = (token: string) => { const probe = document.createElement('span'); probe.style.color = `var(${token})`; document.body.append(probe); const color = getComputedStyle(probe).color; probe.remove(); return color; };
     const resolveBackground = (token: string) => { const probe = document.createElement('span'); probe.style.background = `var(${token})`; document.body.append(probe); const color = getComputedStyle(probe).backgroundColor; probe.remove(); return color; };
@@ -883,7 +897,7 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   expect(optionGeometry.activeBackground).toBe(optionGeometry.expected.canvas);
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.mouse.move(0, 0); await expect(sortListbox).toHaveCount(0); await sortTrigger.hover(); await page.waitForTimeout(20);
-  const reducedMotionChevron = await page.locator('.catalog-page__sort-chevron').evaluate((chevron) => { const style = getComputedStyle(chevron); const matrix = new DOMMatrixReadOnly(style.transform); return { color: style.color, angle: (Math.atan2(matrix.b, matrix.a) * 180 / Math.PI + 360) % 360, duration: style.transitionDuration }; });
+  const reducedMotionChevron = await page.locator('[data-part="catalog-sort-chevron"]').evaluate((chevron) => { const style = getComputedStyle(chevron); const matrix = new DOMMatrixReadOnly(style.transform); return { color: style.color, angle: (Math.atan2(matrix.b, matrix.a) * 180 / Math.PI + 360) % 360, duration: style.transitionDuration }; });
   expect(reducedMotionChevron.color).toBe(sortGeometry[2].expectedPrimary); expect(reducedMotionChevron.angle).toBeCloseTo(225, 1); expect(reducedMotionChevron.duration).toBe('0s');
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.mouse.move(0, 0);
@@ -897,7 +911,8 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   await expect(page).toHaveURL(/search_query=React&min_price=5&sort=price/);
   expect(requests[requests.length - 1]).toContain('sort=price');
   expect(requests[requests.length - 1]).toContain('page=1');
-  const sortLabel = page.locator('.catalog-page__sort-label');
+  await expect(sortTrigger).toBeFocused();
+  const sortLabel = page.getByText('Sort by:', { exact: true });
   const labelParity = await Promise.all([visualPriceLabel.evaluate((label) => {
     const style = getComputedStyle(label);
     return { color: style.color, fontSize: style.fontSize, fontWeight: style.fontWeight, lineHeight: style.lineHeight };
@@ -906,7 +921,7 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
     return { color: style.color, fontSize: style.fontSize, fontWeight: style.fontWeight, lineHeight: style.lineHeight };
   })]);
   expect(labelParity[0]).toEqual(labelParity[1]);
-  const toolbarGeometry = await Promise.all([resultHeading.boundingBox(), toolbarControls.boundingBox(), filters.boundingBox(), page.locator('.catalog-page__sort-toolbar').boundingBox(), sortLabel.boundingBox(), sortTrigger.boundingBox(), page.locator('.catalog-page__list').boundingBox()]);
+  const toolbarGeometry = await Promise.all([resultHeading.boundingBox(), toolbarControls.boundingBox(), filters.boundingBox(), page.locator('[data-part="catalog-sort-toolbar"]').boundingBox(), sortLabel.boundingBox(), sortTrigger.boundingBox(), page.locator('[data-part="catalog-result-list"]').boundingBox()]);
   expect(toolbarGeometry.every(Boolean)).toBe(true);
   expect(toolbarGeometry[1]!.x + toolbarGeometry[1]!.width).toBeLessThanOrEqual(1280);
   expect(toolbarGeometry[2]!.x + toolbarGeometry[2]!.width).toBeLessThanOrEqual(toolbarGeometry[3]!.x);
@@ -924,8 +939,8 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   expect(toolbarGeometry[5]!.y + toolbarGeometry[5]!.height).toBeLessThanOrEqual(toolbarGeometry[6]!.y);
   expect(Math.abs((toolbarGeometry[0]!.y + (toolbarGeometry[0]!.height / 2)) - (toolbarGeometry[1]!.y + (toolbarGeometry[1]!.height / 2)))).toBeLessThanOrEqual(1);
   const resultsColumnGeometry = await Promise.all([
-    page.locator('.catalog-page__discovery-layout').boundingBox(),
-    page.locator('.catalog-page__discovery-results').boundingBox(),
+    page.locator('[data-part="catalog-discovery-layout"]').boundingBox(),
+    page.locator('[data-part="catalog-discovery-results"]').boundingBox(),
   ]);
   expect(resultsColumnGeometry.every(Boolean)).toBe(true);
   expect(Math.abs(resultsColumnGeometry[0]!.x - resultsColumnGeometry[1]!.x)).toBeLessThanOrEqual(1);
@@ -975,9 +990,7 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
 
   await page.setViewportSize({ width: 320, height: 740 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth && document.body.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
-  const desktopNavigation = page.locator('.app-nav--desktop');
-  await expect(desktopNavigation).toHaveCount(2);
-  expect(await desktopNavigation.evaluateAll((navigation) => navigation.every((element) => getComputedStyle(element).display === 'none'))).toBe(true);
+  await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toHaveCount(0);
   const mobileMenu = page.getByRole('button', { name: 'Open navigation' });
   await mobileMenu.click();
   const mobileNavigation = page.getByRole('navigation', { name: 'Mobile navigation' });
@@ -989,7 +1002,7 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   await expect(mobileMenu).toBeFocused();
   await sortTrigger.focus();
   await expect(sortTrigger).toBeFocused();
-  const mobileToolbarGeometry = await Promise.all([resultHeading.boundingBox(), toolbarControls.boundingBox(), filters.boundingBox(), page.locator('.catalog-page__sort-toolbar').boundingBox(), visualPriceLabel.boundingBox(), sortLabel.boundingBox(), sortTrigger.boundingBox(), page.locator('.catalog-page__list').boundingBox()]);
+  const mobileToolbarGeometry = await Promise.all([resultHeading.boundingBox(), toolbarControls.boundingBox(), filters.boundingBox(), page.locator('[data-part="catalog-sort-toolbar"]').boundingBox(), visualPriceLabel.boundingBox(), sortLabel.boundingBox(), sortTrigger.boundingBox(), page.locator('[data-part="catalog-result-list"]').boundingBox()]);
   expect(mobileToolbarGeometry.every(Boolean)).toBe(true);
   expect(mobileToolbarGeometry[1]!.x).toBeGreaterThanOrEqual(0);
   expect(mobileToolbarGeometry[1]!.x + mobileToolbarGeometry[1]!.width).toBeLessThanOrEqual(320);
@@ -1008,7 +1021,7 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
     ),
   ).toBe(true);
 
-  for (const width of [320, 768]) {
+  for (const width of [320, 390, 768]) {
     await page.setViewportSize({ width, height: 900 });
     const responsiveHeaderSearch = await catalogSearch.evaluate((form) => {
       const input = form.querySelector<HTMLInputElement>('input[name="search_query"]');
@@ -1021,7 +1034,7 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
     });
     expect(responsiveHeaderSearch.contained).toBe(true);
     if (width === 768) {
-      const tabletAnonymousHeader = await page.locator('.app-header').evaluate((header) => {
+      const tabletAnonymousHeader = await page.locator('[data-app-shell-header]').evaluate((header) => {
         const search = header.querySelector<HTMLInputElement>('input[name="search_query"]');
         const logIn = Array.from(header.querySelectorAll<HTMLAnchorElement>('a')).find((link) => link.textContent?.trim() === 'Log in');
         const signUp = Array.from(header.querySelectorAll<HTMLAnchorElement>('a')).find((link) => link.textContent?.trim() === 'Sign up');
@@ -1044,7 +1057,7 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
       expect(tabletAnonymousHeader.signUpRight).toBeLessThanOrEqual(tabletAnonymousHeader.clientWidth);
       expect(tabletAnonymousHeader.overflowFree).toBe(true);
     }
-    const responsiveToolbarGeometry = await Promise.all([resultHeading.boundingBox(), filters.boundingBox(), page.locator('.catalog-page__sort-toolbar').boundingBox()]);
+    const responsiveToolbarGeometry = await Promise.all([resultHeading.boundingBox(), filters.boundingBox(), page.locator('[data-part="catalog-sort-toolbar"]').boundingBox()]);
     expect(responsiveToolbarGeometry.every(Boolean)).toBe(true);
     const comesBefore = (first: NonNullable<(typeof responsiveToolbarGeometry)[number]>, second: NonNullable<(typeof responsiveToolbarGeometry)[number]>) => (
       first.y < second.y
@@ -1064,6 +1077,12 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
       expect(responsivePriceGeometry[1]!.x).toBeLessThan(responsivePriceGeometry[2]!.x);
       expect(responsivePriceGeometry[1]!.width).toBeCloseTo(128, 1);
       expect(responsivePriceGeometry[2]!.width).toBeCloseTo(128, 1);
+    }
+    for (const input of [filters.getByLabel('Min price'), filters.getByLabel('Max price')]) {
+      await input.focus();
+      await expect(input).toBeFocused();
+      expect(await input.evaluate((element) => element.matches(':focus-visible'))).toBe(true);
+      await expect(input).toHaveCSS('outline-color', purple);
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth && document.body.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   }
@@ -1140,7 +1159,7 @@ test('remembers catalog searches in an accessible local combobox without changin
   await input.press('ArrowDown');
   const openListbox = page.getByRole('listbox', { name: 'Recent searches' });
   const listGeometry = await openListbox.evaluate((list) => {
-    const input = document.querySelector<HTMLInputElement>('.app-catalog-search input[name="search_query"]');
+    const input = document.querySelector<HTMLInputElement>('form[role="search"] input[name="search_query"]');
     if (!input) throw new Error('Catalog search input is missing.');
     const listRect = list.getBoundingClientRect();
     const inputRect = input.getBoundingClientRect();
@@ -1162,9 +1181,9 @@ test('remembers catalog searches in an accessible local combobox without changin
     await input.press('ArrowDown');
     const geometry = await page.getByRole('listbox', { name: 'Recent searches' }).evaluate((list) => {
       const rect = list.getBoundingClientRect();
-      const form = document.querySelector<HTMLElement>('.app-catalog-search');
+      const form = document.querySelector<HTMLElement>('form[role="search"]');
       const input = form?.querySelector<HTMLInputElement>('input[name="search_query"]');
-      const inner = document.querySelector<HTMLElement>('.app-header__inner');
+      const inner = document.querySelector<HTMLElement>('[data-app-shell-header] > :first-child');
       if (!form || !input || !inner) throw new Error('Catalog header centering targets are missing.');
       const formRect = form.getBoundingClientRect();
       const inputRect = input.getBoundingClientRect();
@@ -1187,7 +1206,7 @@ test('remembers catalog searches in an accessible local combobox without changin
     }
   }
 
-  await page.locator('.app-footer').click();
+  await page.getByRole('contentinfo').click();
   await expect(page.getByRole('listbox', { name: 'Recent searches' })).toHaveCount(0);
   await page.reload();
   await input.focus();

@@ -48,6 +48,29 @@ interface CatalogGeometry {
   contentPaddingLeft: number;
   contentPaddingRight: number;
   results: RectGeometry;
+  filter: CatalogFilterGeometry;
+}
+
+interface CatalogFilterControlGeometry {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+  width: number;
+  height: number;
+  label: string;
+  focusable: boolean;
+}
+
+interface CatalogFilterGeometry {
+  formLeft: number;
+  formRight: number;
+  rangeLeft: number;
+  rangeRight: number;
+  labelTop: number;
+  labelBottom: number;
+  minimum: CatalogFilterControlGeometry;
+  maximum: CatalogFilterControlGeometry;
 }
 
 interface PasswordFieldGeometry {
@@ -127,15 +150,17 @@ async function captureLayout(page: Page): Promise<LayoutGeometry> {
         centerX: (value.left + value.right) / 2,
       };
     };
-    const header = document.querySelector('.app-header__inner');
-    const main = document.querySelector('.app-main');
-    const panel = document.querySelector('.auth-form, .app-placeholder, .catalog-page__discovery-layout');
+    const headerSurface = document.querySelector('[data-app-shell-header]');
+    const header = headerSurface?.firstElementChild;
+    const main = document.querySelector('main');
+    const panel = document.querySelector('[data-part="catalog-discovery-layout"]')
+      ?? main?.querySelector(':scope > section[aria-labelledby]');
     if (!header || !main || !panel) throw new Error('Layout geometry targets are unavailable');
     const panelStyle = getComputedStyle(panel);
-    const heading = panel.querySelector('.auth-form__heading');
-    const fields = panel.querySelector('.auth-form__fields');
-    const field = panel.querySelector('.ui-field');
-    const footer = panel.querySelector('.auth-form__footer');
+    const heading = panel.querySelector('h1')?.parentElement ?? null;
+    const fields = panel.querySelector(':scope > form');
+    const field = panel.querySelector('[data-part="field"]');
+    const footer = panel.querySelector(':scope > div:last-child');
     const clippedControls = [...document.querySelectorAll<HTMLElement>('header a, header button, main input, main select, main button, main a')]
       .filter((element) => {
         const value = element.getBoundingClientRect();
@@ -174,8 +199,8 @@ async function captureStateLayout(page: Page): Promise<StateLayoutGeometry> {
         centerX: (value.left + value.right) / 2,
       };
     };
-    const main = document.querySelector('.app-state');
-    const card = document.querySelector('.app-state__card');
+    const main = document.querySelector('main#main-content');
+    const card = main?.firstElementChild;
     if (!main || !card) throw new Error('Application state geometry targets are unavailable');
     const clippedControls = [...document.querySelectorAll<HTMLElement>('main a, main button, main input')]
       .filter((element) => {
@@ -196,7 +221,7 @@ async function captureStateLayout(page: Page): Promise<StateLayoutGeometry> {
 }
 
 async function captureCatalogGeometry(page: Page): Promise<CatalogGeometry> {
-  return page.locator('.catalog-page').evaluate((catalog) => {
+  return page.locator('[data-part="catalog-page"]').evaluate((catalog) => {
     const rect = (element: Element): RectGeometry => {
       const value = element.getBoundingClientRect();
       return {
@@ -206,18 +231,39 @@ async function captureCatalogGeometry(page: Page): Promise<CatalogGeometry> {
         centerX: (value.left + value.right) / 2,
       };
     };
-    const hero = catalog.querySelector('.catalog-hero');
+    const hero = catalog.querySelector('[data-part="catalog-hero"]');
     const heading = hero?.querySelector('h1');
     const description = hero?.querySelector('p');
-    const content = catalog.querySelector('.catalog-page__content');
-    const results = content?.querySelector('.catalog-page__discovery-layout');
-    if (!hero || !heading || !description || !content || !results) {
+    const content = catalog.querySelector('[data-part="catalog-content"]');
+    const results = content?.querySelector('[data-part="catalog-discovery-layout"]');
+    const filter = catalog.querySelector<HTMLFormElement>('form[aria-label="Course filters"]');
+    const priceRange = filter?.querySelector('fieldset');
+    const priceLabel = priceRange?.querySelector('[data-part="catalog-filter-price-label"]');
+    const minimum = filter?.querySelector<HTMLInputElement>('input[name="min_price"]');
+    const maximum = filter?.querySelector<HTMLInputElement>('input[name="max_price"]');
+    if (!hero || !heading || !description || !content || !results || !filter || !priceRange || !priceLabel || !minimum || !maximum) {
       throw new Error('Catalog geometry targets are unavailable');
     }
     const heroRect = hero.getBoundingClientRect();
     const headingRect = heading.getBoundingClientRect();
     const descriptionRect = description.getBoundingClientRect();
     const contentStyle = getComputedStyle(content);
+    const filterRect = filter.getBoundingClientRect();
+    const priceRangeRect = priceRange.getBoundingClientRect();
+    const priceLabelRect = priceLabel.getBoundingClientRect();
+    const controlGeometry = (input: HTMLInputElement): CatalogFilterControlGeometry => {
+      const inputRect = input.getBoundingClientRect();
+      return {
+        left: inputRect.left,
+        right: inputRect.right,
+        top: inputRect.top,
+        bottom: inputRect.bottom,
+        width: inputRect.width,
+        height: inputRect.height,
+        label: input.labels?.item(0)?.textContent ?? '',
+        focusable: !input.disabled && input.tabIndex >= 0,
+      };
+    };
     return {
       hero: rect(hero),
       heroHeight: heroRect.height,
@@ -228,6 +274,16 @@ async function captureCatalogGeometry(page: Page): Promise<CatalogGeometry> {
       contentPaddingLeft: Number.parseFloat(contentStyle.paddingLeft),
       contentPaddingRight: Number.parseFloat(contentStyle.paddingRight),
       results: rect(results),
+      filter: {
+        formLeft: filterRect.left,
+        formRight: filterRect.right,
+        rangeLeft: priceRangeRect.left,
+        rangeRight: priceRangeRect.right,
+        labelTop: priceLabelRect.top,
+        labelBottom: priceLabelRect.bottom,
+        minimum: controlGeometry(minimum),
+        maximum: controlGeometry(maximum),
+      },
     };
   });
 }
@@ -301,6 +357,33 @@ function expectCleanStateLayout(geometry: StateLayoutGeometry, width: number) {
   expect(width - geometry.card.right).toBeGreaterThanOrEqual(16);
 }
 
+function expectCatalogFilterGeometry(geometry: CatalogFilterGeometry, width: number) {
+  expect(geometry.formLeft).toBeGreaterThanOrEqual(-0.5);
+  expect(geometry.formRight).toBeLessThanOrEqual(width + 0.5);
+  expect(geometry.rangeLeft).toBeGreaterThanOrEqual(-0.5);
+  expect(geometry.rangeRight).toBeLessThanOrEqual(width + 0.5);
+  expect(geometry.minimum.label).toBe('Min price');
+  expect(geometry.maximum.label).toBe('Max price');
+  expect(geometry.minimum.focusable).toBe(true);
+  expect(geometry.maximum.focusable).toBe(true);
+  expect(geometry.minimum.width).toBeCloseTo(128, 1);
+  expect(geometry.maximum.width).toBeCloseTo(128, 1);
+  expect(geometry.minimum.height).toBeCloseTo(36, 1);
+  expect(geometry.maximum.height).toBeCloseTo(36, 1);
+  expect(geometry.minimum.left).toBeGreaterThanOrEqual(-0.5);
+  expect(geometry.maximum.right).toBeLessThanOrEqual(width + 0.5);
+  expect(geometry.minimum.right).toBeLessThanOrEqual(geometry.maximum.left);
+  expect(Math.abs(geometry.minimum.top - geometry.maximum.top)).toBeLessThanOrEqual(1);
+  if (width < 480) {
+    expect(geometry.labelBottom).toBeLessThanOrEqual(geometry.minimum.top + 1);
+  } else {
+    expect(Math.abs(
+      ((geometry.labelTop + geometry.labelBottom) / 2)
+      - ((geometry.minimum.top + geometry.minimum.bottom) / 2),
+    )).toBeLessThanOrEqual(1);
+  }
+}
+
 const routeCases = [
   { path: '/', heading: 'Master the Skills Shaping the Future', submitName: null, firstInvalidLabel: null },
   { path: '/login', heading: 'Log in', submitName: 'Log in', firstInvalidLabel: /^Email/ },
@@ -329,7 +412,7 @@ for (const width of [320, 768, 1280]) {
     ] as const) {
       await page.goto(routeCase.path);
       await expect(page.getByRole('heading', { level: 1, name: routeCase.heading })).toBeVisible();
-      await expect(page.locator('.app-shell')).toHaveAttribute('data-layout', routeCase.layout);
+      await expect(page.locator('[data-layout]')).toHaveAttribute('data-layout', routeCase.layout);
       await expect(page.locator('html')).toHaveAttribute('data-density', routeCase.density);
       expectCleanLayout(await captureLayout(page), width);
     }
@@ -346,7 +429,7 @@ for (const width of [320, 768, 1280]) {
     await page.evaluate(() => localStorage.setItem('learnhub.access-token', 'route-variant-token'));
     await page.goto('/INSTRUCTOR/COURSES/Route-42/ENROLLMENTS/');
     await expect(page.getByRole('heading', { level: 1, name: 'Course enrollments' })).toBeVisible();
-    await expect(page.locator('.app-shell')).toHaveAttribute('data-layout', 'workspace');
+    await expect(page.locator('[data-layout]')).toHaveAttribute('data-layout', 'workspace');
     await expect(page.locator('html')).toHaveAttribute('data-density', 'workspace');
     expectCleanLayout(await captureLayout(page), width);
 
@@ -448,6 +531,7 @@ for (const width of [320, 390, 768, 1280, 1440]) {
         expect(Math.abs(geometry.results.left - geometry.content.left - geometry.contentPaddingLeft)).toBeLessThanOrEqual(1);
         expect(Math.abs(geometry.content.right - geometry.results.right - geometry.contentPaddingRight)).toBeLessThanOrEqual(1);
         expect(Math.abs(geometry.titleLeft - geometry.results.left)).toBeLessThanOrEqual(1);
+        expectCatalogFilterGeometry(geometry.filter, width);
       }
 
       if (routeCase.submitName && routeCase.firstInvalidLabel) {
@@ -523,7 +607,7 @@ for (const width of [320, 390, 768, 1280, 1440]) {
 
       for (const [index, id] of routeCase.fieldIds.entries()) {
         const input = inputs[index];
-        const reveal = page.locator(`#${id} + .ui-control-frame__trailing-action button`);
+        const reveal = page.locator(`#${id} + [data-part="trailing-action"] button`);
         await input.fill('Long password value that must stay clear of the inline reveal control 1234567890');
         await expect(input).toHaveAttribute('type', 'password');
         await expect(reveal).toHaveAttribute('type', 'button');
@@ -570,7 +654,7 @@ for (const width of [320, 390, 768, 1280, 1440]) {
         await expect(inputs[index]).toHaveAttribute('aria-invalid', 'true');
         const describedBy = await inputs[index].getAttribute('aria-describedby');
         expect(describedBy?.split(' ')).toContain(`${id}-error`);
-        await expect(page.locator(`#${id} + .ui-control-frame__trailing-action button`))
+        await expect(page.locator(`#${id} + [data-part="trailing-action"] button`))
           .toHaveAttribute('aria-controls', id);
       }
       expectCleanLayout(await captureLayout(page), width);
@@ -768,10 +852,63 @@ test('spacing values remain valid finite pixels', async ({ page }) => {
   });
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/login');
-  const values = await page.locator('.auth-form').evaluate((panel) => {
+  const values = await page.getByRole('region', { name: 'Log in' }).evaluate((panel) => {
     const style = getComputedStyle(panel);
     return [style.paddingLeft, style.paddingRight, style.gap];
   });
   expect(values.map(parsePixels)).toEqual([32, 32, 24]);
   completeScenario(page, 'Computed padding and gap values were finite and matched 32, 32, and 24 pixels.');
 });
+
+for (const reflowCase of [
+  { physicalWidth: 768, effectiveWidth: 384 },
+  { physicalWidth: 1280, effectiveWidth: 640 },
+] as const) {
+  test(`preserves shell and auth reflow at effective 200% from ${reflowCase.physicalWidth}px`, async ({ page }) => {
+    setScenario(page, {
+      routes: ['/', '/login'],
+      states: ['effective 200% reflow', 'catalog filter keyboard focus'],
+      viewports: [{ width: reflowCase.effectiveWidth, height: 900 }],
+      expectedOutcome: 'Shell, catalog filters, and auth controls reflow without overflow, clipping, or an unusable header geometry seam.',
+      runtimeInputs: reflowCase,
+    });
+    await page.setViewportSize({ width: reflowCase.effectiveWidth, height: 900 });
+
+    await page.goto('/');
+    await expect(page.getByRole('heading', { level: 2, name: 'Found 1 course' })).toBeVisible();
+    expectCleanLayout(await captureLayout(page), reflowCase.effectiveWidth);
+    expectCatalogFilterGeometry(
+      (await captureCatalogGeometry(page)).filter,
+      reflowCase.effectiveWidth,
+    );
+    for (const input of [page.getByLabel('Min price'), page.getByLabel('Max price')]) {
+      await input.focus();
+      await expect(input).toBeFocused();
+      expect(await input.evaluate((element) => element.matches(':focus-visible'))).toBe(true);
+    }
+
+    await page.goto('/login');
+    await expect(page.getByRole('heading', { level: 1, name: 'Log in' })).toBeVisible();
+    expectCleanLayout(await captureLayout(page), reflowCase.effectiveWidth);
+
+    const headerGeometry = await page.locator('[data-app-shell-header]').evaluate((header) => {
+      const rect = header.getBoundingClientRect();
+      return {
+        isBanner: header.tagName === 'HEADER',
+        top: rect.top,
+        bottom: rect.bottom,
+        width: rect.width,
+      };
+    });
+    expect(headerGeometry.isBanner).toBe(true);
+    expect(Number.isFinite(headerGeometry.bottom)).toBe(true);
+    expect(headerGeometry.bottom).toBeGreaterThan(headerGeometry.top);
+    expect(headerGeometry.width).toBe(reflowCase.effectiveWidth);
+
+    await page.keyboard.press('Tab');
+    await expect(page.getByRole('link', { name: 'Skip to main content' })).toBeFocused();
+    expect(await page.getByRole('link', { name: 'Skip to main content' })
+      .evaluate((link) => link.matches(':focus-visible'))).toBe(true);
+    completeScenario(page, 'The effective-width viewport retained clean reflow, a measurable banner seam, and visible keyboard focus.');
+  });
+}

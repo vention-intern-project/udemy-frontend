@@ -1,0 +1,29 @@
+.group {
+  display: grid;
+  gap: var(--spacing-3);
+}
+
+.skeleton {
+  display: block;
+  min-width: 24px;
+  min-height: 16px;
+  background: linear-gradient(90deg, var(--state-disabled-bg) 25%, var(--color-canvas) 50%, var(--state-disabled-bg) 75%);
+  background-size: 200% 100%;
+  border-radius: var(--radius-sm);
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+.text { height: 1em; }
+.circle { aspect-ratio: 1; border-radius: var(--radius-full); }
+.rect { border-radius: var(--radius-md); }
+
+@keyframes shimmer {
+  to { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+    background: var(--state-disabled-bg);
+  }
+}

@@ -1,0 +1,19 @@
+.control {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 112px;
+  padding: var(--spacing-2) var(--input-padding-h);
+  color: var(--text-primary);
+  background: var(--color-surface);
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-md);
+  font: inherit;
+  resize: vertical;
+}
+
+.control[aria-invalid='true'] { border-color: var(--feedback-error); }
+.control:disabled { color: var(--state-disabled-text); background: var(--state-disabled-bg); cursor: not-allowed; }
+.control:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}

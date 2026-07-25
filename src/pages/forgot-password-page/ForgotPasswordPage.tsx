@@ -74,7 +74,7 @@ export function ForgotPasswordPage() {
           If the account can use password recovery, the next steps will be available through the configured recovery channel.
         </Notice>
       ) : (
-        <form className="auth-form__fields" noValidate onSubmit={submit}>
+        <form noValidate onSubmit={submit}>
           {summary && Object.keys(fieldErrors).length === 0 ? <FormErrorAlert ref={summaryRef} summary={summary} /> : null}
           <Input id="email" name="email" type="email" label="Email" autoComplete="email" required
             value={email} error={fieldErrors.email} disabled={mutation.isPending}

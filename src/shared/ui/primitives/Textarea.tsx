@@ -1,6 +1,7 @@
 import { forwardRef, type ReactNode, type TextareaHTMLAttributes } from 'react';
 
 import { FieldShell, useFieldA11y } from './Field';
+import styles from './Textarea.module.css';
 
 export interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
   label: ReactNode;
@@ -48,7 +49,8 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
           required={required}
           aria-invalid={error ? true : ariaInvalid}
           aria-describedby={ids.describedBy}
-          className={['ui-control', 'ui-textarea', className].filter(Boolean).join(' ')}
+          className={[styles.control, 'ui-control', 'ui-textarea', className].filter(Boolean).join(' ')}
+          data-part="control"
         />
       </FieldShell>
     );

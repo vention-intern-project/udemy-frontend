@@ -1,0 +1,110 @@
+.root {
+  position: relative;
+  left: var(--auth-physical-scrollbar-offset, 0px);
+  display: grid;
+  width: min(100%, 520px);
+  gap: var(--spacing-6);
+  padding: var(--spacing-6);
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-1);
+}
+
+.heading,
+.root > form {
+  display: grid;
+  gap: var(--spacing-4);
+}
+
+.heading,
+.footer {
+  text-align: center;
+}
+
+.heading h1,
+.heading p,
+.footer {
+  margin: 0;
+}
+
+.heading h1 {
+  font-size: clamp(1.75rem, 7vw, var(--type-page-h1-size));
+  line-height: 1.2;
+}
+
+.heading > p,
+.footer {
+  color: var(--text-secondary);
+  line-height: var(--type-body-md-lh);
+}
+
+.password {
+  position: relative;
+  display: grid;
+  gap: var(--spacing-2);
+}
+
+.reveal {
+  width: var(--control-height-sm);
+  min-width: var(--control-height-sm);
+  height: var(--control-height-sm);
+  padding: 0;
+}
+
+.reveal svg {
+  width: var(--spacing-5);
+  height: var(--spacing-5);
+}
+
+.reveal:not(:disabled) {
+  color: var(--action-secondary-fg);
+  background: var(--action-secondary-bg);
+  border-color: transparent;
+}
+
+.reveal:hover:not(:disabled) {
+  color: var(--action-primary-fg);
+  background: var(--action-primary-bg-hover);
+}
+
+.reveal:active:not(:disabled) {
+  color: var(--action-primary-fg);
+  background: var(--action-primary-bg-pressed);
+}
+
+.reveal:focus-visible {
+  color: var(--action-secondary-fg);
+  background: var(--action-secondary-bg);
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.errorAlert {
+  padding: var(--spacing-3) var(--spacing-4);
+  border: var(--border-width) solid var(--feedback-error);
+  border-radius: var(--radius-md);
+  color: var(--feedback-error);
+  background: var(--feedback-error-bg);
+}
+
+.errorAlert:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.link {
+  color: var(--action-link);
+  font-weight: var(--font-weight-semibold);
+}
+
+.footer {
+  padding-top: var(--spacing-4);
+  border-top: var(--border-width) solid var(--border-default);
+}
+
+@media (min-width: 768px) {
+  .root {
+    padding: var(--spacing-8);
+  }
+}
