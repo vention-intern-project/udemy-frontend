@@ -11,6 +11,7 @@ import {
 } from '../../../src/entities/course';
 import {
   decodeEnrollmentDto,
+  decodeEnrollmentListDto,
   mapEnrollmentDto,
   mapEnrollmentStatusDto,
   type EnrollmentStatus,
@@ -24,6 +25,24 @@ import {
   mapUserRoleDto,
   type UserRole,
 } from '../../../src/entities/user';
+
+function enrollmentDto(id: number) {
+  return {
+    id,
+    user_id: 9,
+    course_id: id,
+    status: 'active',
+    created_at: '2026-07-01T00:00:00Z',
+    updated_at: '2026-07-01T00:00:00Z',
+    course: {
+      id,
+      title: `Course ${id}`,
+      description: null,
+      price: '0.00',
+      currency: 'USD',
+    },
+  };
+}
 
 describe('wire DTO to domain mappers', () => {
   it('decodes complete cart-item and enrollment mutation responses at runtime', () => {
@@ -56,6 +75,18 @@ describe('wire DTO to domain mappers', () => {
     ['enrollment nested identity', () => decodeEnrollmentDto({ id: 4, user_id: 9, course_id: 7, status: 'active', created_at: 'now', updated_at: 'now', course: { id: 8, title: 'React', description: null, price: '0.00', currency: 'USD' } })],
   ])('rejects malformed protected mutation payload: %s', (_caseName, decode) => {
     expect(decode).toThrow();
+  });
+
+  it('rejects enrollment items beyond the mathematically remaining page total', () => {
+    expect(() => decodeEnrollmentListDto({
+      items: [enrollmentDto(101), enrollmentDto(102)],
+      page: 2,
+      page_size: 100,
+      total: 101,
+      pages: 2,
+      has_next: false,
+      has_previous: true,
+    })).toThrow('Invalid enrollment pagination');
   });
 
   it('decodes API-008 populated and empty pagination without accepting malformed metadata', () => {

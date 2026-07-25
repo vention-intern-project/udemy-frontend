@@ -19,11 +19,11 @@ export async function requestCourseDetail(
   courseId: number,
   signal: AbortSignal,
 ): Promise<CourseDetail> {
-  return requestOperation<unknown>(session, 'API-010', {
+  return requestOperation<CourseDetail>(session, 'API-010', {
     path: `/courses/${courseId}`,
     signal,
     decode: (value) => mapCourseDetailDto(decodeCourseDetailDto(value)),
-  }) as Promise<CourseDetail>;
+  });
 }
 
 export async function requestLessonOutline(
@@ -39,7 +39,7 @@ export async function requestLessonOutline(
   let pageSize = PAGE_SIZE;
   do {
     const requestedPage = page;
-    const list = await requestOperation<unknown>(session, 'API-014', {
+    const list = await requestOperation<LessonListDto>(session, 'API-014', {
       path: `/courses/${courseId}/lessons`, query: { page: requestedPage, size: PAGE_SIZE }, signal,
       decode: (value) => {
         const decoded = decodeLessonListDto(value);
@@ -59,7 +59,7 @@ export async function requestLessonOutline(
         }
         return decoded;
       },
-    }) as LessonListDto;
+    });
     lists.push(list);
     page += 1;
   } while (page <= pages);
@@ -79,9 +79,9 @@ export async function requestLessonOutline(
 }
 
 export async function requestCart(session: SessionContextValue, signal: AbortSignal): Promise<Cart> {
-  return requestOperation<unknown>(session, 'API-002', {
+  return requestOperation<Cart>(session, 'API-002', {
     path: '/cart', signal, decode: (value) => mapCartDto(decodeCartDto(value)),
-  }) as Promise<Cart>;
+  });
 }
 
 export async function requestEnrollments(session: SessionContextValue, signal: AbortSignal): Promise<EnrollmentList> {
@@ -94,10 +94,10 @@ export async function requestEnrollments(session: SessionContextValue, signal: A
   let pageSize = PAGE_SIZE;
   do {
     const requestedPage = page;
-    const list = await requestOperation<unknown>(session, 'API-021', {
+    const list = await requestOperation<EnrollmentList>(session, 'API-021', {
       path: '/enrollments/my', query: { page: requestedPage, page_size: PAGE_SIZE }, signal,
       decode: (value) => mapEnrollmentListDto(decodeEnrollmentListDto(value)),
-    }) as EnrollmentList;
+    });
     if (list.page !== requestedPage || list.pageSize !== PAGE_SIZE) {
       throw new TypeError('Invalid enrollment aggregate cursor');
     }
@@ -118,7 +118,14 @@ export async function requestEnrollments(session: SessionContextValue, signal: A
     }
     page += 1;
   } while (page <= pages);
-  if (items.length !== total) throw new TypeError('Invalid enrollment aggregate');
+  if (items.length !== total) {
+    throw new ApiError({
+      kind: 'invalid_response',
+      status: 200,
+      message: 'Server returned an invalid success response',
+      cause: new TypeError('Invalid enrollment aggregate'),
+    });
+  }
   return { items, page: 1, pageSize, pages, total, hasNext: false, hasPrevious: false };
 }
 

@@ -69,10 +69,11 @@ export function decodeEnrollmentListDto(value: unknown): EnrollmentListDto {
   const hasNext = readBoolean(response.has_next, 'enrollment has_next');
   const hasPrevious = readBoolean(response.has_previous, 'enrollment has_previous');
   const expectedPages = total === 0 ? 0 : Math.ceil(total / pageSize);
+  const remainingItems = Math.max(0, total - ((page - 1) * pageSize));
+  const itemLimit = Math.min(pageSize, remainingItems);
   if (pages !== expectedPages
     || page > Math.max(1, pages)
-    || items.length > pageSize
-    || items.length > total
+    || items.length > itemLimit
     || hasNext !== (page < pages) || hasPrevious !== (page > 1)) {
     throw new TypeError('Invalid enrollment pagination');
   }

@@ -8,6 +8,7 @@ import {
 } from '../../../src/features/course-detail/api';
 import type { SessionContextValue } from '../../../src/features/auth-session';
 import {
+  ApiError,
   createApiClient,
   type ApiRequestOptions,
 } from '../../../src/shared/api';
@@ -207,5 +208,24 @@ describe('course-detail API trust boundaries', () => {
       sessionWithRequester(decodingRequester(payloads)),
       new AbortController().signal,
     )).rejects.toThrow();
+  });
+
+  it('normalizes a final enrollment aggregate count mismatch as invalid_response', async () => {
+    const error = await requestEnrollments(
+      sessionWithRequester(decodingRequester([
+        enrollmentPage(1, [enrollment(1)], 2, 1),
+      ])),
+      new AbortController().signal,
+    ).catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(ApiError);
+    if (!(error instanceof ApiError)) throw new TypeError('Expected ApiError');
+    expect(error).toMatchObject({
+      kind: 'invalid_response',
+      status: 200,
+      message: 'Server returned an invalid success response',
+    });
+    expect(error.originalCause).toBeInstanceOf(TypeError);
+    expect(error.originalCause).toMatchObject({ message: 'Invalid enrollment aggregate' });
   });
 });
