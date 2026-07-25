@@ -1,0 +1,71 @@
+.split {
+  display: grid;
+  align-items: start;
+  gap: var(--spacing-4);
+}
+
+@supports (appearance: base-select) and selector(::picker(select)) {
+  .rolePicker,
+  .rolePicker::picker(select) {
+    appearance: base-select;
+  }
+
+  .rolePicker {
+    background: var(--color-surface);
+    border-color: var(--border-default);
+    border-radius: var(--radius-md);
+  }
+
+  .rolePicker:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  .rolePicker::picker-icon {
+    color: var(--border-default);
+    transition: color var(--duration-fast) var(--easing-standard),
+      rotate var(--duration-fast) var(--easing-standard);
+  }
+
+  .rolePicker:open::picker-icon {
+    color: var(--text-secondary);
+    rotate: 180deg;
+  }
+
+  .rolePicker::picker(select) {
+    margin-block-start: var(--spacing-1);
+    padding: var(--spacing-1);
+    background: var(--color-surface-elevated);
+    border: var(--border-width) solid var(--border-default);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-2);
+  }
+
+  .rolePicker option {
+    padding: var(--spacing-2) var(--spacing-3);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    background: var(--color-surface);
+  }
+
+  .rolePicker option:hover,
+  .rolePicker option:focus-visible {
+    color: var(--action-secondary-fg);
+    background: var(--action-secondary-bg-hover);
+  }
+
+  .rolePicker option:checked {
+    color: var(--text-primary);
+    background: var(--state-disabled-bg);
+  }
+
+  .rolePicker option::checkmark {
+    color: var(--text-secondary);
+  }
+}
+
+@media (min-width: 768px) {
+  .split {
+    grid-template-columns: 1fr 1fr;
+  }
+}

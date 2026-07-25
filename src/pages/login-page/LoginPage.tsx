@@ -81,7 +81,7 @@ export function LoginPage() {
       description="Access your learning or instructor workspace."
       footer={<><span>New to LearnHub?</span> <AuthLink to="/signup">Create an account</AuthLink></>}
     >
-      <form className="auth-form__fields" noValidate onSubmit={submit}>
+      <form noValidate onSubmit={submit}>
         {summary && Object.keys(fieldErrors).length === 0 ? <FormErrorAlert ref={summaryRef} summary={summary} /> : null}
         <Input id="email" name="email" type="email" label="Email" autoComplete="email" required
           value={email} error={fieldErrors.email} disabled={mutation.isPending}

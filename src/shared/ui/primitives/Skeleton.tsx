@@ -1,5 +1,7 @@
 import type { CSSProperties, HTMLAttributes, ReactNode } from 'react';
 
+import styles from './Skeleton.module.css';
+
 export interface SkeletonProps extends HTMLAttributes<HTMLSpanElement> {
   width?: CSSProperties['width'];
   height?: CSSProperties['height'];
@@ -18,7 +20,14 @@ export function Skeleton({
     <span
       {...props}
       aria-hidden="true"
-      className={['ui-skeleton', `ui-skeleton--${shape}`, className].filter(Boolean).join(' ')}
+      className={[
+        styles.skeleton,
+        styles[shape],
+        'ui-skeleton',
+        `ui-skeleton--${shape}`,
+        className,
+      ].filter(Boolean).join(' ')}
+      data-part="skeleton"
       style={{ ...style, width, height }}
     />
   );
@@ -42,7 +51,7 @@ export function SkeletonGroup({
       aria-live="polite"
       aria-busy="true"
       aria-label={label}
-      className={['ui-skeleton-group', className].filter(Boolean).join(' ')}
+      className={[styles.group, 'ui-skeleton-group', className].filter(Boolean).join(' ')}
     >
       {children}
     </div>

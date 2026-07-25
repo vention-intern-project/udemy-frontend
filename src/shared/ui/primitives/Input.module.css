@@ -1,0 +1,35 @@
+.control {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--control-height-md);
+  padding: var(--spacing-2) var(--input-padding-h);
+  color: var(--text-primary);
+  background: var(--color-surface);
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-md);
+  font: inherit;
+}
+
+.control[aria-invalid='true'] { border-color: var(--feedback-error); }
+.control:disabled { color: var(--state-disabled-text); background: var(--state-disabled-bg); cursor: not-allowed; }
+.control:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.controlFrame {
+  position: relative;
+  min-width: 0;
+}
+
+.trailingAction {
+  position: absolute;
+  inset-block-start: var(--spacing-1);
+  inset-inline-end: var(--spacing-1);
+  display: flex;
+}
+
+.withTrailingAction {
+  display: block;
+  padding-inline-end: calc(var(--control-height-sm) + var(--spacing-4));
+}

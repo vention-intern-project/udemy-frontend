@@ -1,5 +1,3 @@
-import './primitives.css';
-
 export { Button } from './Button';
 export type { AsyncState, ButtonProps, ButtonSize, ButtonVariant } from './Button';
 export { DestructiveConfirmation } from './DestructiveConfirmation';
@@ -18,3 +16,5 @@ export { Skeleton, SkeletonGroup } from './Skeleton';
 export type { SkeletonGroupProps, SkeletonProps } from './Skeleton';
 export { Textarea } from './Textarea';
 export type { TextareaProps } from './Textarea';
+export { VisuallyHidden } from './VisuallyHidden';
+export type { VisuallyHiddenElement, VisuallyHiddenProps } from './VisuallyHidden';

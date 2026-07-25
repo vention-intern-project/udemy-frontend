@@ -1,5 +1,7 @@
 import type { HTMLAttributes, ReactNode } from 'react';
 
+import styles from './Notice.module.css';
+
 export type NoticeTone = 'info' | 'success' | 'warning' | 'error';
 export type NoticePoliteness = 'polite' | 'assertive' | 'off';
 
@@ -30,14 +32,25 @@ export function Notice({
       aria-live={politeness === 'off' ? undefined : politeness}
       aria-atomic={politeness === 'off' ? undefined : true}
       data-tone={tone}
-      className={['ui-notice', `ui-notice--${tone}`, className].filter(Boolean).join(' ')}
+      className={[
+        styles.notice,
+        styles[tone],
+        'ui-notice',
+        `ui-notice--${tone}`,
+        className,
+      ].filter(Boolean).join(' ')}
     >
-      <div className="ui-notice__content">
-        {title ? <strong className="ui-notice__title">{title}</strong> : null}
+      <div className={[styles.content, 'ui-notice__content'].join(' ')}>
+        {title ? <strong className={[styles.title, 'ui-notice__title'].join(' ')}>{title}</strong> : null}
         <div>{children}</div>
       </div>
       {onDismiss ? (
-        <button className="ui-notice__dismiss" type="button" onClick={onDismiss} aria-label={dismissLabel}>
+        <button
+          className={[styles.dismiss, 'ui-notice__dismiss'].join(' ')}
+          type="button"
+          onClick={onDismiss}
+          aria-label={dismissLabel}
+        >
           ×
         </button>
       ) : null}

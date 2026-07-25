@@ -1,6 +1,8 @@
 import { useId, type ButtonHTMLAttributes, type ReactNode } from 'react';
 
 import { joinIds } from '../../accessibility';
+import styles from './Button.module.css';
+import { VisuallyHidden } from './VisuallyHidden';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'destructive' | 'ghost';
 export type ButtonSize = 'sm' | 'md' | 'lg';
@@ -45,7 +47,15 @@ export function Button({
   const stateIndicator = state === 'success' ? '✓' : state === 'error' ? '!' : null;
 
   return (
-    <span className={fullWidth ? 'ui-button-wrap ui-button-wrap--full' : 'ui-button-wrap'}>
+    <span
+      className={[
+        styles.wrapper,
+        fullWidth && styles.wrapperFull,
+        'ui-button-wrap',
+        fullWidth && 'ui-button-wrap--full',
+      ].filter(Boolean).join(' ')}
+      data-part="button-wrapper"
+    >
       <button
         {...props}
         type={type}
@@ -54,6 +64,10 @@ export function Button({
         aria-describedby={joinIds(ariaDescribedBy, message ? statusId : undefined)}
         data-state={state}
         className={[
+          styles.button,
+          styles[variant],
+          styles[size],
+          fullWidth && styles.full,
           'ui-button',
           `ui-button--${variant}`,
           `ui-button--${size}`,
@@ -63,10 +77,16 @@ export function Button({
           .filter(Boolean)
           .join(' ')}
       >
-        {isLoading ? <span className="ui-button__spinner" aria-hidden="true" /> : null}
+        {isLoading ? (
+          <span
+            className={[styles.spinner, 'ui-button__spinner'].join(' ')}
+            data-part="spinner"
+            aria-hidden="true"
+          />
+        ) : null}
         {stateIndicator ? (
           <span
-            className="ui-button__state-icon"
+            className={[styles.stateIcon, 'ui-button__state-icon'].join(' ')}
             data-state-indicator={state}
             aria-hidden="true"
           >
@@ -76,9 +96,9 @@ export function Button({
         <span>{isLoading ? loadingLabel : children}</span>
       </button>
       {message ? (
-        <span className="ui-sr-only" id={statusId} role="status" aria-live="polite">
+        <VisuallyHidden id={statusId} role="status" aria-live="polite">
           {message}
-        </span>
+        </VisuallyHidden>
       ) : null}
     </span>
   );

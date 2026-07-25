@@ -14,9 +14,10 @@ import {
   addCatalogSearchHistory, parseCatalogQuery, persistCatalogSearchHistory,
   readCatalogSearchHistory, serializeCatalogQuery,
 } from '@features/catalog-discovery';
-import { Input } from '@shared/ui/primitives';
+import { Input, VisuallyHidden } from '@shared/ui/primitives';
 import { useDensityMode } from '@shared/ui/theme';
 import { APP_ROUTE_BY_ID, densityForPath, routeForPath } from '../router/route-registry';
+import styles from './AppShell.module.css';
 
 type NavigationItemVariant = 'browse-link' | 'signup-primary';
 type NavigationItemDesktopGroup = 'auth-actions';
@@ -34,6 +35,11 @@ interface NavigationLinksProps {
   items: readonly NavigationItem[];
   onNavigate?: (to: string) => void;
 }
+
+const NAVIGATION_VARIANT_CLASS: Record<NavigationItemVariant, string> = {
+  'browse-link': styles.navLinkBrowse,
+  'signup-primary': styles.navLinkSignup,
+};
 
 function navigationForSession(
   status: SessionState,
@@ -76,15 +82,15 @@ function navigationForSession(
 
 function NavigationLinks({ items, onNavigate }: NavigationLinksProps) {
   return (
-    <ul className="app-nav__list">
+    <ul className={styles.navList}>
       {items.map((item) => (
         <li key={item.to}>
           <NavLink
             end={item.end}
             className={({ isActive }) => [
-              'app-nav__link',
-              isActive ? 'app-nav__link--active' : null,
-              item.variant ? `app-nav__link--${item.variant}` : null,
+              styles.navLink,
+              isActive ? styles.navLinkActive : null,
+              item.variant ? NAVIGATION_VARIANT_CLASS[item.variant] : null,
             ].filter(Boolean).join(' ')}
             onClick={(event) => {
               if (isCurrentTabNavigation(event)) onNavigate?.(item.to);
@@ -295,30 +301,37 @@ export function AppShell() {
   }
 
   return (
-    <div className={`app-shell app-shell--${layout}`} data-layout={layout}>
-      <a className="app-skip-link" href="#main-content">Skip to main content</a>
-      <header className={`app-header${isCatalogRoute ? ' app-header--catalog' : ''}${isAnonymousCatalogRoute ? ' app-header--anonymous-catalog' : ''}`}>
-        <div className="app-header__inner">
-          <div className="app-header__catalog-start">
-            <Link className="app-brand" to="/" aria-label="LearnHub home">
+    <div className={styles.shell} data-layout={layout}>
+      <a className={styles.skipLink} href="#main-content">Skip to main content</a>
+      <header
+        className={[
+          styles.header,
+          isCatalogRoute ? styles.headerCatalog : null,
+          isAnonymousCatalogRoute ? styles.headerAnonymousCatalog : null,
+        ].filter(Boolean).join(' ')}
+        data-app-shell-header
+      >
+        <div className={styles.headerInner}>
+          <div className={styles.headerCatalogStart}>
+            <Link className={styles.brand} to="/" aria-label="LearnHub home">
               <svg
                 aria-hidden="true"
-                className="app-brand__mark"
+                className={styles.brandMark}
                 focusable="false"
                 viewBox="0 0 32 32"
               >
-                <rect className="app-brand__mark-outline" x="2" y="2" width="28" height="28" rx="6" />
+                <rect className={styles.brandMarkOutline} x="2" y="2" width="28" height="28" rx="6" />
                 <path
-                  className="app-brand__mark-book"
+                  className={styles.brandMarkBook}
                   d="M5.5 8.5c3.4.6 6.3 1.8 9.5 3.7v13.2c-3.2-1.9-6.4-3-9.5-3.4V8.5Zm21 0c-3.4.6-6.3 1.8-9.5 3.7v13.2c3.2-1.9 6.4-3 9.5-3.4V8.5Z"
                 />
               </svg>
-              <span className="app-brand__wordmark">LearnHub</span>
+              <span className={styles.brandWordmark}>LearnHub</span>
             </Link>
             <nav
               className={hasDesktopAuthActions && !isAnonymousCatalogRoute
-                ? 'app-nav app-nav--desktop app-nav--desktop-split'
-                : 'app-nav app-nav--desktop'}
+                ? [styles.navDesktop, styles.navDesktopSplit].join(' ')
+                : styles.navDesktop}
               aria-label="Primary navigation"
             >
               <NavigationLinks items={isAnonymousCatalogRoute
@@ -326,7 +339,7 @@ export function AppShell() {
                 : desktopPrimaryNavigation}
               />
               {hasDesktopAuthActions && !isAnonymousCatalogRoute ? (
-                <div className="app-nav__auth-actions">
+                <div className={styles.navAuthActions}>
                   <NavigationLinks items={desktopAuthActions} />
                 </div>
               ) : null}
@@ -334,7 +347,7 @@ export function AppShell() {
           </div>
           {isCatalogRoute ? (
             <form
-              className="app-catalog-search"
+              className={styles.catalogSearch}
               role="search"
               aria-label="Course catalog search"
               onSubmit={(event) => {
@@ -342,10 +355,12 @@ export function AppShell() {
                 submitCatalogSearch(activeCatalogSearchTerm);
               }}
             >
-              <div ref={catalogSearchWrapperRef} className="app-catalog-search__field">
+              <div ref={catalogSearchWrapperRef} className={styles.catalogSearchField}>
                 <Input
                   ref={catalogSearchRef}
-                  label={<span className="ui-sr-only">Search courses</span>}
+                  label={<VisuallyHidden>Search courses</VisuallyHidden>}
+                  fieldClassName={styles.catalogSearchPrimitiveField}
+                  className={styles.catalogSearchInput}
                   name="search_query"
                   type="search"
                   value={catalogSearchDraft}
@@ -395,16 +410,16 @@ export function AppShell() {
                     }
                   }}
                 />
-                <svg className="app-catalog-search__icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24">
+                <svg className={styles.catalogSearchIcon} aria-hidden="true" focusable="false" viewBox="0 0 24 24">
                   <path d="m21 21-4.35-4.35m1.35-5.15a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0Z" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
                 </svg>
                 {catalogSearchListboxVisible ? (
-                  <div className="app-catalog-search__listbox" id={catalogSearchListboxId} role="listbox" aria-label="Recent searches">
+                  <div className={styles.catalogSearchListbox} id={catalogSearchListboxId} role="listbox" aria-label="Recent searches">
                     {catalogSearchMatches.map((term, index) => (
                       <div
                         key={term.toLocaleLowerCase()}
                         id={`${catalogSearchListboxId}-option-${index}`}
-                        className="app-catalog-search__option"
+                        className={styles.catalogSearchOption}
                         role="option"
                         aria-selected={activeCatalogSearchIndex === index}
                         tabIndex={-1}
@@ -420,23 +435,23 @@ export function AppShell() {
               </div>
             </form>
           ) : null}
-          <div className="app-header__catalog-end">
+          <div className={styles.headerCatalogEnd}>
             {isAnonymousCatalogRoute ? (
-              <nav className="app-nav app-nav--desktop app-nav--catalog-account" aria-label="Account navigation">
+              <nav className={[styles.navDesktop, styles.navCatalogAccount].join(' ')} aria-label="Account navigation">
                 <NavigationLinks items={catalogDesktopAccountNavigation} />
               </nav>
             ) : null}
             <div className={state.status === 'authenticated'
               ? state.user.role === 'instructor'
-                ? 'app-account app-account--instructor'
-                : 'app-account'
-              : 'app-account app-account--anonymous'}>
+                ? [styles.account, styles.accountInstructor].join(' ')
+                : styles.account
+              : [styles.account, styles.accountAnonymous].join(' ')}>
               {state.status === 'authenticated' ? (
                 <span title={state.user.email}>{state.user.name} - {state.user.role}</span>
               ) : null}
               <button
                 ref={menuButtonRef}
-                className="app-menu-button"
+                className={styles.menuButton}
                 type="button"
                 aria-expanded={mobileOpen}
                 aria-controls="mobile-navigation"
@@ -449,7 +464,7 @@ export function AppShell() {
                 }}
               >
                 <span aria-hidden="true">Menu</span>
-                <span className="ui-sr-only">{mobileOpen ? 'Close navigation' : 'Open navigation'}</span>
+                <VisuallyHidden>{mobileOpen ? 'Close navigation' : 'Open navigation'}</VisuallyHidden>
               </button>
             </div>
           </div>
@@ -457,7 +472,7 @@ export function AppShell() {
         {mobileOpen ? (
           <nav
             id="mobile-navigation"
-            className="app-nav app-nav--mobile"
+            className={styles.navMobile}
             aria-label="Mobile navigation"
             onKeyDown={(event) => {
               if (event.key === 'Escape') {
@@ -473,10 +488,20 @@ export function AppShell() {
           </nav>
         ) : null}
       </header>
-      <main ref={mainRef} className={`app-main${isCatalogRoute ? ' app-main--catalog' : ''}`} id="main-content" tabIndex={-1}>
+      <main
+        ref={mainRef}
+        className={[
+          styles.main,
+          isCatalogRoute ? styles.mainCatalog : null,
+          layout === 'workspace' ? styles.mainWorkspace : null,
+          layout === 'auth' ? styles.mainAuth : null,
+        ].filter(Boolean).join(' ')}
+        id="main-content"
+        tabIndex={-1}
+      >
         <Outlet />
       </main>
-      <footer className="app-footer">
+      <footer className={styles.footer}>
         <span>(c) 2026 LearnHub</span>
         <span>Accessible learning, built for every role.</span>
       </footer>

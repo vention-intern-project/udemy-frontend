@@ -5,9 +5,9 @@ import {
   type CatalogFilterValidationErrors, type CatalogPriceField, type CatalogPriceRange,
   type CatalogPriceRangeDraft, type CatalogQuery,
 } from '@features/catalog-discovery';
-import { Input } from '@shared/ui/primitives';
+import { Input, VisuallyHidden } from '@shared/ui/primitives';
 
-import './catalog-filter-bar.css';
+import styles from './CatalogFilterBar.module.css';
 
 interface CatalogFilterBarProps {
   query: CatalogQuery;
@@ -80,7 +80,7 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
 
   return (
     <form
-      className="catalog-filter-bar"
+      className={styles.root}
       aria-label="Course filters"
       noValidate
       onSubmit={(event) => {
@@ -88,17 +88,23 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
         applyDraft();
       }}
     >
-      <fieldset className="catalog-filter-bar__price-range">
-        <legend className="ui-sr-only">Price range</legend>
-        <span className="catalog-filter-bar__legend" aria-hidden="true">Price range:</span>
+      <fieldset className={styles.priceRange}>
+        <VisuallyHidden as="legend">Price range</VisuallyHidden>
+        <span
+          className={styles.legend}
+          data-part="catalog-filter-price-label"
+          aria-hidden="true"
+        >
+          Price range:
+        </span>
         <Input
-          label={<span className="ui-sr-only">Min price</span>}
+          label={<VisuallyHidden>Min price</VisuallyHidden>}
           name="min_price"
           type="number"
           inputMode="decimal"
           min="0"
           placeholder="Min price"
-          fieldClassName="catalog-filter-bar__field"
+          fieldClassName={styles.field}
           value={draft.min_price}
           error={errors.min_price}
           onChange={(event) => update('min_price', event.target.value)}
@@ -111,13 +117,13 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
           }}
         />
         <Input
-          label={<span className="ui-sr-only">Max price</span>}
+          label={<VisuallyHidden>Max price</VisuallyHidden>}
           name="max_price"
           type="number"
           inputMode="decimal"
           min="0"
           placeholder="Max price"
-          fieldClassName="catalog-filter-bar__field"
+          fieldClassName={styles.field}
           value={draft.max_price}
           error={errors.max_price}
           onChange={(event) => update('max_price', event.target.value)}

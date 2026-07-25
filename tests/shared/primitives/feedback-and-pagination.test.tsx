@@ -80,15 +80,13 @@ describe('Pagination', () => {
     expect(onPageChange).toHaveBeenCalledTimes(enabledTargets.length);
   });
 
-  it('uses borderless literal chevrons only for the opt-in direction mode while retaining button names and status text', () => {
+  it('uses literal chevrons only for the opt-in direction mode while retaining button names and status text', () => {
     const { rerender } = render(<Pagination currentPage={2} totalPages={4} onPageChange={() => undefined} directionDisplay="arrows" />);
 
     const previous = screen.getByRole('button', { name: 'Go to previous page' });
     const next = screen.getByRole('button', { name: 'Go to next page' });
     expect(previous.textContent).toBe('<');
     expect(next.textContent).toBe('>');
-    expect(previous.classList.contains('ui-pagination__button--direction')).toBe(true);
-    expect(next.classList.contains('ui-pagination__button--direction')).toBe(true);
     expect(previous.firstElementChild?.getAttribute('aria-hidden')).toBe('true');
     expect(next.firstElementChild?.getAttribute('aria-hidden')).toBe('true');
     expect(screen.getByRole('status').textContent).toContain('Page 2 of 4');
@@ -98,8 +96,6 @@ describe('Pagination', () => {
     const textNext = screen.getByRole('button', { name: 'Go to next page' });
     expect(textPrevious.textContent).toBe('Previous');
     expect(textNext.textContent).toBe('Next');
-    expect(textPrevious.classList.contains('ui-pagination__button--direction')).toBe(false);
-    expect(textNext.classList.contains('ui-pagination__button--direction')).toBe(false);
   });
 
   it('disables unavailable boundary actions', () => {
@@ -122,8 +118,6 @@ describe('Pagination', () => {
     expect(next.disabled).toBe(true);
     expect(previous.textContent).toBe('<');
     expect(next.textContent).toBe('>');
-    expect(previous.classList.contains('ui-pagination__button--direction')).toBe(true);
-    expect(next.classList.contains('ui-pagination__button--direction')).toBe(true);
     await user.click(next);
     expect(onPageChange).not.toHaveBeenCalled();
 

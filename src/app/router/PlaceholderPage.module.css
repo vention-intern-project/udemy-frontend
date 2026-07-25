@@ -1,0 +1,28 @@
+.root {
+  width: min(100%, 720px);
+  margin-inline: auto;
+  padding: var(--spacing-8);
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-1);
+}
+
+.root h1 {
+  margin: var(--spacing-2) 0 var(--spacing-3);
+  font-size: clamp(1.75rem, 5vw, var(--type-page-h1-size));
+  line-height: 1.25;
+}
+
+.root p {
+  color: var(--text-secondary);
+  line-height: var(--type-body-md-lh);
+}
+
+p.note {
+  margin-top: var(--spacing-6);
+  padding-top: var(--spacing-4);
+  border-top: var(--border-width) solid var(--border-default);
+  color: var(--text-muted);
+  font-size: var(--type-body-sm-size);
+}

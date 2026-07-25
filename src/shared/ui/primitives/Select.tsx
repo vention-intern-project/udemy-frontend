@@ -1,6 +1,7 @@
 import { forwardRef, type ReactNode, type SelectHTMLAttributes } from 'react';
 
 import { FieldShell, useFieldA11y } from './Field';
+import styles from './Select.module.css';
 
 export interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
   label: ReactNode;
@@ -48,7 +49,8 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
         required={required}
         aria-invalid={error ? true : ariaInvalid}
         aria-describedby={ids.describedBy}
-        className={['ui-control', 'ui-select', className].filter(Boolean).join(' ')}
+        className={[styles.control, 'ui-control', 'ui-select', className].filter(Boolean).join(' ')}
+        data-part="control"
       >
         {children}
       </select>

@@ -7,12 +7,39 @@ const tokensCss = readFileSync(
   new URL('../../../src/shared/ui/tokens/tokens.css', import.meta.url),
   'utf8',
 );
+const mainSource = readFileSync(
+  new URL('../../../src/main.tsx', import.meta.url),
+  'utf8',
+);
+const appSource = readFileSync(
+  new URL('../../../src/app/App.tsx', import.meta.url),
+  'utf8',
+);
+const primitiveIndexSource = readFileSync(
+  new URL('../../../src/shared/ui/primitives/index.ts', import.meta.url),
+  'utf8',
+);
 
 const intentionalAliases: Readonly<Record<string, string>> = {};
 const customPropertyName = /^--[\w-]+$/;
+const sourceImport = /^[\t ]*import(?:[\t ]+([^'"\r\n]+?)[\t ]+from)?[\t ]*(['"])([^'"\r\n]+)\2[\t ]*;?[\t ]*$/gm;
+
+interface SourceImportMatch {
+  clause: string | undefined;
+  path: string;
+  offset: number;
+}
 
 function sortedUnique(values: Iterable<string>): string[] {
   return Array.from(new Set(values)).sort();
+}
+
+function collectSourceImports(source: string): SourceImportMatch[] {
+  return Array.from(source.matchAll(sourceImport), (match) => ({
+    clause: match[1],
+    path: match[3],
+    offset: match.index,
+  }));
 }
 
 function collectExportedTokenNames(
@@ -34,6 +61,60 @@ function collectExportedTokenNames(
 }
 
 describe('TypeScript and CSS token parity', () => {
+  it('keeps the production global CSS boundary explicit and foundation-first', () => {
+    const mainImports = collectSourceImports(mainSource);
+    const appImports = collectSourceImports(appSource);
+    const primitiveIndexImports = collectSourceImports(primitiveIndexSource);
+    const mainCssImports = mainImports
+      .filter((match) => match.clause === undefined && match.path.endsWith('.css'))
+      .map((match) => match.path);
+    const appCssImports = appImports
+      .filter((match) => match.clause === undefined && match.path.endsWith('.css'))
+      .map((match) => match.path);
+    const primitiveIndexCssImports = primitiveIndexImports
+      .filter((match) => match.clause === undefined && match.path.endsWith('.css'))
+      .map((match) => match.path);
+    const tokenImports = mainImports
+      .filter((match) => match.path === './shared/ui/tokens/tokens.css');
+    const applicationImports = mainImports
+      .filter((match) => match.path === './app');
+
+    expect(mainCssImports).toEqual(['./shared/ui/tokens/tokens.css']);
+    expect(appCssImports).toEqual(['./app.css']);
+    expect(primitiveIndexCssImports).toEqual([]);
+    expect(tokenImports, 'tokens.css must be imported exactly once by the production entry')
+      .toHaveLength(1);
+    expect(tokenImports[0]?.clause, 'tokens.css must remain a side-effect import')
+      .toBeUndefined();
+    expect(applicationImports, 'the App entry import must remain present exactly once')
+      .toHaveLength(1);
+    expect(
+      tokenImports[0]?.offset,
+      'tokens.css must be loaded before the App reset/element contract',
+    ).toBeLessThan(applicationImports[0]?.offset);
+  });
+
+  it('keeps exact import paths and order across quote and semicolon formatting', () => {
+    const formattingVariant = [
+      '  import   "./shared/ui/tokens/tokens.css"',
+      'import { App }   from   "./app"  ',
+    ].join('\n');
+    const imports = collectSourceImports(formattingVariant);
+    const tokenImports = imports
+      .filter((match) => match.path === './shared/ui/tokens/tokens.css');
+    const applicationImports = imports
+      .filter((match) => match.path === './app');
+
+    expect(imports.map((match) => match.path)).toEqual([
+      './shared/ui/tokens/tokens.css',
+      './app',
+    ]);
+    expect(tokenImports).toHaveLength(1);
+    expect(tokenImports[0]?.clause).toBeUndefined();
+    expect(applicationImports).toHaveLength(1);
+    expect(tokenImports[0]?.offset).toBeLessThan(applicationImports[0]?.offset);
+  });
+
   it('keeps custom-property names synchronized in both directions', () => {
     const exportedNames = new Set<string>();
     const visited = new Set<object>();

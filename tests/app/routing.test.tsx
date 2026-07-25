@@ -176,12 +176,12 @@ describe('application routing and guards', () => {
     renderApp('/');
     await screen.findByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' });
     const catalogSearch = screen.getByRole('search', { name: 'Course catalog search' });
-    const headerSearch = within(catalogSearch).getByLabelText('Search courses');
+    const headerSearch = within(catalogSearch).getByLabelText('Search courses') as HTMLInputElement;
     expect(headerSearch.getAttribute('placeholder'))
       .toBe('Search courses, topics, or instructors');
-    const label = catalogSearch.querySelector('label.ui-field__label');
-    expect(label?.querySelector('.ui-sr-only')?.textContent).toBe('Search courses');
-    const icon = catalogSearch.querySelector('svg.app-catalog-search__icon');
+    const label = headerSearch.labels?.item(0);
+    expect(label?.textContent).toBe('Search courses');
+    const icon = catalogSearch.querySelector('svg[aria-hidden="true"]');
     expect(icon?.getAttribute('aria-hidden')).toBe('true');
     expect(icon?.getAttribute('focusable')).toBe('false');
     expect(icon?.getAttribute('role')).toBe(null);
@@ -194,7 +194,6 @@ describe('application routing and guards', () => {
     const navigation = screen.getByRole('navigation', { name: 'Primary navigation' });
     const browse = within(navigation).getByRole('link', { name: 'Browse courses' });
     expect(browse).toBeTruthy();
-    expect(browse.className).toContain('app-nav__link--browse-link');
     const accountNavigation = screen.getByRole('navigation', { name: 'Account navigation' });
     const logIn = within(accountNavigation).getByRole('link', { name: 'Log in' });
     const signUp = within(accountNavigation).getByRole('link', { name: 'Sign up' });
@@ -203,19 +202,13 @@ describe('application routing and guards', () => {
     expect(browse.getAttribute('aria-current')).toBe('page');
     expect(logIn.getAttribute('aria-current')).toBe(null);
     expect(signUp.getAttribute('aria-current')).toBe(null);
-    expect(signUp.className).toContain('app-nav__link--signup-primary');
-    const header = catalogSearch.closest('header');
-    expect(header).toBeTruthy();
-    expect(header?.classList.contains('app-header--anonymous-catalog')).toBe(true);
-    const headerInner = header!.querySelector('.app-header__inner');
-    expect(Array.from(headerInner?.children ?? []).map((child) => child.className)).toEqual([
-      'app-header__catalog-start',
-      'app-catalog-search',
-      'app-header__catalog-end',
-    ]);
-    expect(headerInner?.querySelector('.app-header__catalog-start')?.contains(navigation)).toBe(true);
-    expect(headerInner?.querySelector('.app-header__catalog-end')?.contains(accountNavigation)).toBe(true);
-    expect(Array.from(header!.querySelectorAll('a, input')).map((element) => {
+    const header = screen.getByRole('banner');
+    expect(header.hasAttribute('data-app-shell-header')).toBe(true);
+    expect(document.querySelectorAll('[data-app-shell-header]')).toHaveLength(1);
+    expect(header.contains(navigation)).toBe(true);
+    expect(header.contains(catalogSearch)).toBe(true);
+    expect(header.contains(accountNavigation)).toBe(true);
+    expect(Array.from(header.querySelectorAll('a, input')).map((element) => {
       if (element instanceof HTMLInputElement) return element.getAttribute('aria-label') ?? element.name;
       return element.getAttribute('aria-label') ?? element.textContent?.trim();
     })).toEqual(['LearnHub home', 'Browse courses', 'search_query', 'Log in', 'Sign up']);
@@ -242,8 +235,8 @@ describe('application routing and guards', () => {
     await screen.findByRole('heading', { level: 1, name: heading });
 
     const brand = screen.getByRole('link', { name: 'LearnHub home' });
-    const marks = brand.querySelectorAll('svg.app-brand__mark');
-    const wordmarks = brand.querySelectorAll('.app-brand__wordmark');
+    const marks = brand.querySelectorAll(':scope > svg[aria-hidden="true"]');
+    const wordmarks = brand.querySelectorAll(':scope > span');
 
     expect(brand.getAttribute('aria-label')).toBe('LearnHub home');
     expect(brand.textContent?.replace(/\s+/g, ' ').trim()).toBe('LearnHub');
@@ -333,7 +326,7 @@ describe('application routing and guards', () => {
   ])('applies Router-parity metadata and title for %s', async (path, role, expectedTitle) => {
     renderApp(path, role);
     await waitFor(() => expect(document.title).toBe(expectedTitle));
-    expect(document.querySelector('.app-shell')?.getAttribute('data-layout'))
+    expect(document.querySelector('[data-layout]')?.getAttribute('data-layout'))
       .toBe(role ? 'workspace' : 'auth');
   });
 
@@ -346,7 +339,7 @@ describe('application routing and guards', () => {
     async (path, role, heading, layout, density) => {
       renderApp(path, role);
       await screen.findByRole('heading', { level: 1, name: heading });
-      expect(document.querySelector('.app-shell')?.getAttribute('data-layout')).toBe(layout);
+      expect(document.querySelector('[data-layout]')?.getAttribute('data-layout')).toBe(layout);
       await waitFor(() => expect(document.documentElement.getAttribute('data-density')).toBe(density));
     },
   );

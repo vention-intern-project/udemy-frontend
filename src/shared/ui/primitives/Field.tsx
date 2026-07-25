@@ -1,6 +1,7 @@
 import { useId, type ReactNode } from 'react';
 
 import { joinIds } from '../../accessibility';
+import styles from './Field.module.css';
 
 interface FieldA11yOptions {
   id?: string;
@@ -52,23 +53,30 @@ export function FieldShell({
   className,
 }: FieldShellProps) {
   return (
-    <div className={['ui-field', className].filter(Boolean).join(' ')}>
-      <label className="ui-field__label" htmlFor={controlId}>
+    <div
+      className={[styles.field, 'ui-field', className].filter(Boolean).join(' ')}
+      data-part="field"
+    >
+      <label
+        className={[styles.label, 'ui-field__label'].join(' ')}
+        data-part="label"
+        htmlFor={controlId}
+      >
         {label}
         {required ? (
-          <span className="ui-field__required" aria-hidden="true">
+          <span className={[styles.required, 'ui-field__required'].join(' ')} aria-hidden="true">
             {' '}*
           </span>
         ) : null}
       </label>
       {children}
       {helpText ? (
-        <div className="ui-field__help" id={helpId}>
+        <div className={[styles.help, 'ui-field__help'].join(' ')} data-part="help" id={helpId}>
           {helpText}
         </div>
       ) : null}
       {error ? (
-        <div className="ui-field__error" id={errorId}>
+        <div className={[styles.error, 'ui-field__error'].join(' ')} data-part="error" id={errorId}>
           {error}
         </div>
       ) : null}

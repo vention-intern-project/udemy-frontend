@@ -11,6 +11,7 @@ import {
 import { useSession } from '@features/auth-session';
 import { mutationKeys } from '@shared/api';
 import { Button, Input, Select } from '@shared/ui/primitives';
+import styles from './SignupPage.module.css';
 
 const INITIAL: SignupInput = {
   email: '', name: '', surname: '', password: '', passwordConfirmation: '', role: 'student',
@@ -76,12 +77,12 @@ export function SignupPage() {
   return (
     <AuthFormShell title="Create account" description="Create a LearnHub account to start learning or teaching."
       footer={<><span>Already have an account?</span> <AuthLink to="/login">Log in</AuthLink></>}>
-      <form className="auth-form__fields" noValidate onSubmit={submit}>
+      <form noValidate onSubmit={submit}>
         {summary && Object.keys(fieldErrors).length === 0 ? <FormErrorAlert ref={summaryRef} summary={summary} /> : null}
         <Input id="email" name="email" type="email" label="Email" autoComplete="email" required
           value={input.email} error={fieldErrors.email} disabled={mutation.isPending}
           onChange={(event) => update('email', event.currentTarget.value)} />
-        <div className="auth-form__split">
+        <div className={styles.split}>
           <Input id="name" name="name" label="First name" autoComplete="given-name" required
             value={input.name} error={fieldErrors.name} disabled={mutation.isPending}
             onChange={(event) => update('name', event.currentTarget.value)} />
@@ -89,7 +90,7 @@ export function SignupPage() {
             value={input.surname} error={fieldErrors.surname} disabled={mutation.isPending}
             onChange={(event) => update('surname', event.currentTarget.value)} />
         </div>
-        <Select id="role" name="role" label="Role" className="auth-form__role-picker" required value={input.role} error={fieldErrors.role}
+        <Select id="role" name="role" label="Role" className={styles.rolePicker} required value={input.role} error={fieldErrors.role}
           disabled={mutation.isPending} onChange={(event) => update('role', event.currentTarget.value as UserRoleDto)}>
           <option value="student">Student</option><option value="instructor">Instructor</option><option value="admin">Admin</option>
         </Select>

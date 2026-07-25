@@ -1,0 +1,27 @@
+.field {
+  display: grid;
+  gap: var(--spacing-2);
+  color: var(--text-primary);
+  font-family: var(--font-family-base);
+}
+
+.label {
+  font-size: var(--type-label-size);
+  font-weight: var(--type-label-weight);
+  line-height: var(--type-label-lh);
+}
+
+.required,
+.error {
+  color: var(--feedback-error);
+}
+
+.help,
+.error {
+  font-size: var(--type-caption-size);
+  line-height: var(--type-caption-lh);
+}
+
+.help {
+  color: var(--text-muted);
+}
