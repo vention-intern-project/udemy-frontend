@@ -44,3 +44,28 @@ export interface CatalogCourseList {
   hasNext: boolean;
   hasPrevious: boolean;
 }
+
+export interface LessonOutlineItem {
+  id: number;
+  title: string;
+  lessonType: LessonType;
+  description: string | null;
+  isPublished: boolean;
+}
+
+export interface LessonOutline {
+  items: readonly LessonOutlineItem[];
+  total: number;
+}
+
+export interface CourseDetail {
+  id: number;
+  instructorId: number;
+  instructorName: string;
+  title: string;
+  description: string | null;
+  price: string;
+  currency: string;
+  publishedAt: string | null;
+  lessons: readonly LessonOutlineItem[];
+}

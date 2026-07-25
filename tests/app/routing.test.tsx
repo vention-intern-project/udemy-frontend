@@ -130,6 +130,39 @@ afterEach(() => {
 });
 
 describe('application routing and guards', () => {
+  it('composes PAGE-002 and preserves its safe login return target', async () => {
+    const client: ApiClient = {
+      request: async <TResponse, TBody = unknown>(options: ApiRequestOptions<TBody, TResponse>) => {
+        const value = options.path.endsWith('/lessons')
+          ? { items: [], page: 1, page_size: 100, total: 0, pages: 0, has_next: false, has_previous: false }
+          : {
+            id: 7, title: 'React foundations', description: null, price: '0.00', currency: 'USD',
+            published_at: '2026-07-01T00:00:00Z', created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z',
+            instructor: { id: 2, name: 'Ada', surname: 'Lovelace' }, lessons: [],
+          };
+        return options.decode ? options.decode(value) : value as TResponse;
+      },
+    };
+    render(
+      <QueryClientProvider client={createAppQueryClient()}>
+        <ThemeProvider initialDensityMode="marketplace">
+          <SessionProvider client={client} tokenStore={store(null)}>
+            <MemoryRouter initialEntries={['/courses/7']} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+              <RouteErrorBoundary><AppRouter /></RouteErrorBoundary>
+              <LocationProbe />
+            </MemoryRouter>
+          </SessionProvider>
+        </ThemeProvider>
+      </QueryClientProvider>,
+    );
+
+    const login = await screen.findByRole('link', { name: 'Log in to enroll free' });
+    expect(login.getAttribute('href')).toBe('/login?returnTo=%2Fcourses%2F7');
+    await act(async () => { await userEvent.setup().click(login); });
+    await screen.findByRole('heading', { level: 1, name: 'Log in' });
+    expect(screen.getByLabelText('current location').textContent).toBe('/login?returnTo=%2Fcourses%2F7');
+  });
+
   it('keeps the busy bootstrap main landmark separate from its polite status region', () => {
     const client: ApiClient = {
       request: <TResponse,>() => new Promise<TResponse>(() => undefined),
@@ -332,7 +365,7 @@ describe('application routing and guards', () => {
 
   it.each([
     ['/LOGIN/', undefined, 'Log in', 'auth', 'marketplace'],
-    ['/COURSES/Course-42/', undefined, 'Course details', 'public', 'marketplace'],
+    ['/COURSES/Course-42/', undefined, 'Course not found', 'public', 'marketplace'],
     ['/INSTRUCTOR/COURSES/Course-42/ENROLLMENTS/', 'instructor', 'Course enrollments', 'workspace', 'workspace'],
   ] as const)(
     'keeps route metadata aligned with rendered routing for %s',

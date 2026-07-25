@@ -1,0 +1,221 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useEffect, useMemo, useRef, useState,
+} from 'react';
+
+import { queryKeys } from '@entities/api';
+import { ApiError } from '@shared/api';
+import { useSession, type SessionState } from '@features/auth-session';
+
+import {
+  courseMutationDisposition, coursePrimaryAction,
+  type CourseMutationDisposition, type CourseMutationRefresh, type CoursePreflightState,
+} from './action-state';
+import {
+  addCourseToCart, enrollFree, requestCart, requestCourseDetail, requestEnrollments, requestLessonOutline,
+} from './api';
+
+export interface CourseDetailFailure {
+  title: string;
+  message: string;
+  notFound: boolean;
+}
+
+export type CourseMutationKind = 'enroll' | 'cart';
+
+export type CourseActionIdentity = string;
+
+export type CourseMutationViewState =
+  | { status: 'idle' }
+  | { status: 'pending' }
+  | { status: 'success'; action: CourseMutationKind }
+  | { status: 'error'; disposition: CourseMutationDisposition };
+
+interface CourseMutationAttempt {
+  identity: CourseActionIdentity;
+  subject: string;
+  courseId: number;
+  action: CourseMutationKind;
+}
+
+interface ScopedServerDisposition {
+  identity: CourseActionIdentity;
+  preflight: CoursePreflightState;
+}
+
+interface ScopedMutationFeedback {
+  identity: CourseActionIdentity;
+  state: Extract<CourseMutationViewState, { status: 'success' | 'error' }>;
+}
+
+function mutationViewState(
+  identity: CourseActionIdentity | null,
+  pending: boolean,
+  attempt: CourseMutationAttempt | undefined,
+  feedback: ScopedMutationFeedback | null,
+): CourseMutationViewState {
+  if (identity && pending && attempt?.identity === identity) return { status: 'pending' };
+  if (feedback?.identity === identity) return feedback.state;
+  return { status: 'idle' };
+}
+
+function subjectForSession(state: SessionState): string | null {
+  return state.status === 'authenticated' ? state.user.email : null;
+}
+
+function actionIdentity(subject: string | null, courseId: number | null): CourseActionIdentity | null {
+  return subject && courseId !== null ? JSON.stringify([subject, courseId]) : null;
+}
+
+export function courseDetailQueryKey(subject: string | null, courseId: number) {
+  const resource = `course:${courseId}`;
+  return subject
+    ? queryKeys.private.operation(subject, 'API-010', resource)
+    : queryKeys.public.operation('API-010', resource);
+}
+
+export function lessonOutlineQueryKey(subject: string | null, courseId: number) {
+  const resource = `course:${courseId}:outline`;
+  return subject
+    ? queryKeys.private.operation(subject, 'API-014', resource)
+    : queryKeys.public.operation('API-014', resource);
+}
+
+export function cartQueryKey(subject: string) {
+  return queryKeys.private.operation(subject, 'API-002', 'cart');
+}
+
+export function enrollmentQueryKey(subject: string) {
+  return queryKeys.private.operation(subject, 'API-021', 'enrollments');
+}
+
+export function courseDetailFailure(error: unknown): CourseDetailFailure {
+  if (error instanceof ApiError && error.status === 404) return { title: 'Course not found', message: 'This course does not exist or is no longer available.', notFound: true };
+  if (error instanceof ApiError && error.kind === 'invalid_response') return { title: 'Course data is unavailable', message: 'The server returned an invalid response. Try again.', notFound: false };
+  if (error instanceof ApiError && error.kind === 'offline') return { title: 'You appear to be offline', message: 'Check your connection and try again.', notFound: false };
+  return { title: 'We could not load this course', message: 'Please try again.', notFound: false };
+}
+
+export function useCourseDetail(courseId: number | null) {
+  const session = useSession();
+  const queryClient = useQueryClient();
+  const subject = subjectForSession(session.state);
+  const identity = actionIdentity(subject, courseId);
+  const student = session.state.status === 'authenticated' && session.state.user.role === 'student';
+  const [serverDisposition, setServerDisposition] = useState<ScopedServerDisposition | null>(null);
+  const [mutationFeedback, setMutationFeedback] = useState<ScopedMutationFeedback | null>(null);
+  const lockedIdentities = useRef(new Set<CourseActionIdentity>());
+  const currentIdentityRef = useRef<CourseActionIdentity | null>(identity);
+  currentIdentityRef.current = identity;
+
+  useEffect(() => {
+    setServerDisposition(null);
+    setMutationFeedback(null);
+  }, [identity]);
+
+  const detail = useQuery({
+    queryKey: courseDetailQueryKey(subject, courseId ?? 0),
+    queryFn: ({ signal }) => requestCourseDetail(session, courseId as number, signal),
+    enabled: courseId !== null,
+  });
+  const outline = useQuery({
+    queryKey: lessonOutlineQueryKey(subject, courseId ?? 0),
+    queryFn: ({ signal }) => requestLessonOutline(session, courseId as number, signal),
+    enabled: courseId !== null && detail.isSuccess,
+  });
+  const preflightEnabled = Boolean(student && detail.data && detail.data.publishedAt !== null);
+  const cart = useQuery({
+    queryKey: cartQueryKey(subject ?? 'anonymous'),
+    queryFn: ({ signal }) => requestCart(session, signal),
+    enabled: preflightEnabled,
+  });
+  const enrollments = useQuery({
+    queryKey: enrollmentQueryKey(subject ?? 'anonymous'),
+    queryFn: ({ signal }) => requestEnrollments(session, signal),
+    enabled: preflightEnabled,
+  });
+
+  const preflight = useMemo<CoursePreflightState>(() => {
+    if (!student) return 'not-required';
+    if (!preflightEnabled) return 'not-required';
+    if (serverDisposition?.identity === identity) return serverDisposition.preflight;
+    if (cart.isPending || enrollments.isPending) return 'loading';
+    if (cart.isError || enrollments.isError) return 'unavailable';
+    if (enrollments.data?.items.some((item) => item.courseId === courseId)) return 'already-enrolled';
+    if (cart.data?.items.some((item) => item.courseId === courseId)) return 'already-in-cart';
+    return 'eligible';
+  }, [cart.data, cart.isError, cart.isPending, courseId, enrollments.data, enrollments.isError, enrollments.isPending, identity, preflightEnabled, serverDisposition, student]);
+
+  const action = detail.data ? coursePrimaryAction({ course: detail.data, session: session.state, preflight }) : null;
+  const refreshMutationOutcome = async (refresh: CourseMutationRefresh, attempt: CourseMutationAttempt) => {
+    if (refresh === 'detail') {
+      await queryClient.invalidateQueries({ queryKey: courseDetailQueryKey(attempt.subject, attempt.courseId), exact: true });
+    } else if (refresh === 'cart') {
+      await queryClient.invalidateQueries({ queryKey: cartQueryKey(attempt.subject), exact: true });
+    } else if (refresh === 'enrollments') {
+      await queryClient.invalidateQueries({ queryKey: enrollmentQueryKey(attempt.subject), exact: true });
+    } else if (refresh === 'preflight') {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: cartQueryKey(attempt.subject), exact: true }),
+        queryClient.invalidateQueries({ queryKey: enrollmentQueryKey(attempt.subject), exact: true }),
+      ]);
+    }
+  };
+  const reconcileSuccessfulAttempt = async (attempt: CourseMutationAttempt) => {
+    if (attempt.action === 'enroll') {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: enrollmentQueryKey(attempt.subject), exact: true }),
+        queryClient.invalidateQueries({ queryKey: courseDetailQueryKey(attempt.subject, attempt.courseId), exact: true }),
+        queryClient.invalidateQueries({ queryKey: lessonOutlineQueryKey(attempt.subject, attempt.courseId), exact: true }),
+      ]);
+      return;
+    }
+    await queryClient.invalidateQueries({ queryKey: cartQueryKey(attempt.subject), exact: true });
+  };
+
+  const mutation = useMutation<void, unknown, CourseMutationAttempt>({
+    mutationFn: (attempt) => attempt.action === 'enroll'
+      ? enrollFree(session, attempt.courseId)
+      : addCourseToCart(session, attempt.courseId),
+    onSuccess: async (_data, attempt) => {
+      await reconcileSuccessfulAttempt(attempt);
+      if (currentIdentityRef.current !== attempt.identity) return;
+      setServerDisposition({
+        identity: attempt.identity,
+        preflight: attempt.action === 'enroll' ? 'already-enrolled' : 'already-in-cart',
+      });
+      setMutationFeedback({ identity: attempt.identity, state: { status: 'success', action: attempt.action } });
+    },
+    onError: async (error, attempt) => {
+      const disposition = courseMutationDisposition(error);
+      await refreshMutationOutcome(disposition.refresh, attempt);
+      if (currentIdentityRef.current !== attempt.identity) return;
+      setMutationFeedback({ identity: attempt.identity, state: { status: 'error', disposition } });
+      if (disposition.kind === 'terminal' && disposition.preflight) {
+        setServerDisposition({ identity: attempt.identity, preflight: disposition.preflight });
+      }
+    },
+    onSettled: (_data, _error, attempt) => {
+      lockedIdentities.current.delete(attempt.identity);
+    },
+  });
+
+  const submitAction = (kind: CourseMutationKind) => {
+    if (!identity || !subject || courseId === null || lockedIdentities.current.has(identity)) return;
+    lockedIdentities.current.add(identity);
+    setMutationFeedback(null);
+    mutation.mutate({ identity, subject, courseId, action: kind });
+  };
+
+  const mutationState = mutationViewState(identity, mutation.isPending, mutation.variables, mutationFeedback);
+
+  return {
+    action,
+    detail,
+    outline,
+    preflight,
+    retryPreflight: () => Promise.all([cart.refetch(), enrollments.refetch()]),
+    mutationState,
+    submitAction,
+  };
+}
