@@ -6,13 +6,14 @@ import {
 import { queryKeys } from '@entities/api';
 import { ApiError } from '@shared/api';
 import { useSession, type SessionState } from '@features/auth-session';
+import { cartQueryKey, requestCart } from '@features/cart-workflow';
 
 import {
   courseMutationDisposition, coursePrimaryAction,
   type CourseMutationDisposition, type CourseMutationRefresh, type CoursePreflightState,
 } from './action-state';
 import {
-  addCourseToCart, enrollFree, requestCart, requestCourseDetail, requestEnrollments, requestLessonOutline,
+  addCourseToCart, enrollFree, requestCourseDetail, requestEnrollments, requestLessonOutline,
 } from './api';
 
 export interface CourseDetailFailure {
@@ -79,10 +80,6 @@ export function lessonOutlineQueryKey(subject: string | null, courseId: number) 
   return subject
     ? queryKeys.private.operation(subject, 'API-014', resource)
     : queryKeys.public.operation('API-014', resource);
-}
-
-export function cartQueryKey(subject: string) {
-  return queryKeys.private.operation(subject, 'API-002', 'cart');
 }
 
 export function enrollmentQueryKey(subject: string) {

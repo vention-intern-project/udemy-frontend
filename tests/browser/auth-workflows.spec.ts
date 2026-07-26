@@ -550,6 +550,8 @@ test('login covers safe 401/422/offline retry, pending lock, bearer suppression,
   let loginAuthorization: string | null = 'not-observed';
   let loginRequests = 0;
   let unexpectedLoginRequests = 0;
+  let cartRequests = 0;
+  let unexpectedCartRequests = 0;
   const loginGate = createDeferred();
 
   await page.route('**/me', async (route) => {
@@ -588,6 +590,18 @@ test('login covers safe 401/422/offline retry, pending lock, bearer suppression,
     await loginGate.promise;
     await fulfillJson(route, 200, { access_token: 'fresh-token' });
   });
+  await page.route('**/cart', async (route) => {
+    const request = route.request();
+    if (request.method() !== 'GET' || request.headers().authorization !== 'Bearer fresh-token') {
+      unexpectedCartRequests += 1;
+      await route.abort('blockedbyclient');
+      return;
+    }
+    cartRequests += 1;
+    await fulfillJson(route, 200, {
+      id: 1, items: [], total_price: '0.00', currency: 'USD', item_count: 0,
+    });
+  });
 
   await page.goto('/login?returnTo=%2Fcart');
   await page.getByRole('button', { name: 'Log in' }).press('Enter');
@@ -620,11 +634,16 @@ test('login covers safe 401/422/offline retry, pending lock, bearer suppression,
 
   await expect(page).toHaveURL(/\/cart$/);
   await expect(page.getByRole('heading', { name: 'Cart' })).toBeVisible();
+  await expect.poll(() => cartRequests).toBe(1);
+  await expect(page.getByRole('heading', { name: 'Your cart is empty' })).toBeVisible();
   const loginRequestsAfterNavigation = loginRequests;
+  const cartRequestsAfterNavigation = cartRequests;
   await page.waitForTimeout(100);
   expect(loginRequests).toBe(loginRequestsAfterNavigation);
+  expect(cartRequests).toBe(cartRequestsAfterNavigation);
   expect(loginRequests).toBe(4);
   expect(unexpectedLoginRequests).toBe(0);
+  expect(unexpectedCartRequests).toBe(0);
   expect(loginAuthorization).toBe(null);
   expect(await page.evaluate(() => localStorage.getItem('learnhub.access-token'))).toBe('fresh-token');
 });

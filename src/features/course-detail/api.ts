@@ -1,6 +1,4 @@
-import {
-  decodeCartDto, decodeCartItemDto, mapCartDto, type Cart,
-} from '@entities/cart';
+import { decodeCartItemDto } from '@entities/cart';
 import {
   decodeCourseDetailDto, decodeLessonListDto, mapCourseDetailDto, mapLessonListDto,
   type CourseDetail, type LessonListDto, type LessonOutline,
@@ -76,12 +74,6 @@ export async function requestLessonOutline(
     items: lists.flatMap((list) => mapLessonListDto(list).items),
     total,
   };
-}
-
-export async function requestCart(session: SessionContextValue, signal: AbortSignal): Promise<Cart> {
-  return requestOperation<Cart>(session, 'API-002', {
-    path: '/cart', signal, decode: (value) => mapCartDto(decodeCartDto(value)),
-  });
 }
 
 export async function requestEnrollments(session: SessionContextValue, signal: AbortSignal): Promise<EnrollmentList> {
