@@ -24,11 +24,11 @@ export function EnrollmentProgressPanel({
 }: EnrollmentProgressPanelProps) {
   const failed = progressError !== null && progressError !== undefined
     || outlineError !== null && outlineError !== undefined;
-  if (progressLoading || outlineLoading) {
-    return <SkeletonGroup className={styles.loading} label="Loading learning progress"><Skeleton height="92px" width="100%" shape="rect" /></SkeletonGroup>;
-  }
   if (failed) {
     return <Notice tone="error" title="Learning progress is unavailable"><p>Try again to load this workspace.</p><Button variant="secondary" onClick={onRetry}>Try again</Button></Notice>;
+  }
+  if (progressLoading || outlineLoading) {
+    return <SkeletonGroup className={styles.loading} label="Loading learning progress"><Skeleton height="92px" width="100%" shape="rect" /></SkeletonGroup>;
   }
   if (!progress || !outline) return null;
   return (

@@ -102,6 +102,44 @@ describe('LearningDetailPage', () => {
     expect(screen.queryByText('private backend text')).toBeNull();
   });
 
+  it('prioritizes a progress failure over a pending lesson outline', async () => {
+    let rejectProgress: ((reason?: unknown) => void) | undefined;
+    const progress = new Promise<unknown>((_resolve, reject) => { rejectProgress = reject; });
+    const outline = new Promise<unknown>(() => {});
+    const request: ApiClient['request'] = async <TResponse, TBody>(options: ApiRequestOptions<TBody, TResponse>) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/enrollments/4') return decode(options, activeEnrollment);
+      if (options.path === '/courses/7/progress') return decode(options, await progress);
+      if (options.path === '/courses/7/lessons') return decode(options, await outline);
+      throw new Error(`Unexpected request ${options.path}`);
+    };
+    await renderPage(request);
+    await screen.findByRole('status', { name: 'Loading learning progress' });
+    await act(async () => { rejectProgress?.(new ApiError({ kind: 'server', status: 500, message: 'private progress detail' })); });
+    expect(await screen.findByText('Learning progress is unavailable')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+    expect(screen.queryByLabelText('Loading learning progress')).toBeNull();
+  });
+
+  it('prioritizes a lesson-outline failure over pending progress', async () => {
+    let rejectOutline: ((reason?: unknown) => void) | undefined;
+    const progress = new Promise<unknown>(() => {});
+    const outline = new Promise<unknown>((_resolve, reject) => { rejectOutline = reject; });
+    const request: ApiClient['request'] = async <TResponse, TBody>(options: ApiRequestOptions<TBody, TResponse>) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/enrollments/4') return decode(options, activeEnrollment);
+      if (options.path === '/courses/7/progress') return decode(options, await progress);
+      if (options.path === '/courses/7/lessons') return decode(options, await outline);
+      throw new Error(`Unexpected request ${options.path}`);
+    };
+    await renderPage(request);
+    await screen.findByRole('status', { name: 'Loading learning progress' });
+    await act(async () => { rejectOutline?.(new ApiError({ kind: 'server', status: 500, message: 'private outline detail' })); });
+    expect(await screen.findByText('Learning progress is unavailable')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+    expect(screen.queryByLabelText('Loading learning progress')).toBeNull();
+  });
+
   it('deduplicates a pending lesson completion and adopts its successful response', async () => {
     let completeRequests = 0;
     let resolveCompletion: ((value: unknown) => void) | undefined;
