@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError, type ApiBinaryResponse } from '../../../src/shared/api';
 import { mapLessonMediaLocator } from '../../../src/entities/course';
@@ -24,6 +24,7 @@ vi.mock('../../../src/features/auth-session', () => ({
 const objectUrl = 'blob:lesson-media';
 const createObjectUrl = vi.fn(() => objectUrl);
 const revokeObjectUrl = vi.fn();
+const nativeUrlConstructor = globalThis.URL;
 
 interface PendingMediaRequest {
   signal: AbortSignal | null;
@@ -36,7 +37,11 @@ afterEach(() => {
   createObjectUrl.mockReset();
   createObjectUrl.mockReturnValue(objectUrl);
   revokeObjectUrl.mockReset();
-  vi.stubGlobal('URL', { createObjectURL: createObjectUrl, revokeObjectURL: revokeObjectUrl });
+  vi.unstubAllGlobals();
+});
+
+afterAll(() => {
+  expect(globalThis.URL).toBe(nativeUrlConstructor);
 });
 
 function admittedMediaResponse(contentType: string | null): ApiBinaryResponse {
