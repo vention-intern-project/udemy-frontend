@@ -38,7 +38,7 @@ export function LearningDetailPage() {
       <Link className={styles.backLink} to="/learning">Back to my learning</Link>
       <header className={styles.header}><p className={`${styles.status} ${styles[`status${enrollment.status}`]}`}>{enrollment.status === 'active' ? 'Active' : enrollment.status === 'cancelled' ? 'Cancelled' : 'Payment pending'}</p><h1 tabIndex={-1} ref={headingRef}>{enrollment.course.title}</h1><p>{enrollment.course.description ?? 'No course description is available.'}</p></header>
       {available ? <>
-        {workspace.feedback ? <Notice tone={workspace.feedback.includes('could not') ? 'error' : 'success'}>{workspace.feedback}</Notice> : null}
+        {workspace.feedback ? <Notice tone={workspace.feedback.tone}>{workspace.feedback.message}</Notice> : null}
         <EnrollmentProgressPanel progress={workspace.progress.data} progressError={workspace.progress.error} progressLoading={workspace.progress.isPending} outline={workspace.outline.data} outlineError={workspace.outline.error} outlineLoading={workspace.outline.isPending} completionState={workspace.completionState} isPending={workspace.isPending} onSetCompletion={workspace.setCompletion} onRetry={() => { retryWorkspaceRef.current = true; void workspace.retryWorkspace(); }} />
       </> : <Notice tone="info" title="Learning progress unavailable">Learning progress is not available for this enrollment.</Notice>}
     </article>

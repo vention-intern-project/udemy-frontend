@@ -158,6 +158,7 @@ describe('LearningDetailPage', () => {
     const action = await screen.findByRole('button', { name: 'Mark complete' });
     await act(async () => { await user.click(action); });
     await waitFor(() => expect(screen.getByText('Lesson progress could not be updated. Try again.')).toBeTruthy());
+    expect(screen.getByText('Lesson progress could not be updated. Try again.').closest('[data-tone]')?.getAttribute('data-tone')).toBe('error');
     await act(async () => { await Promise.resolve(); });
     expect(screen.getByText('Completion status unavailable')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Mark complete' })).toBeTruthy();

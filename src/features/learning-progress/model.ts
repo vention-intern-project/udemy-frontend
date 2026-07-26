@@ -11,6 +11,13 @@ export interface CourseProgress {
   progressPercentage: number;
 }
 
+export type LessonProgressFeedbackTone = 'success' | 'error';
+
+export interface LessonProgressFeedback {
+  tone: LessonProgressFeedbackTone;
+  message: string;
+}
+
 export type LessonCompletionState =
   | { status: 'unknown' }
   | { status: 'known'; completed: boolean };

@@ -10,7 +10,7 @@ import {
   requestCourseProgress, requestLearningEnrollment, requestLearningEnrollments,
   requestLessonOutline, setLessonCompletion,
 } from './api';
-import type { CourseProgress, LessonCompletionState, LessonProgressAttempt } from './model';
+import type { CourseProgress, LessonCompletionState, LessonProgressAttempt, LessonProgressFeedback } from './model';
 import {
   learningCourseProgressQueryKey, learningDetailQueryKey, learningListQueryKey, learningOutlineQueryKey,
 } from './query-keys';
@@ -30,7 +30,7 @@ export interface LearningWorkspaceWorkflow {
   readonly enrollment: UseQueryResult<Enrollment, unknown>;
   readonly progress: UseQueryResult<CourseProgress, unknown>;
   readonly outline: UseQueryResult<LessonOutline, unknown>;
-  readonly feedback: string | null;
+  readonly feedback: LessonProgressFeedback | null;
   readonly mutationUnavailable: boolean;
   completionState(lessonId: number): LessonCompletionState;
   isPending(lessonId: number): boolean;
@@ -123,7 +123,7 @@ export function useLearningWorkspace(enrollmentId: number | null): LearningWorks
   const [rowScope, setRowScope] = useState<LessonRowStateScope>({ identity: scope ?? '', states: new Map() });
   const rowScopeRef = useRef(rowScope);
   rowScopeRef.current = rowScope;
-  const [feedback, setFeedback] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<LessonProgressFeedback | null>(null);
   const [mutationUnavailableScope, setMutationUnavailableScope] = useState<MutationUnavailableScope | null>(null);
   const mutationUnavailableScopeRef = useRef(mutationUnavailableScope);
   mutationUnavailableScopeRef.current = mutationUnavailableScope;
@@ -191,7 +191,10 @@ export function useLearningWorkspace(enrollmentId: number | null): LearningWorks
           rowScopeRef.current = nextScope;
           setRowScope(nextScope);
         }
-        setFeedback(result.completed ? 'Lesson marked complete.' : 'Lesson marked incomplete.');
+        setFeedback({
+          tone: 'success',
+          message: result.completed ? 'Lesson marked complete.' : 'Lesson marked incomplete.',
+        });
       }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: learningCourseProgressQueryKey(attempt.subject, attempt.courseId), exact: true }),
@@ -231,7 +234,7 @@ export function useLearningWorkspace(enrollmentId: number | null): LearningWorks
             rowScopeRef.current = nextScope;
             setRowScope(nextScope);
           }
-          setFeedback('We could not confirm the lesson update. Progress is being refreshed.');
+          setFeedback({ tone: 'error', message: 'We could not confirm the lesson update. Progress is being refreshed.' });
         }
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: learningCourseProgressQueryKey(attempt.subject, attempt.courseId), exact: true }),
@@ -239,7 +242,7 @@ export function useLearningWorkspace(enrollmentId: number | null): LearningWorks
         ]);
         return;
       }
-      if (isCurrentScope) setFeedback('Lesson progress could not be updated. Try again.');
+      if (isCurrentScope) setFeedback({ tone: 'error', message: 'Lesson progress could not be updated. Try again.' });
     },
     onSettled: (_result, _error, attempt) => {
       locksRef.current.delete(attempt.identity);
