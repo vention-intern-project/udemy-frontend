@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -57,7 +57,7 @@ function PaymentLockProbe({ refresh }: PaymentLockProbeProps) {
   </section>;
 }
 
-afterEach(() => { document.body.replaceChildren(); });
+afterEach(() => cleanup());
 
 describe('useCheckoutCart', () => {
   it('keeps a newer scope attempt locked when an older checkout settles late', async () => {

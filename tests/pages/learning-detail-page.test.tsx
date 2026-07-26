@@ -10,6 +10,7 @@ import { createAppQueryClient } from '../../src/app/query';
 import * as checkoutCart from '../../src/features/checkout-cart';
 import type { CheckoutWorkflow, EnrollmentStatusRefresh } from '../../src/features/checkout-cart';
 import { SessionProvider, useSession, type AccessTokenStore } from '../../src/features/auth-session';
+import type { EnrollmentStatus } from '../../src/entities/enrollment';
 import * as learningProgress from '../../src/features/learning-progress';
 import { learningCourseProgressQueryKey, learningDetailQueryKey, type LearningWorkspaceWorkflow } from '../../src/features/learning-progress';
 import { LearningDetailPage } from '../../src/pages/learning-detail-page';
@@ -53,12 +54,30 @@ async function renderPage(request: ApiClient['request'], options: DetailHarnessO
   return queryClient;
 }
 
-async function capturePageEnrollmentRefresh(refreshResult: unknown): Promise<EnrollmentStatusRefresh> {
+type EnrollmentRefetchResult = Awaited<ReturnType<LearningWorkspaceWorkflow['enrollment']['refetch']>>;
+
+type EnrollmentRefreshScenario =
+  | { readonly kind: 'failure'; readonly error: unknown }
+  | { readonly kind: 'missing_data' }
+  | { readonly kind: 'status'; readonly status: EnrollmentStatus };
+
+function resultForEnrollmentRefreshScenario(result: EnrollmentRefetchResult, scenario: EnrollmentRefreshScenario): EnrollmentRefetchResult {
+  if (scenario.kind === 'failure') return Object.assign({}, result, { isError: true, error: scenario.error, data: undefined });
+  if (scenario.kind === 'missing_data') return Object.assign({}, result, { isError: false, error: null, data: undefined });
+  if (result.data === undefined) throw new Error('Enrollment query did not provide data for a status scenario');
+  return Object.assign({}, result, { isError: false, error: null, data: { ...result.data, status: scenario.status } });
+}
+
+async function capturePageEnrollmentRefresh(scenario: EnrollmentRefreshScenario): Promise<EnrollmentStatusRefresh> {
   const originalUseLearningWorkspace = learningProgress.useLearningWorkspace;
   function useLearningWorkspaceWithRefreshResult(enrollmentId: number | null): LearningWorkspaceWorkflow {
+    const workspace = originalUseLearningWorkspace(enrollmentId);
     return {
-      ...originalUseLearningWorkspace(enrollmentId),
-      retryEnrollment: async () => refreshResult,
+      ...workspace,
+      enrollment: {
+        ...workspace.enrollment,
+        refetch: async (options) => resultForEnrollmentRefreshScenario(await workspace.enrollment.refetch(options), scenario),
+      },
     };
   }
 
@@ -135,22 +154,22 @@ describe('LearningDetailPage', () => {
 
   it('preserves an Error returned by a failed enrollment refresh', async () => {
     const originalError = new Error('original refresh failure');
-    const refresh = await capturePageEnrollmentRefresh({ isError: true, error: originalError, data: undefined });
+    const refresh = await capturePageEnrollmentRefresh({ kind: 'failure', error: originalError });
     await expect(refresh.refetchEnrollment()).rejects.toBe(originalError);
   });
 
   it.each([null, 'non-error refresh failure'])('normalizes a failed enrollment refresh carrying %p to a stable Error', async (error) => {
-    const refresh = await capturePageEnrollmentRefresh({ isError: true, error, data: undefined });
+    const refresh = await capturePageEnrollmentRefresh({ kind: 'failure', error });
     await expect(refresh.refetchEnrollment()).rejects.toThrow('Enrollment status refresh failed');
   });
 
   it('reports a successful enrollment refresh without data as a distinct stable Error', async () => {
-    const refresh = await capturePageEnrollmentRefresh({ isError: false, error: null, data: undefined });
+    const refresh = await capturePageEnrollmentRefresh({ kind: 'missing_data' });
     await expect(refresh.refetchEnrollment()).rejects.toThrow('Enrollment status refresh returned no enrollment data');
   });
 
   it.each(['pending_payment', 'active', 'cancelled'] as const)('projects the observed %s status from a successful enrollment refresh', async (status) => {
-    const refresh = await capturePageEnrollmentRefresh({ isError: false, error: null, data: { ...activeEnrollment, status } });
+    const refresh = await capturePageEnrollmentRefresh({ kind: 'status', status });
     await expect(refresh.refetchEnrollment()).resolves.toBe(status);
   });
 

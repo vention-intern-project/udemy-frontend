@@ -67,7 +67,7 @@ export function LearningDetailPage() {
   const enrollment = workspace.enrollment.data;
   const enrollmentRefresh: EnrollmentStatusRefresh = {
     refetchEnrollment: async () => {
-      const result = await workspace.retryEnrollment() as EnrollmentRefreshResult;
+      const result = await workspace.enrollment.refetch();
       return observedEnrollmentStatus(result);
     },
   };
