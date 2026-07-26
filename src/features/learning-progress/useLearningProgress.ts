@@ -128,7 +128,7 @@ export function useLearningWorkspace(enrollmentId: number | null): LearningWorks
   const mutationUnavailableScopeRef = useRef(mutationUnavailableScope);
   mutationUnavailableScopeRef.current = mutationUnavailableScope;
   const locksRef = useRef(new Set<string>());
-  const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
+  const [pending, setPending] = useState<ReadonlyMap<string, LessonProgressAttempt>>(new Map());
 
   useEffect(() => {
     const nextScope = { identity: scope ?? '', states: new Map<number, LessonCompletionState>() };
@@ -138,7 +138,7 @@ export function useLearningWorkspace(enrollmentId: number | null): LearningWorks
     mutationUnavailableScopeRef.current = null;
     setMutationUnavailableScope(null);
     locksRef.current.clear();
-    setPending(new Set());
+    setPending(new Map());
   }, [scope]);
 
   const enrollment = useQuery({
@@ -176,7 +176,7 @@ export function useLearningWorkspace(enrollmentId: number | null): LearningWorks
       };
       rowScopeRef.current = nextScope;
       setRowScope(nextScope);
-      setPending((current) => new Set(current).add(attempt.identity));
+      setPending((current) => new Map(current).set(attempt.identity, attempt));
       setFeedback(null);
       return { attempt, previous };
     },
@@ -247,7 +247,7 @@ export function useLearningWorkspace(enrollmentId: number | null): LearningWorks
     onSettled: (_result, _error, attempt) => {
       locksRef.current.delete(attempt.identity);
       setPending((current) => {
-        const next = new Set(current);
+        const next = new Map(current);
         next.delete(attempt.identity);
         return next;
       });
@@ -257,7 +257,9 @@ export function useLearningWorkspace(enrollmentId: number | null): LearningWorks
   const completionState = (lessonId: number): LessonCompletionState => (
     rowScope.identity === (scope ?? '') ? rowScope.states.get(lessonId) ?? { status: 'unknown' } : { status: 'unknown' }
   );
-  const isPending = (lessonId: number): boolean => Array.from(pending).some((identity) => identity.split(':')[2] === String(lessonId));
+  const isPending = (lessonId: number): boolean => Array.from(pending.values()).some((attempt) => (
+    attempt.workspaceIdentity === scope && attempt.lessonId === lessonId
+  ));
   const setCompletion = (lessonId: number, completed: boolean) => {
     if (!subject || !courseId || !statusAllowsProgress(enrollment.data?.status)) return;
     if (enrollmentId === null) return;

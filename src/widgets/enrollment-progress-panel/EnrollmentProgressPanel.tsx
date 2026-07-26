@@ -18,6 +18,10 @@ export interface EnrollmentProgressPanelProps {
   readonly onRetry: () => void;
 }
 
+function lessonCountLabel(totalLessons: number): string {
+  return totalLessons === 1 ? 'lesson' : 'lessons';
+}
+
 export function EnrollmentProgressPanel({
   progress, progressError, progressLoading, outline, outlineError, outlineLoading,
   completionState, isPending, onSetCompletion, onRetry,
@@ -31,16 +35,17 @@ export function EnrollmentProgressPanel({
     return <SkeletonGroup className={styles.loading} label="Loading learning progress"><Skeleton height="92px" width="100%" shape="rect" /></SkeletonGroup>;
   }
   if (!progress || !outline) return null;
+  const lessonsLabel = lessonCountLabel(progress.totalLessons);
   return (
     <section className={styles.panel} aria-labelledby="learning-progress-heading">
       <div className={styles.summary}>
         <div>
           <h2 id="learning-progress-heading">Learning progress</h2>
-          <p>{progress.completedLessons} of {progress.totalLessons} lessons completed</p>
+          <p>{progress.completedLessons} of {progress.totalLessons} {lessonsLabel} completed</p>
         </div>
         <strong>{progress.progressPercentage}%</strong>
       </div>
-      <progress className={styles.progress} value={progress.progressPercentage} max={100} aria-label={`${progress.completedLessons} of ${progress.totalLessons} lessons completed, ${progress.progressPercentage}%`} />
+      <progress className={styles.progress} value={progress.progressPercentage} max={100} aria-label={`${progress.completedLessons} of ${progress.totalLessons} ${lessonsLabel} completed, ${progress.progressPercentage}%`} />
       <section className={styles.lessons} aria-labelledby="learning-lessons-heading">
         <h2 id="learning-lessons-heading">Lessons ({outline.total})</h2>
         {outline.items.length === 0 ? <p>No lesson metadata is available for this course.</p> : (

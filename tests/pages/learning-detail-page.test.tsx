@@ -48,6 +48,19 @@ async function renderPage(request: ApiClient['request'], options: DetailHarnessO
 }
 
 describe('LearningDetailPage', () => {
+  it('uses singular lesson wording in the visible and accessible progress projections', async () => {
+    const request: ApiClient['request'] = async <TResponse, TBody>(options: ApiRequestOptions<TBody, TResponse>) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/enrollments/4') return decode(options, activeEnrollment);
+      if (options.path === '/courses/7/progress') return decode(options, { course_id: 7, completed_lessons: 0, total_lessons: 1, progress_percentage: 0 });
+      if (options.path === '/courses/7/lessons') return decode(options, { items: [{ id: 12, title: 'First lesson', lesson_type: 'text', download_url: null, description: null, is_published: true, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }], page: 1, page_size: 100, total: 1, pages: 1, has_next: false, has_previous: false });
+      throw new Error(`Unexpected request ${options.path}`);
+    };
+    await renderPage(request);
+    expect(await screen.findByText('0 of 1 lesson completed')).toBeTruthy();
+    expect(screen.getByRole('progressbar', { name: '0 of 1 lesson completed, 0%' })).toBeTruthy();
+  });
+
   it('starts each active lesson as explicitly unknown despite nonzero aggregate progress', async () => {
     const request: ApiClient['request'] = async <TResponse, TBody>(options: ApiRequestOptions<TBody, TResponse>) => {
       if (options.path === '/me') return decode(options, student);
