@@ -7,14 +7,20 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createAppQueryClient } from '../../src/app/query';
+import * as checkoutCart from '../../src/features/checkout-cart';
+import type { CheckoutWorkflow, EnrollmentStatusRefresh } from '../../src/features/checkout-cart';
 import { SessionProvider, useSession, type AccessTokenStore } from '../../src/features/auth-session';
-import { learningCourseProgressQueryKey, learningDetailQueryKey } from '../../src/features/learning-progress';
+import * as learningProgress from '../../src/features/learning-progress';
+import { learningCourseProgressQueryKey, learningDetailQueryKey, type LearningWorkspaceWorkflow } from '../../src/features/learning-progress';
 import { LearningDetailPage } from '../../src/pages/learning-detail-page';
 import { ApiError, type ApiClient, type ApiRequestOptions } from '../../src/shared/api';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 const student = { email: 'student@example.test', name: 'Sam', surname: 'Student', role: 'student', birthday: null, phone_number: null, created_at: '2026-01-01T00:00:00Z' };
 const activeEnrollment = { id: 4, user_id: 1, course_id: 7, status: 'active', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', course: { id: 7, title: 'Accessible progress course', description: null, price: '0.00', currency: 'USD' } };
@@ -45,6 +51,42 @@ async function renderPage(request: ApiClient['request'], options: DetailHarnessO
     render(<QueryClientProvider client={queryClient}><SessionProvider client={{ request }} tokenStore={options.store ?? tokenStore()}><MemoryRouter initialEntries={['/learning/enrollments/4']}><DetailHarnessControls {...options} /><Routes><Route path="/learning/enrollments/:enrollmentId" element={<LearningDetailPage />} /></Routes></MemoryRouter></SessionProvider></QueryClientProvider>);
   });
   return queryClient;
+}
+
+async function capturePageEnrollmentRefresh(refreshResult: unknown): Promise<EnrollmentStatusRefresh> {
+  const originalUseLearningWorkspace = learningProgress.useLearningWorkspace;
+  function useLearningWorkspaceWithRefreshResult(enrollmentId: number | null): LearningWorkspaceWorkflow {
+    return {
+      ...originalUseLearningWorkspace(enrollmentId),
+      retryEnrollment: async () => refreshResult,
+    };
+  }
+
+  vi.spyOn(learningProgress, 'useLearningWorkspace').mockImplementation(useLearningWorkspaceWithRefreshResult);
+  let capturedRefresh: EnrollmentStatusRefresh | undefined;
+  const checkoutWorkflow: CheckoutWorkflow = {
+    pending: false,
+    checkoutBlocked: false,
+    paymentActionsLocked: false,
+    feedback: null,
+    checkout: vi.fn(),
+    recoverCheckout: vi.fn(),
+    completeMockPayment: vi.fn((_enrollmentId, _outcome, refresh) => { capturedRefresh = refresh; }),
+    checkPaymentStatus: vi.fn(),
+  };
+  vi.spyOn(checkoutCart, 'useCheckoutCart').mockReturnValue(checkoutWorkflow);
+
+  const request: ApiClient['request'] = async <TResponse, TBody>(options: ApiRequestOptions<TBody, TResponse>) => {
+    if (options.path === '/me') return decode(options, student);
+    if (options.path === '/enrollments/4') return decode(options, { ...activeEnrollment, status: 'pending_payment' });
+    throw new Error(`Unexpected request ${options.path}`);
+  };
+  await renderPage(request);
+  const user = userEvent.setup();
+  const paymentAction = await screen.findByRole('button', { name: 'Complete mock payment' });
+  await act(async () => { await user.click(paymentAction); });
+  if (capturedRefresh === undefined) throw new Error('Learning detail did not provide an enrollment refresh callback');
+  return capturedRefresh;
 }
 
 describe('LearningDetailPage', () => {
@@ -89,6 +131,27 @@ describe('LearningDetailPage', () => {
     expect(rawRequest.mock.calls.map(([options]) => options.path)).not.toContain('/courses/7/progress');
     expect(rawRequest.mock.calls.map(([options]) => options.path)).not.toContain('/courses/7/lessons');
     expect(screen.queryByRole('button', { name: /mark/i })).toBeNull();
+  });
+
+  it('preserves an Error returned by a failed enrollment refresh', async () => {
+    const originalError = new Error('original refresh failure');
+    const refresh = await capturePageEnrollmentRefresh({ isError: true, error: originalError, data: undefined });
+    await expect(refresh.refetchEnrollment()).rejects.toBe(originalError);
+  });
+
+  it.each([null, 'non-error refresh failure'])('normalizes a failed enrollment refresh carrying %p to a stable Error', async (error) => {
+    const refresh = await capturePageEnrollmentRefresh({ isError: true, error, data: undefined });
+    await expect(refresh.refetchEnrollment()).rejects.toThrow('Enrollment status refresh failed');
+  });
+
+  it('reports a successful enrollment refresh without data as a distinct stable Error', async () => {
+    const refresh = await capturePageEnrollmentRefresh({ isError: false, error: null, data: undefined });
+    await expect(refresh.refetchEnrollment()).rejects.toThrow('Enrollment status refresh returned no enrollment data');
+  });
+
+  it.each(['pending_payment', 'active', 'cancelled'] as const)('projects the observed %s status from a successful enrollment refresh', async (status) => {
+    const refresh = await capturePageEnrollmentRefresh({ isError: false, error: null, data: { ...activeEnrollment, status } });
+    await expect(refresh.refetchEnrollment()).resolves.toBe(status);
   });
 
   it('submits one explicit failed mock-payment action and keeps the refreshed cancelled enrollment locked', async () => {

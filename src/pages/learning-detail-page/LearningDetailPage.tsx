@@ -17,7 +17,11 @@ function parseEnrollmentId(value: string | undefined): number | null {
 type EnrollmentRefreshResult = Awaited<ReturnType<LearningWorkspaceWorkflow['enrollment']['refetch']>>;
 
 function observedEnrollmentStatus(result: EnrollmentRefreshResult): EnrollmentStatus {
-  if (result.isError || result.data === undefined) throw result.error;
+  if (result.isError) {
+    if (result.error instanceof Error) throw result.error;
+    throw new Error('Enrollment status refresh failed');
+  }
+  if (result.data === undefined) throw new Error('Enrollment status refresh returned no enrollment data');
   return result.data.status;
 }
 
