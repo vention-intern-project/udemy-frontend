@@ -20,7 +20,8 @@ describe('AppShell cart cache consumer', () => {
   it('mounts without an API-002 cart request when no cart cache exists', () => {
     const client = new QueryClient();
     const request = vi.fn();
-    render(<QueryClientProvider client={client}><ThemeProvider initialDensityMode="marketplace"><SessionProvider fetchImplementation={request}><MemoryRouter><AppShell /></MemoryRouter></SessionProvider></ThemeProvider></QueryClientProvider>);
+    const tokenStore: AccessTokenStore = { get: () => null, set() {}, clear() {} };
+    render(<QueryClientProvider client={client}><ThemeProvider initialDensityMode="marketplace"><SessionProvider tokenStore={tokenStore} fetchImplementation={request}><MemoryRouter><AppShell /></MemoryRouter></SessionProvider></ThemeProvider></QueryClientProvider>);
     expect(screen.getByRole('link', { name: 'Browse courses' })).toBeTruthy();
     expect(request).not.toHaveBeenCalled();
   });

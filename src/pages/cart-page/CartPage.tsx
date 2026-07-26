@@ -20,7 +20,7 @@ interface RemoveFocusTarget {
 }
 
 function CartRecoveryAction({ failure, onRetry, onRetryStart, onRetryFinished, retrying = false }: CartRecoveryActionProps) {
-  if (failure.action.kind === 'login') return <Link to="/login?returnTo=%2Fcart">Log in</Link>;
+  if (failure.action.kind === 'login') return <Link to={`/login?returnTo=${encodeURIComponent('/cart')}`}>Log in</Link>;
   if (failure.action.kind === 'catalog') return <Link to="/">Browse courses</Link>;
   return <Button variant="secondary" disabled={retrying} onClick={() => {
     if (onRetryStart && !onRetryStart()) return;
