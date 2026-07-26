@@ -952,7 +952,14 @@ for (const status of ['pending_payment', 'cancelled'] as const) test(`${status} 
     return route.fallback();
   });
   await page.goto('/learning/enrollments/4');
-  await expect(page.getByText('Learning progress is not available for this enrollment.')).toBeVisible();
+  if (status === 'pending_payment') {
+    await expect(page.getByText('Payment pending', { exact: true }).last()).toBeVisible();
+    await expect(page.getByText('Mock payment is awaiting completion. Learning remains locked until your enrollment is active.')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Complete mock payment' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Simulate mock payment failure' })).toBeVisible();
+  } else {
+    await expect(page.getByText('Learning progress is not available for this enrollment.')).toBeVisible();
+  }
   await expect(page.getByRole('button', { name: /mark|try again/i })).toHaveCount(0);
   expect(learningRequests).toContain('/enrollments/4');
   expect(learningRequests.length).toBeLessThanOrEqual(2);
