@@ -36,6 +36,7 @@ export function Button({
   className,
   children,
   type = 'button',
+  'aria-busy': ariaBusy,
   'aria-describedby': ariaDescribedBy,
   ...props
 }: ButtonProps) {
@@ -60,7 +61,7 @@ export function Button({
         {...props}
         type={type}
         disabled={disabled || isLoading}
-        aria-busy={isLoading || undefined}
+        aria-busy={isLoading ? true : ariaBusy}
         aria-describedby={joinIds(ariaDescribedBy, message ? statusId : undefined)}
         data-state={state}
         className={[

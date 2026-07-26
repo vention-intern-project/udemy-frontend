@@ -1,14 +1,102 @@
-import { expect, test, type Page, type Route } from '@playwright/test';
+import { Buffer } from 'node:buffer';
+
+import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
 
 const student = { email: 'student@example.test', name: 'Sam', surname: 'Student', role: 'student', birthday: null, phone_number: null, created_at: '2026-01-01T00:00:00Z' };
 const enrollment = { id: 4, user_id: 1, course_id: 7, status: 'active', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', course: { id: 7, title: 'Browser learning course', description: null, price: '0.00', currency: 'USD' } };
+const VALID_VIDEO_MP4 = Buffer.from('AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAAIZnJlZQAACIhtZGF0//tQxAADwAABpAAAACAAADSAAAAETEFNRTMuOTkuNVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVUxBTUUzLjk5LjVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVQAAAq4GBf//qtxF6b3m2Ui3lizYINkj7u94MjY0IC0gY29yZSAxNDggcjI2NDMgNWM2NTcwNCAtIEguMjY0L01QRUctNCBBVkMgY29kZWMgLSBDb3B5bGVmdCAyMDAzLTIwMTUgLSBodHRwOi8vd3d3LnZpZGVvbGFuLm9yZy94MjY0Lmh0bWwgLSBvcHRpb25zOiBjYWJhYz0xIHJlZj0zIGRlYmxvY2s9MTowOjAgYW5hbHlzZT0weDM6MHgxMTMgbWU9aGV4IHN1Ym1lPTcgcHN5PTEgcHN5X3JkPTEuMDA6MC4wMCBtaXhlZF9yZWY9MSBtZV9yYW5nZT0xNiBjaHJvbWFfbWU9MSB0cmVsbGlzPTEgOHg4ZGN0PTEgY3FtPTAgZGVhZHpvbmU9MjEsMTEgZmFzdF9wc2tpcD0xIGNocm9tYV9xcF9vZmZzZXQ9LTIgdGhyZWFkcz0xIGxvb2thaGVhZF90aHJlYWRzPTEgc2xpY2VkX3RocmVhZHM9MCBucj0wIGRlY2ltYXRlPTEgaW50ZXJsYWNlZD0wIGJsdXJheV9jb21wYXQ9MCBjb25zdHJhaW5lZF9pbnRyYT0wIGJmcmFtZXM9MyBiX3B5cmFtaWQ9MiBiX2FkYXB0PTEgYl9iaWFzPTAgZGlyZWN0PTEgd2VpZ2h0Yj0xIG9wZW5fZ29wPTAgd2VpZ2h0cD0yIGtleWludD0yNTAga2V5aW50X21pbj0yNSBzY2VuZWN1dD00MCBpbnRyYV9yZWZyZXNoPTAgcmNfbG9va2FoZWFkPTQwIHJjPWNyZiBtYnRyZWU9MSBjcmY9MjMuMCBxY29tcD0wLjYwIHFwbWluPTAgcXBtYXg9NjkgcXBzdGVwPTQgaXBfcmF0aW89MS40MCBhcT0xOjEuMDAAgAAAABRliIQAK//+2OfzLJOXereQdLvG0f/7UsRdg8AAAaQAAAAgAAA0gAAABFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMuOTkuNVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//tSxKGDwAABpAAAACAAADSAAAAEVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVMQU1FMy45OS41VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/+1LEoYPAAAGkAAAAIAAANIAAAARVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVUxBTUUzLjk5LjVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/7UsShg8AAAaQAAAAgAAA0gAAABFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMuOTkuNVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//tSxKGDwAABpAAAACAAADSAAAAEVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/+1LEoYPAAAGkAAAAIAAANIAAAARVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVQAABP9tb292AAAAbG12aGQAAAAAAAAAAAAAAAAAAAPoAAAAtgABAAABAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAAACEXRyYWsAAABcdGtoZAAAAAMAAAAAAAAAAAAAAAEAAAAAAAAAtgAAAAAAAAAAAAAAAQEAAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAACRlZHRzAAAAHGVsc3QAAAAAAAAAAQAAAJwAAARRAAEAAAAAAYltZGlhAAAAIG1kaGQAAAAAAAAAAAAAAAAAAKxEAAAfUVXEAAAAAAAtaGRscgAAAAAAAAAAc291bgAAAAAAAAAAAAAAAFNvdW5kSGFuZGxlcgAAAAE0bWluZgAAABBzbWhkAAAAAAAAAAAAAAAkZGluZgAAABxkcmVmAAAAAAAAAAEAAAAMdXJsIAAAAAEAAAD4c3RibAAAAGBzdHNkAAAAAAAAAAEAAABQbXA0YQAAAAAAAAABAAAAAAAAAAAAAgAQAAAAAKxEAAAAAAAsZXNkcwAAAAADgICAGwABAASAgIANaxUAAAAAAPtRAAD7UQaAgIABAgAAACBzdHRzAAAAAAAAAAIAAAAGAAAEgAAAAAEAAARRAAAAKHN0c2MAAAAAAAAAAgAAAAEAAAABAAAAAQAAAAIAAAAGAAAAAQAAADBzdHN6AAAAAAAAAAAAAAAHAAAA0AAAANEAAADRAAAA0QAAANEAAADRAAAA0QAAABhzdGNvAAAAAAAAAAIAAAAwAAADygAAAhh0cmFrAAAAXHRraGQAAAADAAAAAAAAAAAAAAACAAAAAAAAACgAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAIAAAACAAAAAAAkZWR0cwAAABxlbHN0AAAAAAAAAAEAAAAoAAAAAAABAAAAAAGQbWRpYQAAACBtZGhkAAAAAAAAAAAAAAAAAAAyAAAAAgBVxAAAAAAALWhkbHIAAAAAAAAAAHZpZGUAAAAAAAAAAAAAAABWaWRlb0hhbmRsZXIAAAABO21pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAAPtzdGJsAAAAl3N0c2QAAAAAAAAAAQAAAIdhdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAIAAgBIAAAASAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGP//AAAAMWF2Y0MBZAAK/+EAGGdkAAqs2V+IiIQAAAMABAAAAwDIPEiWWAEABmjr48siwAAAABhzdHRzAAAAAAAAAAEAAAABAAACAAAAABxzdHNjAAAAAAAAAAEAAAABAAAAAQAAAAEAAAAUc3RzegAAAAAAAALKAAAAAQAAABRzdGNvAAAAAAAAAAEAAAEAAAAAYnVkdGEAAABabWV0YQAAAAAAAAAhaGRscgAAAAAAAAAAbWRpcmFwcGwAAAAAAAAAAAAAAAAtaWxzdAAAACWpdG9vAAAAHWRhdGEAAAABAAAAAExhdmY1Ni40MC4xMDE=', 'base64');
+
+function createValidPdfFixture(): Buffer {
+  const header = '%PDF-1.4\n';
+  const firstPage = 'BT /F1 18 Tf 36 250 Td (Page one PDF test) Tj ET';
+  const secondPage = 'BT /F1 18 Tf 36 250 Td (Page two PDF test) Tj ET';
+  const objects = [
+    '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
+    '2 0 obj\n<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>\nendobj\n',
+    '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 240 300] /Resources << /Font << /F1 5 0 R >> >> /Contents 6 0 R >>\nendobj\n',
+    '4 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 240 300] /Resources << /Font << /F1 5 0 R >> >> /Contents 7 0 R >>\nendobj\n',
+    '5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n',
+    `6 0 obj\n<< /Length ${Buffer.byteLength(firstPage, 'ascii')} >>\nstream\n${firstPage}\nendstream\nendobj\n`,
+    `7 0 obj\n<< /Length ${Buffer.byteLength(secondPage, 'ascii')} >>\nstream\n${secondPage}\nendstream\nendobj\n`,
+  ];
+  let document = header;
+  const offsets = objects.map((object) => {
+    const offset = Buffer.byteLength(document, 'ascii');
+    document += object;
+    return offset;
+  });
+  const xrefOffset = Buffer.byteLength(document, 'ascii');
+  const entries = offsets.map((offset) => `${offset.toString().padStart(10, '0')} 00000 n \n`).join('');
+  return Buffer.from(`${document}xref\n0 8\n0000000000 65535 f \n${entries}trailer\n<< /Size 8 /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`, 'ascii');
+}
+
+const VALID_PDF = createValidPdfFixture();
 
 async function json(route: Route, value: unknown, status = 200) {
   await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value) });
 }
 
 async function installStudent(page: Page) {
-  await page.addInitScript(() => localStorage.setItem('learnhub.access-token', 'student-token'));
+  await page.addInitScript(() => {
+    if (window.top !== window) return;
+    localStorage.setItem('learnhub.access-token', 'student-token');
+  });
+}
+
+interface LessonMediaLifecycleProbe {
+  readonly createdObjectUrls: string[];
+  readonly revokedObjectUrls: string[];
+  readyAnnouncementCount: number;
+}
+
+interface LessonMediaLifecycleWindow extends Window {
+  __lessonMediaLifecycleProbe?: LessonMediaLifecycleProbe;
+}
+
+async function installLessonMediaLifecycleProbe(page: Page) {
+  await page.addInitScript(() => {
+    if (window.top !== window) return;
+    const target = window as LessonMediaLifecycleWindow;
+    const probe: LessonMediaLifecycleProbe = {
+      createdObjectUrls: [],
+      revokedObjectUrls: [],
+      readyAnnouncementCount: 0,
+    };
+    target.__lessonMediaLifecycleProbe = probe;
+    const createObjectUrl = URL.createObjectURL.bind(URL);
+    const revokeObjectUrl = URL.revokeObjectURL.bind(URL);
+    URL.createObjectURL = (object: Blob | MediaSource) => {
+      const objectUrl = createObjectUrl(object);
+      probe.createdObjectUrls.push(objectUrl);
+      return objectUrl;
+    };
+    URL.revokeObjectURL = (objectUrl: string) => {
+      probe.revokedObjectUrls.push(objectUrl);
+      revokeObjectUrl(objectUrl);
+    };
+    const observeReadyAnnouncements = () => {
+      const observer = new MutationObserver(() => {
+        const ready = Array.from(document.querySelectorAll('[role="status"]'))
+          .some((status) => status.textContent === 'Video ready.');
+        if (ready) probe.readyAnnouncementCount += 1;
+      });
+      observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    };
+    if (document.body) observeReadyAnnouncements();
+    else window.addEventListener('DOMContentLoaded', observeReadyAnnouncements, { once: true });
+  });
+}
+
+async function readLessonMediaLifecycleProbe(page: Page): Promise<LessonMediaLifecycleProbe> {
+  return page.evaluate(() => {
+    const probe = (window as LessonMediaLifecycleWindow).__lessonMediaLifecycleProbe;
+    if (!probe) throw new Error('Lesson media lifecycle probe was not installed.');
+    return {
+      createdObjectUrls: [...probe.createdObjectUrls],
+      revokedObjectUrls: [...probe.revokedObjectUrls],
+      readyAnnouncementCount: probe.readyAnnouncementCount,
+    };
+  });
 }
 
 async function tabTo(page: Page, locator: ReturnType<Page['getByRole']>) {
@@ -17,6 +105,192 @@ async function tabTo(page: Page, locator: ReturnType<Page['getByRole']>) {
     if (await locator.evaluate((element) => document.activeElement === element)) return;
   }
   throw new Error('Keyboard traversal did not reach the expected control');
+}
+
+interface LessonMediaGeometry {
+  readonly frameWidth: number;
+  readonly frameHeight: number;
+  readonly mediaLeft: number;
+  readonly mediaTop: number;
+  readonly mediaRight: number;
+  readonly mediaBottom: number;
+  readonly frameLeft: number;
+  readonly frameTop: number;
+  readonly frameRight: number;
+  readonly frameBottom: number;
+  readonly maxFrameWidth: number;
+  readonly documentWidth: number;
+  readonly bodyWidth: number;
+  readonly layoutWidth: number;
+  readonly focusLeft: number;
+  readonly focusRight: number;
+}
+
+interface NativeVideoReadiness {
+  readonly readyState: number;
+  readonly width: number;
+  readonly height: number;
+  readonly duration: number;
+}
+
+interface PdfViewportGeometry {
+  readonly clientWidth: number;
+  readonly scrollWidth: number;
+  readonly clientHeight: number;
+  readonly scrollHeight: number;
+  readonly contentLeft: number;
+  readonly contentRight: number;
+  readonly pageLeft: number;
+  readonly pageRight: number;
+  readonly canvasLeft: number;
+  readonly canvasTop: number;
+  readonly canvasWidth: number;
+  readonly canvasHeight: number;
+  readonly textLeft: number;
+  readonly textTop: number;
+  readonly textWidth: number;
+  readonly textHeight: number;
+  readonly navigationHeights: readonly number[];
+}
+
+async function expectNativeVideoReadiness(preview: Locator) {
+  await expect.poll(async () => preview.evaluate((element): boolean => {
+    if (!(element instanceof HTMLVideoElement)) throw new Error('The native video preview was not rendered.');
+    return element.readyState >= 1
+      && element.videoWidth > 0
+      && element.videoHeight > 0
+      && Number.isFinite(element.duration)
+      && element.duration > 0;
+  })).toBe(true);
+  const readiness = await preview.evaluate((element): NativeVideoReadiness => {
+    if (!(element instanceof HTMLVideoElement)) throw new Error('The native video preview was not rendered.');
+    return { readyState: element.readyState, width: element.videoWidth, height: element.videoHeight, duration: element.duration };
+  });
+  expect(readiness.readyState).toBeGreaterThanOrEqual(1);
+  expect(readiness.width).toBeGreaterThan(0);
+  expect(readiness.height).toBeGreaterThan(0);
+  expect(Number.isFinite(readiness.duration)).toBe(true);
+  expect(readiness.duration).toBeGreaterThan(0);
+}
+
+async function expectStableLessonMediaGeometry(preview: Locator) {
+  await expect(preview).toBeVisible();
+  await preview.focus();
+  await expect(preview).toBeFocused();
+  const geometry = await preview.evaluate((element): LessonMediaGeometry => {
+    const frame = element.closest('[data-part="lesson-media-frame"]');
+    if (!(frame instanceof HTMLElement)) {
+      throw new Error('The owned lesson media frame was not rendered.');
+    }
+    const mediaRect = element.getBoundingClientRect();
+    const frameRect = frame.getBoundingClientRect();
+    const active = document.activeElement;
+    const activeRect = active instanceof HTMLElement ? active.getBoundingClientRect() : null;
+    const rootFontSize = Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
+    return {
+      frameWidth: frameRect.width,
+      frameHeight: frameRect.height,
+      mediaLeft: mediaRect.left,
+      mediaTop: mediaRect.top,
+      mediaRight: mediaRect.right,
+      mediaBottom: mediaRect.bottom,
+      frameLeft: frameRect.left,
+      frameTop: frameRect.top,
+      frameRight: frameRect.right,
+      frameBottom: frameRect.bottom,
+      maxFrameWidth: rootFontSize * 56,
+      documentWidth: document.documentElement.scrollWidth,
+      bodyWidth: document.body.scrollWidth,
+      layoutWidth: document.documentElement.clientWidth,
+      focusLeft: activeRect?.left ?? -1,
+      focusRight: activeRect?.right ?? Number.POSITIVE_INFINITY,
+    };
+  });
+  expect(geometry.frameWidth / geometry.frameHeight).toBeCloseTo(16 / 9, 2);
+  expect(geometry.frameWidth).toBeLessThanOrEqual(geometry.maxFrameWidth + 1);
+  expect(geometry.mediaLeft).toBeGreaterThanOrEqual(geometry.frameLeft - 1);
+  expect(geometry.mediaTop).toBeGreaterThanOrEqual(geometry.frameTop - 1);
+  expect(geometry.mediaRight).toBeLessThanOrEqual(geometry.frameRight + 1);
+  expect(geometry.mediaBottom).toBeLessThanOrEqual(geometry.frameBottom + 1);
+  expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.layoutWidth);
+  expect(geometry.bodyWidth).toBeLessThanOrEqual(geometry.layoutWidth);
+  expect(geometry.focusLeft).toBeGreaterThanOrEqual(geometry.frameLeft - 1);
+  expect(geometry.focusRight).toBeLessThanOrEqual(geometry.frameRight + 1);
+}
+
+async function expectPdfViewportGeometry(preview: Locator, viewportWidth: number) {
+  const geometry = await preview.evaluate((element): PdfViewportGeometry => {
+    const viewport = element.querySelector('[data-part="lesson-pdf-viewport"]');
+    const pageElement = viewport?.querySelector('.react-pdf__Page');
+    const canvas = viewport?.querySelector('canvas');
+    const textLayer = viewport?.querySelector('.react-pdf__Page__textContent');
+    if (!(viewport instanceof HTMLElement)
+      || !(pageElement instanceof HTMLElement)
+      || !(canvas instanceof HTMLCanvasElement)
+      || !(textLayer instanceof HTMLElement)) {
+      throw new Error('The aligned PDF page, canvas, and text layer were not rendered.');
+    }
+    const viewportRect = viewport.getBoundingClientRect();
+    const pageRect = pageElement.getBoundingClientRect();
+    const canvasRect = canvas.getBoundingClientRect();
+    const textRect = textLayer.getBoundingClientRect();
+    const viewportStyle = getComputedStyle(viewport);
+    const paddingStart = Number.parseFloat(viewportStyle.paddingInlineStart) || 0;
+    const paddingEnd = Number.parseFloat(viewportStyle.paddingInlineEnd) || 0;
+    const navigationHeights = Array.from(element.querySelectorAll('[aria-label="PDF pages"] button'), (button) => button.getBoundingClientRect().height);
+    return {
+      clientWidth: viewport.clientWidth,
+      scrollWidth: viewport.scrollWidth,
+      clientHeight: viewport.clientHeight,
+      scrollHeight: viewport.scrollHeight,
+      contentLeft: viewportRect.left + viewport.clientLeft + paddingStart,
+      contentRight: viewportRect.left + viewport.clientLeft + viewport.clientWidth - paddingEnd,
+      pageLeft: pageRect.left,
+      pageRight: pageRect.right,
+      canvasLeft: canvasRect.left,
+      canvasTop: canvasRect.top,
+      canvasWidth: canvasRect.width,
+      canvasHeight: canvasRect.height,
+      textLeft: textRect.left,
+      textTop: textRect.top,
+      textWidth: textRect.width,
+      textHeight: textRect.height,
+      navigationHeights,
+    };
+  });
+  expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.clientWidth);
+  expect(geometry.scrollHeight).toBeGreaterThan(geometry.clientHeight);
+  expect(geometry.pageLeft).toBeGreaterThanOrEqual(geometry.contentLeft - 1);
+  expect(geometry.pageRight).toBeLessThanOrEqual(geometry.contentRight + 1);
+  expect(geometry.canvasLeft).toBeCloseTo(geometry.textLeft, 0);
+  expect(geometry.canvasTop).toBeCloseTo(geometry.textTop, 0);
+  expect(geometry.canvasWidth).toBeCloseTo(geometry.textWidth, 0);
+  expect(geometry.canvasHeight).toBeCloseTo(geometry.textHeight, 0);
+  expect(geometry.navigationHeights).toHaveLength(2);
+  for (const height of geometry.navigationHeights) {
+    if (viewportWidth <= 480) expect(height).toBeGreaterThanOrEqual(44);
+    else {
+      expect(height).toBeGreaterThanOrEqual(36);
+      expect(height).toBeLessThan(44);
+    }
+  }
+}
+
+async function expectEffectivePageScaleGeometry(page: Page, preview: Locator) {
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 2 });
+    const scaleEvidence = await page.evaluate(() => ({
+      scale: window.visualViewport?.scale ?? 1,
+      visualWidth: window.visualViewport?.width ?? window.innerWidth,
+      layoutWidth: document.documentElement.clientWidth,
+    }));
+    expect(scaleEvidence.scale).toBeCloseTo(2, 1);
+    expect(scaleEvidence.visualWidth).toBeLessThan(scaleEvidence.layoutWidth);
+    await expectStableLessonMediaGeometry(preview);
+  } finally {
+    await cdp.detach();
+  }
 }
 
 interface RuntimeDiagnostics {
@@ -149,6 +423,317 @@ test('keeps aggregate progress separate from fresh lesson state, dedupes action,
   expect(zoomed.bodyWidth).toBeLessThanOrEqual(zoomed.client);
   expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
   expect(diagnostics.httpFailures).toEqual(['POST /courses/7/lessons/12/complete 500']);
+});
+
+test('requests authorized video only after explicit keyboard activation and renders the native preview', async ({ page }) => {
+  await installStudent(page);
+  const diagnostics = captureRuntimeDiagnostics(page, { abortedRequests: [expectedGetAbort('/enrollments/4', 1)] });
+  const mediaRequests: string[] = [];
+  let releaseMediaResponse: () => void = () => undefined;
+  const mediaResponseReleased = new Promise<void>((resolve) => { releaseMediaResponse = resolve; });
+  await page.route('**/*', async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.origin !== 'http://127.0.0.1:4179') return route.fallback();
+    if (url.pathname === '/me') return json(route, student);
+    if (url.pathname === '/enrollments/4') return json(route, enrollment);
+    if (url.pathname === '/courses/7/progress') return json(route, { course_id: 7, completed_lessons: 0, total_lessons: 1, progress_percentage: 0 });
+    if (url.pathname === '/courses/7/lessons' && request.method() === 'GET') return json(route, { items: [{ id: 12, title: 'Authorized browser video', lesson_type: 'video', download_url: '/media/lessons/lesson%20one.mp4', description: null, is_published: true, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }], page: 1, page_size: 100, total: 1, pages: 1, has_next: false, has_previous: false });
+    if (url.pathname === '/media/lessons/lesson%20one.mp4') {
+      mediaRequests.push(url.pathname);
+      expect(request.headers().authorization).toBe('Bearer student-token');
+      await mediaResponseReleased;
+      return route.fulfill({ status: 200, contentType: 'video/mp4', body: VALID_VIDEO_MP4 });
+    }
+    if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/')) throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
+    return route.fallback();
+  });
+
+  await page.goto('/learning/enrollments/4');
+  const loadVideo = page.getByRole('button', { name: 'Load video' });
+  await expect(loadVideo).toBeVisible();
+  expect(mediaRequests).toEqual([]);
+  await tabTo(page, loadVideo);
+  await expect(loadVideo).toBeFocused();
+  await page.keyboard.press('Enter');
+  const loadingVideo = page.getByRole('button', { name: 'Loading media…' });
+  await expect(loadingVideo).toHaveAttribute('aria-busy', 'true');
+  await expect(loadingVideo).toBeFocused();
+  await expect(page.getByRole('status')).toHaveText('Loading media…');
+  await page.keyboard.press('Enter');
+  expect(mediaRequests).toEqual(['/media/lessons/lesson%20one.mp4']);
+  releaseMediaResponse();
+  const preview = page.getByLabel('Lesson video preview');
+  await expect(preview).toBeVisible();
+  await expect(preview).toBeFocused();
+  await expect(preview).toHaveAttribute('controls');
+  await expect(preview).toHaveAttribute('preload', 'metadata');
+  await expect(preview).toHaveAttribute('src', /^blob:/);
+  await expectNativeVideoReadiness(preview);
+  await expect(page.getByRole('status')).toHaveText('Video ready.');
+  for (const width of [320, 390, 768, 1280, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expectStableLessonMediaGeometry(preview);
+  }
+  await expectEffectivePageScaleGeometry(page, preview);
+  expect(mediaRequests).toEqual(['/media/lessons/lesson%20one.mp4']);
+  expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
+  expect(diagnostics.httpFailures).toEqual([]);
+});
+
+test('recovers a same-MIME corrupt video without a false-ready state and retries with a fresh resource', async ({ page }) => {
+  await installStudent(page);
+  await installLessonMediaLifecycleProbe(page);
+  const diagnostics = captureRuntimeDiagnostics(page, { abortedRequests: [expectedGetAbort('/enrollments/4', 1)] });
+  const mediaPath = '/media/lessons/corrupt-first.mp4';
+  let mediaRequestCount = 0;
+  await page.route('**/*', async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.origin !== 'http://127.0.0.1:4179') return route.fallback();
+    if (url.pathname === '/me') return json(route, student);
+    if (url.pathname === '/enrollments/4') return json(route, enrollment);
+    if (url.pathname === '/courses/7/progress') return json(route, { course_id: 7, completed_lessons: 0, total_lessons: 1, progress_percentage: 0 });
+    if (url.pathname === '/courses/7/lessons' && request.method() === 'GET') return json(route, { items: [{ id: 12, title: 'Corrupt then valid browser video', lesson_type: 'video', download_url: mediaPath, description: null, is_published: true, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }], page: 1, page_size: 100, total: 1, pages: 1, has_next: false, has_previous: false });
+    if (url.pathname === mediaPath) {
+      mediaRequestCount += 1;
+      expect(request.headers().authorization).toBe('Bearer student-token');
+      return route.fulfill({
+        status: 200,
+        contentType: 'video/mp4',
+        body: mediaRequestCount === 1 ? Buffer.from('same MIME, malformed video bytes') : VALID_VIDEO_MP4,
+      });
+    }
+    if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/')) throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
+    return route.fallback();
+  });
+
+  await page.goto('/learning/enrollments/4');
+  await page.getByRole('button', { name: 'Load video' }).click();
+  const retry = page.getByRole('button', { name: 'Try again' });
+  await expect(retry).toBeVisible();
+  await expect(retry).toBeFocused();
+  await expect(page.getByRole('status')).toHaveText('Media could not be loaded. Try again.');
+  await expect(page.getByText('Video ready.')).toHaveCount(0);
+  const failedLifecycle = await readLessonMediaLifecycleProbe(page);
+  expect(failedLifecycle.readyAnnouncementCount).toBe(0);
+  expect(failedLifecycle.createdObjectUrls).toHaveLength(1);
+  expect(failedLifecycle.revokedObjectUrls).toEqual([failedLifecycle.createdObjectUrls[0]]);
+  expect(mediaRequestCount).toBe(1);
+
+  await retry.click();
+  const replacementPreview = page.getByLabel('Lesson video preview');
+  await expect(replacementPreview).toBeVisible();
+  await expectNativeVideoReadiness(replacementPreview);
+  await expect(replacementPreview).toBeFocused();
+  await expect(page.getByRole('status')).toHaveText('Video ready.');
+  await expectStableLessonMediaGeometry(replacementPreview);
+  const recoveredLifecycle = await readLessonMediaLifecycleProbe(page);
+  expect(recoveredLifecycle.createdObjectUrls).toHaveLength(2);
+  expect(recoveredLifecycle.createdObjectUrls[1]).not.toBe(recoveredLifecycle.createdObjectUrls[0]);
+  expect(recoveredLifecycle.revokedObjectUrls).toEqual([recoveredLifecycle.createdObjectUrls[0]]);
+  expect(mediaRequestCount).toBe(2);
+  expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
+  expect(diagnostics.httpFailures).toEqual([]);
+});
+
+test('renders authorized PDF in-page with basic navigation and stable geometry', async ({ page }) => {
+  await installStudent(page);
+  const diagnostics = captureRuntimeDiagnostics(page, { abortedRequests: [expectedGetAbort('/enrollments/4', 1)] });
+  const mediaRequests: string[] = [];
+  await page.route('**/*', async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.origin !== 'http://127.0.0.1:4179') return route.fallback();
+    if (url.pathname === '/me') return json(route, student);
+    if (url.pathname === '/enrollments/4') return json(route, enrollment);
+    if (url.pathname === '/courses/7/progress') return json(route, { course_id: 7, completed_lessons: 0, total_lessons: 1, progress_percentage: 0 });
+    if (url.pathname === '/courses/7/lessons' && request.method() === 'GET') return json(route, { items: [{ id: 12, title: 'Authorized browser PDF', lesson_type: 'pdf', download_url: '/media/lessons/lesson.pdf', description: null, is_published: true, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }], page: 1, page_size: 100, total: 1, pages: 1, has_next: false, has_previous: false });
+    if (url.pathname === '/media/lessons/lesson.pdf') {
+      mediaRequests.push(url.pathname);
+      expect(request.headers().authorization).toBe('Bearer student-token');
+      return route.fulfill({ status: 200, contentType: 'application/pdf', body: VALID_PDF });
+    }
+    if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/')) throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
+    return route.fallback();
+  });
+
+  await page.goto('/learning/enrollments/4');
+  const loadPdf = page.getByRole('button', { name: 'Load PDF' });
+  expect(mediaRequests).toEqual([]);
+  await tabTo(page, loadPdf);
+  await expect(loadPdf).toBeFocused();
+  await page.keyboard.press('Enter');
+  const preview = page.getByRole('region', { name: 'Lesson PDF preview' });
+  await expect(preview).toBeVisible();
+  await expect(preview).toBeFocused();
+  await expect(preview.locator('canvas')).toBeVisible();
+  await expect(preview.getByText('Page one PDF test')).toBeVisible();
+  await expect.poll(() => preview.locator('[data-part="lesson-pdf-viewport"]').evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+  await expect(page.getByRole('status')).toContainText('Page 1 of 2');
+  await expect(page.locator('iframe, object, embed')).toHaveCount(0);
+  await expect(preview.locator('a')).toHaveCount(0);
+  expect(mediaRequests).toEqual(['/media/lessons/lesson.pdf']);
+
+  const nextPage = preview.getByRole('button', { name: 'Next page' });
+  await tabTo(page, nextPage);
+  await preview.evaluate((element) => {
+    element.setAttribute('data-body-focus-count', '0');
+    const recordFocus = () => {
+      if (document.activeElement === document.body) {
+        const current = Number.parseInt(element.getAttribute('data-body-focus-count') ?? '0', 10);
+        element.setAttribute('data-body-focus-count', String(current + 1));
+      }
+    };
+    document.addEventListener('focusin', recordFocus, true);
+    document.addEventListener('focusout', () => queueMicrotask(recordFocus), true);
+  });
+  const pendingForward = await nextPage.evaluate((element) => {
+    if (!(element instanceof HTMLButtonElement)) throw new Error('Next-page control is not a button.');
+    const region = element.closest('[role="region"]');
+    const status = region?.querySelector('[role="status"]');
+    if (!(status instanceof HTMLElement)) throw new Error('PDF render status was not rendered.');
+    return new Promise<{ activeName: string | null; activeTag: string | null; disabled: boolean; status: string | null }>((resolve) => {
+      const observer = new MutationObserver(() => {
+        if (status.textContent !== 'Rendering PDF page 2.') return;
+        element.click();
+        observer.disconnect();
+        resolve({
+          activeName: document.activeElement?.textContent?.trim() ?? null,
+          activeTag: document.activeElement?.tagName ?? null,
+          disabled: element.disabled,
+          status: status.textContent,
+        });
+      });
+      observer.observe(status, { childList: true, characterData: true, subtree: true });
+      element.click();
+    });
+  });
+  expect(pendingForward).toEqual({
+    activeName: 'Next page',
+    activeTag: 'BUTTON',
+    disabled: false,
+    status: 'Rendering PDF page 2.',
+  });
+  await expect(preview.getByText('Page two PDF test')).toBeVisible();
+  await expect(page.getByRole('status')).toContainText('Page 2 of 2');
+  const previousPage = preview.getByRole('button', { name: 'Previous page' });
+  await expect(previousPage).toBeFocused();
+  await expect(nextPage).toBeDisabled();
+  await page.keyboard.press('Enter');
+  await expect(preview.getByText('Page one PDF test')).toBeVisible();
+  await expect(nextPage).toBeFocused();
+  await expect(previousPage).toBeDisabled();
+  expect(await preview.getAttribute('data-body-focus-count')).toBe('0');
+  for (const width of [320, 390, 768, 1280, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expectStableLessonMediaGeometry(preview);
+    await expectPdfViewportGeometry(preview, width);
+  }
+  await expectEffectivePageScaleGeometry(page, preview);
+  await expectPdfViewportGeometry(preview, 1440);
+  expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
+  expect(diagnostics.httpFailures).toEqual([]);
+});
+
+test('aborts a pending authorized media request when the workspace unmounts', async ({ page }) => {
+  await installStudent(page);
+  const mediaPath = '/media/lessons/pending.mp4';
+  const diagnostics = captureRuntimeDiagnostics(page, {
+    abortedRequests: [expectedGetAbort('/enrollments/4', 1), expectedGetAbort('/enrollments/my', 1), expectedGetAbort(mediaPath, 1)],
+  });
+  let releaseMediaResponse: () => void = () => undefined;
+  const mediaResponseReleased = new Promise<void>((resolve) => { releaseMediaResponse = resolve; });
+  await page.route('**/*', async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.origin !== 'http://127.0.0.1:4179') return route.fallback();
+    if (url.pathname === '/me') return json(route, student);
+    if (url.pathname === '/enrollments/my') return json(route, { items: [], page: 1, page_size: 20, total: 0, pages: 0, has_next: false, has_previous: false });
+    if (url.pathname === '/enrollments/4') return json(route, enrollment);
+    if (url.pathname === '/courses/7/progress') return json(route, { course_id: 7, completed_lessons: 0, total_lessons: 1, progress_percentage: 0 });
+    if (url.pathname === '/courses/7/lessons' && request.method() === 'GET') return json(route, { items: [{ id: 12, title: 'Pending browser video', lesson_type: 'video', download_url: mediaPath, description: null, is_published: true, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }], page: 1, page_size: 100, total: 1, pages: 1, has_next: false, has_previous: false });
+    if (url.pathname === mediaPath) {
+      await mediaResponseReleased;
+      return route.fulfill({ status: 200, contentType: 'video/mp4', body: VALID_VIDEO_MP4 });
+    }
+    if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/')) throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
+    return route.fallback();
+  });
+
+  await page.goto('/learning/enrollments/4');
+  await page.getByRole('button', { name: 'Load video' }).click();
+  await expect(page.getByRole('button', { name: 'Loading media…' })).toHaveAttribute('aria-busy', 'true');
+  await page.goto('/learning');
+  releaseMediaResponse();
+  await expect(page.getByRole('heading', { name: 'My learning' })).toBeVisible();
+  await expect.poll(() => diagnostics.expectedRuntimeFailures.filter((entry) => entry.includes(mediaPath)).length).toBe(1);
+  expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
+  expect(diagnostics.httpFailures).toEqual([]);
+});
+
+for (const status of [403, 404]) test(`keeps API-025 ${status} neutral and focuses its announced result`, async ({ page }) => {
+  await installStudent(page);
+  const diagnostics = captureRuntimeDiagnostics(page, {
+    failedResourcePaths: new Set(['/media/lessons/denied.mp4']),
+    abortedRequests: [expectedGetAbort('/enrollments/4', 1)],
+  });
+  await page.route('**/*', async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.origin !== 'http://127.0.0.1:4179') return route.fallback();
+    if (url.pathname === '/me') return json(route, student);
+    if (url.pathname === '/enrollments/4') return json(route, enrollment);
+    if (url.pathname === '/courses/7/progress') return json(route, { course_id: 7, completed_lessons: 0, total_lessons: 1, progress_percentage: 0 });
+    if (url.pathname === '/courses/7/lessons' && request.method() === 'GET') return json(route, { items: [{ id: 12, title: 'Neutral denied media', lesson_type: 'video', download_url: '/media/lessons/denied.mp4', description: null, is_published: true, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }], page: 1, page_size: 100, total: 1, pages: 1, has_next: false, has_previous: false });
+    if (url.pathname === '/media/lessons/denied.mp4') return json(route, { detail: 'private' }, status);
+    if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/')) throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
+    return route.fallback();
+  });
+
+  await page.goto('/learning/enrollments/4');
+  const loadVideo = page.getByRole('button', { name: 'Load video' });
+  await tabTo(page, loadVideo);
+  await page.keyboard.press('Enter');
+  const unavailable = page.getByText('Media unavailable in this workspace');
+  await expect(unavailable).toBeVisible();
+  await expect(unavailable).toHaveAttribute('role', 'status');
+  await expect(unavailable).toBeFocused();
+  await expect(page.getByText('private')).toHaveCount(0);
+  expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
+  expect(diagnostics.httpFailures).toEqual([`GET /media/lessons/denied.mp4 ${status}`]);
+});
+
+test('focuses the retry action after a retryable API-025 failure', async ({ page }) => {
+  await installStudent(page);
+  const diagnostics = captureRuntimeDiagnostics(page, {
+    failedResourcePaths: new Set(['/media/lessons/retry.mp4']),
+    abortedRequests: [expectedGetAbort('/enrollments/4', 1)],
+  });
+  await page.route('**/*', async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.origin !== 'http://127.0.0.1:4179') return route.fallback();
+    if (url.pathname === '/me') return json(route, student);
+    if (url.pathname === '/enrollments/4') return json(route, enrollment);
+    if (url.pathname === '/courses/7/progress') return json(route, { course_id: 7, completed_lessons: 0, total_lessons: 1, progress_percentage: 0 });
+    if (url.pathname === '/courses/7/lessons' && request.method() === 'GET') return json(route, { items: [{ id: 12, title: 'Retryable media', lesson_type: 'video', download_url: '/media/lessons/retry.mp4', description: null, is_published: true, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }], page: 1, page_size: 100, total: 1, pages: 1, has_next: false, has_previous: false });
+    if (url.pathname === '/media/lessons/retry.mp4') return json(route, { detail: 'private' }, 500);
+    if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/')) throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
+    return route.fallback();
+  });
+
+  await page.goto('/learning/enrollments/4');
+  const loadVideo = page.getByRole('button', { name: 'Load video' });
+  await tabTo(page, loadVideo);
+  await page.keyboard.press('Enter');
+  const retry = page.getByRole('button', { name: 'Try again' });
+  await expect(retry).toBeVisible();
+  await expect(retry).toBeFocused();
+  await expect(page.getByRole('status')).toHaveText('Media could not be loaded. Try again.');
+  await expect(page.getByText('private')).toHaveCount(0);
+  expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
+  expect(diagnostics.httpFailures).toEqual(['GET /media/lessons/retry.mp4 500', 'GET /media/lessons/retry.mp4 500']);
 });
 
 test('makes a forbidden lesson mutation neutral and suppresses further actions', async ({ page }) => {
