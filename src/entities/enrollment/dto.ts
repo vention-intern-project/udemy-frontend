@@ -1,6 +1,6 @@
 import type { PageQueryDto, PaginationDto } from '@shared/api';
 
-export type EnrollmentStatusDto = 'pending_payment' | 'active';
+export type EnrollmentStatusDto = 'pending_payment' | 'active' | 'cancelled';
 
 export interface EnrollmentCreateDto {
   course_id: number;

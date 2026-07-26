@@ -1,0 +1,10 @@
+.page, .state { display: grid; gap: var(--space-4, 16px); max-width: 1360px; margin: 0 auto; }
+.backLink { display: inline-flex; align-items: center; justify-self: start; inline-size: fit-content; max-inline-size: 100%; min-block-size: var(--control-height-md); }
+.header { display: grid; gap: var(--space-2, 8px); }
+.header h1, .header p { margin: 0; }
+.header p { color: var(--text-secondary); }
+.status { font-weight: 600; }
+.statusactive { color: var(--feedback-success-fg); }
+.statuspending_payment { color: var(--feedback-warning-fg); }
+.statuscancelled { color: var(--feedback-error-fg); }
+.loading { display: grid; gap: var(--space-3, 12px); }

@@ -71,7 +71,7 @@ describe('wire DTO to domain mappers', () => {
     ['enrollment null', () => decodeEnrollmentDto(null)],
     ['enrollment missing field', () => decodeEnrollmentDto({ id: 4 })],
     ['enrollment wrong type', () => decodeEnrollmentDto({ id: 4, user_id: '9', course_id: 7, status: 'active', created_at: 'now', updated_at: 'now', course: { id: 7, title: 'React', description: null, price: '0.00', currency: 'USD' } })],
-    ['enrollment enum', () => decodeEnrollmentDto({ id: 4, user_id: 9, course_id: 7, status: 'cancelled', created_at: 'now', updated_at: 'now', course: { id: 7, title: 'React', description: null, price: '0.00', currency: 'USD' } })],
+    ['enrollment enum', () => decodeEnrollmentDto({ id: 4, user_id: 9, course_id: 7, status: 'expired', created_at: 'now', updated_at: 'now', course: { id: 7, title: 'React', description: null, price: '0.00', currency: 'USD' } })],
     ['enrollment nested identity', () => decodeEnrollmentDto({ id: 4, user_id: 9, course_id: 7, status: 'active', created_at: 'now', updated_at: 'now', course: { id: 8, title: 'React', description: null, price: '0.00', currency: 'USD' } })],
   ])('rejects malformed protected mutation payload: %s', (_caseName, decode) => {
     expect(decode).toThrow();
@@ -170,6 +170,16 @@ describe('wire DTO to domain mappers', () => {
       course: { id: 3, title: 'React', description: null, price: '10.00', currency: 'USD' },
     })).toMatchObject({ userId: 2, courseId: 3, status: 'pending_payment' });
 
+    expect(mapEnrollmentDto({
+      id: 4,
+      user_id: 2,
+      course_id: 3,
+      status: 'cancelled',
+      created_at: '2026-07-01T00:00:00Z',
+      updated_at: '2026-07-01T00:00:00Z',
+      course: { id: 3, title: 'React', description: null, price: '10.00', currency: 'USD' },
+    })).toMatchObject({ status: 'cancelled' });
+
     expect(mapUserProfileDto({
       email: 'learner@example.test',
       name: 'Ada',
@@ -183,7 +193,7 @@ describe('wire DTO to domain mappers', () => {
 
   it('maps every wire enum value to its independently owned domain value', () => {
     const lessonTypes: readonly LessonType[] = ['video', 'text', 'pdf'];
-    const enrollmentStatuses: readonly EnrollmentStatus[] = ['pending_payment', 'active'];
+    const enrollmentStatuses: readonly EnrollmentStatus[] = ['pending_payment', 'active', 'cancelled'];
     const userRoles: readonly UserRole[] = ['student', 'instructor', 'admin'];
 
     expect(lessonTypes.map(mapLessonTypeDto)).toEqual(lessonTypes);
@@ -193,7 +203,7 @@ describe('wire DTO to domain mappers', () => {
 
   it('rejects unknown runtime enum values deterministically', () => {
     expect(() => mapLessonTypeDto('audio')).toThrow('Unsupported lesson type: audio');
-    expect(() => mapEnrollmentStatusDto('cancelled')).toThrow('Unsupported enrollment status: cancelled');
+    expect(() => mapEnrollmentStatusDto('expired')).toThrow('Unsupported enrollment status: expired');
     expect(() => mapUserRoleDto('owner')).toThrow('Unsupported user role: owner');
   });
 
