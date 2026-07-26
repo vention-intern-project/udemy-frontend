@@ -7,7 +7,7 @@ export type SelectedApiOperationId =
   | 'API-013' | 'API-014' | 'API-015' | 'API-016' | 'API-017'
   | 'API-018' | 'API-019' | 'API-020' | 'API-021' | 'API-022'
   | 'API-023' | 'API-024' | 'API-025' | 'API-026' | 'API-029'
-  | 'API-030' | 'API-031' | 'API-032' | 'API-033';
+  | 'API-030' | 'API-031' | 'API-032' | 'API-033' | 'API-034';
 
 export interface ApiOperationDefinition {
   id: SelectedApiOperationId;
@@ -57,6 +57,7 @@ export const API_OPERATION_BY_ID = {
   'API-031': { id: 'API-031', method: 'PATCH', path: '/lessons/:lessonId', retry: 'never', mutationDedupe: 'supported', requestMode: 'json', responseMode: 'json', assumptionTags: [] },
   'API-032': { id: 'API-032', method: 'POST', path: '/lessons/:lessonId/upload-file', retry: 'never', mutationDedupe: 'supported', requestMode: 'multipart', responseMode: 'json', assumptionTags: [] },
   'API-033': { id: 'API-033', method: 'POST', path: '/signup', retry: 'never', mutationDedupe: 'supported', requestMode: 'json', responseMode: 'json', assumptionTags: [] },
+  'API-034': { id: 'API-034', method: 'POST', path: '/payments/complete', retry: 'never', mutationDedupe: 'supported', requestMode: 'json', responseMode: 'json', assumptionTags: [] },
 } as const satisfies ApiOperationRegistry;
 
 export const API_OPERATIONS: readonly ApiOperationDefinition[] = Object.freeze(

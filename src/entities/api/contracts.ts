@@ -1,5 +1,5 @@
 import type { ApiBinaryResponse, PageQueryDto } from '@shared/api';
-import type { CartDto, CartItemAddDto, CartItemDto, CheckoutDto } from '../cart';
+import type { CartDto, CartItemAddDto, CartItemDto, CheckoutDto, MockPaymentCompleteDto, MockPaymentCompletionRequestDto } from '../cart';
 import type {
   CourseDetailDto,
   CourseDto,
@@ -67,4 +67,5 @@ export interface SelectedApiContractMap {
   'API-031': { input: { path: PathLesson; body: LessonWriteDto }; response: LessonDto };
   'API-032': { input: { path: PathLesson; body: FormData }; response: LessonDto };
   'API-033': { input: { body: UserRegisterDto }; response: RegisterResponseDto };
+  'API-034': { input: { body: MockPaymentCompletionRequestDto }; response: MockPaymentCompleteDto };
 }

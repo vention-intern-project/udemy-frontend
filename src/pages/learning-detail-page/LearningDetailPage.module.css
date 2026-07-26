@@ -8,3 +8,4 @@
 .statuspending_payment { color: var(--feedback-warning-fg); }
 .statuscancelled { color: var(--feedback-error-fg); }
 .loading { display: grid; gap: var(--space-3, 12px); }
+.paymentActions { display: flex; flex-wrap: wrap; gap: var(--space-2, 8px); margin-top: var(--space-3, 12px); }

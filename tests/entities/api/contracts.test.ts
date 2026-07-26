@@ -21,6 +21,8 @@ import type {
   CartItemAddDto,
   CartItemDto,
   CheckoutDto,
+  MockPaymentCompleteDto,
+  MockPaymentCompletionRequestDto,
   CourseDetailDto,
   CourseDto,
   CourseEnrollmentListDto,
@@ -82,6 +84,7 @@ type ExpectedContractMap = {
   'API-031': { input: { path: PathLesson; body: LessonWriteDto }; response: LessonDto };
   'API-032': { input: { path: PathLesson; body: FormData }; response: LessonDto };
   'API-033': { input: { body: UserRegisterDto }; response: RegisterResponseDto };
+  'API-034': { input: { body: MockPaymentCompletionRequestDto }; response: MockPaymentCompleteDto };
 };
 
 type IsExact<TLeft, TRight> =
@@ -134,6 +137,7 @@ const AUDITED_OPERATION_TABLE = [
   { id: 'API-031', method: 'PATCH', path: '/lessons/:lessonId', requestMode: 'json', responseMode: 'json' },
   { id: 'API-032', method: 'POST', path: '/lessons/:lessonId/upload-file', requestMode: 'multipart', responseMode: 'json' },
   { id: 'API-033', method: 'POST', path: '/signup', requestMode: 'json', responseMode: 'json' },
+  { id: 'API-034', method: 'POST', path: '/payments/complete', requestMode: 'json', responseMode: 'json' },
 ] as const satisfies readonly AuditedOperation[];
 
 describe('selected backend operation contracts', () => {

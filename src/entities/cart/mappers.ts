@@ -1,4 +1,4 @@
-import type { CartDto, CartItemDto } from './dto';
+import type { CartDto, CartItemDto, CheckoutDto, MockPaymentCompleteDto } from './dto';
 import type { Cart } from './model';
 import { readNonNegativeInteger, readPositiveInteger, readRecord, readString } from '@shared/api';
 
@@ -43,4 +43,16 @@ export function decodeCartDto(value: unknown): CartDto {
   const itemCount = readNonNegativeInteger(response.item_count, 'cart item count');
   if (itemCount !== items.length) throw new TypeError('Invalid cart item count');
   return { id: readPositiveInteger(response.id, 'cart id'), items, total_price: readString(response.total_price, 'cart total price'), currency: readString(response.currency, 'cart currency'), item_count: itemCount };
+}
+
+export function decodeCheckoutDto(value: unknown): CheckoutDto {
+  const response = readRecord(value, 'checkout response');
+  return { message: readString(response.message, 'checkout message'), enrolled_courses: readNonNegativeInteger(response.enrolled_courses, 'checkout enrolled courses') };
+}
+
+export function decodeMockPaymentCompleteDto(value: unknown): MockPaymentCompleteDto {
+  const response = readRecord(value, 'mock payment response');
+  const status = readString(response.status, 'mock payment status');
+  if (status !== 'active' && status !== 'cancelled') throw new TypeError('Invalid mock payment status');
+  return { enrollment_id: readPositiveInteger(response.enrollment_id, 'mock payment enrollment id'), status, message: readString(response.message, 'mock payment message') };
 }
