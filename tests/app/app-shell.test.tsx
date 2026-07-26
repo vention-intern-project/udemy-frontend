@@ -4,13 +4,19 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 
-import { AppShell } from '../../src/app/layouts/AppShell';
+import { AppShell, withCartCount } from '../../src/app/layouts/AppShell';
 import { SessionProvider, type AccessTokenStore } from '../../src/features/auth-session';
 import { cartQueryKey } from '../../src/features/cart-workflow';
 import type { ApiClient, ApiRequestOptions } from '../../src/shared/api';
 import { ThemeProvider } from '../../src/shared/ui/theme';
 
 describe('AppShell cart cache consumer', () => {
+  it('decorates the cart route when its presentation label changes', () => {
+    const items = withCartCount([{ label: 'Basket', to: '/cart', end: true }], 2);
+
+    expect(items).toEqual([{ label: 'Basket (2)', to: '/cart', end: true }]);
+  });
+
   it('mounts without an API-002 cart request when no cart cache exists', () => {
     const client = new QueryClient();
     const request = vi.fn();

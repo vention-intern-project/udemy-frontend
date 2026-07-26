@@ -34,6 +34,16 @@ interface NavigationItem {
   variant?: NavigationItemVariant;
 }
 
+export function withCartCount(
+  items: readonly NavigationItem[],
+  itemCount: number | undefined,
+): NavigationItem[] {
+  if (itemCount === undefined) return [...items];
+  return items.map((item) => item.to === '/cart'
+    ? { ...item, label: `${item.label} (${itemCount})` }
+    : item);
+}
+
 interface NavigationLinksProps {
   items: readonly NavigationItem[];
   onNavigate?: (to: string) => void;
@@ -340,11 +350,9 @@ export function AppShell() {
                 : styles.navDesktop}
               aria-label="Primary navigation"
             >
-              <NavigationLinks items={(isAnonymousCatalogRoute
+              <NavigationLinks items={withCartCount((isAnonymousCatalogRoute
                 ? catalogDesktopPrimaryNavigation
-                : desktopPrimaryNavigation).map((item) => item.label === 'Cart' && cachedCart.data
-                ? { ...item, label: `Cart (${cachedCart.data.itemCount})` }
-                : item)}
+                : desktopPrimaryNavigation), cachedCart.data?.itemCount)}
               />
               {hasDesktopAuthActions && !isAnonymousCatalogRoute ? (
                 <div className={styles.navAuthActions}>
@@ -490,9 +498,7 @@ export function AppShell() {
             }}
           >
             <NavigationLinks
-              items={navigation.map((item) => item.label === 'Cart' && cachedCart.data
-                ? { ...item, label: `Cart (${cachedCart.data.itemCount})` }
-                : item)}
+              items={withCartCount(navigation, cachedCart.data?.itemCount)}
               onNavigate={(to) => closeMobileMenu(to === routeFocusIdentity ? 'trigger' : 'main')}
             />
           </nav>
