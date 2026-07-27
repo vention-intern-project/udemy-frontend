@@ -7,9 +7,12 @@ import {
   useId,
   type MouseEvent,
 } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Link, matchPath, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 
+import type { Cart } from '@entities/cart';
 import { useSession, type SessionState } from '@features/auth-session';
+import { cartQueryKey } from '@features/cart-workflow';
 import {
   addCatalogSearchHistory, parseCatalogQuery, persistCatalogSearchHistory,
   readCatalogSearchHistory, serializeCatalogQuery,
@@ -29,6 +32,16 @@ interface NavigationItem {
   end?: boolean;
   desktopGroup?: NavigationItemDesktopGroup;
   variant?: NavigationItemVariant;
+}
+
+export function withCartCount(
+  items: readonly NavigationItem[],
+  itemCount: number | undefined,
+): NavigationItem[] {
+  if (itemCount === undefined) return [...items];
+  return items.map((item) => item.to === '/cart'
+    ? { ...item, label: `${item.label} (${itemCount})` }
+    : item);
 }
 
 interface NavigationLinksProps {
@@ -119,6 +132,9 @@ function isCurrentTabNavigation(event: MouseEvent<HTMLAnchorElement>): boolean {
 
 export function AppShell() {
   const { state } = useSession();
+  const cartSubject = state.status === 'authenticated' && state.user.role === 'student' ? state.user.email : null;
+  // This disabled query only subscribes to an already populated cache entry; it has no queryFn and can never create a cart.
+  const cachedCart = useQuery<Cart>({ queryKey: cartQueryKey(cartSubject ?? 'anonymous'), enabled: false, queryFn: async () => { throw new Error('Cache-only cart query must not fetch'); } });
   const { densityMode, setDensityMode } = useDensityMode();
   const location = useLocation();
   const navigate = useNavigate();
@@ -334,9 +350,9 @@ export function AppShell() {
                 : styles.navDesktop}
               aria-label="Primary navigation"
             >
-              <NavigationLinks items={isAnonymousCatalogRoute
+              <NavigationLinks items={withCartCount((isAnonymousCatalogRoute
                 ? catalogDesktopPrimaryNavigation
-                : desktopPrimaryNavigation}
+                : desktopPrimaryNavigation), cachedCart.data?.itemCount)}
               />
               {hasDesktopAuthActions && !isAnonymousCatalogRoute ? (
                 <div className={styles.navAuthActions}>
@@ -482,7 +498,7 @@ export function AppShell() {
             }}
           >
             <NavigationLinks
-              items={navigation}
+              items={withCartCount(navigation, cachedCart.data?.itemCount)}
               onNavigate={(to) => closeMobileMenu(to === routeFocusIdentity ? 'trigger' : 'main')}
             />
           </nav>

@@ -7,3 +7,4 @@ export { ResetPasswordPage } from './reset-password-page';
 export { SignupPage } from './signup-page';
 export { CatalogPage } from './catalog-page';
 export { CourseDetailPage } from './course-detail-page';
+export { CartPage } from './cart-page';

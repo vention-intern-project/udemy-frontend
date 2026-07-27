@@ -2,7 +2,7 @@ import { Route, Routes } from 'react-router-dom';
 
 import { useSession } from '../../features/auth-session';
 import {
-  CatalogPage, CourseDetailPage, ForgotPasswordPage, LoginPage, ResetPasswordPage, SignupPage,
+  CartPage, CatalogPage, CourseDetailPage, ForgotPasswordPage, LoginPage, ResetPasswordPage, SignupPage,
 } from '@pages/index';
 import { AppShell } from '../layouts/AppShell';
 import { PlaceholderPage } from './PlaceholderPage';
@@ -17,6 +17,7 @@ function pageForRoute(route: AppRouteDefinition) {
   if (route.id === 'PAGE-004') return <LoginPage />;
   if (route.id === 'PAGE-005') return <ForgotPasswordPage />;
   if (route.id === 'PAGE-006') return <ResetPasswordPage />;
+  if (route.id === 'PAGE-007') return <CartPage />;
   return <PlaceholderPage route={route} />;
 }
 
