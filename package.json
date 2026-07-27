@@ -13,7 +13,7 @@
     "test:all": "npm run typecheck && npm run lint && npm test && npm run test:browser",
     "lint": "eslint src tests vite.config.ts .eslintrc.cjs --ext ts,tsx,cjs --report-unused-disable-directives --max-warnings 0",
     "lint:quality": "eslint scripts/quality tests/quality --ext mjs,ts --report-unused-disable-directives --max-warnings 0",
-    "format:check": "prettier --check package.json .eslintrc.cjs .prettierrc.json stylelint.config.cjs scripts/quality tests/quality .github/workflows",
+    "format:check": "prettier --check package.json .eslintrc.cjs .prettierrc.json stylelint.config.cjs tsconfig.eslint.json scripts/quality tests/quality .github/workflows",
     "stylelint": "stylelint \"src/**/*.css\" --max-warnings 0",
     "quality:rules": "node scripts/quality/check-static.mjs",
     "quality": "node scripts/quality/run-quality.mjs",
