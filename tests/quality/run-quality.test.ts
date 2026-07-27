@@ -1400,6 +1400,10 @@ describe('staged and CI decision simulations', () => {
     expect(aggregate).toContain('path: quality-reports');
     expect(aggregate).toContain('QUALITY_REPORT_PATH: quality-reports/current.json');
     expect(aggregate).toContain('QUALITY_TARGET_SHA: ${{ env.QUALITY_TARGET_SHA }}');
+    expect(aggregate).toContain('node-version: 20');
+    expect(aggregate).toContain('run: node scripts/quality/verify-ci-aggregate.mjs');
+    expect(aggregate).not.toContain('cache: npm');
+    expect(aggregate).not.toContain('npm ci');
   });
 
   it('executes the production aggregate guard and rejects resolver failures before an otherwise successful aggregate can pass', async () => {

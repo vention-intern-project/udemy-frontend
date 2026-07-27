@@ -12,7 +12,7 @@ export function classifyCommandDiagnostics(
   unexpectedConsoleWarnings: number;
   unexpectedGenericWarnings: number;
 };
-export function unexpectedDiagnosticCount(diagnostics: object): number;
+export function unexpectedDiagnosticCount(diagnostics: unknown): number;
 export interface CommandProcessResult {
   error?: Error & { code?: string };
   signal?: string | null;

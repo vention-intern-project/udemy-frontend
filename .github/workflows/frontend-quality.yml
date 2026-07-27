@@ -166,11 +166,9 @@ jobs:
       - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a
         with:
           node-version: 20
-          cache: npm
-      - run: npm ci
       - name: Fail closed on job state and current-SHA report artifact
         env:
           NEEDS: ${{ toJson(needs) }}
           QUALITY_REPORT_PATH: quality-reports/current.json
           QUALITY_TARGET_SHA: ${{ env.QUALITY_TARGET_SHA }}
-        run: npm run quality:verify-ci-aggregate
+        run: node scripts/quality/verify-ci-aggregate.mjs
