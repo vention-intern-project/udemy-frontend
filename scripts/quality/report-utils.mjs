@@ -235,7 +235,11 @@ function validateRequiredCommands(report, errors) {
       errors.push(`commands[${index}] must be the required ${expectedId} command`);
     if (command.status === 'pass' && (command.exitCode !== 0 || command.errorCode !== null))
       errors.push(`commands[${index}] pass outcome must have exitCode 0 and no errorCode`);
-    if (command.status === 'fail' && command.exitCode === 0 && command.errorCode === null)
+    if (
+      command.status === 'fail' &&
+      (!Number.isInteger(command.exitCode) || command.exitCode === 0) &&
+      command.errorCode === null
+    )
       errors.push(`commands[${index}] fail outcome must record a non-zero exitCode or errorCode`);
     if (command.status === 'pass' && unexpectedDiagnosticCount(command.diagnostics) > 0)
       errors.push(`commands[${index}] pass outcome cannot contain unexpected diagnostics`);
@@ -304,6 +308,14 @@ export function unexpectedDiagnosticCount(diagnostics) {
     diagnostics.unexpectedUnhandledRejections +
     diagnostics.unexpectedConsoleWarnings +
     diagnostics.unexpectedGenericWarnings
+  );
+}
+
+export function commandFailureCode(result, hasUnexpectedDiagnostics) {
+  return (
+    result.error?.code ??
+    (result.signal ? `QUALITY_SIGNAL_${result.signal}` : null) ??
+    (hasUnexpectedDiagnostics ? 'QUALITY_UNEXPECTED_DIAGNOSTICS' : null)
   );
 }
 

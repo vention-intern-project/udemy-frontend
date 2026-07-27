@@ -13,6 +13,14 @@ export function classifyCommandDiagnostics(
   unexpectedGenericWarnings: number;
 };
 export function unexpectedDiagnosticCount(diagnostics: object): number;
+export interface CommandProcessResult {
+  error?: Error & { code?: string };
+  signal?: string | null;
+}
+export function commandFailureCode(
+  result: CommandProcessResult,
+  hasUnexpectedDiagnostics: boolean,
+): string | null;
 export function reportDigest(report: object): string;
 export function createLocalPatchAttestation(
   report: object,

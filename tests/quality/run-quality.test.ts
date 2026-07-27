@@ -12,6 +12,7 @@ import {
 } from '../../scripts/quality/check-static.mjs';
 import {
   createLocalPatchAttestation,
+  commandFailureCode,
   classifyCommandDiagnostics,
   reportDigest,
   REPORT_CLOCK_SKEW_TOLERANCE_MINUTES,
@@ -592,9 +593,14 @@ describe('quality report schema and exact-target admission', () => {
     const directory = await mkdtemp(resolve(tmpdir(), 'mai002-verify-report-'));
     temporaryPaths.push(directory);
     const fullReportPath = resolve(directory, 'full.json');
+    const zeroMaxAgeReportPath = resolve(directory, 'zero-max-age.json');
     const ciReportPath = resolve(directory, 'ci.json');
     const ciSha = 'a'.repeat(40);
     await writeFile(fullReportPath, `${JSON.stringify(validReport(target))}\n`);
+    const zeroMaxAgeReport = validReport(target);
+    zeroMaxAgeReport.generatedAt = new Date(Date.now() + 60_000).toISOString();
+    sealReport(zeroMaxAgeReport);
+    await writeFile(zeroMaxAgeReportPath, `${JSON.stringify(zeroMaxAgeReport)}\n`);
     await writeFile(ciReportPath, `${JSON.stringify(validCiReport(ciSha))}\n`);
 
     const verifier = resolve('scripts/quality/verify-report.mjs');
@@ -624,6 +630,57 @@ describe('quality report schema and exact-target admission', () => {
     );
     expect(fullWithExplicitSha.status).not.toBe(0);
     expect(fullWithExplicitSha.stderr).toContain('must not accept a caller SHA');
+
+    for (const malformedMaxAgeArgs of [
+      ['--max-age-minutes', ''],
+      ['--max-age-minutes', '   '],
+      ['--max-age-minutes'],
+      ['--max-age-minutes', '--target-patch', patchPath],
+    ]) {
+      const malformedMaxAgeResult = runVerifier([
+        '--report',
+        zeroMaxAgeReportPath,
+        '--scope',
+        'full',
+        '--target-patch',
+        patchPath,
+        ...malformedMaxAgeArgs,
+      ]);
+      expect(malformedMaxAgeResult.status).not.toBe(0);
+      expect(malformedMaxAgeResult.stderr).toContain(
+        'max-age-minutes must be a finite non-negative number',
+      );
+    }
+
+    for (const invalidMaxAge of ['NaN', 'Infinity', '-1']) {
+      const invalidMaxAgeResult = runVerifier([
+        '--report',
+        fullReportPath,
+        '--scope',
+        'full',
+        '--target-patch',
+        patchPath,
+        '--max-age-minutes',
+        invalidMaxAge,
+      ]);
+      expect(invalidMaxAgeResult.status).not.toBe(0);
+      expect(invalidMaxAgeResult.stderr).toContain(
+        'max-age-minutes must be a finite non-negative number',
+      );
+    }
+
+    const zeroMaxAge = runVerifier([
+      '--report',
+      zeroMaxAgeReportPath,
+      '--scope',
+      'full',
+      '--target-patch',
+      patchPath,
+      '--max-age-minutes',
+      '0',
+    ]);
+    expect(zeroMaxAge.status, `${zeroMaxAge.stdout}\n${zeroMaxAge.stderr}`).toBe(0);
+    expect(zeroMaxAge.stdout).toContain('QUALITY_REPORT_ACCEPTED');
 
     const ciWithAmbientSha = runVerifier(['--report', ciReportPath, '--scope', 'ci'], {
       GITHUB_SHA: ciSha,
@@ -689,6 +746,65 @@ describe('quality report schema and exact-target admission', () => {
         }),
       ).not.toEqual([]);
     }
+  });
+
+  it('requires a machine-readable failure cause while preserving signal and exception reports', async () => {
+    const { target } = await patchTarget('failed-command-evidence');
+    const missingCause = validReport(target, 'fail');
+    missingCause.commands[0] = {
+      ...missingCause.commands[0],
+      exitCode: null,
+      errorCode: null,
+    };
+    sealReport(missingCause);
+    expect(validateReport(missingCause)).toContain(
+      'commands[0] fail outcome must record a non-zero exitCode or errorCode',
+    );
+
+    const nonZeroExitFailure = validReport(target, 'fail');
+    nonZeroExitFailure.commands[0] = {
+      ...nonZeroExitFailure.commands[0],
+      exitCode: 1,
+      errorCode: null,
+    };
+    sealReport(nonZeroExitFailure);
+    expect(validateReport(nonZeroExitFailure)).toEqual([]);
+
+    const signalFailure = validReport(target, 'fail');
+    signalFailure.commands[0] = {
+      ...signalFailure.commands[0],
+      exitCode: null,
+      errorCode: 'QUALITY_SIGNAL_SIGTERM',
+    };
+    sealReport(signalFailure);
+    expect(validateReport(signalFailure)).toEqual([]);
+
+    const exceptionFailure = validReport(target, 'fail');
+    exceptionFailure.commands[0] = {
+      ...exceptionFailure.commands[0],
+      exitCode: null,
+      errorCode: 'ENOENT',
+    };
+    sealReport(exceptionFailure);
+    expect(validateReport(exceptionFailure)).toEqual([]);
+  });
+
+  it('maps actual process signal and exception evidence into machine-readable failure codes', () => {
+    const signalResult = spawnSync(process.execPath, [
+      '-e',
+      'process.kill(process.pid, "SIGTERM")',
+    ]);
+    if (signalResult.signal) {
+      expect(commandFailureCode(signalResult, false)).toBe(`QUALITY_SIGNAL_${signalResult.signal}`);
+    } else {
+      expect(signalResult.status).not.toBe(0);
+      expect(commandFailureCode({ signal: 'SIGTERM' }, false)).toBe('QUALITY_SIGNAL_SIGTERM');
+    }
+
+    const exceptionResult = spawnSync('mai002-missing-executable');
+    const exceptionCode = (exceptionResult.error as NodeJS.ErrnoException | undefined)?.code;
+    expect(exceptionCode).toBeTruthy();
+    expect(commandFailureCode(exceptionResult, false)).toBe(exceptionCode);
   });
 
   it('rejects base-only, changed-target, stale, scope-mismatched, malformed, and tampered admission evidence', async () => {

@@ -10,6 +10,7 @@ import {
 } from './check-static.mjs';
 import {
   createLocalPatchAttestation,
+  commandFailureCode,
   classifyCommandDiagnostics,
   reportDigest,
   REQUIRED_QUALITY_COMMAND_IDS,
@@ -69,9 +70,7 @@ function run(id, args) {
         : 'fail',
     durationMs: Date.now() - started,
     exitCode: result.status ?? null,
-    errorCode:
-      result.error?.code ??
-      (unexpectedDiagnosticCount(diagnostics) > 0 ? 'QUALITY_UNEXPECTED_DIAGNOSTICS' : null),
+    errorCode: commandFailureCode(result, unexpectedDiagnosticCount(diagnostics) > 0),
     diagnostics,
   };
 }
