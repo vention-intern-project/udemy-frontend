@@ -1133,6 +1133,14 @@ describe('quality report schema and exact-target admission', () => {
       'commands[0] pass outcome cannot contain unexpected diagnostics',
     );
     expect(summaryFor(validReport(target))).toContain('diagnostics=allowed-router:0 unexpected:0');
+    const countedReport = validReport(target);
+    countedReport.commands[6].diagnostics.unexpectedGenericWarnings = 2;
+    expect(summaryFor(countedReport)).toContain(
+      'diagnostic-counts=format(allowed-router:0,act:0,unhandled:0,console:0,generic:0)',
+    );
+    expect(summaryFor(countedReport)).toContain(
+      'tests(allowed-router:0,act:0,unhandled:0,console:0,generic:2)',
+    );
     expect(
       JSON.stringify(classifyCommandDiagnostics('', 'Warning: private-token-value')),
     ).not.toContain('private-token-value');
