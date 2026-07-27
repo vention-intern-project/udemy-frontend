@@ -1,0 +1,193 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Frontend quality report",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "scope",
+    "sha",
+    "target",
+    "generatedAt",
+    "outcome",
+    "toolVersions",
+    "configVersions",
+    "context",
+    "commands",
+    "findings",
+    "suppressions",
+    "limitations",
+    "advisory",
+    "integrity"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 2 },
+    "scope": { "enum": ["full", "ci"] },
+    "sha": { "$ref": "#/definitions/sha" },
+    "target": { "$ref": "#/definitions/target" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "outcome": { "enum": ["pass", "fail"] },
+    "toolVersions": { "$ref": "#/definitions/toolVersions" },
+    "configVersions": { "$ref": "#/definitions/configVersions" },
+    "context": { "$ref": "#/definitions/context" },
+    "commands": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "items": { "$ref": "#/definitions/command" }
+    },
+    "findings": { "type": "array", "items": { "$ref": "#/definitions/finding" } },
+    "suppressions": { "type": "array", "items": { "$ref": "#/definitions/suppression" } },
+    "limitations": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "advisory": { "$ref": "#/definitions/advisory" },
+    "integrity": { "$ref": "#/definitions/integrity" }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "sha": { "type": "string", "pattern": "^[0-9a-fA-F]{7,64}$" },
+    "path": { "type": "string", "minLength": 1 },
+    "target": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["kind", "sha"],
+          "properties": { "kind": { "const": "commit" }, "sha": { "$ref": "#/definitions/sha" } },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["kind", "patchSha256", "changedPaths"],
+          "properties": {
+            "kind": { "const": "local_patch" },
+            "patchSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "changedPaths": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/definitions/path" }
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "toolVersions": {
+      "type": "object",
+      "required": ["node", "npm", "typescript", "prettier", "stylelint", "eslint"],
+      "properties": {
+        "node": { "type": "string", "minLength": 1 },
+        "npm": { "type": "string", "minLength": 1 },
+        "typescript": { "type": "string", "minLength": 1 },
+        "prettier": { "type": "string", "minLength": 1 },
+        "stylelint": { "type": "string", "minLength": 1 },
+        "eslint": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "configVersions": {
+      "type": "object",
+      "required": ["reportSchema", "staticRules"],
+      "properties": {
+        "reportSchema": { "type": "integer", "minimum": 1 },
+        "staticRules": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "context": {
+      "type": "object",
+      "required": ["execution", "scope", "targetKind", "baseSha"],
+      "properties": {
+        "execution": { "enum": ["local", "ci"] },
+        "scope": { "enum": ["full", "ci"] },
+        "targetKind": { "enum": ["commit", "local_patch"] },
+        "baseSha": { "oneOf": [{ "$ref": "#/definitions/sha" }, { "type": "null" }] }
+      },
+      "additionalProperties": false
+    },
+    "command": {
+      "type": "object",
+      "required": ["id", "status", "durationMs", "exitCode", "errorCode", "diagnostics"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["pass", "fail"] },
+        "durationMs": { "type": "integer", "minimum": 0 },
+        "exitCode": { "oneOf": [{ "type": "integer" }, { "type": "null" }] },
+        "errorCode": { "oneOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }] },
+        "diagnostics": { "$ref": "#/definitions/diagnostics" }
+      },
+      "additionalProperties": false
+    },
+    "diagnostics": {
+      "type": "object",
+      "required": [
+        "allowedRouterFutureWarnings",
+        "unexpectedReactActWarnings",
+        "unexpectedUnhandledRejections",
+        "unexpectedConsoleWarnings",
+        "unexpectedGenericWarnings"
+      ],
+      "properties": {
+        "allowedRouterFutureWarnings": { "type": "integer", "minimum": 0 },
+        "unexpectedReactActWarnings": { "type": "integer", "minimum": 0 },
+        "unexpectedUnhandledRejections": { "type": "integer", "minimum": 0 },
+        "unexpectedConsoleWarnings": { "type": "integer", "minimum": 0 },
+        "unexpectedGenericWarnings": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "finding": {
+      "type": "object",
+      "required": ["category", "file", "line", "ruleId", "message"],
+      "properties": {
+        "category": { "type": "string", "minLength": 1 },
+        "file": { "$ref": "#/definitions/path" },
+        "line": { "type": "integer", "minimum": 1 },
+        "ruleId": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "suppression": {
+      "type": "object",
+      "required": ["ruleId", "path", "owner", "rationale"],
+      "properties": {
+        "ruleId": { "type": "string", "minLength": 1 },
+        "path": { "$ref": "#/definitions/path" },
+        "owner": { "type": "string", "minLength": 1 },
+        "rationale": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "advisory": {
+      "type": "object",
+      "required": ["complexitySignals"],
+      "properties": { "complexitySignals": { "type": "array", "items": { "type": "object" } } },
+      "additionalProperties": false
+    },
+    "integrity": {
+      "type": "object",
+      "required": ["algorithm", "digest", "attestation"],
+      "properties": {
+        "algorithm": { "const": "sha256" },
+        "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "attestation": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "required": ["algorithm", "digest"],
+              "properties": {
+                "algorithm": { "const": "hmac-sha256" },
+                "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+              },
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

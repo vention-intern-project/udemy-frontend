@@ -12,7 +12,27 @@
     "test:browser": "playwright test --config tests/browser/playwright.config.ts --project=chromium --workers=1 --retries=0 --reporter=line",
     "test:all": "npm run typecheck && npm run lint && npm test && npm run test:browser",
     "lint": "eslint src tests vite.config.ts .eslintrc.cjs --ext ts,tsx,cjs --report-unused-disable-directives --max-warnings 0",
+    "lint:quality": "eslint scripts/quality tests/quality --ext mjs,ts --report-unused-disable-directives --max-warnings 0",
+    "format:check": "prettier --check package.json .eslintrc.cjs .prettierrc.json stylelint.config.cjs tsconfig.eslint.json scripts/quality tests/quality .github/workflows",
+    "stylelint": "stylelint \"src/**/*.css\" --max-warnings 0",
+    "quality:rules": "node scripts/quality/check-static.mjs",
+    "quality": "node scripts/quality/run-quality.mjs",
+    "quality:verify-report": "node scripts/quality/verify-report.mjs",
+    "quality:verify-ci-aggregate": "node scripts/quality/verify-ci-aggregate.mjs",
+    "precommit:staged": "lint-staged",
+    "prepare": "husky",
     "preview": "vite preview"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,cjs,mjs}": [
+      "prettier --write",
+      "eslint --max-warnings 0"
+    ],
+    "*.css": [
+      "prettier --write",
+      "stylelint --max-warnings 0"
+    ],
+    "*.{json,md,yml,yaml}": "prettier --write"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.3",
@@ -25,6 +45,7 @@
   },
   "devDependencies": {
     "@playwright/test": "1.61.1",
+    "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "14.3.1",
     "@testing-library/user-event": "14.5.2",
     "@types/node": "24.13.3",
@@ -32,12 +53,18 @@
     "@types/react-dom": "^18.3.0",
     "@typescript-eslint/eslint-plugin": "^7.13.0",
     "@typescript-eslint/parser": "^7.13.0",
-    "@vitejs/plugin-react": "^4.3.1",
+    "@vitejs/plugin-react": "5.2.0",
     "@vitest/ui": "^1.6.0",
     "eslint": "^8.57.0",
+    "eslint-plugin-import": "^2.31.0",
     "eslint-plugin-react-hooks": "^4.6.2",
     "eslint-plugin-react-refresh": "^0.4.7",
+    "husky": "^9.1.7",
     "jsdom": "24.1.0",
+    "lint-staged": "^15.5.2",
+    "prettier": "^3.6.2",
+    "stylelint": "^16.24.0",
+    "stylelint-config-standard": "^38.0.0",
     "typescript": "^5.2.2",
     "vite": "8.0.5",
     "vitest": "^1.6.0"
