@@ -406,6 +406,26 @@ describe('quality report schema and exact-target admission', () => {
     });
   });
 
+  it('requires explicit snapshot roots for side-prefixed absolute POSIX paths', async () => {
+    const directory = await mkdtemp(resolve(tmpdir(), 'mai002-quality-posix-snapshot-'));
+    temporaryPaths.push(directory);
+    const afterRoot = '/tmp/mai002-after-evidence';
+    const beforeRoot = '/tmp/mai002-before-evidence';
+    const patchPath = resolve(directory, 'posix-snapshot.patch');
+    await writeFile(
+      patchPath,
+      `--- a/${beforeRoot}/src/changed.ts\n+++ b/${afterRoot}/src/changed.ts\n`,
+    );
+
+    await expect(targetForPatch(patchPath)).rejects.toThrow('supply --target-root');
+    await expect(targetForPatch(patchPath, afterRoot)).rejects.toThrow(
+      'supply --target-root and --base-root',
+    );
+    await expect(targetForPatch(patchPath, afterRoot, beforeRoot)).resolves.toMatchObject({
+      changedPaths: ['src/changed.ts'],
+    });
+  });
+
   it('requires explicit sibling snapshot roots for Windows absolute before-side paths', async () => {
     const directory = await mkdtemp(resolve(tmpdir(), 'mai002-quality-sibling-roots-'));
     temporaryPaths.push(directory);

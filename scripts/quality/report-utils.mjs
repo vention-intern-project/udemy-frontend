@@ -315,23 +315,23 @@ function normalizedRoot(root) {
 }
 
 function normalizedPatchPath(rawPath, targetRoot, baseRoot) {
-  const normalized = rawPath
+  const pathWithoutSide = rawPath
     .split('\t', 1)[0]
     .replace(/^"|"$/g, '')
     .replaceAll('\\', '/')
-    .replace(/\/{2,}/g, '/');
-  const pathWithoutSide = normalized.replace(/^[ab]\//, '');
+    .replace(/^[ab]\//, '');
+  const normalized = pathWithoutSide.replace(/\/{2,}/g, '/');
   for (const root of [targetRoot, baseRoot]) {
     const rootPath = normalizedRoot(root);
-    if (rootPath && pathWithoutSide.startsWith(`${rootPath}/`)) {
-      return pathWithoutSide.slice(rootPath.length + 1);
+    if (rootPath && normalized.startsWith(`${rootPath}/`)) {
+      return normalized.slice(rootPath.length + 1);
     }
   }
   const marker = '/udemy-frontend/';
   const markerIndex = normalized.toLowerCase().lastIndexOf(marker);
   return markerIndex >= 0
     ? normalized.slice(markerIndex + marker.length).replace(/^\/+/, '')
-    : pathWithoutSide;
+    : normalized;
 }
 
 function normalizeFrontendRelativePath(path) {
