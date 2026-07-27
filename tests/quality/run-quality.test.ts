@@ -497,7 +497,7 @@ describe('quality report schema and exact-target admission', () => {
     const patchPath = resolve(directory, 'windows.patch');
     await writeFile(
       patchPath,
-      '+++ "b/C:\\\\Users\\\\kraizkot\\\\IdeaProjects\\\\udemy-project\\\\udemy-frontend\\\\scripts\\\\quality\\\\report-utils.mjs"\n',
+      '+++ "b/C:\\\\Users\\\\example-user\\\\Projects\\\\sample\\\\udemy-frontend\\\\scripts\\\\quality\\\\report-utils.mjs"\n',
     );
     await expect(targetForPatch(patchPath)).resolves.toMatchObject({
       changedPaths: ['scripts/quality/report-utils.mjs'],
@@ -742,6 +742,74 @@ describe('quality report schema and exact-target admission', () => {
     );
     expect(fullWithExplicitSha.status).not.toBe(0);
     expect(fullWithExplicitSha.stderr).toContain('must not accept a caller SHA');
+
+    for (const invalidArgs of [
+      ['--unknown', 'value'],
+      ['--scope', 'full', '--scope', 'full'],
+      ['--scope', 'full', '--scope', 'ci'],
+      ['stray'],
+      ['--scope', 'full', 'stray'],
+      ['--scope', 'full', '--target-patch', patchPath, 'stray'],
+    ]) {
+      const invalid = runVerifier([
+        '--report',
+        fullReportPath,
+        '--target-patch',
+        patchPath,
+        ...invalidArgs,
+      ]);
+      expect(invalid.status).not.toBe(0);
+      expect(invalid.stderr).toMatch(/Unsupported or positional argument|Duplicate option/);
+    }
+    const reordered = runVerifier([
+      '--target-patch',
+      patchPath,
+      '--scope',
+      'full',
+      '--report',
+      fullReportPath,
+    ]);
+    expect(reordered.status, `${reordered.stdout}\n${reordered.stderr}`).toBe(0);
+
+    for (const flag of [
+      '--report',
+      '--sha',
+      '--scope',
+      '--target-patch',
+      '--target-root',
+      '--base-root',
+      '--max-age-minutes',
+    ]) {
+      const invalidValueMessage =
+        flag === '--max-age-minutes'
+          ? 'max-age-minutes must be a finite non-negative number'
+          : `${flag} requires a non-empty value`;
+      const validBaseArgs = [
+        '--report',
+        fullReportPath,
+        '--scope',
+        'full',
+        '--target-patch',
+        patchPath,
+      ];
+      const existingOptionIndex = validBaseArgs.indexOf(flag);
+      if (existingOptionIndex !== -1) validBaseArgs.splice(existingOptionIndex, 2);
+      const trailing = runVerifier([...validBaseArgs, flag], {
+        GITHUB_SHA: ciSha,
+      });
+      expect(trailing.status).not.toBe(0);
+      expect(trailing.stderr).toContain(invalidValueMessage);
+      const whitespace = runVerifier([...validBaseArgs, flag, '  '], {
+        GITHUB_SHA: ciSha,
+      });
+      expect(whitespace.status).not.toBe(0);
+      expect(whitespace.stderr).toContain(invalidValueMessage);
+      const nextFlag = runVerifier([...validBaseArgs, flag, '--sha', ciSha], {
+        GITHUB_SHA: ciSha,
+      });
+      expect(nextFlag.status).not.toBe(0);
+      expect(nextFlag.stderr).toContain(invalidValueMessage);
+    }
 
     for (const malformedMaxAgeArgs of [
       ['--max-age-minutes', ''],

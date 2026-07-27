@@ -2,21 +2,45 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { targetForCommit, targetForPatch, validateReportAdmission } from './report-utils.mjs';
 
-function argument(name) {
-  const index = process.argv.indexOf(name);
-  return index === -1 ? undefined : process.argv[index + 1];
+const supportedOptions = new Set([
+  '--report',
+  '--sha',
+  '--scope',
+  '--target-patch',
+  '--target-root',
+  '--base-root',
+  '--max-age-minutes',
+]);
+
+function parseArguments(argv) {
+  const values = new Map();
+  for (let index = 0; index < argv.length; index += 1) {
+    const option = argv[index];
+    if (!supportedOptions.has(option))
+      throw new Error(`Unsupported or positional argument: ${option}`);
+    if (values.has(option)) throw new Error(`Duplicate option: ${option}`);
+    const value = argv[++index];
+    if (!value || value.trim().length === 0 || value.startsWith('--'))
+      throw new Error(
+        option === '--max-age-minutes'
+          ? 'max-age-minutes must be a finite non-negative number.'
+          : `${option} requires a non-empty value.`,
+      );
+    values.set(option, value);
+  }
+  return values;
 }
 
-const reportPath = argument('--report');
-const explicitSha = argument('--sha');
+const argumentsByName = parseArguments(process.argv.slice(2));
+const reportPath = argumentsByName.get('--report');
+const explicitSha = argumentsByName.get('--sha');
 const expectedSha = explicitSha || process.env.GITHUB_SHA;
-const expectedScope = argument('--scope') || 'full';
-const targetPatch = argument('--target-patch');
-const targetRoot = argument('--target-root');
-const baseRoot = argument('--base-root');
-const maxAgeIndex = process.argv.indexOf('--max-age-minutes');
-const maxAgeValue = maxAgeIndex === -1 ? undefined : process.argv[maxAgeIndex + 1];
-const maxAgeMinutes = maxAgeIndex === -1 ? 30 : Number(maxAgeValue);
+const expectedScope = argumentsByName.get('--scope') || 'full';
+const targetPatch = argumentsByName.get('--target-patch');
+const targetRoot = argumentsByName.get('--target-root');
+const baseRoot = argumentsByName.get('--base-root');
+const maxAgeValue = argumentsByName.get('--max-age-minutes');
+const maxAgeMinutes = maxAgeValue === undefined ? 30 : Number(maxAgeValue);
 const localAttestationKey =
   expectedScope === 'full' ? process.env.QUALITY_REPORT_ATTESTATION_KEY : undefined;
 if (!reportPath)
@@ -25,11 +49,6 @@ if (!reportPath)
   );
 if (!['full', 'ci'].includes(expectedScope))
   throw new Error('Only full and ci report scopes are authoritative.');
-if (
-  maxAgeIndex !== -1 &&
-  (!maxAgeValue || maxAgeValue.trim().length === 0 || maxAgeValue.startsWith('--'))
-)
-  throw new Error('max-age-minutes must be a finite non-negative number.');
 if (!Number.isFinite(maxAgeMinutes) || maxAgeMinutes < 0)
   throw new Error('max-age-minutes must be a finite non-negative number.');
 if (expectedScope === 'full' && (!targetPatch || explicitSha)) {
