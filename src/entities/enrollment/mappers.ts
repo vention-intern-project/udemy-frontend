@@ -7,12 +7,14 @@ import {
 const ENROLLMENT_STATUS_BY_DTO = {
   pending_payment: 'pending_payment',
   active: 'active',
+  cancelled: 'cancelled',
 } as const satisfies Readonly<Record<EnrollmentStatusDto, EnrollmentStatus>>;
 
 function decodeEnrollmentStatusDto(value: unknown): EnrollmentStatusDto {
   switch (value) {
     case 'pending_payment':
     case 'active':
+    case 'cancelled':
       return value;
     default:
       throw new TypeError(`Unsupported enrollment status: ${String(value)}`);

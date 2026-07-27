@@ -8,3 +8,5 @@ export { SignupPage } from './signup-page';
 export { CatalogPage } from './catalog-page';
 export { CourseDetailPage } from './course-detail-page';
 export { CartPage } from './cart-page';
+export { LearningListPage } from './learning-list-page';
+export { LearningDetailPage } from './learning-detail-page';

@@ -1,4 +1,4 @@
-export type EnrollmentStatus = 'pending_payment' | 'active';
+export type EnrollmentStatus = 'pending_payment' | 'active' | 'cancelled';
 
 export interface EnrollmentCourseSummary {
   id: number;

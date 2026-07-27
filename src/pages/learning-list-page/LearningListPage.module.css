@@ -1,0 +1,10 @@
+.page, .state { display: grid; gap: var(--space-5, 24px); max-width: 1360px; margin: 0 auto; }
+.page h1, .state h1, .card h2 { margin: 0; }
+.page header p, .card p, .state p { margin: var(--space-2, 8px) 0 0; color: var(--text-secondary); }
+.list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: var(--space-3, 12px); margin: 0; padding: 0; list-style: none; }
+.card { display: flex; flex-direction: column; justify-content: space-between; gap: var(--space-3, 12px); padding: var(--space-3, 12px); border: 1px solid var(--border-default); border-radius: var(--radius-card); background: var(--surface-default); }
+.status { font-weight: 600; }
+.statusactive { color: var(--feedback-success-fg); }
+.statuspending_payment { color: var(--feedback-warning-fg); }
+.statuscancelled { color: var(--feedback-error-fg); }
+.loading { display: grid; gap: var(--space-3, 12px); }
