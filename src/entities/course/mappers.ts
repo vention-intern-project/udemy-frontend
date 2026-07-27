@@ -4,7 +4,7 @@ import type {
 } from './dto';
 import type {
   CatalogCourse, CatalogCourseList, Course, CourseDetail, Lesson, LessonOutline,
-  LessonOutlineItem, LessonType,
+  LessonMediaLocator, LessonOutlineItem, LessonType,
 } from './model';
 import {
   readBoolean, readNonNegativeInteger, readNullableString, readPositiveInteger, readRecord, readString,
@@ -141,11 +141,42 @@ export function decodeLessonListDto(value: unknown): LessonListDto {
   return { items, page, page_size: pageSize, total, pages, has_next: hasNext, has_previous: hasPrevious };
 }
 
+function hasFilenameControlCharacter(filename: string): boolean {
+  return Array.from(filename).some((character) => {
+    const codePoint = character.codePointAt(0);
+    return codePoint !== undefined && (codePoint <= 0x1f || codePoint === 0x7f);
+  });
+}
+
+export function mapLessonMediaLocator(downloadUrl: string | null): LessonMediaLocator | null {
+  if (downloadUrl === null) return null;
+  const match = /^\/media\/lessons\/([^/?#]+)$/u.exec(downloadUrl);
+  if (!match) return null;
+  const encodedFilename = match[1];
+  let filename: string;
+  try {
+    filename = decodeURIComponent(encodedFilename);
+  } catch {
+    return null;
+  }
+  if (filename === ''
+    || filename === '.'
+    || filename === '..'
+    || filename.includes('/')
+    || filename.includes('\\')
+    || hasFilenameControlCharacter(filename)
+    || encodeURIComponent(filename) !== encodedFilename) {
+    return null;
+  }
+  return { filename };
+}
+
 function mapLessonOutlineItem(dto: LessonDetailDto): LessonOutlineItem {
   return {
     id: dto.id,
     title: dto.title,
     lessonType: mapLessonTypeDto(dto.lesson_type),
+    mediaLocator: mapLessonMediaLocator(dto.download_url),
     description: dto.description,
     isPublished: dto.is_published,
   };

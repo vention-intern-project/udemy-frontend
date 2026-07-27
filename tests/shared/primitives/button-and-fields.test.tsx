@@ -48,6 +48,22 @@ describe('Button', () => {
     expect(onClick).not.toHaveBeenCalled();
   });
 
+  it('retains explicit busy state without disabling an ordinary button', async () => {
+    const user = userEvent.setup();
+    const onClick = vi.fn();
+    render(<><Button aria-busy onClick={onClick}>Load media</Button><Button aria-busy={false}>Idle media</Button></>);
+
+    const button = screen.getByRole('button', { name: 'Load media' }) as HTMLButtonElement;
+    button.focus();
+    await user.keyboard('{Enter}');
+
+    expect(button.disabled).toBe(false);
+    expect(button.getAttribute('aria-busy')).toBe('true');
+    expect(screen.getByRole('button', { name: 'Idle media' }).getAttribute('aria-busy')).toBe('false');
+    expect(document.activeElement).toBe(button);
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
   it('distinguishes success and error without relying on color and keeps status accessible', () => {
     render(
       <>

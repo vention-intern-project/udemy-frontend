@@ -1,0 +1,5 @@
+.mediaFrame { inline-size: min(100%, 56rem); min-inline-size: 0; aspect-ratio: 16 / 9; }
+.media { display: block; inline-size: 100%; block-size: 100%; min-inline-size: 0; border: 1px solid var(--border-default); border-radius: var(--radius-control); background: var(--surface-default); }
+.pdfLoading { display: grid; block-size: 100%; margin: 0; place-items: center; color: var(--text-muted); }
+.unavailable, .failure { margin: var(--space-1, 4px) 0 0; color: var(--text-muted); }
+.failure { display: grid; gap: var(--space-2, 8px); }

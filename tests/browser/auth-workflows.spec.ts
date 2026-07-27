@@ -10,6 +10,16 @@ interface RuntimeEvidence {
 
 const runtimeEvidence = new WeakMap<Page, RuntimeEvidence>();
 
+const emptyLearningEnrollments = {
+  items: [],
+  page: 1,
+  page_size: 20,
+  total: 0,
+  pages: 0,
+  has_next: false,
+  has_previous: false,
+};
+
 test.beforeEach(async ({ page }) => {
   const evidence: RuntimeEvidence = {
     pageErrors: [],
@@ -21,6 +31,15 @@ test.beforeEach(async ({ page }) => {
   page.on('pageerror', (error) => evidence.pageErrors.push(error.stack ?? error.message));
   page.on('console', (message) => {
     if (message.type() === 'error') evidence.consoleErrors.push(message.text());
+  });
+  await page.route((url) => (
+    url.pathname === '/enrollments/my'
+    && url.search === '?page=1&page_size=20'
+  ), async (route) => {
+    const request = route.request();
+    expect(request.method()).toBe('GET');
+    expect(request.headers().authorization).toMatch(/^Bearer\s+\S+$/);
+    await fulfillJson(route, 200, emptyLearningEnrollments);
   });
   await installCatalogFixture(page);
 });

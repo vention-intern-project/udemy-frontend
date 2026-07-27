@@ -49,8 +49,13 @@ export interface LessonOutlineItem {
   id: number;
   title: string;
   lessonType: LessonType;
+  mediaLocator: LessonMediaLocator | null;
   description: string | null;
   isPublished: boolean;
+}
+
+export interface LessonMediaLocator {
+  readonly filename: string;
 }
 
 export interface LessonOutline {

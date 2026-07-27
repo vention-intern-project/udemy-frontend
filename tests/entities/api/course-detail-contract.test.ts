@@ -45,9 +45,19 @@ describe('course detail transport boundary', () => {
   });
 
   it.each([
-    ['/media/lessons/private.mp4', 'populated'],
-    [null, 'redacted'],
-  ])('maps %s link fixture to identical metadata-only outline (%s)', (downloadUrl, _fixtureName) => {
+    ['/media/lessons/private.mp4', { filename: 'private.mp4' }, 'populated'],
+    ['/media/lessons/lesson%20one.pdf', { filename: 'lesson one.pdf' }, 'encoded basename'],
+    [null, null, 'redacted'],
+    ['https://media.example/private.mp4', null, 'origin'],
+    ['/media/lessons/private.mp4?token=secret', null, 'query'],
+    ['/media/lessons/private.mp4#fragment', null, 'fragment'],
+    ['/media/lessons/%2Fprivate.mp4', null, 'encoded slash'],
+    ['/media/lessons/../private.mp4', null, 'traversal'],
+    ['/media/lessons/%E0%A4%A', null, 'malformed encoding'],
+    ['/media/lessons/%00private.pdf', null, 'C0 null'],
+    ['/media/lessons/private%0A.pdf', null, 'C0 newline'],
+    ['/media/lessons/private%7F.pdf', null, 'DEL'],
+  ])('maps %s transport value to a filename locator or null (%s)', (downloadUrl, mediaLocator, _fixtureName) => {
     const outline = mapLessonListDto(decodeLessonListDto({
       items: [{ ...lesson, download_url: downloadUrl }],
       page: 1,
@@ -64,8 +74,9 @@ describe('course detail transport boundary', () => {
       lessonType: 'video',
       description: null,
       isPublished: true,
+      mediaLocator,
     }]);
-    expect(JSON.stringify(outline)).not.toContain('/media/lessons/');
+    expect(JSON.stringify(outline)).not.toContain('https://media.example');
   });
 
   it('rejects malformed success pagination', () => {

@@ -1,6 +1,7 @@
 import type { LessonOutline } from '@entities/course';
 import type { CourseProgress, LessonCompletionState } from '@features/learning-progress';
 import { lessonCompletionLabel } from '@features/learning-progress';
+import { LessonMediaAccess } from '@features/media-access';
 import { Button, Notice, Skeleton, SkeletonGroup } from '@shared/ui/primitives';
 
 import styles from './EnrollmentProgressPanel.module.css';
@@ -56,10 +57,11 @@ export function EnrollmentProgressPanel({
               const markComplete = state.status === 'unknown' || !state.completed;
               return (
                 <li key={lesson.id} className={styles.lesson}>
-                  <div>
+                  <div className={styles.lessonDetails}>
                     <h3>{lesson.title}</h3>
                     <p>{lesson.description ?? 'No lesson description is available.'}</p>
                     <span>{lesson.lessonType} lesson · {lesson.isPublished ? 'Listed metadata' : 'Draft metadata'}</span>
+                    <LessonMediaAccess lessonType={lesson.lessonType} locator={lesson.mediaLocator} />
                     <p className={styles.completion} aria-live="polite">{lessonCompletionLabel(state)}</p>
                   </div>
                   <Button
