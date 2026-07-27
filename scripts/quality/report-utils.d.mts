@@ -21,6 +21,7 @@ export function commandFailureCode(
   result: CommandProcessResult,
   hasUnexpectedDiagnostics: boolean,
 ): string | null;
+export function npmVersionFromUserAgent(userAgent?: string): string;
 export function reportDigest(report: object): string;
 export function createLocalPatchAttestation(
   report: object,

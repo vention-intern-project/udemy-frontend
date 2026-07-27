@@ -319,6 +319,16 @@ export function commandFailureCode(result, hasUnexpectedDiagnostics) {
   );
 }
 
+export function npmVersionFromUserAgent(userAgent) {
+  const numericIdentifier = '(?:0|[1-9]\\d*)';
+  const prereleaseIdentifier = `(?:${numericIdentifier}|\\d*[A-Za-z-][0-9A-Za-z-]*)`;
+  const prerelease = `(?:-${prereleaseIdentifier}(?:\\.${prereleaseIdentifier})*)?`;
+  const build = '(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?';
+  const semver = `${numericIdentifier}\\.${numericIdentifier}\\.${numericIdentifier}${prerelease}${build}`;
+  const match = new RegExp(`(?:^|\\s)npm\\/(${semver})(?:\\s|$)`).exec(userAgent ?? '');
+  return match?.[1] ?? 'unknown';
+}
+
 function normalizedRoot(root) {
   return root
     ?.replaceAll('\\', '/')

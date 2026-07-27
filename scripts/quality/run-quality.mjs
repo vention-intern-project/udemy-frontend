@@ -12,6 +12,7 @@ import {
   createLocalPatchAttestation,
   commandFailureCode,
   classifyCommandDiagnostics,
+  npmVersionFromUserAgent,
   reportDigest,
   REQUIRED_QUALITY_COMMAND_IDS,
   targetForCommit,
@@ -93,7 +94,7 @@ async function toolVersions() {
   const devDependencies = packageJson.devDependencies;
   return {
     node: process.version,
-    npm: process.env.npm_version ?? 'npm-cli',
+    npm: npmVersionFromUserAgent(process.env.npm_config_user_agent),
     typescript: devDependencies.typescript,
     prettier: devDependencies.prettier,
     stylelint: devDependencies.stylelint,

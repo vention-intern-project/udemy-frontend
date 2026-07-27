@@ -1,9 +1,10 @@
 import { randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { copyFile, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { resolve } from 'node:path';
+import { delimiter, dirname, resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   analyseSourceText,
@@ -20,6 +21,7 @@ import {
   REQUIRED_QUALITY_COMMAND_IDS,
   targetForCommit,
   unexpectedDiagnosticCount,
+  npmVersionFromUserAgent,
   targetForPatch,
   validateReport,
   validateReportAdmission,
@@ -107,6 +109,39 @@ const testAttestationKey = randomBytes(32).toString('base64url');
 const { ESLint } = createRequire(import.meta.url)('eslint') as {
   ESLint: NativeEslintConstructor;
 };
+
+describe('quality execution provenance', () => {
+  it('parses npm semver only from the standard lifecycle user agent', () => {
+    expect(npmVersionFromUserAgent('npm/10.8.2 node/v24.18.0 win32 x64')).toBe('10.8.2');
+    expect(npmVersionFromUserAgent('node/v24.18.0 npm/11.0.0-rc.1+build.1 linux x64')).toBe(
+      '11.0.0-rc.1+build.1',
+    );
+    for (const invalidVersion of [
+      '10.8.2-..',
+      '10.8.2-01',
+      '10.8.2+build..meta',
+      '01.8.2',
+      '10.08.2',
+      '10.8.02',
+      '10.8.2-',
+      '10.8.2+',
+      '10.8.2-rc_1',
+      '10.8.2extra',
+    ])
+      expect(npmVersionFromUserAgent(`npm/${invalidVersion} node/v24.18.0`)).toBe('unknown');
+    expect(npmVersionFromUserAgent()).toBe('unknown');
+  });
+
+  it('uses an explicit verified Git Bash override on Windows and never selects WSL bash', () => {
+    if (process.platform !== 'win32') {
+      expect(resolveGitBash()).toBe('bash');
+      return;
+    }
+    const detected = resolveGitBash();
+    expect(resolveGitBash({ ...process.env, QUALITY_TEST_GIT_BASH: detected })).toBe(detected);
+    expect(gitForWindowsRoot('C:\\Windows\\System32\\bash.exe')).toBeUndefined();
+  });
+});
 
 afterEach(async () => {
   await Promise.all(
@@ -212,10 +247,43 @@ function productionAggregateGuard(
     `export TARGET_RESOLUTION_RESULT=${JSON.stringify(resolverResult)}`,
     `export QUALITY_TARGET_SHA=${JSON.stringify(qualityTargetSha)}`,
   ].join('\n');
-  const bash = process.platform === 'win32' ? 'C:\\Program Files\\Git\\bin\\bash.exe' : 'bash';
-  return spawnSync(bash, ['-c', `${environment}\n${script}`], {
+  return spawnSync(resolveGitBash(), ['-c', `${environment}\n${script}`], {
     encoding: 'utf8',
   });
+}
+
+function gitForWindowsRoot(candidate: string) {
+  if (/[/\\]windows[/\\]system32[/\\]bash\.exe$/i.test(candidate)) return undefined;
+  let directory = dirname(candidate);
+  for (let depth = 0; depth < 3; depth += 1) {
+    const git = resolve(directory, 'cmd', 'git.exe');
+    if (existsSync(git)) return git;
+    directory = dirname(directory);
+  }
+  return undefined;
+}
+
+function resolveGitBash(environment: NodeJS.ProcessEnv = process.env) {
+  if (process.platform !== 'win32') return 'bash';
+  const pathCandidates = (environment.PATH ?? '')
+    .split(delimiter)
+    .filter(Boolean)
+    .map((entry) => resolve(entry, 'bash.exe'));
+  const candidates = [
+    environment.QUALITY_TEST_GIT_BASH,
+    environment.ProgramFiles && resolve(environment.ProgramFiles, 'Git', 'bin', 'bash.exe'),
+    environment.ProgramW6432 && resolve(environment.ProgramW6432, 'Git', 'bin', 'bash.exe'),
+    environment.LOCALAPPDATA &&
+      resolve(environment.LOCALAPPDATA, 'Programs', 'Git', 'bin', 'bash.exe'),
+    ...pathCandidates,
+  ].filter((candidate): candidate is string => Boolean(candidate));
+  for (const candidate of candidates) {
+    const git = gitForWindowsRoot(candidate);
+    if (!git || !existsSync(candidate)) continue;
+    const verification = spawnSync(git, ['--version'], { encoding: 'utf8', shell: false });
+    if (verification.status === 0 && /git version \d/.test(verification.stdout)) return candidate;
+  }
+  throw new Error('A verified Git-for-Windows bash.exe is required for this Windows regression.');
 }
 
 async function nativeLintMessages(filePath: string, source: string) {
@@ -1150,8 +1218,7 @@ describe('staged and CI decision simulations', () => {
     expect(stagedPaths.stdout.split(/\r?\n/)).toContain('package.json');
     expect(stagedPaths.stdout.split(/\r?\n/)).toContain('stylelint.config.cjs');
 
-    const shell = process.platform === 'win32' ? 'C:\\Program Files\\Git\\bin\\bash.exe' : 'bash';
-    const hook = spawnSync(shell, ['-x', '.husky/pre-commit'], {
+    const hook = spawnSync(resolveGitBash(), ['-x', '.husky/pre-commit'], {
       cwd: repository,
       encoding: 'utf8',
     });
