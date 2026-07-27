@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["src", "tests", "vite.config.ts"],
+  "exclude": ["dist", "node_modules", "playwright-report", "test-results"]
+}

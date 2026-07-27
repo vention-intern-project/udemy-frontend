@@ -1,0 +1,176 @@
+name: frontend-quality
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-quality-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  resolve-target:
+    runs-on: ubuntu-latest
+    outputs:
+      quality-target-sha: ${{ steps.target.outputs.sha }}
+    steps:
+      - id: target
+        name: Resolve the event-specific quality target
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_SHA: ${{ github.sha }}
+        run: |
+          case "$EVENT_NAME" in
+            pull_request) quality_target_sha="$PR_HEAD_SHA" ;;
+            push) quality_target_sha="$PUSH_SHA" ;;
+            *) echo "Unsupported quality event: $EVENT_NAME" >&2; exit 1 ;;
+          esac
+          if [[ ! "$quality_target_sha" =~ ^[0-9a-fA-F]{7,64}$ ]]; then
+            echo "Quality target SHA is missing or invalid for $EVENT_NAME" >&2
+            exit 1
+          fi
+          echo "sha=$quality_target_sha" >> "$GITHUB_OUTPUT"
+
+  lint-static:
+    needs: resolve-target
+    runs-on: ubuntu-latest
+    env:
+      QUALITY_TARGET_SHA: ${{ needs.resolve-target.outputs.quality-target-sha }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ env.QUALITY_TARGET_SHA }}
+      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run format:check && npm run stylelint && npm run lint && npm run lint:quality && npm run quality:rules
+
+  typecheck:
+    needs: resolve-target
+    runs-on: ubuntu-latest
+    env:
+      QUALITY_TARGET_SHA: ${{ needs.resolve-target.outputs.quality-target-sha }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ env.QUALITY_TARGET_SHA }}
+      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+
+  tests:
+    needs: resolve-target
+    runs-on: ubuntu-latest
+    env:
+      QUALITY_TARGET_SHA: ${{ needs.resolve-target.outputs.quality-target-sha }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ env.QUALITY_TARGET_SHA }}
+      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  build:
+    needs: resolve-target
+    runs-on: ubuntu-latest
+    env:
+      QUALITY_TARGET_SHA: ${{ needs.resolve-target.outputs.quality-target-sha }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ env.QUALITY_TARGET_SHA }}
+      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+  browser:
+    needs: resolve-target
+    runs-on: ubuntu-latest
+    env:
+      QUALITY_TARGET_SHA: ${{ needs.resolve-target.outputs.quality-target-sha }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ env.QUALITY_TARGET_SHA }}
+      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser
+
+  quality-report:
+    needs: resolve-target
+    runs-on: ubuntu-latest
+    env:
+      QUALITY_TARGET_SHA: ${{ needs.resolve-target.outputs.quality-target-sha }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ env.QUALITY_TARGET_SHA }}
+      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run quality -- --scope ci --sha "$QUALITY_TARGET_SHA" --output quality-reports/current.json
+      - run: npm run quality:verify-report -- --report quality-reports/current.json --sha "$QUALITY_TARGET_SHA" --scope ci
+      - uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08
+        with:
+          name: frontend-quality-report-${{ env.QUALITY_TARGET_SHA }}
+          path: quality-reports/current.json
+          retention-days: 7
+          if-no-files-found: error
+
+  frontend-quality-required:
+    if: always()
+    needs: [resolve-target, lint-static, typecheck, tests, build, browser, quality-report]
+    runs-on: ubuntu-latest
+    env:
+      QUALITY_TARGET_SHA: ${{ needs.resolve-target.outputs.quality-target-sha }}
+      TARGET_RESOLUTION_RESULT: ${{ needs.resolve-target.result }}
+    steps:
+      - name: Guard resolved quality target before artifact or checkout
+        shell: bash
+        run: |
+          if [[ "$TARGET_RESOLUTION_RESULT" != 'success' || ! "$QUALITY_TARGET_SHA" =~ ^[0-9a-fA-F]{7,64}$ ]]; then
+            echo 'Quality target resolution failed; refusing artifact, checkout, report, and aggregate work.' >&2
+            exit 1
+          fi
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: frontend-quality-report-${{ env.QUALITY_TARGET_SHA }}
+          path: quality-reports
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ env.QUALITY_TARGET_SHA }}
+      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Fail closed on job state and current-SHA report artifact
+        env:
+          NEEDS: ${{ toJson(needs) }}
+          QUALITY_REPORT_PATH: quality-reports/current.json
+          QUALITY_TARGET_SHA: ${{ env.QUALITY_TARGET_SHA }}
+        run: npm run quality:verify-ci-aggregate
