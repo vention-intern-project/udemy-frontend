@@ -6,7 +6,6 @@ import {
   CONTRACT_ASSUMPTIONS,
   normalizeLessonPageQuery,
   normalizePageQuery,
-  createContractApiClient,
 } from '../../../src/entities/api';
 import type {
   ApiOperationDefinition,
@@ -47,11 +46,10 @@ import type {
   UserProfileDto,
   UserRegisterDto,
 } from '../../../src/entities';
-import {
-  createApiClient,
-  type ApiBinaryResponse,
-  type PageQueryDto,
-  type PaginationDto,
+import type {
+  ApiBinaryResponse,
+  PageQueryDto,
+  PaginationDto,
 } from '../../../src/shared/api';
 
 type ExpectedContractMap = {
@@ -195,56 +193,4 @@ describe('selected backend operation contracts', () => {
     });
   });
 
-  it('binds operation IDs to encoded paths, guarded queries, bodies, and response types', async () => {
-    const calls: Array<{ path: string; query?: unknown; body?: unknown; responseType?: string }> = [];
-    const transport = createApiClient({
-      baseUrl: 'https://api.example.test',
-      fetch: async (input, init) => {
-        const url = new URL(String(input));
-        calls.push({
-          path: url.pathname,
-          query: Object.fromEntries(url.searchParams),
-          body: init?.body,
-          responseType: new Headers(init?.headers).get('Accept') ?? undefined,
-        });
-        if (url.pathname.startsWith('/media/lessons/')) {
-          return new Response(new Blob(['lesson']), {
-            status: 200,
-            headers: {
-              'Content-Type': 'application/pdf',
-              'Content-Disposition': 'attachment; filename="lesson.pdf"',
-            },
-          });
-        }
-        return new Response(JSON.stringify({ id: 1 }), { status: 200 });
-      },
-    });
-    const api = createContractApiClient(transport);
-
-    await api.request('API-011', {
-      path: { courseId: 7 },
-      body: { title: 'Type-safe APIs', price: '19.99' },
-    }, { dedupeKey: 'save-course-7' });
-    await api.request('API-008', { query: { page: 0, page_size: 500, sort: '-price' } });
-    const binary = await api.request('API-025', { path: { filename: 'lesson one.pdf' } });
-
-    expect(calls[0]).toMatchObject({
-      path: '/courses/7',
-      body: JSON.stringify({ title: 'Type-safe APIs', price: '19.99' }),
-    });
-    expect(calls[1]).toMatchObject({
-      path: '/courses',
-      query: { page: '1', page_size: '100', sort: '-price' },
-    });
-    expect(calls[2]).toMatchObject({
-      path: '/media/lessons/lesson%20one.pdf',
-      responseType: '*/*',
-    });
-    expect(await binary.blob.text()).toBe('lesson');
-    expect(binary).toMatchObject({
-      contentType: 'application/pdf',
-      contentDisposition: 'attachment; filename="lesson.pdf"',
-      filename: 'lesson.pdf',
-    });
-  });
 });

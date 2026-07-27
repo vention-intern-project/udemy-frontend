@@ -1,7 +1,14 @@
 import type {
-  CourseDto, CourseListDto, CourseListItemDto, LessonBriefDto, LessonDto, LessonTypeDto,
+  CourseDetailDto, CourseDto, CourseListDto, CourseListItemDto, LessonBriefDto,
+  LessonDetailDto, LessonDto, LessonListDto, LessonTypeDto,
 } from './dto';
-import type { CatalogCourse, CatalogCourseList, Course, Lesson, LessonType } from './model';
+import type {
+  CatalogCourse, CatalogCourseList, Course, CourseDetail, Lesson, LessonOutline,
+  LessonOutlineItem, LessonType,
+} from './model';
+import {
+  readBoolean, readNonNegativeInteger, readNullableString, readPositiveInteger, readRecord, readString,
+} from '@shared/api';
 
 const LESSON_TYPE_BY_DTO = {
   video: 'video',
@@ -50,74 +57,126 @@ export function mapLessonDto(dto: LessonDto): Lesson {
   };
 }
 
-function record(value: unknown, context: string): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new TypeError(`Invalid course list ${context}`);
-  }
-  return value as Record<string, unknown>;
-}
-
-function string(value: unknown, context: string): string {
-  if (typeof value !== 'string') throw new TypeError(`Invalid course list ${context}`);
-  return value;
-}
-
-function nullableString(value: unknown, context: string): string | null {
-  return value === null ? null : string(value, context);
-}
-
-function positiveInteger(value: unknown, context: string): number {
-  if (!Number.isSafeInteger(value) || (value as number) < 1) {
-    throw new TypeError(`Invalid course list ${context}`);
-  }
-  return value as number;
-}
-
-function nonNegativeInteger(value: unknown, context: string): number {
-  if (!Number.isSafeInteger(value) || (value as number) < 0) {
-    throw new TypeError(`Invalid course list ${context}`);
-  }
-  return value as number;
-}
-
-function boolean(value: unknown, context: string): boolean {
-  if (typeof value !== 'boolean') throw new TypeError(`Invalid course list ${context}`);
-  return value;
-}
-
 function decodeLessonBrief(value: unknown): LessonBriefDto {
-  const item = record(value, 'lesson');
-  return { id: positiveInteger(item.id, 'lesson id'), title: string(item.title, 'lesson title') };
+  const item = readRecord(value, 'lesson');
+  return { id: readPositiveInteger(item.id, 'lesson id'), title: readString(item.title, 'lesson title') };
 }
 
 function decodeCourseListItem(value: unknown): CourseListItemDto {
-  const item = record(value, 'item');
-  const instructor = record(item.instructor, 'instructor');
+  const item = readRecord(value, 'item');
+  const instructor = readRecord(item.instructor, 'instructor');
   if (!Array.isArray(item.lessons)) throw new TypeError('Invalid course list lessons');
   return {
-    id: positiveInteger(item.id, 'item id'),
-    title: string(item.title, 'item title'),
-    description: nullableString(item.description, 'item description'),
-    price: string(item.price, 'item price'),
-    currency: string(item.currency, 'item currency'),
-    published_at: nullableString(item.published_at, 'item published_at'),
+    id: readPositiveInteger(item.id, 'item id'),
+    title: readString(item.title, 'item title'),
+    description: readNullableString(item.description, 'item description'),
+    price: readString(item.price, 'item price'),
+    currency: readString(item.currency, 'item currency'),
+    published_at: readNullableString(item.published_at, 'item published_at'),
     instructor: {
-      id: positiveInteger(instructor.id, 'instructor id'),
-      name: string(instructor.name, 'instructor name'),
-      surname: string(instructor.surname, 'instructor surname'),
+      id: readPositiveInteger(instructor.id, 'instructor id'),
+      name: readString(instructor.name, 'instructor name'),
+      surname: readString(instructor.surname, 'instructor surname'),
     },
     lessons: item.lessons.map(decodeLessonBrief),
   };
 }
 
+function decodeLessonDetail(value: unknown): LessonDetailDto {
+  const item = readRecord(value, 'lesson detail');
+  return {
+    id: readPositiveInteger(item.id, 'lesson id'),
+    title: readString(item.title, 'lesson title'),
+    lesson_type: mapLessonTypeDto(item.lesson_type),
+    download_url: readNullableString(item.download_url, 'lesson download_url'),
+    description: readNullableString(item.description, 'lesson description'),
+    is_published: readBoolean(item.is_published, 'lesson is_published'),
+    created_at: readString(item.created_at, 'lesson created_at'),
+    updated_at: readString(item.updated_at, 'lesson updated_at'),
+  };
+}
+
+export function decodeCourseDetailDto(value: unknown): CourseDetailDto {
+  const response = readRecord(value, 'detail response');
+  const instructor = readRecord(response.instructor, 'detail instructor');
+  if (!Array.isArray(response.lessons)) throw new TypeError('Invalid course detail lessons');
+  return {
+    id: readPositiveInteger(response.id, 'detail id'),
+    title: readString(response.title, 'detail title'),
+    description: readNullableString(response.description, 'detail description'),
+    price: readString(response.price, 'detail price'),
+    currency: readString(response.currency, 'detail currency'),
+    published_at: readNullableString(response.published_at, 'detail published_at'),
+    created_at: readString(response.created_at, 'detail created_at'),
+    updated_at: readString(response.updated_at, 'detail updated_at'),
+    instructor: {
+      id: readPositiveInteger(instructor.id, 'instructor id'),
+      name: readString(instructor.name, 'instructor name'),
+      surname: readString(instructor.surname, 'instructor surname'),
+    },
+    lessons: response.lessons.map(decodeLessonDetail),
+  };
+}
+
+export function decodeLessonListDto(value: unknown): LessonListDto {
+  const response = readRecord(value, 'lesson list response');
+  if (!Array.isArray(response.items)) throw new TypeError('Invalid lesson list items');
+  const page = readPositiveInteger(response.page, 'lesson page');
+  const pageSize = readPositiveInteger(response.page_size, 'lesson page_size');
+  const total = readNonNegativeInteger(response.total, 'lesson total');
+  const pages = readNonNegativeInteger(response.pages, 'lesson pages');
+  const hasNext = readBoolean(response.has_next, 'lesson has_next');
+  const hasPrevious = readBoolean(response.has_previous, 'lesson has_previous');
+  const items = response.items.map(decodeLessonDetail);
+  const expectedPages = total === 0 ? 0 : Math.ceil(total / pageSize);
+  const remainingItems = Math.max(0, total - ((page - 1) * pageSize));
+  const itemLimit = Math.min(pageSize, remainingItems);
+  if (pages !== expectedPages
+    || page > Math.max(1, pages)
+    || items.length > itemLimit
+    || hasNext !== (page < pages)
+    || hasPrevious !== (page > 1)) {
+    throw new TypeError('Invalid lesson list pagination consistency');
+  }
+  return { items, page, page_size: pageSize, total, pages, has_next: hasNext, has_previous: hasPrevious };
+}
+
+function mapLessonOutlineItem(dto: LessonDetailDto): LessonOutlineItem {
+  return {
+    id: dto.id,
+    title: dto.title,
+    lessonType: mapLessonTypeDto(dto.lesson_type),
+    description: dto.description,
+    isPublished: dto.is_published,
+  };
+}
+
+export function mapCourseDetailDto(dto: CourseDetailDto): CourseDetail {
+  return {
+    id: dto.id,
+    instructorId: dto.instructor.id,
+    instructorName: `${dto.instructor.name} ${dto.instructor.surname}`.trim(),
+    title: dto.title,
+    description: dto.description,
+    price: dto.price,
+    currency: dto.currency,
+    publishedAt: dto.published_at,
+    lessons: dto.lessons.map(mapLessonOutlineItem),
+  };
+}
+
+export function mapLessonListDto(dto: LessonListDto): LessonOutline {
+  return { items: dto.items.map(mapLessonOutlineItem), total: dto.total };
+}
+
 export function decodeCourseListDto(value: unknown): CourseListDto {
-  const response = record(value, 'response');
+  const response = readRecord(value, 'response');
   if (!Array.isArray(response.items)) throw new TypeError('Invalid course list items');
-  const total = nonNegativeInteger(response.total, 'total');
-  const pages = nonNegativeInteger(response.pages, 'pages');
+  const total = readNonNegativeInteger(response.total, 'total');
+  const pages = readNonNegativeInteger(response.pages, 'pages');
   const items = response.items.map(decodeCourseListItem);
-  const hasNext = boolean(response.has_next, 'has_next');
-  const hasPrevious = boolean(response.has_previous, 'has_previous');
+  const hasNext = readBoolean(response.has_next, 'has_next');
+  const hasPrevious = readBoolean(response.has_previous, 'has_previous');
 
   if ((total === 0 && (pages !== 0 || items.length !== 0 || hasNext || hasPrevious)) || (total > 0 && pages === 0)) {
     throw new TypeError('Invalid course list pagination consistency');
@@ -125,8 +184,8 @@ export function decodeCourseListDto(value: unknown): CourseListDto {
 
   return {
     items,
-    page: positiveInteger(response.page, 'page'),
-    page_size: positiveInteger(response.page_size, 'page_size'),
+    page: readPositiveInteger(response.page, 'page'),
+    page_size: readPositiveInteger(response.page_size, 'page_size'),
     total,
     pages,
     has_next: hasNext,

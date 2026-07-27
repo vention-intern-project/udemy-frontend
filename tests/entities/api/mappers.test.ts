@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { mapCartDto } from '../../../src/entities/cart';
+import { decodeCartItemDto, mapCartDto } from '../../../src/entities/cart';
 import {
   decodeCourseListDto,
   mapCourseListDto,
@@ -10,6 +10,8 @@ import {
   type LessonType,
 } from '../../../src/entities/course';
 import {
+  decodeEnrollmentDto,
+  decodeEnrollmentListDto,
   mapEnrollmentDto,
   mapEnrollmentStatusDto,
   type EnrollmentStatus,
@@ -24,7 +26,69 @@ import {
   type UserRole,
 } from '../../../src/entities/user';
 
+function enrollmentDto(id: number) {
+  return {
+    id,
+    user_id: 9,
+    course_id: id,
+    status: 'active',
+    created_at: '2026-07-01T00:00:00Z',
+    updated_at: '2026-07-01T00:00:00Z',
+    course: {
+      id,
+      title: `Course ${id}`,
+      description: null,
+      price: '0.00',
+      currency: 'USD',
+    },
+  };
+}
+
 describe('wire DTO to domain mappers', () => {
+  it('decodes complete cart-item and enrollment mutation responses at runtime', () => {
+    expect(decodeCartItemDto({
+      id: 5,
+      course_id: 7,
+      added_at: '2026-07-01T00:00:00Z',
+      course: { id: 7, title: 'React', price: '19.99', currency: 'USD' },
+    })).toMatchObject({ id: 5, course_id: 7, course: { id: 7 } });
+    expect(decodeEnrollmentDto({
+      id: 4,
+      user_id: 9,
+      course_id: 7,
+      status: 'active',
+      created_at: '2026-07-01T00:00:00Z',
+      updated_at: '2026-07-01T00:00:00Z',
+      course: { id: 7, title: 'React', description: null, price: '0.00', currency: 'USD' },
+    })).toMatchObject({ id: 4, user_id: 9, status: 'active', course: { id: 7 } });
+  });
+
+  it.each([
+    ['cart null', () => decodeCartItemDto(null)],
+    ['cart missing field', () => decodeCartItemDto({ id: 5 })],
+    ['cart wrong type', () => decodeCartItemDto({ id: '5', course_id: 7, added_at: 'now', course: { id: 7, title: 'React', price: '19.99', currency: 'USD' } })],
+    ['cart nested identity', () => decodeCartItemDto({ id: 5, course_id: 7, added_at: 'now', course: { id: 8, title: 'React', price: '19.99', currency: 'USD' } })],
+    ['enrollment null', () => decodeEnrollmentDto(null)],
+    ['enrollment missing field', () => decodeEnrollmentDto({ id: 4 })],
+    ['enrollment wrong type', () => decodeEnrollmentDto({ id: 4, user_id: '9', course_id: 7, status: 'active', created_at: 'now', updated_at: 'now', course: { id: 7, title: 'React', description: null, price: '0.00', currency: 'USD' } })],
+    ['enrollment enum', () => decodeEnrollmentDto({ id: 4, user_id: 9, course_id: 7, status: 'cancelled', created_at: 'now', updated_at: 'now', course: { id: 7, title: 'React', description: null, price: '0.00', currency: 'USD' } })],
+    ['enrollment nested identity', () => decodeEnrollmentDto({ id: 4, user_id: 9, course_id: 7, status: 'active', created_at: 'now', updated_at: 'now', course: { id: 8, title: 'React', description: null, price: '0.00', currency: 'USD' } })],
+  ])('rejects malformed protected mutation payload: %s', (_caseName, decode) => {
+    expect(decode).toThrow();
+  });
+
+  it('rejects enrollment items beyond the mathematically remaining page total', () => {
+    expect(() => decodeEnrollmentListDto({
+      items: [enrollmentDto(101), enrollmentDto(102)],
+      page: 2,
+      page_size: 100,
+      total: 101,
+      pages: 2,
+      has_next: false,
+      has_previous: true,
+    })).toThrow('Invalid enrollment pagination');
+  });
+
   it('decodes API-008 populated and empty pagination without accepting malformed metadata', () => {
     const populated = decodeCourseListDto({
       items: [{ id: 1, title: 'React', description: null, price: '9.99', currency: 'USD', published_at: null, instructor: { id: 2, name: 'Ada', surname: 'Lovelace' }, lessons: [{ id: 3, title: 'Intro' }] }],
