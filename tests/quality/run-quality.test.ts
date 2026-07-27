@@ -587,6 +587,66 @@ describe('quality report schema and exact-target admission', () => {
     expect(failed.outcome).toBe('fail');
   });
 
+  it('keeps local full-patch admission independent from ambient CI SHA while retaining fail-closed CI SHA rules', async () => {
+    const { patchPath, target } = await patchTarget('ambient-sha');
+    const directory = await mkdtemp(resolve(tmpdir(), 'mai002-verify-report-'));
+    temporaryPaths.push(directory);
+    const fullReportPath = resolve(directory, 'full.json');
+    const ciReportPath = resolve(directory, 'ci.json');
+    const ciSha = 'a'.repeat(40);
+    await writeFile(fullReportPath, `${JSON.stringify(validReport(target))}\n`);
+    await writeFile(ciReportPath, `${JSON.stringify(validCiReport(ciSha))}\n`);
+
+    const verifier = resolve('scripts/quality/verify-report.mjs');
+    const runVerifier = (args: string[], environment: NodeJS.ProcessEnv = {}) =>
+      spawnSync(process.execPath, [verifier, ...args], {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          QUALITY_REPORT_ATTESTATION_KEY: testAttestationKey,
+          ...environment,
+        },
+      });
+
+    const fullWithAmbientSha = runVerifier(
+      ['--report', fullReportPath, '--scope', 'full', '--target-patch', patchPath],
+      { GITHUB_SHA: ciSha },
+    );
+    expect(
+      fullWithAmbientSha.status,
+      `${fullWithAmbientSha.stdout}\n${fullWithAmbientSha.stderr}`,
+    ).toBe(0);
+    expect(fullWithAmbientSha.stdout).toContain('QUALITY_REPORT_ACCEPTED');
+
+    const fullWithExplicitSha = runVerifier(
+      ['--report', fullReportPath, '--scope', 'full', '--target-patch', patchPath, '--sha', ciSha],
+      { GITHUB_SHA: ciSha },
+    );
+    expect(fullWithExplicitSha.status).not.toBe(0);
+    expect(fullWithExplicitSha.stderr).toContain('must not accept a caller SHA');
+
+    const ciWithAmbientSha = runVerifier(['--report', ciReportPath, '--scope', 'ci'], {
+      GITHUB_SHA: ciSha,
+    });
+    expect(ciWithAmbientSha.status, `${ciWithAmbientSha.stdout}\n${ciWithAmbientSha.stderr}`).toBe(
+      0,
+    );
+    expect(ciWithAmbientSha.stdout).toContain('QUALITY_REPORT_ACCEPTED');
+
+    const ciWithoutSha = runVerifier(['--report', ciReportPath, '--scope', 'ci'], {
+      GITHUB_SHA: '',
+    });
+    expect(ciWithoutSha.status).not.toBe(0);
+    expect(ciWithoutSha.stderr).toContain('requires the current --sha');
+
+    const ciWithLocalPatch = runVerifier(
+      ['--report', ciReportPath, '--scope', 'ci', '--target-patch', patchPath],
+      { GITHUB_SHA: ciSha },
+    );
+    expect(ciWithLocalPatch.status).not.toBe(0);
+    expect(ciWithLocalPatch.stderr).toContain('must not accept a local patch');
+  });
+
   it('rejects re-digested empty, omitted, failed, duplicate, and unknown full command contracts', async () => {
     const { target } = await patchTarget('command-contract');
     const invalidReports = [

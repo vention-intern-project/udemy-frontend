@@ -8,7 +8,8 @@ function argument(name) {
 }
 
 const reportPath = argument('--report');
-const expectedSha = argument('--sha') || process.env.GITHUB_SHA;
+const explicitSha = argument('--sha');
+const expectedSha = explicitSha || process.env.GITHUB_SHA;
 const expectedScope = argument('--scope') || 'full';
 const targetPatch = argument('--target-patch');
 const targetRoot = argument('--target-root');
@@ -22,7 +23,7 @@ if (!reportPath)
   );
 if (!['full', 'ci'].includes(expectedScope))
   throw new Error('Only full and ci report scopes are authoritative.');
-if (expectedScope === 'full' && (!targetPatch || expectedSha)) {
+if (expectedScope === 'full' && (!targetPatch || explicitSha)) {
   throw new Error(
     'Local full report verification requires --target-patch and must not accept a caller SHA.',
   );
