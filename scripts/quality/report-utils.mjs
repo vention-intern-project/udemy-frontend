@@ -1,4 +1,5 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
@@ -327,6 +328,17 @@ export function npmVersionFromUserAgent(userAgent) {
   const semver = `${numericIdentifier}\\.${numericIdentifier}\\.${numericIdentifier}${prerelease}${build}`;
   const match = new RegExp(`(?:^|\\s)npm\\/(${semver})(?:\\s|$)`).exec(userAgent ?? '');
   return match?.[1] ?? 'unknown';
+}
+
+export function runCapturedCommand(command, args, options = {}) {
+  const { cwd, maxBuffer } = options;
+  const result = spawnSync(command, args, { cwd, maxBuffer, encoding: 'utf8', shell: false });
+  return {
+    ...result,
+    stdout: result.stdout ?? '',
+    stderr: result.stderr ?? '',
+    signal: result.signal ?? null,
+  };
 }
 
 function normalizedRoot(root) {

@@ -13,6 +13,7 @@ import {
   commandFailureCode,
   classifyCommandDiagnostics,
   npmVersionFromUserAgent,
+  runCapturedCommand,
   reportDigest,
   REQUIRED_QUALITY_COMMAND_IDS,
   targetForCommit,
@@ -26,6 +27,7 @@ import { summaryFor } from './report-summary.mjs';
 const root = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const windowsNpmCli = resolve(dirname(process.execPath), 'node_modules/npm/bin/npm-cli.js');
+const COMMAND_OUTPUT_MAX_BUFFER = 16 * 1024 * 1024;
 const qualityCommands = [
   ['format', ['run', 'format:check']],
   ['stylelint', ['run', 'stylelint']],
@@ -53,13 +55,12 @@ function argument(name, fallback) {
 function run(id, args) {
   const started = Date.now();
   const windows = process.platform === 'win32';
-  const result = spawnSync(
+  const result = runCapturedCommand(
     windows ? process.execPath : npm,
     windows ? [windowsNpmCli, ...args] : args,
     {
       cwd: root,
-      encoding: 'utf8',
-      shell: false,
+      maxBuffer: COMMAND_OUTPUT_MAX_BUFFER,
     },
   );
   const diagnostics = classifyCommandDiagnostics(result.stdout, result.stderr);

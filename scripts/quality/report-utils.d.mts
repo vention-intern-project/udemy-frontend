@@ -22,6 +22,18 @@ export function commandFailureCode(
   hasUnexpectedDiagnostics: boolean,
 ): string | null;
 export function npmVersionFromUserAgent(userAgent?: string): string;
+export interface CapturedCommandResult {
+  status: number | null;
+  stdout: string;
+  stderr: string;
+  error?: Error & { code?: string };
+  signal: string | null;
+}
+export function runCapturedCommand(
+  command: string,
+  args: string[],
+  options?: { cwd?: string; maxBuffer?: number },
+): CapturedCommandResult;
 export function reportDigest(report: object): string;
 export function createLocalPatchAttestation(
   report: object,

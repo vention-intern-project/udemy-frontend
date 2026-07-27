@@ -22,6 +22,7 @@ import {
   targetForCommit,
   unexpectedDiagnosticCount,
   npmVersionFromUserAgent,
+  runCapturedCommand,
   targetForPatch,
   validateReport,
   validateReportAdmission,
@@ -111,6 +112,49 @@ const { ESLint } = createRequire(import.meta.url)('eslint') as {
 };
 
 describe('quality execution provenance', () => {
+  it("captures output above Node's default and fails closed at an explicit bounded cap", () => {
+    const megabyte = 1024 * 1024;
+    const verbose = runCapturedCommand(
+      process.execPath,
+      ['-e', `process.stdout.write('x'.repeat(${megabyte + 1}))`],
+      { maxBuffer: 16 * megabyte },
+    );
+    expect(verbose.status).toBe(0);
+    expect(verbose.stdout).toHaveLength(megabyte + 1);
+    const overflow = runCapturedCommand(
+      process.execPath,
+      ['-e', `process.stdout.write('x'.repeat(${megabyte + 1}))`],
+      { maxBuffer: megabyte },
+    );
+    expect(overflow.status).not.toBe(0);
+    expect(overflow.error?.code).toBe('ENOBUFS');
+    const missing = runCapturedCommand('mai002-missing-command', []);
+    expect(missing.status).toBeNull();
+    expect(missing.error?.code).toBe('ENOENT');
+    expect(missing.stdout).toBe('');
+    expect(missing.stderr).toBe('');
+    expect(missing.signal).toBeNull();
+    expect(commandFailureCode(missing, false)).toBe('ENOENT');
+    const hostileOptions = { shell: true, encoding: 'buffer' } as unknown as {
+      cwd?: string;
+      maxBuffer?: number;
+    };
+    const protectedCapture = runCapturedCommand(
+      process.execPath,
+      ['-e', 'process.stdout.write("utf8-safe")'],
+      hostileOptions,
+    );
+    expect(protectedCapture.status).toBe(0);
+    expect(protectedCapture.stdout).toBe('utf8-safe');
+    expect(typeof protectedCapture.stdout).toBe('string');
+    const shellAttempt = runCapturedCommand(
+      'mai002-shell-ignored; echo unsafe',
+      [],
+      hostileOptions,
+    );
+    expect(shellAttempt.error?.code).toBe('ENOENT');
+  });
+
   it('parses npm semver only from the standard lifecycle user agent', () => {
     expect(npmVersionFromUserAgent('npm/10.8.2 node/v24.18.0 win32 x64')).toBe('10.8.2');
     expect(npmVersionFromUserAgent('node/v24.18.0 npm/11.0.0-rc.1+build.1 linux x64')).toBe(
