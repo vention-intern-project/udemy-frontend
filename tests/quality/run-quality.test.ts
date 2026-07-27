@@ -203,7 +203,7 @@ function productionAggregateGuard(
   qualityTargetSha: string,
 ) {
   const match = workflow.match(
-    /- name: Guard resolved quality target before artifact or checkout\r?\n\s+shell: bash\r?\n\s+run: \|\r?\n((?: {10}.*\r?\n)+) {6}- uses: actions\/download-artifact/,
+    /- name: Guard resolved quality target before artifact or checkout\r?\n\s+shell: bash\r?\n\s+run: \|\r?\n((?: {10}.*\r?\n)+)(?= {6}- )/,
   );
   if (!match) throw new Error('Unable to locate the production aggregate guard.');
   const script = match[1].replace(/^ {10}/gm, '');
@@ -1194,6 +1194,29 @@ describe('staged and CI decision simulations', () => {
     expect(workflow).toContain('frontend-quality-report-${{ env.QUALITY_TARGET_SHA }}');
     expect(workflow).toContain('--sha "$QUALITY_TARGET_SHA"');
     expect(workflow).toContain('QUALITY_TARGET_SHA: ${{ env.QUALITY_TARGET_SHA }}');
+  });
+
+  it('orders aggregate guard, clean checkout, report download, and verification fail closed', async () => {
+    const workflow = (
+      await readFile(resolve('.github/workflows/frontend-quality.yml'), 'utf8')
+    ).replace(/\r\n/g, '\n');
+    const aggregate = workflow.slice(workflow.indexOf('  frontend-quality-required:\n'));
+    const guard = aggregate.indexOf('Guard resolved quality target before artifact or checkout');
+    const checkout = aggregate.indexOf('actions/checkout@');
+    const download = aggregate.indexOf('actions/download-artifact@');
+    const verify = aggregate.indexOf('Fail closed on job state and current-SHA report artifact');
+
+    expect(aggregate).toContain('if: always()');
+    expect(guard).toBeGreaterThanOrEqual(0);
+    expect(checkout).toBeGreaterThan(guard);
+    expect(download).toBeGreaterThan(checkout);
+    expect(verify).toBeGreaterThan(download);
+    expect(aggregate.match(/actions\/checkout@/g)).toHaveLength(1);
+    expect(aggregate).toContain('ref: ${{ env.QUALITY_TARGET_SHA }}');
+    expect(aggregate).toContain('name: frontend-quality-report-${{ env.QUALITY_TARGET_SHA }}');
+    expect(aggregate).toContain('path: quality-reports');
+    expect(aggregate).toContain('QUALITY_REPORT_PATH: quality-reports/current.json');
+    expect(aggregate).toContain('QUALITY_TARGET_SHA: ${{ env.QUALITY_TARGET_SHA }}');
   });
 
   it('executes the production aggregate guard and rejects resolver failures before an otherwise successful aggregate can pass', async () => {
