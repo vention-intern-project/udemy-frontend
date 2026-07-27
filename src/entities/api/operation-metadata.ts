@@ -16,6 +16,9 @@ export const queryKeys = {
   },
   private: {
     subject: (subject: string) => ['private', subject] as const,
+    operationPrefix: (subject: string, operationId: SelectedApiOperationId) => (
+      ['private', subject, operationId] as const
+    ),
     operation: (subject: string, operationId: SelectedApiOperationId, resource: string) => (
       ['private', subject, operationId, resource] as const
     ),
@@ -52,6 +55,7 @@ export const API_OPERATION_METADATA_BY_ID = {
   'API-031': { authPolicy: 'required', sensitiveVariables: false },
   'API-032': { authPolicy: 'required', sensitiveVariables: false },
   'API-033': { authPolicy: 'public', sensitiveVariables: true },
+  'API-034': { authPolicy: 'required', sensitiveVariables: false },
 } as const satisfies OperationMetadataRegistry;
 
 export function operationMetadata(operationId: SelectedApiOperationId) {

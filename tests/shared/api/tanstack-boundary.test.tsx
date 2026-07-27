@@ -96,6 +96,8 @@ describe('TanStack server-state boundary', () => {
     expectTypeOf(queryKeys.private.operation).parameter(1).toEqualTypeOf<SelectedApiOperationId>();
     expect(queryKeys.private.operation('learner@example.com', 'API-026', 'current-user'))
       .toEqual(['private', 'learner@example.com', 'API-026', 'current-user']);
+    expect(queryKeys.private.operationPrefix('learner@example.com', 'API-021'))
+      .toEqual(['private', 'learner@example.com', 'API-021']);
     expect(mutationKeys.auth.login).toEqual(['mutation', 'auth', 'login']);
     expect(JSON.stringify(mutationKeys)).not.toMatch(/secret-token|correct horse|learner@example/);
   });
@@ -112,7 +114,7 @@ describe('TanStack server-state boundary', () => {
       'API-021': 'required', 'API-022': 'required', 'API-023': 'public',
       'API-024': 'public', 'API-025': 'required', 'API-026': 'required',
       'API-029': 'public', 'API-030': 'optional', 'API-031': 'required',
-      'API-032': 'required', 'API-033': 'public',
+      'API-032': 'required', 'API-033': 'public', 'API-034': 'required',
     } as const satisfies Readonly<Record<SelectedApiOperationId, AuthPolicy>>;
 
     expect(Object.keys(API_OPERATION_METADATA_BY_ID).sort()).toEqual(Object.keys(API_OPERATION_BY_ID).sort());

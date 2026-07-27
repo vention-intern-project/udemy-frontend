@@ -89,6 +89,111 @@ async function removeCourseAndExpectFocus(courseId: number, expectedActionName: 
 }
 
 describe('CartPage', () => {
+  it('submits one labelled mock checkout, requires explicit cart recovery after an unknown result, and never reports payment success', async () => {
+    let checkoutCalls = 0;
+    let rejectCheckout: ((reason?: unknown) => void) | undefined;
+    const pendingCheckout = new Promise<unknown>((_resolve, reject) => { rejectCheckout = reject; });
+    const request: ApiClient['request'] = async <TResponse, TBody>(options: ApiRequestOptions<TBody, TResponse>) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/cart' && options.method === 'GET') return decode(options, cartWithItems);
+      if (options.path === '/cart/checkout') { checkoutCalls += 1; return decode(options, await pendingCheckout); }
+      if (options.path === '/enrollments/my') return decode(options, { items: [], page: 1, page_size: 20, total: 0, pages: 0, has_next: false, has_previous: false });
+      throw new Error(`Unexpected request ${options.method} ${options.path}`);
+    };
+    await renderCart(request);
+    const user = userEvent.setup();
+    const checkout = await screen.findByRole('button', { name: 'Mock checkout' });
+    await interact(() => user.dblClick(checkout));
+    expect(checkoutCalls).toBe(1);
+    expect(screen.getByRole('article').getAttribute('aria-busy')).toBe('true');
+    expect((screen.getByRole('button', { name: 'Checking out…' }) as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => { rejectCheckout?.(new ApiError({ kind: 'offline', status: null, message: 'private' })); });
+    expect(await screen.findByText('We could not confirm checkout. Check the cart status for updated guidance.')).toBeTruthy();
+    const recovery = screen.getByRole('button', { name: 'Check checkout status' });
+    expect((screen.getByRole('button', { name: 'Mock checkout' }) as HTMLButtonElement).disabled).toBe(true);
+    await interact(() => user.click(recovery));
+    expect(await screen.findByText('Your cart still cannot prove whether checkout partially completed. Check My Learning before taking another checkout action.')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Check My Learning' }).getAttribute('href')).toBe('/learning');
+    expect((screen.getByRole('button', { name: 'Mock checkout' }) as HTMLButtonElement).disabled).toBe(true);
+    await interact(() => user.click(screen.getByRole('button', { name: 'Mock checkout' })));
+    expect(checkoutCalls).toBe(1);
+    expect(screen.queryByText(/payment success/i)).toBeNull();
+  });
+
+  it('keeps a dispatched 5xx checkout locked before and after unchanged-cart reconciliation', async () => {
+    let checkoutCalls = 0;
+    const request: ApiClient['request'] = async <TResponse, TBody>(options: ApiRequestOptions<TBody, TResponse>) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/cart' && options.method === 'GET') return decode(options, cartWithItems);
+      if (options.path === '/cart/checkout') {
+        checkoutCalls += 1;
+        throw new ApiError({ kind: 'server', status: 503, message: 'private' });
+      }
+      if (options.path === '/enrollments/my') return decode(options, { items: [], page: 1, page_size: 20, total: 0, pages: 0, has_next: false, has_previous: false });
+      throw new Error(`Unexpected request ${options.method} ${options.path}`);
+    };
+    await renderCart(request);
+    const user = userEvent.setup();
+
+    const checkout = await screen.findByRole('button', { name: 'Mock checkout' });
+    await interact(() => user.click(checkout));
+    expect(await screen.findByText('Checkout status needs checking')).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Mock checkout' }) as HTMLButtonElement).disabled).toBe(true);
+    await interact(() => user.click(checkout));
+    checkout.focus();
+    await interact(() => user.keyboard('{Enter}'));
+    expect(checkoutCalls).toBe(1);
+
+    await interact(() => user.click(screen.getByRole('button', { name: 'Check checkout status' })));
+    expect(await screen.findByText('Your cart still cannot prove whether checkout partially completed. Check My Learning before taking another checkout action.')).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Mock checkout' }) as HTMLButtonElement).disabled).toBe(true);
+    await interact(() => user.click(screen.getByRole('button', { name: 'Mock checkout' })));
+    expect(checkoutCalls).toBe(1);
+  });
+
+  it('presents a known checkout acknowledgement as payment pending after cart reconciliation', async () => {
+    let cartReads = 0;
+    const request: ApiClient['request'] = async <TResponse, TBody>(options: ApiRequestOptions<TBody, TResponse>) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/cart' && options.method === 'GET') {
+        cartReads += 1;
+        return decode(options, cartReads === 1 ? cartWithItems : { id: 1, items: [], total_price: '0.00', currency: 'USD', item_count: 0 });
+      }
+      if (options.path === '/cart/checkout') return decode(options, { message: 'Checkout successful.', enrolled_courses: 2 });
+      throw new Error(`Unexpected request ${options.method} ${options.path}`);
+    };
+    await renderCart(request);
+    const user = userEvent.setup();
+    const checkout = await screen.findByRole('button', { name: 'Mock checkout' });
+    await interact(() => user.click(checkout));
+    expect(await screen.findByText('Mock checkout was accepted. Payment is pending; continue in My Learning.')).toBeTruthy();
+    expect(screen.queryByText(/payment success/i)).toBeNull();
+    expect(screen.getByRole('link', { name: 'Check My Learning' }).getAttribute('href')).toBe('/learning');
+  });
+
+  it.each([
+    { name: 'unauthorized', error: new ApiError({ kind: 'unauthorized', status: 401, message: 'private' }), expected: 'Sign in required' },
+    { name: 'forbidden', error: new ApiError({ kind: 'forbidden', status: 403, message: 'private' }), expected: 'Checkout unavailable' },
+    { name: 'not found', error: new ApiError({ kind: 'not_found', status: 404, message: 'private' }), expected: 'Checkout unavailable' },
+    { name: 'conflict', error: new ApiError({ kind: 'conflict', status: 409, message: 'private' }), expected: 'Enrollment changed' },
+    { name: 'cart changed', error: new ApiError({ kind: 'bad_request', status: 400, message: 'private' }), expected: 'Cart changed' },
+    { name: 'unavailable', error: new ApiError({ kind: 'server', status: 503, message: 'private' }), expected: 'Checkout status needs checking' },
+    { name: 'malformed response', error: new ApiError({ kind: 'invalid_response', status: null, message: 'private' }), expected: 'Checkout status needs checking' },
+  ])('renders a privacy-safe distinct $name checkout state', async ({ error, expected }) => {
+    const request: ApiClient['request'] = async <TResponse, TBody>(options: ApiRequestOptions<TBody, TResponse>) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/cart' && options.method === 'GET') return decode(options, cartWithItems);
+      if (options.path === '/cart/checkout') throw error;
+      if (options.path === '/enrollments/my') return decode(options, { items: [], page: 1, page_size: 20, total: 0, pages: 0, has_next: false, has_previous: false });
+      throw new Error(`Unexpected request ${options.method} ${options.path}`);
+    };
+    await renderCart(request);
+    const user = userEvent.setup();
+    const checkout = await screen.findByRole('button', { name: 'Mock checkout' });
+    await interact(() => user.click(checkout));
+    expect(await screen.findByText(expected)).toBeTruthy();
+    expect(screen.queryByText('private')).toBeNull();
+  });
   it('renders the exact long server total without decimal recomputation', async () => {
     const totalPrice = '1000000000000000000000019.0001';
     const request: ApiClient['request'] = async <TResponse, TBody>(options: ApiRequestOptions<TBody, TResponse>) => {

@@ -28,3 +28,17 @@ export interface CheckoutDto {
   message: string;
   enrolled_courses: number;
 }
+
+export type MockPaymentStatusDto = 'success' | 'failed';
+export type MockPaymentCompletionStatusDto = 'active' | 'cancelled';
+
+export interface MockPaymentCompletionRequestDto {
+  enrollment_id: number;
+  status: MockPaymentStatusDto;
+}
+
+export interface MockPaymentCompleteDto {
+  enrollment_id: number;
+  status: MockPaymentCompletionStatusDto;
+  message: string;
+}

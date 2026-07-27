@@ -7,14 +7,21 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createAppQueryClient } from '../../src/app/query';
+import * as checkoutCart from '../../src/features/checkout-cart';
+import type { CheckoutWorkflow, EnrollmentStatusRefresh } from '../../src/features/checkout-cart';
 import { SessionProvider, useSession, type AccessTokenStore } from '../../src/features/auth-session';
-import { learningCourseProgressQueryKey, learningDetailQueryKey } from '../../src/features/learning-progress';
+import type { EnrollmentStatus } from '../../src/entities/enrollment';
+import * as learningProgress from '../../src/features/learning-progress';
+import { learningCourseProgressQueryKey, learningDetailQueryKey, type LearningWorkspaceWorkflow } from '../../src/features/learning-progress';
 import { LearningDetailPage } from '../../src/pages/learning-detail-page';
 import { ApiError, type ApiClient, type ApiRequestOptions } from '../../src/shared/api';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 const student = { email: 'student@example.test', name: 'Sam', surname: 'Student', role: 'student', birthday: null, phone_number: null, created_at: '2026-01-01T00:00:00Z' };
 const activeEnrollment = { id: 4, user_id: 1, course_id: 7, status: 'active', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', course: { id: 7, title: 'Accessible progress course', description: null, price: '0.00', currency: 'USD' } };
@@ -45,6 +52,60 @@ async function renderPage(request: ApiClient['request'], options: DetailHarnessO
     render(<QueryClientProvider client={queryClient}><SessionProvider client={{ request }} tokenStore={options.store ?? tokenStore()}><MemoryRouter initialEntries={['/learning/enrollments/4']}><DetailHarnessControls {...options} /><Routes><Route path="/learning/enrollments/:enrollmentId" element={<LearningDetailPage />} /></Routes></MemoryRouter></SessionProvider></QueryClientProvider>);
   });
   return queryClient;
+}
+
+type EnrollmentRefetchResult = Awaited<ReturnType<LearningWorkspaceWorkflow['enrollment']['refetch']>>;
+
+type EnrollmentRefreshScenario =
+  | { readonly kind: 'failure'; readonly error: unknown }
+  | { readonly kind: 'missing_data' }
+  | { readonly kind: 'status'; readonly status: EnrollmentStatus };
+
+function resultForEnrollmentRefreshScenario(result: EnrollmentRefetchResult, scenario: EnrollmentRefreshScenario): EnrollmentRefetchResult {
+  if (scenario.kind === 'failure') return Object.assign({}, result, { isError: true, error: scenario.error, data: undefined });
+  if (scenario.kind === 'missing_data') return Object.assign({}, result, { isError: false, error: null, data: undefined });
+  if (result.data === undefined) throw new Error('Enrollment query did not provide data for a status scenario');
+  return Object.assign({}, result, { isError: false, error: null, data: { ...result.data, status: scenario.status } });
+}
+
+async function capturePageEnrollmentRefresh(scenario: EnrollmentRefreshScenario): Promise<EnrollmentStatusRefresh> {
+  const originalUseLearningWorkspace = learningProgress.useLearningWorkspace;
+  function useLearningWorkspaceWithRefreshResult(enrollmentId: number | null): LearningWorkspaceWorkflow {
+    const workspace = originalUseLearningWorkspace(enrollmentId);
+    return {
+      ...workspace,
+      enrollment: {
+        ...workspace.enrollment,
+        refetch: async (options) => resultForEnrollmentRefreshScenario(await workspace.enrollment.refetch(options), scenario),
+      },
+    };
+  }
+
+  vi.spyOn(learningProgress, 'useLearningWorkspace').mockImplementation(useLearningWorkspaceWithRefreshResult);
+  let capturedRefresh: EnrollmentStatusRefresh | undefined;
+  const checkoutWorkflow: CheckoutWorkflow = {
+    pending: false,
+    checkoutBlocked: false,
+    paymentActionsLocked: false,
+    feedback: null,
+    checkout: vi.fn(),
+    recoverCheckout: vi.fn(),
+    completeMockPayment: vi.fn((_enrollmentId, _outcome, refresh) => { capturedRefresh = refresh; }),
+    checkPaymentStatus: vi.fn(),
+  };
+  vi.spyOn(checkoutCart, 'useCheckoutCart').mockReturnValue(checkoutWorkflow);
+
+  const request: ApiClient['request'] = async <TResponse, TBody>(options: ApiRequestOptions<TBody, TResponse>) => {
+    if (options.path === '/me') return decode(options, student);
+    if (options.path === '/enrollments/4') return decode(options, { ...activeEnrollment, status: 'pending_payment' });
+    throw new Error(`Unexpected request ${options.path}`);
+  };
+  await renderPage(request);
+  const user = userEvent.setup();
+  const paymentAction = await screen.findByRole('button', { name: 'Complete mock payment' });
+  await act(async () => { await user.click(paymentAction); });
+  if (capturedRefresh === undefined) throw new Error('Learning detail did not provide an enrollment refresh callback');
+  return capturedRefresh;
 }
 
 describe('LearningDetailPage', () => {
@@ -83,10 +144,144 @@ describe('LearningDetailPage', () => {
       throw new Error(`Unexpected request ${options.path}`);
     });
     await renderPage(rawRequest as ApiClient['request']);
-    expect(await screen.findByText('Learning progress is not available for this enrollment.')).toBeTruthy();
+    expect(await screen.findByText(status === 'pending_payment'
+      ? 'Mock payment is awaiting completion. Learning remains locked until your enrollment is active.'
+      : 'Learning progress is not available for this enrollment.')).toBeTruthy();
     expect(rawRequest.mock.calls.map(([options]) => options.path)).not.toContain('/courses/7/progress');
     expect(rawRequest.mock.calls.map(([options]) => options.path)).not.toContain('/courses/7/lessons');
     expect(screen.queryByRole('button', { name: /mark/i })).toBeNull();
+  });
+
+  it('preserves an Error returned by a failed enrollment refresh', async () => {
+    const originalError = new Error('original refresh failure');
+    const refresh = await capturePageEnrollmentRefresh({ kind: 'failure', error: originalError });
+    await expect(refresh.refetchEnrollment()).rejects.toBe(originalError);
+  });
+
+  it.each([null, 'non-error refresh failure'])('normalizes a failed enrollment refresh carrying %p to a stable Error', async (error) => {
+    const refresh = await capturePageEnrollmentRefresh({ kind: 'failure', error });
+    await expect(refresh.refetchEnrollment()).rejects.toThrow('Enrollment status refresh failed');
+  });
+
+  it('reports a successful enrollment refresh without data as a distinct stable Error', async () => {
+    const refresh = await capturePageEnrollmentRefresh({ kind: 'missing_data' });
+    await expect(refresh.refetchEnrollment()).rejects.toThrow('Enrollment status refresh returned no enrollment data');
+  });
+
+  it.each(['pending_payment', 'active', 'cancelled'] as const)('projects the observed %s status from a successful enrollment refresh', async (status) => {
+    const refresh = await capturePageEnrollmentRefresh({ kind: 'status', status });
+    await expect(refresh.refetchEnrollment()).resolves.toBe(status);
+  });
+
+  it('submits one explicit failed mock-payment action and keeps the refreshed cancelled enrollment locked', async () => {
+    let enrollmentReads = 0;
+    let paymentRequests = 0;
+    const rawRequest = vi.fn(async <TResponse, TBody>(options: ApiRequestOptions<TBody, TResponse>) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/enrollments/4') {
+        enrollmentReads += 1;
+        return decode(options, { ...activeEnrollment, status: enrollmentReads === 1 ? 'pending_payment' : 'cancelled' });
+      }
+      if (options.path === '/payments/complete') {
+        paymentRequests += 1;
+        expect(options.body).toEqual({ enrollment_id: 4, status: 'failed' });
+        return decode(options, { enrollment_id: 4, status: 'cancelled', message: 'Payment failed.' });
+      }
+      throw new Error(`Unexpected request ${options.path}`);
+    });
+    await renderPage(rawRequest as ApiClient['request']);
+    const user = userEvent.setup();
+    const failedPayment = await screen.findByRole('button', { name: 'Simulate mock payment failure' });
+    await act(async () => { await user.click(failedPayment); });
+    expect(paymentRequests).toBe(1);
+    expect(await screen.findByText('The mock payment was declined. This enrollment remains locked.')).toBeTruthy();
+    expect(screen.getByText('Cancelled')).toBeTruthy();
+    expect(rawRequest.mock.calls.map(([options]) => options.path)).not.toContain('/courses/7/progress');
+    expect(rawRequest.mock.calls.map(([options]) => options.path)).not.toContain('/courses/7/lessons');
+  });
+
+  it('hides both payment mutations after an unknown API-034 result and releases no second POST before observed pending reconciliation', async () => {
+    let enrollmentReads = 0;
+    let paymentPosts = 0;
+    const rawRequest = vi.fn(async <TResponse, TBody>(options: ApiRequestOptions<TBody, TResponse>) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/enrollments/4') {
+        enrollmentReads += 1;
+        return decode(options, { ...activeEnrollment, status: 'pending_payment' });
+      }
+      if (options.path === '/payments/complete') {
+        paymentPosts += 1;
+        throw new ApiError({ kind: 'offline', status: 0, message: 'offline' });
+      }
+      if (options.path === '/courses/7/progress') return decode(options, { course_id: 7, completed_lessons: 0, total_lessons: 0, progress_percentage: 0 });
+      if (options.path === '/courses/7/lessons') return decode(options, { items: [], page: 1, page_size: 100, total: 0, pages: 0, has_next: false, has_previous: false });
+      throw new Error(`Unexpected request ${options.path}`);
+    });
+    await renderPage(rawRequest as ApiClient['request']);
+    const user = userEvent.setup();
+    await waitFor(() => expect(enrollmentReads).toBe(1));
+    await act(async () => { await user.click(await screen.findByRole('button', { name: 'Complete mock payment' })); });
+    expect(await screen.findByText('We could not confirm the mock payment status. Check enrollment status before taking another action.')).toBeTruthy();
+    expect(paymentPosts).toBe(1);
+    expect(screen.queryByRole('button', { name: 'Complete mock payment' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Simulate mock payment failure' })).toBeNull();
+    const statusCheck = screen.getByRole('button', { name: 'Check payment status' });
+    await act(async () => { await user.click(statusCheck); });
+    expect(await screen.findByText('The enrollment is still pending, so you can choose a new mock payment outcome.')).toBeTruthy();
+    expect(paymentPosts).toBe(1);
+    expect(screen.getByRole('button', { name: 'Complete mock payment' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Simulate mock payment failure' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Check payment status' })).toBeNull();
+  });
+
+  it('retains the payment lock and reconciliation action when the post-payment enrollment refresh fails', async () => {
+    let enrollmentReads = 0;
+    const rawRequest = vi.fn(async <TResponse, TBody>(options: ApiRequestOptions<TBody, TResponse>) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/enrollments/4') {
+        enrollmentReads += 1;
+        if (enrollmentReads === 3) throw new ApiError({ kind: 'offline', status: 0, message: 'offline' });
+        return decode(options, { ...activeEnrollment, status: 'pending_payment' });
+      }
+      if (options.path === '/payments/complete') return decode(options, { enrollment_id: 4, status: 'active', message: 'mock' });
+      throw new Error(`Unexpected request ${options.path}`);
+    });
+    await renderPage(rawRequest as ApiClient['request']);
+    const user = userEvent.setup();
+    await waitFor(() => expect(enrollmentReads).toBe(1));
+    await act(async () => { await user.click(await screen.findByRole('button', { name: 'Complete mock payment' })); });
+    expect(await screen.findByText('We could not confirm the mock payment status. Check enrollment status before taking another action.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Complete mock payment' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Simulate mock payment failure' })).toBeNull();
+    await act(async () => { await user.click(screen.getByRole('button', { name: 'Check payment status' })); });
+    expect(await screen.findByText('The enrollment is still pending, so you can choose a new mock payment outcome.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Complete mock payment' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Simulate mock payment failure' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Check payment status' })).toBeNull();
+  });
+
+  it('unlocks progress only after a refreshed active enrollment following explicit mock-payment success', async () => {
+    let enrollmentReads = 0;
+    const request: ApiClient['request'] = async <TResponse, TBody>(options: ApiRequestOptions<TBody, TResponse>) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/enrollments/4') {
+        enrollmentReads += 1;
+        return decode(options, { ...activeEnrollment, status: enrollmentReads === 1 ? 'pending_payment' : 'active' });
+      }
+      if (options.path === '/payments/complete') {
+        expect(options.body).toEqual({ enrollment_id: 4, status: 'success' });
+        return decode(options, { enrollment_id: 4, status: 'active', message: 'Payment successful.' });
+      }
+      if (options.path === '/courses/7/progress') return decode(options, { course_id: 7, completed_lessons: 0, total_lessons: 0, progress_percentage: 0 });
+      if (options.path === '/courses/7/lessons') return decode(options, { items: [], page: 1, page_size: 100, total: 0, pages: 0, has_next: false, has_previous: false });
+      throw new Error(`Unexpected request ${options.path}`);
+    };
+    await renderPage(request);
+    const user = userEvent.setup();
+    const completedPayment = await screen.findByRole('button', { name: 'Complete mock payment' });
+    await act(async () => { await user.click(completedPayment); });
+    expect(await screen.findByRole('heading', { name: 'Learning progress' })).toBeTruthy();
+    expect(enrollmentReads).toBeGreaterThan(1);
   });
 
   it.each([403, 404])('renders a neutral no-action state when progress returns %i for an active enrollment', async (status) => {

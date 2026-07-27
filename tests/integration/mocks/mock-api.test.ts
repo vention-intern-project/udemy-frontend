@@ -6,8 +6,27 @@ import {
   CONTRACT_ASSUMPTIONS,
   type SelectedApiOperationId,
 } from '../../../src/entities/api';
-import { createApiClient, type ApiBinaryResponse } from '../../../src/shared/api';
+import { requestMockPaymentCompletion } from '../../../src/features/checkout-cart';
+import type { SessionContextValue } from '../../../src/features/auth-session';
+import { ApiError, createApiClient, type ApiBinaryResponse } from '../../../src/shared/api';
 import { createMockApiFetch } from './mock-api';
+
+function sessionWith(request: SessionContextValue['requestRequired']): SessionContextValue {
+  return {
+    state: { status: 'anonymous' },
+    retryBootstrap() {},
+    acceptAccessToken() {},
+    clearSession() {},
+    requestPublic: request,
+    requestOptional: request,
+    requestRequired: request,
+  };
+}
+
+interface MockPaymentResponseCase {
+  readonly name: string;
+  readonly payload: unknown;
+}
 
 describe('deterministic API mock harness', () => {
   it('matches method/path, exposes path/query data, and integrates with the client', async () => {
@@ -91,6 +110,7 @@ describe('deterministic API mock harness', () => {
       { operationId: 'API-031', url: '/lessons/8', init: jsonRequest('PATCH', { title: 'Updated lesson' }), pathParams: { lessonId: '8' }, jsonBody: { title: 'Updated lesson' } },
       { operationId: 'API-032', url: '/lessons/8/upload-file', init: { method: 'POST', body: upload }, pathParams: { lessonId: '8' }, multipartBody: { file: 'lesson.pdf' } },
       { operationId: 'API-033', url: '/signup', init: jsonRequest('POST', { email: 'student@example.test', name: 'Ada', surname: 'Lovelace', password: 'secret', role: 'student' }), jsonBody: { email: 'student@example.test', name: 'Ada', surname: 'Lovelace', password: 'secret', role: 'student' } },
+      { operationId: 'API-034', url: '/payments/complete', init: jsonRequest('POST', { enrollment_id: 7, status: 'success' }), jsonBody: { enrollment_id: 7, status: 'success' } },
     ];
 
     const routed = new Map<SelectedApiOperationId, {
@@ -172,8 +192,8 @@ describe('deterministic API mock harness', () => {
       }
     }
 
-    expect(mockFetch.operationIds).toHaveLength(29);
-    expect(new Set(mockFetch.operationIds).size).toBe(29);
+    expect(mockFetch.operationIds).toHaveLength(30);
+    expect(new Set(mockFetch.operationIds).size).toBe(30);
     expect(mockFetch.assumptionTags).toEqual([
       CONTRACT_ASSUMPTIONS.GAP_007.code,
       CONTRACT_ASSUMPTIONS.GAP_003.code,
@@ -196,5 +216,48 @@ describe('deterministic API mock harness', () => {
       { operationId: 'API-002', resolve: () => ({ body: {} }) },
       { operationId: 'API-002', resolve: () => ({ body: {} }) },
     ])).toThrow('Each mock operation must have exactly one handler');
+  });
+
+  it.each([
+    { outcome: 'success', payload: { enrollment_id: 7, status: 'active', message: 'Payment completed.' } },
+    { outcome: 'failed', payload: { enrollment_id: 7, status: 'cancelled', message: 'Payment cancelled.' } },
+  ] as const)('decodes a valid API-034 $payload.status response through its public request boundary', async ({ outcome, payload }) => {
+    const client = createApiClient({
+      baseUrl: 'https://api.example.test',
+      fetch: async () => new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    });
+
+    await expect(requestMockPaymentCompletion(sessionWith(client.request), 7, outcome)).resolves.toEqual(payload);
+  });
+
+  const malformedMockPaymentResponses: readonly MockPaymentResponseCase[] = [
+    { name: 'missing fields', payload: {} },
+    { name: 'null response', payload: null },
+    { name: 'null fields', payload: { enrollment_id: null, status: null, message: null } },
+    { name: 'wrong field types', payload: { enrollment_id: '7', status: 7, message: true } },
+    { name: 'zero enrollment id', payload: { enrollment_id: 0, status: 'active', message: 'mock' } },
+    { name: 'negative enrollment id', payload: { enrollment_id: -1, status: 'active', message: 'mock' } },
+    { name: 'non-integer enrollment id', payload: { enrollment_id: 1.5, status: 'active', message: 'mock' } },
+    { name: 'pending payment status', payload: { enrollment_id: 7, status: 'pending_payment', message: 'mock' } },
+    { name: 'unknown status', payload: { enrollment_id: 7, status: 'unknown', message: 'mock' } },
+    { name: 'non-string message', payload: { enrollment_id: 7, status: 'active', message: 7 } },
+  ];
+
+  it.each(malformedMockPaymentResponses)('normalizes API-034 $name as invalid_response', async ({ payload }) => {
+    const client = createApiClient({
+      baseUrl: 'https://api.example.test',
+      fetch: async () => new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    });
+
+    await expect(requestMockPaymentCompletion(sessionWith(client.request), 7, 'success')).rejects.toMatchObject({
+      kind: 'invalid_response',
+      status: 200,
+    } satisfies Partial<ApiError>);
   });
 });
