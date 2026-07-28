@@ -3,6 +3,7 @@
 }
 
 html {
+  overflow-y: scroll;
   color: var(--text-primary);
   background: var(--color-canvas);
   font-family: var(--font-family-base);
@@ -21,7 +22,7 @@ a {
 
 a:focus-visible,
 button:focus-visible,
-[tabindex="-1"]:focus-visible {
+[tabindex='-1']:focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring);
   outline-offset: var(--focus-ring-offset);
 }

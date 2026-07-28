@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import {
@@ -10,20 +10,32 @@ import {
 } from '@features/catalog-discovery';
 import { useSession } from '@features/auth-session';
 import { CatalogFilterBar } from '@widgets/catalog-filter-bar';
-import {
-  Button, Notice, Pagination, Skeleton, SkeletonGroup, VisuallyHidden,
-} from '@shared/ui/primitives';
+import { Button, Notice, Pagination, Skeleton, VisuallyHidden } from '@shared/ui/primitives';
 
 import styles from './CatalogPage.module.css';
 import { CourseCard } from './CourseCard';
 import { SortControl } from './SortControl';
+import { useCatalogCourseActions } from './useCatalogCourseActions';
+
+type CourseDisclosureId = number;
+type RefreshAnnouncement = 'Course results updated.' | 'Updating course results…' | null;
+
+type DisclosureDismissOptions = {
+  returnFocus?: boolean;
+};
 
 function resolveBrowserSelectedFocusTarget(target: HTMLElement) {
   if (target.isConnected) return target;
-  if (target instanceof HTMLInputElement && (target.name === 'min_price' || target.name === 'max_price')) {
+  if (
+    target instanceof HTMLInputElement &&
+    (target.name === 'min_price' || target.name === 'max_price')
+  ) {
     return document.querySelector<HTMLElement>(`input[name="${target.name}"]`);
   }
-  if (target.dataset.part === 'catalog-sort-trigger' || target.dataset.part === 'catalog-sort-listbox') {
+  if (
+    target.dataset.part === 'catalog-sort-trigger' ||
+    target.dataset.part === 'catalog-sort-listbox'
+  ) {
     return document.querySelector<HTMLElement>('[data-part="catalog-sort-trigger"]');
   }
   return null;
@@ -31,7 +43,8 @@ function resolveBrowserSelectedFocusTarget(target: HTMLElement) {
 
 function getActiveCatalogSortListbox() {
   const activeElement = document.activeElement;
-  return activeElement instanceof HTMLElement && activeElement.dataset.part === 'catalog-sort-listbox'
+  return activeElement instanceof HTMLElement &&
+    activeElement.dataset.part === 'catalog-sort-listbox'
     ? activeElement
     : null;
 }
@@ -40,8 +53,11 @@ function restoreBrowserSelectedFocus(target: HTMLElement) {
   const restore = () => {
     const currentTarget = resolveBrowserSelectedFocusTarget(target);
     if (!currentTarget || document.activeElement === currentTarget) return;
-    if (document.activeElement instanceof HTMLElement && document.activeElement.id === 'main-content') {
-      currentTarget.focus();
+    if (
+      document.activeElement instanceof HTMLElement &&
+      document.activeElement.id === 'main-content'
+    ) {
+      currentTarget.focus({ preventScroll: true });
     }
   };
   const afterShellFocus = () => {
@@ -63,10 +79,22 @@ export function CatalogPage() {
   const pendingPriceBlurSourceRef = useRef<HTMLInputElement | null>(null);
   const pendingPriceBlurTargetRef = useRef<HTMLElement | null>(null);
   const pendingRouteFocusTargetRef = useRef<HTMLElement | null>(null);
+  const transientHoverSuppressedCourseIdRef = useRef<CourseDisclosureId | null>(null);
+  const [pinnedDisclosureCourseId, setPinnedDisclosureCourseId] =
+    useState<CourseDisclosureId | null>(null);
+  const pinnedDisclosureCourseIdRef = useRef<CourseDisclosureId | null>(null);
+  const [transientPreviewCourseId, setTransientPreviewCourseId] =
+    useState<CourseDisclosureId | null>(null);
+  const activeDisclosureCourseIdRef = useRef<CourseDisclosureId | null>(null);
+  const refreshWasPendingRef = useRef(false);
+  const [refreshAnnouncement, setRefreshAnnouncement] = useState<RefreshAnnouncement>(null);
   const search = searchParams.toString();
   const query = useMemo(() => parseCatalogQuery(new URLSearchParams(search)), [search]);
   const { requestPublic } = useSession();
-  const request = useCallback<CatalogRequester>((options) => requestPublic(options), [requestPublic]);
+  const request = useCallback<CatalogRequester>(
+    (options) => requestPublic(options),
+    [requestPublic],
+  );
   const discovery = useCatalogDiscovery(query, request);
 
   useEffect(() => {
@@ -81,33 +109,132 @@ export function CatalogPage() {
     restoreBrowserSelectedFocus(focusTarget);
   }, [search]);
 
-  const navigate = useCallback((next: CatalogQuery) => {
-    const blurSource = pendingPriceBlurSourceRef.current;
-    const relatedTarget = pendingPriceBlurTargetRef.current;
-    pendingPriceBlurSourceRef.current = null;
-    pendingPriceBlurTargetRef.current = null;
-    const commitNavigation = (focusTarget: HTMLElement | null) => {
-      pendingRouteFocusTargetRef.current = focusTarget;
-      setSearchParams(serializeCatalogQuery(next));
-    };
-    if (!blurSource) {
-      commitNavigation(getActiveCatalogSortListbox());
+  const navigate = useCallback(
+    (next: CatalogQuery) => {
+      const blurSource = pendingPriceBlurSourceRef.current;
+      const relatedTarget = pendingPriceBlurTargetRef.current;
+      pendingPriceBlurSourceRef.current = null;
+      pendingPriceBlurTargetRef.current = null;
+      const commitNavigation = (focusTarget: HTMLElement | null) => {
+        pendingRouteFocusTargetRef.current = focusTarget;
+        setSearchParams(serializeCatalogQuery(next));
+      };
+      if (!blurSource) {
+        commitNavigation(getActiveCatalogSortListbox());
+        return;
+      }
+      globalThis.queueMicrotask(() => {
+        const settledTarget =
+          document.activeElement instanceof HTMLElement &&
+          document.activeElement !== document.body &&
+          document.activeElement !== blurSource
+            ? document.activeElement
+            : relatedTarget;
+        commitNavigation(settledTarget);
+      });
+    },
+    [setSearchParams],
+  );
+
+  const beginTransientDisclosurePreview = useCallback((courseId: CourseDisclosureId) => {
+    if (
+      pinnedDisclosureCourseIdRef.current !== null ||
+      transientHoverSuppressedCourseIdRef.current === courseId
+    )
       return;
-    }
-    globalThis.queueMicrotask(() => {
-      const settledTarget = document.activeElement instanceof HTMLElement
-        && document.activeElement !== document.body
-        && document.activeElement !== blurSource
-        ? document.activeElement
-        : relatedTarget;
-      commitNavigation(settledTarget);
+    setTransientPreviewCourseId(courseId);
+  }, []);
+  const endTransientDisclosurePreview = useCallback((courseId: CourseDisclosureId) => {
+    setTransientPreviewCourseId((currentCourseId) =>
+      currentCourseId === courseId ? null : currentCourseId,
+    );
+  }, []);
+  const suppressTransientHoverAfterPointerSort = useCallback((clientX: number, clientY: number) => {
+    setTransientPreviewCourseId(null);
+    globalThis.requestAnimationFrame(() => {
+      const uncoveredCard = document
+        .elementsFromPoint(clientX, clientY)
+        .find((element) => element.closest<HTMLElement>('[data-course-card-id]'))
+        ?.closest<HTMLElement>('[data-course-card-id]');
+      transientHoverSuppressedCourseIdRef.current = uncoveredCard
+        ? Number(uncoveredCard.dataset.courseCardId)
+        : null;
     });
-  }, [setSearchParams]);
+  }, []);
+  const clearTransientHoverSuppression = useCallback((courseId: CourseDisclosureId) => {
+    if (transientHoverSuppressedCourseIdRef.current === courseId) {
+      transientHoverSuppressedCourseIdRef.current = null;
+    }
+  }, []);
+  const togglePinnedDisclosure = useCallback((courseId: CourseDisclosureId) => {
+    setTransientPreviewCourseId(null);
+    setPinnedDisclosureCourseId((currentCourseId) => {
+      const nextCourseId = currentCourseId === courseId ? null : courseId;
+      pinnedDisclosureCourseIdRef.current = nextCourseId;
+      return nextCourseId;
+    });
+  }, []);
+  const dismissDisclosure = useCallback((options: DisclosureDismissOptions = {}) => {
+    const activeCourseId = activeDisclosureCourseIdRef.current;
+    setTransientPreviewCourseId(null);
+    pinnedDisclosureCourseIdRef.current = null;
+    setPinnedDisclosureCourseId(null);
+    if (!options.returnFocus || activeCourseId === null) return;
+    globalThis.requestAnimationFrame(() => {
+      document
+        .getElementById(`catalog-course-${activeCourseId}-disclosure-trigger`)
+        ?.focus({ preventScroll: true });
+    });
+  }, []);
+  const visibleDisclosureCourseId = transientPreviewCourseId ?? pinnedDisclosureCourseId;
+
+  useEffect(() => {
+    activeDisclosureCourseIdRef.current = visibleDisclosureCourseId;
+  }, [visibleDisclosureCourseId]);
+
+  useEffect(() => {
+    if (visibleDisclosureCourseId === null) return undefined;
+    const dismissOutsideDisclosure = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const activeCard = document.querySelector<HTMLElement>(
+        `[data-course-card-id="${visibleDisclosureCourseId}"]`,
+      );
+      if (!activeCard?.contains(target)) dismissDisclosure();
+    };
+    const dismissWithEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      dismissDisclosure({ returnFocus: true });
+    };
+    document.addEventListener('pointerdown', dismissOutsideDisclosure, true);
+    document.addEventListener('keydown', dismissWithEscape);
+    return () => {
+      document.removeEventListener('pointerdown', dismissOutsideDisclosure, true);
+      document.removeEventListener('keydown', dismissWithEscape);
+    };
+  }, [dismissDisclosure, visibleDisclosureCourseId]);
 
   const results = discovery.data;
-  const announcement = results
-    ? `${results.total} ${results.total === 1 ? 'course' : 'courses'} found. Page ${results.page}.`
-    : null;
+  const isInitialLoading = discovery.status === 'initial-loading';
+  const isRefreshing = discovery.status === 'refreshing';
+  const isUpdating = isInitialLoading || isRefreshing;
+  const courseActions = useCatalogCourseActions(results?.items ?? []);
+
+  useEffect(() => {
+    if (isRefreshing) {
+      refreshWasPendingRef.current = true;
+      setRefreshAnnouncement('Updating course results…');
+      return;
+    }
+    if (!refreshWasPendingRef.current) return;
+    refreshWasPendingRef.current = false;
+    setRefreshAnnouncement(
+      discovery.status === 'populated' || discovery.status === 'empty'
+        ? 'Course results updated.'
+        : null,
+    );
+  }, [discovery.status, isRefreshing]);
 
   return (
     <section
@@ -115,17 +242,21 @@ export function CatalogPage() {
       data-part="catalog-page"
       aria-labelledby="catalog-page-title"
       onBlurCapture={(event) => {
-      const source = event.target;
-      if (!(source instanceof HTMLInputElement) || (source.name !== 'min_price' && source.name !== 'max_price')) return;
-      const nextTarget = event.relatedTarget instanceof HTMLElement ? event.relatedTarget : null;
-      pendingPriceBlurSourceRef.current = source;
-      pendingPriceBlurTargetRef.current = nextTarget;
-      globalThis.setTimeout(() => {
-        if (pendingPriceBlurSourceRef.current === source) {
-          pendingPriceBlurSourceRef.current = null;
-          pendingPriceBlurTargetRef.current = null;
-        }
-      }, 0);
+        const source = event.target;
+        if (
+          !(source instanceof HTMLInputElement) ||
+          (source.name !== 'min_price' && source.name !== 'max_price')
+        )
+          return;
+        const nextTarget = event.relatedTarget instanceof HTMLElement ? event.relatedTarget : null;
+        pendingPriceBlurSourceRef.current = source;
+        pendingPriceBlurTargetRef.current = nextTarget;
+        globalThis.setTimeout(() => {
+          if (pendingPriceBlurSourceRef.current === source) {
+            pendingPriceBlurSourceRef.current = null;
+            pendingPriceBlurTargetRef.current = null;
+          }
+        }, 0);
       }}
     >
       <div className={styles.hero} data-part="catalog-hero">
@@ -133,72 +264,124 @@ export function CatalogPage() {
           <h1 id="catalog-page-title">
             Master the Skills Shaping the <span className={styles.headingBreak}>Future</span>
           </h1>
-          <p>Browse courses crafted by industry experts. Advance your career in technology, design, business, and leadership.</p>
+          <p>
+            Browse courses crafted by industry experts. Advance your career in technology, design,
+            business, and leadership.
+          </p>
         </div>
       </div>
       <div className={styles.content} data-part="catalog-content">
         <div className={styles.discoveryLayout} data-part="catalog-discovery-layout">
-          <div className={styles.discoveryResults} data-part="catalog-discovery-results">
-            {discovery.status === 'initial-loading' ? (
-              <SkeletonGroup className={styles.skeletons} label="Loading course results">
-                <Skeleton shape="rect" height={156} />
-                <Skeleton shape="rect" height={156} />
-                <Skeleton shape="rect" height={156} />
-              </SkeletonGroup>
-            ) : null}
-            {discovery.status === 'refreshing' ? (
-              <p className={styles.refresh} role="status">Updating course results…</p>
-            ) : null}
-            {discovery.failure ? (
-              <Notice tone="error" title={discovery.failure.title} className={styles.notice}>
-                <p>{discovery.failure.message}</p>
-                <Button variant="secondary" onClick={discovery.retry}>Try again</Button>
-              </Notice>
-            ) : null}
-            {results ? (
-              <section className={styles.results} aria-labelledby="catalog-results-title">
-                <div className={styles.resultsHeading}>
-                  <h2 id="catalog-results-title">
-                    <span>Found </span>
-                    <strong className={styles.resultsTotal}>{results.total}</strong>
-                    <span className={styles.resultsSuffix}> {results.total === 1 ? 'course' : 'courses'}</span>
-                  </h2>
-                  <div className={styles.toolbarControls} data-part="catalog-toolbar-controls">
-                    <CatalogFilterBar query={query} onApply={navigate} />
-                    <div className={styles.sortToolbar} data-part="catalog-sort-toolbar">
-                      <div className={styles.sortField}>
-                        <span className={styles.sortLabel}>Sort by:</span>
-                        <SortControl
-                          value={query.sort}
-                          onChange={(sort) => navigate({ ...query, sort, page: 1 })}
-                        />
-                      </div>
+          <div
+            className={styles.discoveryResults}
+            data-part="catalog-discovery-results"
+            aria-busy={isUpdating}
+          >
+            <section className={styles.results} aria-labelledby="catalog-results-title">
+              <div className={styles.resultsHeading}>
+                <VisuallyHidden
+                  as="p"
+                  aria-atomic="true"
+                  aria-label="Catalog refresh status"
+                  aria-live="polite"
+                  data-part="catalog-refresh-status"
+                  role="status"
+                >
+                  {refreshAnnouncement}
+                </VisuallyHidden>
+                <h2 id="catalog-results-title">
+                  {results ? (
+                    <>
+                      <span>Found </span>
+                      <strong className={styles.resultsTotal}>{results.total}</strong>
+                      <span className={styles.resultsSuffix}>
+                        {' '}
+                        {results.total === 1 ? 'course' : 'courses'}
+                      </span>
+                    </>
+                  ) : isInitialLoading ? (
+                    'Loading course results…'
+                  ) : (
+                    'Course results unavailable.'
+                  )}
+                </h2>
+                <div className={styles.toolbarControls} data-part="catalog-toolbar-controls">
+                  <CatalogFilterBar query={query} onApply={navigate} />
+                  <div className={styles.sortToolbar} data-part="catalog-sort-toolbar">
+                    <div className={styles.sortField}>
+                      <span className={styles.sortLabel} aria-hidden="true">
+                        <span className={styles.sortBy} aria-hidden="true">
+                          Sort by:
+                        </span>
+                        <span className={styles.sortCompact} aria-hidden="true">
+                          Sort
+                        </span>
+                      </span>
+                      <SortControl
+                        value={query.sort}
+                        onChange={(sort) => navigate({ ...query, sort, page: 1 })}
+                        onPointerOptionCommit={suppressTransientHoverAfterPointerSort}
+                      />
                     </div>
                   </div>
-                  <VisuallyHidden as="p" role="status" aria-live="polite" aria-atomic="true">
-                    {announcement}
-                  </VisuallyHidden>
                 </div>
-                {results.items.length === 0 ? (
-                  <Notice tone="info" title="No courses found">Try changing or clearing your filters.</Notice>
-                ) : (
-                  <ul className={styles.list} data-part="catalog-result-list">
-                    {results.items.map((course) => <CourseCard key={course.id} course={course} />)}
-                  </ul>
-                )}
-                {results.pages > 0 ? (
-                  <Pagination
-                    currentPage={results.page}
-                    totalPages={results.pages}
-                    hasNext={results.hasNext}
-                    hasPrevious={results.hasPrevious}
-                    label="Course result pages"
-                    directionDisplay="arrows"
-                    onPageChange={(page) => navigate({ ...query, page })}
-                  />
-                ) : null}
-              </section>
-            ) : null}
+              </div>
+              {discovery.failure ? (
+                <Notice tone="error" title={discovery.failure.title} className={styles.notice}>
+                  <p>{discovery.failure.message}</p>
+                  <Button variant="secondary" onClick={discovery.retry}>
+                    Try again
+                  </Button>
+                </Notice>
+              ) : null}
+              {discovery.status === 'initial-loading' ? (
+                <ul
+                  className={[styles.list, styles.skeletons].join(' ')}
+                  data-part="catalog-result-list"
+                  aria-hidden="true"
+                >
+                  {Array.from({ length: discovery.placeholderCount }, (_, index) => (
+                    <li key={`catalog-placeholder-${index}`}>
+                      <Skeleton shape="rect" height={320} />
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {results?.items.length === 0 ? (
+                <Notice tone="info" title="No courses found">
+                  Try changing or clearing your filters.
+                </Notice>
+              ) : results ? (
+                <ul className={styles.list} data-part="catalog-result-list">
+                  {results.items.map((course) => (
+                    <CourseCard
+                      key={course.id}
+                      course={course}
+                      isDisclosureVisible={visibleDisclosureCourseId === course.id}
+                      isDisclosurePinned={pinnedDisclosureCourseId === course.id}
+                      hasPinnedDisclosure={pinnedDisclosureCourseId !== null}
+                      onTransientDisclosurePreviewStart={beginTransientDisclosurePreview}
+                      onTransientDisclosurePreviewEnd={endTransientDisclosurePreview}
+                      onTransientDisclosurePreviewExit={clearTransientHoverSuppression}
+                      onDisclosurePinToggle={togglePinnedDisclosure}
+                      action={courseActions.actionFor(course)}
+                      onAction={() => courseActions.submitAction(course)}
+                    />
+                  ))}
+                </ul>
+              ) : null}
+              {results && results.pages > 0 ? (
+                <Pagination
+                  currentPage={results.page}
+                  totalPages={results.pages}
+                  hasNext={results.hasNext}
+                  hasPrevious={results.hasPrevious}
+                  label="Course result pages"
+                  directionDisplay="arrows"
+                  onPageChange={(page) => navigate({ ...query, page })}
+                />
+              ) : null}
+            </section>
           </div>
         </div>
       </div>

@@ -37,13 +37,20 @@ export async function requestCatalog(
   }
 }
 
-export function catalogFailure(error: unknown): CatalogFailure | undefined {
-  if (error instanceof ApiError && error.kind === 'aborted') return undefined;
+export function catalogFailure(error: unknown): CatalogFailure {
   if (error instanceof ApiError && error.kind === 'offline') {
-    return { kind: 'offline', title: 'You appear to be offline', message: 'Check your connection and try again.' };
+    return {
+      kind: 'offline',
+      title: 'You appear to be offline',
+      message: 'Check your connection and try again.',
+    };
   }
   if (error instanceof ApiError && error.kind === 'invalid_response') {
-    return { kind: 'invalid_response', title: 'Catalog data is unavailable', message: 'Please try again shortly.' };
+    return {
+      kind: 'invalid_response',
+      title: 'Catalog data is unavailable',
+      message: 'Please try again shortly.',
+    };
   }
   return { kind: 'request', title: 'We could not load courses', message: 'Please try again.' };
 }

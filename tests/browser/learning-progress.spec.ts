@@ -2,9 +2,35 @@ import { Buffer } from 'node:buffer';
 
 import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
 
-const student = { email: 'student@example.test', name: 'Sam', surname: 'Student', role: 'student', birthday: null, phone_number: null, created_at: '2026-01-01T00:00:00Z' };
-const enrollment = { id: 4, user_id: 1, course_id: 7, status: 'active', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', course: { id: 7, title: 'Browser learning course', description: null, price: '0.00', currency: 'USD' } };
-const VALID_VIDEO_MP4 = Buffer.from('AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAAIZnJlZQAACIhtZGF0//tQxAADwAABpAAAACAAADSAAAAETEFNRTMuOTkuNVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVUxBTUUzLjk5LjVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVQAAAq4GBf//qtxF6b3m2Ui3lizYINkj7u94MjY0IC0gY29yZSAxNDggcjI2NDMgNWM2NTcwNCAtIEguMjY0L01QRUctNCBBVkMgY29kZWMgLSBDb3B5bGVmdCAyMDAzLTIwMTUgLSBodHRwOi8vd3d3LnZpZGVvbGFuLm9yZy94MjY0Lmh0bWwgLSBvcHRpb25zOiBjYWJhYz0xIHJlZj0zIGRlYmxvY2s9MTowOjAgYW5hbHlzZT0weDM6MHgxMTMgbWU9aGV4IHN1Ym1lPTcgcHN5PTEgcHN5X3JkPTEuMDA6MC4wMCBtaXhlZF9yZWY9MSBtZV9yYW5nZT0xNiBjaHJvbWFfbWU9MSB0cmVsbGlzPTEgOHg4ZGN0PTEgY3FtPTAgZGVhZHpvbmU9MjEsMTEgZmFzdF9wc2tpcD0xIGNocm9tYV9xcF9vZmZzZXQ9LTIgdGhyZWFkcz0xIGxvb2thaGVhZF90aHJlYWRzPTEgc2xpY2VkX3RocmVhZHM9MCBucj0wIGRlY2ltYXRlPTEgaW50ZXJsYWNlZD0wIGJsdXJheV9jb21wYXQ9MCBjb25zdHJhaW5lZF9pbnRyYT0wIGJmcmFtZXM9MyBiX3B5cmFtaWQ9MiBiX2FkYXB0PTEgYl9iaWFzPTAgZGlyZWN0PTEgd2VpZ2h0Yj0xIG9wZW5fZ29wPTAgd2VpZ2h0cD0yIGtleWludD0yNTAga2V5aW50X21pbj0yNSBzY2VuZWN1dD00MCBpbnRyYV9yZWZyZXNoPTAgcmNfbG9va2FoZWFkPTQwIHJjPWNyZiBtYnRyZWU9MSBjcmY9MjMuMCBxY29tcD0wLjYwIHFwbWluPTAgcXBtYXg9NjkgcXBzdGVwPTQgaXBfcmF0aW89MS40MCBhcT0xOjEuMDAAgAAAABRliIQAK//+2OfzLJOXereQdLvG0f/7UsRdg8AAAaQAAAAgAAA0gAAABFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMuOTkuNVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//tSxKGDwAABpAAAACAAADSAAAAEVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVMQU1FMy45OS41VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/+1LEoYPAAAGkAAAAIAAANIAAAARVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVUxBTUUzLjk5LjVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/7UsShg8AAAaQAAAAgAAA0gAAABFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMuOTkuNVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//tSxKGDwAABpAAAACAAADSAAAAEVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/+1LEoYPAAAGkAAAAIAAANIAAAARVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVQAABP9tb292AAAAbG12aGQAAAAAAAAAAAAAAAAAAAPoAAAAtgABAAABAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAAACEXRyYWsAAABcdGtoZAAAAAMAAAAAAAAAAAAAAAEAAAAAAAAAtgAAAAAAAAAAAAAAAQEAAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAACRlZHRzAAAAHGVsc3QAAAAAAAAAAQAAAJwAAARRAAEAAAAAAYltZGlhAAAAIG1kaGQAAAAAAAAAAAAAAAAAAKxEAAAfUVXEAAAAAAAtaGRscgAAAAAAAAAAc291bgAAAAAAAAAAAAAAAFNvdW5kSGFuZGxlcgAAAAE0bWluZgAAABBzbWhkAAAAAAAAAAAAAAAkZGluZgAAABxkcmVmAAAAAAAAAAEAAAAMdXJsIAAAAAEAAAD4c3RibAAAAGBzdHNkAAAAAAAAAAEAAABQbXA0YQAAAAAAAAABAAAAAAAAAAAAAgAQAAAAAKxEAAAAAAAsZXNkcwAAAAADgICAGwABAASAgIANaxUAAAAAAPtRAAD7UQaAgIABAgAAACBzdHRzAAAAAAAAAAIAAAAGAAAEgAAAAAEAAARRAAAAKHN0c2MAAAAAAAAAAgAAAAEAAAABAAAAAQAAAAIAAAAGAAAAAQAAADBzdHN6AAAAAAAAAAAAAAAHAAAA0AAAANEAAADRAAAA0QAAANEAAADRAAAA0QAAABhzdGNvAAAAAAAAAAIAAAAwAAADygAAAhh0cmFrAAAAXHRraGQAAAADAAAAAAAAAAAAAAACAAAAAAAAACgAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAIAAAACAAAAAAAkZWR0cwAAABxlbHN0AAAAAAAAAAEAAAAoAAAAAAABAAAAAAGQbWRpYQAAACBtZGhkAAAAAAAAAAAAAAAAAAAyAAAAAgBVxAAAAAAALWhkbHIAAAAAAAAAAHZpZGUAAAAAAAAAAAAAAABWaWRlb0hhbmRsZXIAAAABO21pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAAPtzdGJsAAAAl3N0c2QAAAAAAAAAAQAAAIdhdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAIAAgBIAAAASAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGP//AAAAMWF2Y0MBZAAK/+EAGGdkAAqs2V+IiIQAAAMABAAAAwDIPEiWWAEABmjr48siwAAAABhzdHRzAAAAAAAAAAEAAAABAAACAAAAABxzdHNjAAAAAAAAAAEAAAABAAAAAQAAAAEAAAAUc3RzegAAAAAAAALKAAAAAQAAABRzdGNvAAAAAAAAAAEAAAEAAAAAYnVkdGEAAABabWV0YQAAAAAAAAAhaGRscgAAAAAAAAAAbWRpcmFwcGwAAAAAAAAAAAAAAAAtaWxzdAAAACWpdG9vAAAAHWRhdGEAAAABAAAAAExhdmY1Ni40MC4xMDE=', 'base64');
+const student = {
+  email: 'student@example.test',
+  name: 'Sam',
+  surname: 'Student',
+  role: 'student',
+  birthday: null,
+  phone_number: null,
+  created_at: '2026-01-01T00:00:00Z',
+};
+const enrollment = {
+  id: 4,
+  user_id: 1,
+  course_id: 7,
+  status: 'active',
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
+  course: {
+    id: 7,
+    title: 'Browser learning course',
+    description: null,
+    price: '0.00',
+    currency: 'USD',
+  },
+};
+const emptyCart = { id: 1, items: [], total_price: '0.00', currency: 'USD', item_count: 0 };
+const VALID_VIDEO_MP4 = Buffer.from(
+  'AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAAIZnJlZQAACIhtZGF0//tQxAADwAABpAAAACAAADSAAAAETEFNRTMuOTkuNVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVUxBTUUzLjk5LjVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVQAAAq4GBf//qtxF6b3m2Ui3lizYINkj7u94MjY0IC0gY29yZSAxNDggcjI2NDMgNWM2NTcwNCAtIEguMjY0L01QRUctNCBBVkMgY29kZWMgLSBDb3B5bGVmdCAyMDAzLTIwMTUgLSBodHRwOi8vd3d3LnZpZGVvbGFuLm9yZy94MjY0Lmh0bWwgLSBvcHRpb25zOiBjYWJhYz0xIHJlZj0zIGRlYmxvY2s9MTowOjAgYW5hbHlzZT0weDM6MHgxMTMgbWU9aGV4IHN1Ym1lPTcgcHN5PTEgcHN5X3JkPTEuMDA6MC4wMCBtaXhlZF9yZWY9MSBtZV9yYW5nZT0xNiBjaHJvbWFfbWU9MSB0cmVsbGlzPTEgOHg4ZGN0PTEgY3FtPTAgZGVhZHpvbmU9MjEsMTEgZmFzdF9wc2tpcD0xIGNocm9tYV9xcF9vZmZzZXQ9LTIgdGhyZWFkcz0xIGxvb2thaGVhZF90aHJlYWRzPTEgc2xpY2VkX3RocmVhZHM9MCBucj0wIGRlY2ltYXRlPTEgaW50ZXJsYWNlZD0wIGJsdXJheV9jb21wYXQ9MCBjb25zdHJhaW5lZF9pbnRyYT0wIGJmcmFtZXM9MyBiX3B5cmFtaWQ9MiBiX2FkYXB0PTEgYl9iaWFzPTAgZGlyZWN0PTEgd2VpZ2h0Yj0xIG9wZW5fZ29wPTAgd2VpZ2h0cD0yIGtleWludD0yNTAga2V5aW50X21pbj0yNSBzY2VuZWN1dD00MCBpbnRyYV9yZWZyZXNoPTAgcmNfbG9va2FoZWFkPTQwIHJjPWNyZiBtYnRyZWU9MSBjcmY9MjMuMCBxY29tcD0wLjYwIHFwbWluPTAgcXBtYXg9NjkgcXBzdGVwPTQgaXBfcmF0aW89MS40MCBhcT0xOjEuMDAAgAAAABRliIQAK//+2OfzLJOXereQdLvG0f/7UsRdg8AAAaQAAAAgAAA0gAAABFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMuOTkuNVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//tSxKGDwAABpAAAACAAADSAAAAEVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVMQU1FMy45OS41VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/+1LEoYPAAAGkAAAAIAAANIAAAARVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVUxBTUUzLjk5LjVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/7UsShg8AAAaQAAAAgAAA0gAAABFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMuOTkuNVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//tSxKGDwAABpAAAACAAADSAAAAEVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/+1LEoYPAAAGkAAAAIAAANIAAAARVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVQAABP9tb292AAAAbG12aGQAAAAAAAAAAAAAAAAAAAPoAAAAtgABAAABAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAAACEXRyYWsAAABcdGtoZAAAAAMAAAAAAAAAAAAAAAEAAAAAAAAAtgAAAAAAAAAAAAAAAQEAAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAACRlZHRzAAAAHGVsc3QAAAAAAAAAAQAAAJwAAARRAAEAAAAAAYltZGlhAAAAIG1kaGQAAAAAAAAAAAAAAAAAAKxEAAAfUVXEAAAAAAAtaGRscgAAAAAAAAAAc291bgAAAAAAAAAAAAAAAFNvdW5kSGFuZGxlcgAAAAE0bWluZgAAABBzbWhkAAAAAAAAAAAAAAAkZGluZgAAABxkcmVmAAAAAAAAAAEAAAAMdXJsIAAAAAEAAAD4c3RibAAAAGBzdHNkAAAAAAAAAAEAAABQbXA0YQAAAAAAAAABAAAAAAAAAAAAAgAQAAAAAKxEAAAAAAAsZXNkcwAAAAADgICAGwABAASAgIANaxUAAAAAAPtRAAD7UQaAgIABAgAAACBzdHRzAAAAAAAAAAIAAAAGAAAEgAAAAAEAAARRAAAAKHN0c2MAAAAAAAAAAgAAAAEAAAABAAAAAQAAAAIAAAAGAAAAAQAAADBzdHN6AAAAAAAAAAAAAAAHAAAA0AAAANEAAADRAAAA0QAAANEAAADRAAAA0QAAABhzdGNvAAAAAAAAAAIAAAAwAAADygAAAhh0cmFrAAAAXHRraGQAAAADAAAAAAAAAAAAAAACAAAAAAAAACgAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAIAAAACAAAAAAAkZWR0cwAAABxlbHN0AAAAAAAAAAEAAAAoAAAAAAABAAAAAAGQbWRpYQAAACBtZGhkAAAAAAAAAAAAAAAAAAAyAAAAAgBVxAAAAAAALWhkbHIAAAAAAAAAAHZpZGUAAAAAAAAAAAAAAABWaWRlb0hhbmRsZXIAAAABO21pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAAPtzdGJsAAAAl3N0c2QAAAAAAAAAAQAAAIdhdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAIAAgBIAAAASAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGP//AAAAMWF2Y0MBZAAK/+EAGGdkAAqs2V+IiIQAAAMABAAAAwDIPEiWWAEABmjr48siwAAAABhzdHRzAAAAAAAAAAEAAAABAAACAAAAABxzdHNjAAAAAAAAAAEAAAABAAAAAQAAAAEAAAAUc3RzegAAAAAAAALKAAAAAQAAABRzdGNvAAAAAAAAAAEAAAEAAAAAYnVkdGEAAABabWV0YQAAAAAAAAAhaGRscgAAAAAAAAAAbWRpcmFwcGwAAAAAAAAAAAAAAAAtaWxzdAAAACWpdG9vAAAAHWRhdGEAAAABAAAAAExhdmY1Ni40MC4xMDE=',
+  'base64',
+);
 
 function createValidPdfFixture(): Buffer {
   const header = '%PDF-1.4\n';
@@ -26,8 +52,13 @@ function createValidPdfFixture(): Buffer {
     return offset;
   });
   const xrefOffset = Buffer.byteLength(document, 'ascii');
-  const entries = offsets.map((offset) => `${offset.toString().padStart(10, '0')} 00000 n \n`).join('');
-  return Buffer.from(`${document}xref\n0 8\n0000000000 65535 f \n${entries}trailer\n<< /Size 8 /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`, 'ascii');
+  const entries = offsets
+    .map((offset) => `${offset.toString().padStart(10, '0')} 00000 n \n`)
+    .join('');
+  return Buffer.from(
+    `${document}xref\n0 8\n0000000000 65535 f \n${entries}trailer\n<< /Size 8 /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`,
+    'ascii',
+  );
 }
 
 const VALID_PDF = createValidPdfFixture();
@@ -35,6 +66,18 @@ const VALID_PDF = createValidPdfFixture();
 async function json(route: Route, value: unknown, status = 200) {
   await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value) });
 }
+
+test.beforeEach(async ({ page }) => {
+  await page.route(
+    (url) => url.pathname === '/cart' && url.search === '',
+    async (route) => {
+      const request = route.request();
+      expect(request.method()).toBe('GET');
+      expect(request.headers().authorization).toBe('Bearer student-token');
+      await json(route, emptyCart);
+    },
+  );
+});
 
 async function installStudent(page: Page) {
   await page.addInitScript(() => {
@@ -76,8 +119,9 @@ async function installLessonMediaLifecycleProbe(page: Page) {
     };
     const observeReadyAnnouncements = () => {
       const observer = new MutationObserver(() => {
-        const ready = Array.from(document.querySelectorAll('[role="status"]'))
-          .some((status) => status.textContent === 'Video ready.');
+        const ready = Array.from(document.querySelectorAll('[role="status"]')).some(
+          (status) => status.textContent === 'Video ready.',
+        );
         if (ready) probe.readyAnnouncementCount += 1;
       });
       observer.observe(document.body, { childList: true, subtree: true, characterData: true });
@@ -154,17 +198,30 @@ interface PdfViewportGeometry {
 }
 
 async function expectNativeVideoReadiness(preview: Locator) {
-  await expect.poll(async () => preview.evaluate((element): boolean => {
-    if (!(element instanceof HTMLVideoElement)) throw new Error('The native video preview was not rendered.');
-    return element.readyState >= 1
-      && element.videoWidth > 0
-      && element.videoHeight > 0
-      && Number.isFinite(element.duration)
-      && element.duration > 0;
-  })).toBe(true);
+  await expect
+    .poll(async () =>
+      preview.evaluate((element): boolean => {
+        if (!(element instanceof HTMLVideoElement))
+          throw new Error('The native video preview was not rendered.');
+        return (
+          element.readyState >= 1 &&
+          element.videoWidth > 0 &&
+          element.videoHeight > 0 &&
+          Number.isFinite(element.duration) &&
+          element.duration > 0
+        );
+      }),
+    )
+    .toBe(true);
   const readiness = await preview.evaluate((element): NativeVideoReadiness => {
-    if (!(element instanceof HTMLVideoElement)) throw new Error('The native video preview was not rendered.');
-    return { readyState: element.readyState, width: element.videoWidth, height: element.videoHeight, duration: element.duration };
+    if (!(element instanceof HTMLVideoElement))
+      throw new Error('The native video preview was not rendered.');
+    return {
+      readyState: element.readyState,
+      width: element.videoWidth,
+      height: element.videoHeight,
+      duration: element.duration,
+    };
   });
   expect(readiness.readyState).toBeGreaterThanOrEqual(1);
   expect(readiness.width).toBeGreaterThan(0);
@@ -224,10 +281,12 @@ async function expectPdfViewportGeometry(preview: Locator, viewportWidth: number
     const pageElement = viewport?.querySelector('.react-pdf__Page');
     const canvas = viewport?.querySelector('canvas');
     const textLayer = viewport?.querySelector('.react-pdf__Page__textContent');
-    if (!(viewport instanceof HTMLElement)
-      || !(pageElement instanceof HTMLElement)
-      || !(canvas instanceof HTMLCanvasElement)
-      || !(textLayer instanceof HTMLElement)) {
+    if (
+      !(viewport instanceof HTMLElement) ||
+      !(pageElement instanceof HTMLElement) ||
+      !(canvas instanceof HTMLCanvasElement) ||
+      !(textLayer instanceof HTMLElement)
+    ) {
       throw new Error('The aligned PDF page, canvas, and text layer were not rendered.');
     }
     const viewportRect = viewport.getBoundingClientRect();
@@ -237,7 +296,10 @@ async function expectPdfViewportGeometry(preview: Locator, viewportWidth: number
     const viewportStyle = getComputedStyle(viewport);
     const paddingStart = Number.parseFloat(viewportStyle.paddingInlineStart) || 0;
     const paddingEnd = Number.parseFloat(viewportStyle.paddingInlineEnd) || 0;
-    const navigationHeights = Array.from(element.querySelectorAll('[aria-label="PDF pages"] button'), (button) => button.getBoundingClientRect().height);
+    const navigationHeights = Array.from(
+      element.querySelectorAll('[aria-label="PDF pages"] button'),
+      (button) => button.getBoundingClientRect().height,
+    );
     return {
       clientWidth: viewport.clientWidth,
       scrollWidth: viewport.scrollWidth,
@@ -315,24 +377,43 @@ function expectedGetAbort(path: string, maxCount: number): ExpectedRequestFailur
   return { method: 'GET', path, errorText: 'net::ERR_ABORTED', maxCount };
 }
 
-function captureRuntimeDiagnostics(page: Page, expected: ExpectedRuntimeDiagnostics = {}): RuntimeDiagnostics {
-  const diagnostics: RuntimeDiagnostics = { expectedRuntimeFailures: [], unexpectedRuntimeFailures: [], httpFailures: [] };
-  const remainingAborts = new Map(expected.abortedRequests?.map((failure) => [
-    `${failure.method} ${failure.path} ${failure.errorText}`,
-    failure.maxCount,
-  ]));
+function captureRuntimeDiagnostics(
+  page: Page,
+  expected: ExpectedRuntimeDiagnostics = {},
+): RuntimeDiagnostics {
+  const diagnostics: RuntimeDiagnostics = {
+    expectedRuntimeFailures: [],
+    unexpectedRuntimeFailures: [],
+    httpFailures: [],
+  };
+  // AppShell and the learning workspace may race for the authenticated cart
+  // header query during route setup. Keep this narrow: only two exact GET
+  // /cart aborts are accepted; every other failed request remains diagnostic.
+  const expectedAborts = [expectedGetAbort('/cart', 2), ...(expected.abortedRequests ?? [])];
+  const remainingAborts = new Map(
+    expectedAborts.map((failure) => [
+      `${failure.method} ${failure.path} ${failure.errorText}`,
+      failure.maxCount,
+    ]),
+  );
   page.on('console', (message) => {
     if (message.type() !== 'error') return;
     const locationUrl = message.location().url;
     const path = locationUrl ? new URL(locationUrl).pathname : null;
     const entry = `console: ${message.text()}`;
-    if (path && message.text().includes('Failed to load resource') && expected.failedResourcePaths?.has(path)) {
+    if (
+      path &&
+      message.text().includes('Failed to load resource') &&
+      expected.failedResourcePaths?.has(path)
+    ) {
       diagnostics.expectedRuntimeFailures.push(entry);
     } else {
       diagnostics.unexpectedRuntimeFailures.push(entry);
     }
   });
-  page.on('pageerror', (error) => diagnostics.unexpectedRuntimeFailures.push(`pageerror: ${error.message}`));
+  page.on('pageerror', (error) =>
+    diagnostics.unexpectedRuntimeFailures.push(`pageerror: ${error.message}`),
+  );
   page.on('requestfailed', (request) => {
     const path = new URL(request.url()).pathname;
     const errorText = request.failure()?.errorText ?? '';
@@ -349,13 +430,17 @@ function captureRuntimeDiagnostics(page: Page, expected: ExpectedRuntimeDiagnost
   page.on('response', (response) => {
     const url = new URL(response.url());
     if (url.origin === 'http://127.0.0.1:4179' && response.status() >= 400) {
-      diagnostics.httpFailures.push(`${response.request().method()} ${url.pathname} ${response.status()}`);
+      diagnostics.httpFailures.push(
+        `${response.request().method()} ${url.pathname} ${response.status()}`,
+      );
     }
   });
   return diagnostics;
 }
 
-test('keeps aggregate progress separate from fresh lesson state, dedupes action, and never requests media', async ({ page }) => {
+test('keeps aggregate progress separate from fresh lesson state, dedupes action, and never requests media', async ({
+  page,
+}) => {
   await installStudent(page);
   const diagnostics = captureRuntimeDiagnostics(page, {
     failedResourcePaths: new Set(['/courses/7/lessons/12/complete']),
@@ -367,34 +452,70 @@ test('keeps aggregate progress separate from fresh lesson state, dedupes action,
     const request = route.request();
     const url = new URL(request.url());
     if (url.origin !== 'http://127.0.0.1:4179') return route.fallback();
-    if (url.pathname.startsWith('/media/')) throw new Error('Media must not be requested by FE-011');
-    const isLearningApi = url.pathname === '/me'
-      || url.pathname === '/enrollments/4'
-      || url.pathname === '/courses/7/progress'
-      || url.pathname === '/courses/7/lessons'
-      || url.pathname === '/courses/7/lessons/12/complete'
-      || url.pathname === '/courses/7/lessons/12/incomplete';
+    if (url.pathname.startsWith('/media/'))
+      throw new Error('Media must not be requested by FE-011');
+    const isLearningApi =
+      url.pathname === '/me' ||
+      url.pathname === '/enrollments/4' ||
+      url.pathname === '/courses/7/progress' ||
+      url.pathname === '/courses/7/lessons' ||
+      url.pathname === '/courses/7/lessons/12/complete' ||
+      url.pathname === '/courses/7/lessons/12/incomplete';
     if (!isLearningApi) return route.fallback();
     if (url.pathname === '/me') return json(route, student);
     if (url.pathname === '/enrollments/4') return json(route, enrollment);
-    if (url.pathname === '/courses/7/progress') return json(route, { course_id: 7, completed_lessons: 1, total_lessons: 2, progress_percentage: 50 });
-    if (url.pathname === '/courses/7/lessons' && request.method() === 'GET') return json(route, { items: [{ id: 12, title: 'First browser lesson', lesson_type: 'video', download_url: '/media/private.mp4', description: null, is_published: true, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }], page: 1, page_size: 100, total: 1, pages: 1, has_next: false, has_previous: false });
+    if (url.pathname === '/courses/7/progress')
+      return json(route, {
+        course_id: 7,
+        completed_lessons: 1,
+        total_lessons: 2,
+        progress_percentage: 50,
+      });
+    if (url.pathname === '/courses/7/lessons' && request.method() === 'GET')
+      return json(route, {
+        items: [
+          {
+            id: 12,
+            title: 'First browser lesson',
+            lesson_type: 'video',
+            download_url: '/media/private.mp4',
+            description: null,
+            is_published: true,
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: '2026-01-01T00:00:00Z',
+          },
+        ],
+        page: 1,
+        page_size: 100,
+        total: 1,
+        pages: 1,
+        has_next: false,
+        has_previous: false,
+      });
     if (url.pathname === '/courses/7/lessons/12/complete') {
       requests.push(url.pathname);
       completeRequests += 1;
       if (completeRequests === 2) return json(route, { detail: 'private mutation failure' }, 500);
       return json(route, { lesson_id: 12, completed: true, completed_at: '2026-07-26T00:00:00Z' });
     }
-    if (url.pathname === '/courses/7/lessons/12/incomplete') { requests.push(url.pathname); return json(route, { lesson_id: 12, completed: false, completed_at: null }); }
+    if (url.pathname === '/courses/7/lessons/12/incomplete') {
+      requests.push(url.pathname);
+      return json(route, { lesson_id: 12, completed: false, completed_at: null });
+    }
     throw new Error(`Unexpected request ${request.method()} ${url.pathname}`);
   });
   await page.goto('/learning/enrollments/4');
   await expect(page.getByRole('heading', { name: 'Browser learning course' })).toBeVisible();
   await expect(page.getByText('Completion status unavailable')).toBeVisible();
-  await expect(page.getByRole('progressbar')).toHaveAttribute('aria-label', '1 of 2 lessons completed, 50%');
+  await expect(page.getByRole('progressbar')).toHaveAttribute(
+    'aria-label',
+    '1 of 2 lessons completed, 50%',
+  );
   await page.getByRole('button', { name: 'Mark complete' }).dblclick();
   await expect.poll(() => requests).toEqual(['/courses/7/lessons/12/complete']);
-  const lessonRow = page.getByRole('listitem').filter({ has: page.getByRole('heading', { name: 'First browser lesson' }) });
+  const lessonRow = page
+    .getByRole('listitem')
+    .filter({ has: page.getByRole('heading', { name: 'First browser lesson' }) });
   await expect(lessonRow.getByText('Completed', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Mark incomplete' })).toBeVisible();
   await page.getByRole('button', { name: 'Mark incomplete' }).click();
@@ -413,39 +534,82 @@ test('keeps aggregate progress separate from fresh lesson state, dedupes action,
   ]);
   for (const width of [320, 390, 768, 1280]) {
     await page.setViewportSize({ width, height: 900 });
-    const dimensions = await page.evaluate(() => ({ client: document.documentElement.clientWidth, documentWidth: document.documentElement.scrollWidth, bodyWidth: document.body.scrollWidth }));
+    const dimensions = await page.evaluate(() => ({
+      client: document.documentElement.clientWidth,
+      documentWidth: document.documentElement.scrollWidth,
+      bodyWidth: document.body.scrollWidth,
+    }));
     expect(dimensions.documentWidth).toBeLessThanOrEqual(dimensions.client);
     expect(dimensions.bodyWidth).toBeLessThanOrEqual(dimensions.client);
   }
-  await page.evaluate(() => { document.documentElement.style.zoom = '200%'; });
-  const zoomed = await page.evaluate(() => ({ client: document.documentElement.clientWidth, documentWidth: document.documentElement.scrollWidth, bodyWidth: document.body.scrollWidth }));
+  await page.evaluate(() => {
+    document.documentElement.style.zoom = '200%';
+  });
+  const zoomed = await page.evaluate(() => ({
+    client: document.documentElement.clientWidth,
+    documentWidth: document.documentElement.scrollWidth,
+    bodyWidth: document.body.scrollWidth,
+  }));
   expect(zoomed.documentWidth).toBeLessThanOrEqual(zoomed.client);
   expect(zoomed.bodyWidth).toBeLessThanOrEqual(zoomed.client);
   expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
   expect(diagnostics.httpFailures).toEqual(['POST /courses/7/lessons/12/complete 500']);
 });
 
-test('requests authorized video only after explicit keyboard activation and renders the native preview', async ({ page }) => {
+test('requests authorized video only after explicit keyboard activation and renders the native preview', async ({
+  page,
+}) => {
   await installStudent(page);
-  const diagnostics = captureRuntimeDiagnostics(page, { abortedRequests: [expectedGetAbort('/enrollments/4', 1)] });
+  const diagnostics = captureRuntimeDiagnostics(page, {
+    abortedRequests: [expectedGetAbort('/enrollments/4', 1)],
+  });
   const mediaRequests: string[] = [];
   let releaseMediaResponse: () => void = () => undefined;
-  const mediaResponseReleased = new Promise<void>((resolve) => { releaseMediaResponse = resolve; });
+  const mediaResponseReleased = new Promise<void>((resolve) => {
+    releaseMediaResponse = resolve;
+  });
   await page.route('**/*', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     if (url.origin !== 'http://127.0.0.1:4179') return route.fallback();
     if (url.pathname === '/me') return json(route, student);
     if (url.pathname === '/enrollments/4') return json(route, enrollment);
-    if (url.pathname === '/courses/7/progress') return json(route, { course_id: 7, completed_lessons: 0, total_lessons: 1, progress_percentage: 0 });
-    if (url.pathname === '/courses/7/lessons' && request.method() === 'GET') return json(route, { items: [{ id: 12, title: 'Authorized browser video', lesson_type: 'video', download_url: '/media/lessons/lesson%20one.mp4', description: null, is_published: true, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }], page: 1, page_size: 100, total: 1, pages: 1, has_next: false, has_previous: false });
+    if (url.pathname === '/courses/7/progress')
+      return json(route, {
+        course_id: 7,
+        completed_lessons: 0,
+        total_lessons: 1,
+        progress_percentage: 0,
+      });
+    if (url.pathname === '/courses/7/lessons' && request.method() === 'GET')
+      return json(route, {
+        items: [
+          {
+            id: 12,
+            title: 'Authorized browser video',
+            lesson_type: 'video',
+            download_url: '/media/lessons/lesson%20one.mp4',
+            description: null,
+            is_published: true,
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: '2026-01-01T00:00:00Z',
+          },
+        ],
+        page: 1,
+        page_size: 100,
+        total: 1,
+        pages: 1,
+        has_next: false,
+        has_previous: false,
+      });
     if (url.pathname === '/media/lessons/lesson%20one.mp4') {
       mediaRequests.push(url.pathname);
       expect(request.headers().authorization).toBe('Bearer student-token');
       await mediaResponseReleased;
       return route.fulfill({ status: 200, contentType: 'video/mp4', body: VALID_VIDEO_MP4 });
     }
-    if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/')) throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
+    if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/'))
+      throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
     return route.fallback();
   });
 
@@ -481,10 +645,14 @@ test('requests authorized video only after explicit keyboard activation and rend
   expect(diagnostics.httpFailures).toEqual([]);
 });
 
-test('recovers a same-MIME corrupt video without a false-ready state and retries with a fresh resource', async ({ page }) => {
+test('recovers a same-MIME corrupt video without a false-ready state and retries with a fresh resource', async ({
+  page,
+}) => {
   await installStudent(page);
   await installLessonMediaLifecycleProbe(page);
-  const diagnostics = captureRuntimeDiagnostics(page, { abortedRequests: [expectedGetAbort('/enrollments/4', 1)] });
+  const diagnostics = captureRuntimeDiagnostics(page, {
+    abortedRequests: [expectedGetAbort('/enrollments/4', 1)],
+  });
   const mediaPath = '/media/lessons/corrupt-first.mp4';
   let mediaRequestCount = 0;
   await page.route('**/*', async (route) => {
@@ -493,18 +661,48 @@ test('recovers a same-MIME corrupt video without a false-ready state and retries
     if (url.origin !== 'http://127.0.0.1:4179') return route.fallback();
     if (url.pathname === '/me') return json(route, student);
     if (url.pathname === '/enrollments/4') return json(route, enrollment);
-    if (url.pathname === '/courses/7/progress') return json(route, { course_id: 7, completed_lessons: 0, total_lessons: 1, progress_percentage: 0 });
-    if (url.pathname === '/courses/7/lessons' && request.method() === 'GET') return json(route, { items: [{ id: 12, title: 'Corrupt then valid browser video', lesson_type: 'video', download_url: mediaPath, description: null, is_published: true, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }], page: 1, page_size: 100, total: 1, pages: 1, has_next: false, has_previous: false });
+    if (url.pathname === '/courses/7/progress')
+      return json(route, {
+        course_id: 7,
+        completed_lessons: 0,
+        total_lessons: 1,
+        progress_percentage: 0,
+      });
+    if (url.pathname === '/courses/7/lessons' && request.method() === 'GET')
+      return json(route, {
+        items: [
+          {
+            id: 12,
+            title: 'Corrupt then valid browser video',
+            lesson_type: 'video',
+            download_url: mediaPath,
+            description: null,
+            is_published: true,
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: '2026-01-01T00:00:00Z',
+          },
+        ],
+        page: 1,
+        page_size: 100,
+        total: 1,
+        pages: 1,
+        has_next: false,
+        has_previous: false,
+      });
     if (url.pathname === mediaPath) {
       mediaRequestCount += 1;
       expect(request.headers().authorization).toBe('Bearer student-token');
       return route.fulfill({
         status: 200,
         contentType: 'video/mp4',
-        body: mediaRequestCount === 1 ? Buffer.from('same MIME, malformed video bytes') : VALID_VIDEO_MP4,
+        body:
+          mediaRequestCount === 1
+            ? Buffer.from('same MIME, malformed video bytes')
+            : VALID_VIDEO_MP4,
       });
     }
-    if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/')) throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
+    if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/'))
+      throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
     return route.fallback();
   });
 
@@ -537,9 +735,13 @@ test('recovers a same-MIME corrupt video without a false-ready state and retries
   expect(diagnostics.httpFailures).toEqual([]);
 });
 
-test('renders authorized PDF in-page with basic navigation and stable geometry', async ({ page }) => {
+test('renders authorized PDF in-page with basic navigation and stable geometry', async ({
+  page,
+}) => {
   await installStudent(page);
-  const diagnostics = captureRuntimeDiagnostics(page, { abortedRequests: [expectedGetAbort('/enrollments/4', 1)] });
+  const diagnostics = captureRuntimeDiagnostics(page, {
+    abortedRequests: [expectedGetAbort('/enrollments/4', 1)],
+  });
   const mediaRequests: string[] = [];
   await page.route('**/*', async (route) => {
     const request = route.request();
@@ -547,14 +749,41 @@ test('renders authorized PDF in-page with basic navigation and stable geometry',
     if (url.origin !== 'http://127.0.0.1:4179') return route.fallback();
     if (url.pathname === '/me') return json(route, student);
     if (url.pathname === '/enrollments/4') return json(route, enrollment);
-    if (url.pathname === '/courses/7/progress') return json(route, { course_id: 7, completed_lessons: 0, total_lessons: 1, progress_percentage: 0 });
-    if (url.pathname === '/courses/7/lessons' && request.method() === 'GET') return json(route, { items: [{ id: 12, title: 'Authorized browser PDF', lesson_type: 'pdf', download_url: '/media/lessons/lesson.pdf', description: null, is_published: true, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }], page: 1, page_size: 100, total: 1, pages: 1, has_next: false, has_previous: false });
+    if (url.pathname === '/courses/7/progress')
+      return json(route, {
+        course_id: 7,
+        completed_lessons: 0,
+        total_lessons: 1,
+        progress_percentage: 0,
+      });
+    if (url.pathname === '/courses/7/lessons' && request.method() === 'GET')
+      return json(route, {
+        items: [
+          {
+            id: 12,
+            title: 'Authorized browser PDF',
+            lesson_type: 'pdf',
+            download_url: '/media/lessons/lesson.pdf',
+            description: null,
+            is_published: true,
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: '2026-01-01T00:00:00Z',
+          },
+        ],
+        page: 1,
+        page_size: 100,
+        total: 1,
+        pages: 1,
+        has_next: false,
+        has_previous: false,
+      });
     if (url.pathname === '/media/lessons/lesson.pdf') {
       mediaRequests.push(url.pathname);
       expect(request.headers().authorization).toBe('Bearer student-token');
       return route.fulfill({ status: 200, contentType: 'application/pdf', body: VALID_PDF });
     }
-    if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/')) throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
+    if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/'))
+      throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
     return route.fallback();
   });
 
@@ -569,7 +798,13 @@ test('renders authorized PDF in-page with basic navigation and stable geometry',
   await expect(preview).toBeFocused();
   await expect(preview.locator('canvas')).toBeVisible();
   await expect(preview.getByText('Page one PDF test')).toBeVisible();
-  await expect.poll(() => preview.locator('[data-part="lesson-pdf-viewport"]').evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+  await expect
+    .poll(() =>
+      preview
+        .locator('[data-part="lesson-pdf-viewport"]')
+        .evaluate((element) => element.scrollHeight > element.clientHeight),
+    )
+    .toBe(true);
   await expect(page.getByRole('status')).toContainText('Page 1 of 2');
   await expect(page.locator('iframe, object, embed')).toHaveCount(0);
   await expect(preview.locator('a')).toHaveCount(0);
@@ -589,11 +824,17 @@ test('renders authorized PDF in-page with basic navigation and stable geometry',
     document.addEventListener('focusout', () => queueMicrotask(recordFocus), true);
   });
   const pendingForward = await nextPage.evaluate((element) => {
-    if (!(element instanceof HTMLButtonElement)) throw new Error('Next-page control is not a button.');
+    if (!(element instanceof HTMLButtonElement))
+      throw new Error('Next-page control is not a button.');
     const region = element.closest('[role="region"]');
     const status = region?.querySelector('[role="status"]');
     if (!(status instanceof HTMLElement)) throw new Error('PDF render status was not rendered.');
-    return new Promise<{ activeName: string | null; activeTag: string | null; disabled: boolean; status: string | null }>((resolve) => {
+    return new Promise<{
+      activeName: string | null;
+      activeTag: string | null;
+      disabled: boolean;
+      status: string | null;
+    }>((resolve) => {
       const observer = new MutationObserver(() => {
         if (status.textContent !== 'Rendering PDF page 2.') return;
         element.click();
@@ -640,69 +881,147 @@ test('aborts a pending authorized media request when the workspace unmounts', as
   await installStudent(page);
   const mediaPath = '/media/lessons/pending.mp4';
   const diagnostics = captureRuntimeDiagnostics(page, {
-    abortedRequests: [expectedGetAbort('/enrollments/4', 1), expectedGetAbort('/enrollments/my', 1), expectedGetAbort(mediaPath, 1)],
+    abortedRequests: [
+      expectedGetAbort('/enrollments/4', 1),
+      expectedGetAbort('/enrollments/my', 1),
+      expectedGetAbort(mediaPath, 1),
+    ],
   });
   let releaseMediaResponse: () => void = () => undefined;
-  const mediaResponseReleased = new Promise<void>((resolve) => { releaseMediaResponse = resolve; });
+  const mediaResponseReleased = new Promise<void>((resolve) => {
+    releaseMediaResponse = resolve;
+  });
   await page.route('**/*', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     if (url.origin !== 'http://127.0.0.1:4179') return route.fallback();
     if (url.pathname === '/me') return json(route, student);
-    if (url.pathname === '/enrollments/my') return json(route, { items: [], page: 1, page_size: 20, total: 0, pages: 0, has_next: false, has_previous: false });
+    if (url.pathname === '/enrollments/my')
+      return json(route, {
+        items: [],
+        page: 1,
+        page_size: 20,
+        total: 0,
+        pages: 0,
+        has_next: false,
+        has_previous: false,
+      });
     if (url.pathname === '/enrollments/4') return json(route, enrollment);
-    if (url.pathname === '/courses/7/progress') return json(route, { course_id: 7, completed_lessons: 0, total_lessons: 1, progress_percentage: 0 });
-    if (url.pathname === '/courses/7/lessons' && request.method() === 'GET') return json(route, { items: [{ id: 12, title: 'Pending browser video', lesson_type: 'video', download_url: mediaPath, description: null, is_published: true, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }], page: 1, page_size: 100, total: 1, pages: 1, has_next: false, has_previous: false });
+    if (url.pathname === '/courses/7/progress')
+      return json(route, {
+        course_id: 7,
+        completed_lessons: 0,
+        total_lessons: 1,
+        progress_percentage: 0,
+      });
+    if (url.pathname === '/courses/7/lessons' && request.method() === 'GET')
+      return json(route, {
+        items: [
+          {
+            id: 12,
+            title: 'Pending browser video',
+            lesson_type: 'video',
+            download_url: mediaPath,
+            description: null,
+            is_published: true,
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: '2026-01-01T00:00:00Z',
+          },
+        ],
+        page: 1,
+        page_size: 100,
+        total: 1,
+        pages: 1,
+        has_next: false,
+        has_previous: false,
+      });
     if (url.pathname === mediaPath) {
       await mediaResponseReleased;
       return route.fulfill({ status: 200, contentType: 'video/mp4', body: VALID_VIDEO_MP4 });
     }
-    if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/')) throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
+    if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/'))
+      throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
     return route.fallback();
   });
 
   await page.goto('/learning/enrollments/4');
   await page.getByRole('button', { name: 'Load video' }).click();
-  await expect(page.getByRole('button', { name: 'Loading media…' })).toHaveAttribute('aria-busy', 'true');
+  await expect(page.getByRole('button', { name: 'Loading media…' })).toHaveAttribute(
+    'aria-busy',
+    'true',
+  );
   await page.goto('/learning');
   releaseMediaResponse();
   await expect(page.getByRole('heading', { name: 'My learning' })).toBeVisible();
-  await expect.poll(() => diagnostics.expectedRuntimeFailures.filter((entry) => entry.includes(mediaPath)).length).toBe(1);
+  await expect
+    .poll(
+      () => diagnostics.expectedRuntimeFailures.filter((entry) => entry.includes(mediaPath)).length,
+    )
+    .toBe(1);
   expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
   expect(diagnostics.httpFailures).toEqual([]);
 });
 
-for (const status of [403, 404]) test(`keeps API-025 ${status} neutral and focuses its announced result`, async ({ page }) => {
-  await installStudent(page);
-  const diagnostics = captureRuntimeDiagnostics(page, {
-    failedResourcePaths: new Set(['/media/lessons/denied.mp4']),
-    abortedRequests: [expectedGetAbort('/enrollments/4', 1)],
-  });
-  await page.route('**/*', async (route) => {
-    const request = route.request();
-    const url = new URL(request.url());
-    if (url.origin !== 'http://127.0.0.1:4179') return route.fallback();
-    if (url.pathname === '/me') return json(route, student);
-    if (url.pathname === '/enrollments/4') return json(route, enrollment);
-    if (url.pathname === '/courses/7/progress') return json(route, { course_id: 7, completed_lessons: 0, total_lessons: 1, progress_percentage: 0 });
-    if (url.pathname === '/courses/7/lessons' && request.method() === 'GET') return json(route, { items: [{ id: 12, title: 'Neutral denied media', lesson_type: 'video', download_url: '/media/lessons/denied.mp4', description: null, is_published: true, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }], page: 1, page_size: 100, total: 1, pages: 1, has_next: false, has_previous: false });
-    if (url.pathname === '/media/lessons/denied.mp4') return json(route, { detail: 'private' }, status);
-    if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/')) throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
-    return route.fallback();
-  });
+for (const status of [403, 404])
+  test(`keeps API-025 ${status} neutral and focuses its announced result`, async ({ page }) => {
+    await installStudent(page);
+    const diagnostics = captureRuntimeDiagnostics(page, {
+      failedResourcePaths: new Set(['/media/lessons/denied.mp4']),
+      abortedRequests: [expectedGetAbort('/enrollments/4', 1)],
+    });
+    await page.route('**/*', async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (url.origin !== 'http://127.0.0.1:4179') return route.fallback();
+      if (url.pathname === '/me') return json(route, student);
+      if (url.pathname === '/enrollments/4') return json(route, enrollment);
+      if (url.pathname === '/courses/7/progress')
+        return json(route, {
+          course_id: 7,
+          completed_lessons: 0,
+          total_lessons: 1,
+          progress_percentage: 0,
+        });
+      if (url.pathname === '/courses/7/lessons' && request.method() === 'GET')
+        return json(route, {
+          items: [
+            {
+              id: 12,
+              title: 'Neutral denied media',
+              lesson_type: 'video',
+              download_url: '/media/lessons/denied.mp4',
+              description: null,
+              is_published: true,
+              created_at: '2026-01-01T00:00:00Z',
+              updated_at: '2026-01-01T00:00:00Z',
+            },
+          ],
+          page: 1,
+          page_size: 100,
+          total: 1,
+          pages: 1,
+          has_next: false,
+          has_previous: false,
+        });
+      if (url.pathname === '/media/lessons/denied.mp4')
+        return json(route, { detail: 'private' }, status);
+      if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/'))
+        throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
+      return route.fallback();
+    });
 
-  await page.goto('/learning/enrollments/4');
-  const loadVideo = page.getByRole('button', { name: 'Load video' });
-  await tabTo(page, loadVideo);
-  await page.keyboard.press('Enter');
-  const unavailable = page.getByText('Media unavailable in this workspace');
-  await expect(unavailable).toBeVisible();
-  await expect(unavailable).toHaveAttribute('role', 'status');
-  await expect(unavailable).toBeFocused();
-  await expect(page.getByText('private')).toHaveCount(0);
-  expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
-  expect(diagnostics.httpFailures).toEqual([`GET /media/lessons/denied.mp4 ${status}`]);
-});
+    await page.goto('/learning/enrollments/4');
+    const loadVideo = page.getByRole('button', { name: 'Load video' });
+    await tabTo(page, loadVideo);
+    await page.keyboard.press('Enter');
+    const unavailable = page.getByText('Media unavailable in this workspace');
+    await expect(unavailable).toBeVisible();
+    await expect(unavailable).toHaveAttribute('role', 'status');
+    await expect(unavailable).toBeFocused();
+    await expect(page.getByText('private')).toHaveCount(0);
+    expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
+    expect(diagnostics.httpFailures).toEqual([`GET /media/lessons/denied.mp4 ${status}`]);
+  });
 
 test('focuses the retry action after a retryable API-025 failure', async ({ page }) => {
   await installStudent(page);
@@ -716,10 +1035,37 @@ test('focuses the retry action after a retryable API-025 failure', async ({ page
     if (url.origin !== 'http://127.0.0.1:4179') return route.fallback();
     if (url.pathname === '/me') return json(route, student);
     if (url.pathname === '/enrollments/4') return json(route, enrollment);
-    if (url.pathname === '/courses/7/progress') return json(route, { course_id: 7, completed_lessons: 0, total_lessons: 1, progress_percentage: 0 });
-    if (url.pathname === '/courses/7/lessons' && request.method() === 'GET') return json(route, { items: [{ id: 12, title: 'Retryable media', lesson_type: 'video', download_url: '/media/lessons/retry.mp4', description: null, is_published: true, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }], page: 1, page_size: 100, total: 1, pages: 1, has_next: false, has_previous: false });
+    if (url.pathname === '/courses/7/progress')
+      return json(route, {
+        course_id: 7,
+        completed_lessons: 0,
+        total_lessons: 1,
+        progress_percentage: 0,
+      });
+    if (url.pathname === '/courses/7/lessons' && request.method() === 'GET')
+      return json(route, {
+        items: [
+          {
+            id: 12,
+            title: 'Retryable media',
+            lesson_type: 'video',
+            download_url: '/media/lessons/retry.mp4',
+            description: null,
+            is_published: true,
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: '2026-01-01T00:00:00Z',
+          },
+        ],
+        page: 1,
+        page_size: 100,
+        total: 1,
+        pages: 1,
+        has_next: false,
+        has_previous: false,
+      });
     if (url.pathname === '/media/lessons/retry.mp4') return json(route, { detail: 'private' }, 500);
-    if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/')) throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
+    if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/'))
+      throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
     return route.fallback();
   });
 
@@ -733,10 +1079,15 @@ test('focuses the retry action after a retryable API-025 failure', async ({ page
   await expect(page.getByRole('status')).toHaveText('Media could not be loaded. Try again.');
   await expect(page.getByText('private')).toHaveCount(0);
   expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
-  expect(diagnostics.httpFailures).toEqual(['GET /media/lessons/retry.mp4 500', 'GET /media/lessons/retry.mp4 500']);
+  expect(diagnostics.httpFailures).toEqual([
+    'GET /media/lessons/retry.mp4 500',
+    'GET /media/lessons/retry.mp4 500',
+  ]);
 });
 
-test('makes a forbidden lesson mutation neutral and suppresses further actions', async ({ page }) => {
+test('makes a forbidden lesson mutation neutral and suppresses further actions', async ({
+  page,
+}) => {
   await installStudent(page);
   const forbiddenPath = '/courses/7/lessons/12/incomplete';
   const diagnostics = captureRuntimeDiagnostics(page, {
@@ -747,14 +1098,44 @@ test('makes a forbidden lesson mutation neutral and suppresses further actions',
     const request = route.request();
     const url = new URL(request.url());
     if (url.origin !== 'http://127.0.0.1:4179') return route.fallback();
-    if (url.pathname.startsWith('/media/')) throw new Error('Media must not be requested by FE-011');
+    if (url.pathname.startsWith('/media/'))
+      throw new Error('Media must not be requested by FE-011');
     if (url.pathname === '/me') return json(route, student);
     if (url.pathname === '/enrollments/4') return json(route, enrollment);
-    if (url.pathname === '/courses/7/progress') return json(route, { course_id: 7, completed_lessons: 0, total_lessons: 1, progress_percentage: 0 });
-    if (url.pathname === '/courses/7/lessons' && request.method() === 'GET') return json(route, { items: [{ id: 12, title: 'Forbidden mutation lesson', lesson_type: 'text', download_url: null, description: null, is_published: true, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }], page: 1, page_size: 100, total: 1, pages: 1, has_next: false, has_previous: false });
-    if (url.pathname === '/courses/7/lessons/12/complete') return json(route, { lesson_id: 12, completed: true, completed_at: '2026-07-26T00:00:00Z' });
-    if (url.pathname === forbiddenPath) return json(route, { detail: 'private mutation detail' }, 403);
-    if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/')) throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
+    if (url.pathname === '/courses/7/progress')
+      return json(route, {
+        course_id: 7,
+        completed_lessons: 0,
+        total_lessons: 1,
+        progress_percentage: 0,
+      });
+    if (url.pathname === '/courses/7/lessons' && request.method() === 'GET')
+      return json(route, {
+        items: [
+          {
+            id: 12,
+            title: 'Forbidden mutation lesson',
+            lesson_type: 'text',
+            download_url: null,
+            description: null,
+            is_published: true,
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: '2026-01-01T00:00:00Z',
+          },
+        ],
+        page: 1,
+        page_size: 100,
+        total: 1,
+        pages: 1,
+        has_next: false,
+        has_previous: false,
+      });
+    if (url.pathname === '/courses/7/lessons/12/complete')
+      return json(route, { lesson_id: 12, completed: true, completed_at: '2026-07-26T00:00:00Z' });
+    if (url.pathname === forbiddenPath)
+      return json(route, { detail: 'private mutation detail' }, 403);
+    if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/'))
+      throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
     return route.fallback();
   });
   await page.goto('/learning/enrollments/4');
@@ -767,29 +1148,69 @@ test('makes a forbidden lesson mutation neutral and suppresses further actions',
   expect(diagnostics.httpFailures).toEqual([`POST ${forbiddenPath} 403`]);
 });
 
-test('marks a malformed mutation outcome unknown and refetches its exact progress origin', async ({ page }) => {
+test('marks a malformed mutation outcome unknown and refetches its exact progress origin', async ({
+  page,
+}) => {
   await installStudent(page);
-  const diagnostics = captureRuntimeDiagnostics(page, { abortedRequests: [expectedGetAbort('/enrollments/4', 1)] });
+  const diagnostics = captureRuntimeDiagnostics(page, {
+    abortedRequests: [expectedGetAbort('/enrollments/4', 1)],
+  });
   let enrollmentReads = 0;
   let progressReads = 0;
   await page.route('**/*', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     if (url.origin !== 'http://127.0.0.1:4179') return route.fallback();
-    if (url.pathname.startsWith('/media/')) throw new Error('Media must not be requested by FE-011');
+    if (url.pathname.startsWith('/media/'))
+      throw new Error('Media must not be requested by FE-011');
     if (url.pathname === '/me') return json(route, student);
-    if (url.pathname === '/enrollments/4') { enrollmentReads += 1; return json(route, enrollment); }
-    if (url.pathname === '/courses/7/progress') { progressReads += 1; return json(route, { course_id: 7, completed_lessons: 0, total_lessons: 1, progress_percentage: 0 }); }
-    if (url.pathname === '/courses/7/lessons' && request.method() === 'GET') return json(route, { items: [{ id: 12, title: 'Uncertain mutation lesson', lesson_type: 'text', download_url: null, description: null, is_published: true, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }], page: 1, page_size: 100, total: 1, pages: 1, has_next: false, has_previous: false });
-    if (url.pathname === '/courses/7/lessons/12/complete') return json(route, { lesson_id: 999, completed: true, completed_at: null });
-    if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/')) throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
+    if (url.pathname === '/enrollments/4') {
+      enrollmentReads += 1;
+      return json(route, enrollment);
+    }
+    if (url.pathname === '/courses/7/progress') {
+      progressReads += 1;
+      return json(route, {
+        course_id: 7,
+        completed_lessons: 0,
+        total_lessons: 1,
+        progress_percentage: 0,
+      });
+    }
+    if (url.pathname === '/courses/7/lessons' && request.method() === 'GET')
+      return json(route, {
+        items: [
+          {
+            id: 12,
+            title: 'Uncertain mutation lesson',
+            lesson_type: 'text',
+            download_url: null,
+            description: null,
+            is_published: true,
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: '2026-01-01T00:00:00Z',
+          },
+        ],
+        page: 1,
+        page_size: 100,
+        total: 1,
+        pages: 1,
+        has_next: false,
+        has_previous: false,
+      });
+    if (url.pathname === '/courses/7/lessons/12/complete')
+      return json(route, { lesson_id: 999, completed: true, completed_at: null });
+    if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/'))
+      throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
     return route.fallback();
   });
   await page.goto('/learning/enrollments/4');
   const initialEnrollmentReads = enrollmentReads;
   const initialProgressReads = progressReads;
   await page.getByRole('button', { name: 'Mark complete' }).click();
-  await expect(page.getByText('We could not confirm the lesson update. Progress is being refreshed.')).toBeVisible();
+  await expect(
+    page.getByText('We could not confirm the lesson update. Progress is being refreshed.'),
+  ).toBeVisible();
   await expect(page.getByText('Completion status unavailable')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Mark complete' })).toBeVisible();
   await expect.poll(() => enrollmentReads).toBeGreaterThan(initialEnrollmentReads);
@@ -805,34 +1226,59 @@ const unavailableScenarios = [
   { operation: 'API-019', path: '/courses/7/progress', status: 404 },
 ] as const;
 
-for (const scenario of unavailableScenarios) test(`makes ${scenario.operation} ${scenario.status} neutral with no actions`, async ({ page }) => {
-  await installStudent(page);
-  const diagnostics = captureRuntimeDiagnostics(page, {
-    failedResourcePaths: new Set([scenario.path]),
-    abortedRequests: [expectedGetAbort('/enrollments/4', 1)],
+for (const scenario of unavailableScenarios)
+  test(`makes ${scenario.operation} ${scenario.status} neutral with no actions`, async ({
+    page,
+  }) => {
+    await installStudent(page);
+    const diagnostics = captureRuntimeDiagnostics(page, {
+      failedResourcePaths: new Set([scenario.path]),
+      abortedRequests: [expectedGetAbort('/enrollments/4', 1)],
+    });
+    await page.route('**/*', async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (url.origin !== 'http://127.0.0.1:4179') return route.fallback();
+      if (url.pathname.startsWith('/media/'))
+        throw new Error('Media must not be requested by FE-011');
+      if (url.pathname === '/me') return json(route, student);
+      if (url.pathname === scenario.path)
+        return json(route, { detail: 'private' }, scenario.status);
+      if (url.pathname === '/enrollments/4') return json(route, enrollment);
+      if (url.pathname === '/courses/7/progress')
+        return json(route, {
+          course_id: 7,
+          completed_lessons: 0,
+          total_lessons: 0,
+          progress_percentage: 0,
+        });
+      if (url.pathname === '/courses/7/lessons')
+        return json(route, {
+          items: [],
+          page: 1,
+          page_size: 100,
+          total: 0,
+          pages: 1,
+          has_next: false,
+          has_previous: false,
+        });
+      if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/'))
+        throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
+      return route.fallback();
+    });
+    await page.goto('/learning/enrollments/4');
+    await expect(
+      page.getByRole('heading', { name: 'Learning workspace unavailable' }),
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: /mark|try again/i })).toHaveCount(0);
+    await expect(page.getByText('private')).toHaveCount(0);
+    expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
+    expect(diagnostics.httpFailures).toEqual([`GET ${scenario.path} ${scenario.status}`]);
   });
-  await page.route('**/*', async (route) => {
-    const request = route.request();
-    const url = new URL(request.url());
-    if (url.origin !== 'http://127.0.0.1:4179') return route.fallback();
-    if (url.pathname.startsWith('/media/')) throw new Error('Media must not be requested by FE-011');
-    if (url.pathname === '/me') return json(route, student);
-    if (url.pathname === scenario.path) return json(route, { detail: 'private' }, scenario.status);
-    if (url.pathname === '/enrollments/4') return json(route, enrollment);
-    if (url.pathname === '/courses/7/progress') return json(route, { course_id: 7, completed_lessons: 0, total_lessons: 0, progress_percentage: 0 });
-    if (url.pathname === '/courses/7/lessons') return json(route, { items: [], page: 1, page_size: 100, total: 0, pages: 1, has_next: false, has_previous: false });
-    if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/')) throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
-    return route.fallback();
-  });
-  await page.goto('/learning/enrollments/4');
-  await expect(page.getByRole('heading', { name: 'Learning workspace unavailable' })).toBeVisible();
-  await expect(page.getByRole('button', { name: /mark|try again/i })).toHaveCount(0);
-  await expect(page.getByText('private')).toHaveCount(0);
-  expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
-  expect(diagnostics.httpFailures).toEqual([`GET ${scenario.path} ${scenario.status}`]);
-});
 
-test('recovers API-022 enrollment detail by keyboard and focuses the restored course heading', async ({ page }) => {
+test('recovers API-022 enrollment detail by keyboard and focuses the restored course heading', async ({
+  page,
+}) => {
   await installStudent(page);
   const diagnostics = captureRuntimeDiagnostics(page, {
     failedResourcePaths: new Set(['/enrollments/4']),
@@ -844,21 +1290,37 @@ test('recovers API-022 enrollment detail by keyboard and focuses the restored co
     const request = route.request();
     const url = new URL(request.url());
     if (url.origin !== 'http://127.0.0.1:4179') return route.fallback();
-    if (url.pathname.startsWith('/media/')) throw new Error('Media must not be requested by FE-011');
+    if (url.pathname.startsWith('/media/'))
+      throw new Error('Media must not be requested by FE-011');
     if (url.pathname === '/me') return json(route, student);
     if (url.pathname === '/enrollments/4') {
-      if (!enrollmentRecoveryEnabled) return json(route, { detail: 'private enrollment failure' }, 500);
+      if (!enrollmentRecoveryEnabled)
+        return json(route, { detail: 'private enrollment failure' }, 500);
       return json(route, enrollment);
     }
     if (url.pathname === '/courses/7/progress') {
       dependentRequests.push(url.pathname);
-      return json(route, { course_id: 7, completed_lessons: 0, total_lessons: 0, progress_percentage: 0 });
+      return json(route, {
+        course_id: 7,
+        completed_lessons: 0,
+        total_lessons: 0,
+        progress_percentage: 0,
+      });
     }
     if (url.pathname === '/courses/7/lessons') {
       dependentRequests.push(url.pathname);
-      return json(route, { items: [], page: 1, page_size: 100, total: 0, pages: 0, has_next: false, has_previous: false });
+      return json(route, {
+        items: [],
+        page: 1,
+        page_size: 100,
+        total: 0,
+        pages: 0,
+        has_next: false,
+        has_previous: false,
+      });
     }
-    if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/')) throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
+    if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/'))
+      throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
     return route.fallback();
   });
 
@@ -880,17 +1342,24 @@ test('recovers API-022 enrollment detail by keyboard and focuses the restored co
   expect(diagnostics.httpFailures).toEqual(['GET /enrollments/4 500', 'GET /enrollments/4 500']);
 });
 
-test('verifies Chromium page scale factor at 200% with overflow and focused-control access', async ({ page }) => {
+test('verifies Chromium page scale factor at 200% with overflow and focused-control access', async ({
+  page,
+}) => {
   await installStudent(page);
-  const diagnostics = captureRuntimeDiagnostics(page, { abortedRequests: [expectedGetAbort('/enrollments/4', 1)] });
+  const diagnostics = captureRuntimeDiagnostics(page, {
+    abortedRequests: [expectedGetAbort('/enrollments/4', 1)],
+  });
   await page.route('**/*', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     if (url.origin !== 'http://127.0.0.1:4179') return route.fallback();
-    if (url.pathname.startsWith('/media/')) throw new Error('Media must not be requested by FE-011');
+    if (url.pathname.startsWith('/media/'))
+      throw new Error('Media must not be requested by FE-011');
     if (url.pathname === '/me') return json(route, student);
-    if (url.pathname === '/enrollments/4') return json(route, { ...enrollment, status: 'cancelled' });
-    if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/')) throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
+    if (url.pathname === '/enrollments/4')
+      return json(route, { ...enrollment, status: 'cancelled' });
+    if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/'))
+      throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
     return route.fallback();
   });
 
@@ -906,7 +1375,7 @@ test('verifies Chromium page scale factor at 200% with overflow and focused-cont
   expect(scaleEvidence.scale).toBeCloseTo(2, 1);
   expect(scaleEvidence.visualWidth).toBeLessThan(scaleEvidence.layoutWidth);
 
-  const backLink = page.getByRole('link', { name: 'Back to my learning' });
+  const backLink = page.getByRole('main').getByRole('link', { name: 'My learning', exact: true });
   await tabTo(page, backLink);
   await expect(backLink).toBeFocused();
   const geometry = await page.evaluate(() => {
@@ -932,46 +1401,63 @@ test('verifies Chromium page scale factor at 200% with overflow and focused-cont
   await cdp.detach();
 });
 
-for (const status of ['pending_payment', 'cancelled'] as const) test(`${status} enrollment sends no progress or lesson-action request`, async ({ page }) => {
-  await installStudent(page);
-  const diagnostics = captureRuntimeDiagnostics(page, { abortedRequests: [expectedGetAbort('/enrollments/4', 1)] });
-  const learningRequests: string[] = [];
-  await page.route('**/*', async (route) => {
-    const request = route.request();
-    const url = new URL(request.url());
-    if (url.origin !== 'http://127.0.0.1:4179') return route.fallback();
-    if (url.pathname.startsWith('/media/')) throw new Error('Media must not be requested by FE-011');
-    if (url.pathname === '/me') return json(route, student);
-    if (url.pathname === '/enrollments/4') {
-      learningRequests.push(url.pathname);
-      return json(route, { ...enrollment, status });
+for (const status of ['pending_payment', 'cancelled'] as const)
+  test(`${status} enrollment sends no progress or lesson-action request`, async ({ page }) => {
+    await installStudent(page);
+    const diagnostics = captureRuntimeDiagnostics(page, {
+      abortedRequests: [expectedGetAbort('/enrollments/4', 1)],
+    });
+    const learningRequests: string[] = [];
+    await page.route('**/*', async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (url.origin !== 'http://127.0.0.1:4179') return route.fallback();
+      if (url.pathname.startsWith('/media/'))
+        throw new Error('Media must not be requested by FE-011');
+      if (url.pathname === '/me') return json(route, student);
+      if (url.pathname === '/enrollments/4') {
+        learningRequests.push(url.pathname);
+        return json(route, { ...enrollment, status });
+      }
+      if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/')) {
+        throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
+      }
+      return route.fallback();
+    });
+    await page.goto('/learning/enrollments/4');
+    if (status === 'pending_payment') {
+      await expect(page.getByText('Payment pending', { exact: true }).last()).toBeVisible();
+      await expect(
+        page.getByText(
+          'Mock payment is awaiting completion. Learning remains locked until your enrollment is active.',
+        ),
+      ).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Complete mock payment' })).toBeVisible();
+      await expect(
+        page.getByRole('button', { name: 'Simulate mock payment failure' }),
+      ).toBeVisible();
+    } else {
+      await expect(
+        page.getByText('Learning progress is not available for this enrollment.'),
+      ).toBeVisible();
     }
-    if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/')) {
-      throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
-    }
-    return route.fallback();
+    await expect(page.getByRole('button', { name: /mark|try again/i })).toHaveCount(0);
+    expect(learningRequests).toContain('/enrollments/4');
+    expect(learningRequests.length).toBeLessThanOrEqual(2);
+    expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
+    expect(diagnostics.httpFailures).toEqual([]);
   });
-  await page.goto('/learning/enrollments/4');
-  if (status === 'pending_payment') {
-    await expect(page.getByText('Payment pending', { exact: true }).last()).toBeVisible();
-    await expect(page.getByText('Mock payment is awaiting completion. Learning remains locked until your enrollment is active.')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Complete mock payment' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Simulate mock payment failure' })).toBeVisible();
-  } else {
-    await expect(page.getByText('Learning progress is not available for this enrollment.')).toBeVisible();
-  }
-  await expect(page.getByRole('button', { name: /mark|try again/i })).toHaveCount(0);
-  expect(learningRequests).toContain('/enrollments/4');
-  expect(learningRequests.length).toBeLessThanOrEqual(2);
-  expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
-  expect(diagnostics.httpFailures).toEqual([]);
-});
 
-test('supports keyboard traversal and restores focus after list and workspace recovery', async ({ page }) => {
+test('supports keyboard traversal and restores focus after list and workspace recovery', async ({
+  page,
+}) => {
   await installStudent(page);
   const diagnostics = captureRuntimeDiagnostics(page, {
     failedResourcePaths: new Set(['/enrollments/my', '/courses/7/progress']),
-    abortedRequests: [expectedGetAbort('/enrollments/my', 1), expectedGetAbort('/enrollments/4', 1)],
+    abortedRequests: [
+      expectedGetAbort('/enrollments/my', 1),
+      expectedGetAbort('/enrollments/4', 1),
+    ],
   });
   let listRecoveryEnabled = false;
   let workspaceRecoveryEnabled = false;
@@ -980,11 +1466,20 @@ test('supports keyboard traversal and restores focus after list and workspace re
     const request = route.request();
     const url = new URL(request.url());
     if (url.origin !== 'http://127.0.0.1:4179') return route.fallback();
-    if (url.pathname.startsWith('/media/')) throw new Error('Media must not be requested by FE-011');
+    if (url.pathname.startsWith('/media/'))
+      throw new Error('Media must not be requested by FE-011');
     if (url.pathname === '/me') return json(route, student);
     if (url.pathname === '/enrollments/my') {
       if (!listRecoveryEnabled) return json(route, { detail: 'private list failure' }, 500);
-      return json(route, { items: [enrollment], page: 1, page_size: 20, total: 1, pages: 1, has_next: false, has_previous: false });
+      return json(route, {
+        items: [enrollment],
+        page: 1,
+        page_size: 20,
+        total: 1,
+        pages: 1,
+        has_next: false,
+        has_previous: false,
+      });
     }
     if (url.pathname === '/enrollments/4') {
       if (!listRecoveryEnabled) preListRecoveryDependents.push(url.pathname);
@@ -992,14 +1487,29 @@ test('supports keyboard traversal and restores focus after list and workspace re
     }
     if (url.pathname === '/courses/7/progress') {
       if (!listRecoveryEnabled) preListRecoveryDependents.push(url.pathname);
-      if (!workspaceRecoveryEnabled) return json(route, { detail: 'private progress failure' }, 500);
-      return json(route, { course_id: 7, completed_lessons: 0, total_lessons: 0, progress_percentage: 0 });
+      if (!workspaceRecoveryEnabled)
+        return json(route, { detail: 'private progress failure' }, 500);
+      return json(route, {
+        course_id: 7,
+        completed_lessons: 0,
+        total_lessons: 0,
+        progress_percentage: 0,
+      });
     }
     if (url.pathname === '/courses/7/lessons') {
       if (!listRecoveryEnabled) preListRecoveryDependents.push(url.pathname);
-      return json(route, { items: [], page: 1, page_size: 100, total: 0, pages: 0, has_next: false, has_previous: false });
+      return json(route, {
+        items: [],
+        page: 1,
+        page_size: 100,
+        total: 0,
+        pages: 0,
+        has_next: false,
+        has_previous: false,
+      });
     }
-    if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/')) throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
+    if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/'))
+      throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
     return route.fallback();
   });
 

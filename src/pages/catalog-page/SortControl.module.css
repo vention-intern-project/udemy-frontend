@@ -1,13 +1,18 @@
 .control {
   position: relative;
-  flex: 0 0 8rem;
-  inline-size: 8rem;
+  flex: 0 1 auto;
+  inline-size: 9.25rem;
   min-width: 0;
   max-inline-size: 100%;
 }
 
-.controlOpen {
-  z-index: var(--z-modal);
+.controlOpen::after {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  left: 0;
+  height: var(--spacing-2);
+  content: '';
 }
 
 .trigger {
@@ -17,8 +22,8 @@
   justify-content: space-between;
   box-sizing: border-box;
   width: 100%;
-  height: 36px;
-  min-height: 36px;
+  height: var(--control-height-md);
+  min-height: var(--control-height-md);
   padding: var(--spacing-2) calc(var(--spacing-4) + 1rem) var(--spacing-2) var(--input-padding-h);
   color: var(--text-primary);
   background: var(--color-surface);
@@ -45,8 +50,8 @@
   top: 50%;
   right: var(--spacing-3);
   box-sizing: border-box;
-  width: .5rem;
-  height: .5rem;
+  width: 0.5rem;
+  height: 0.5rem;
   color: var(--text-muted);
   pointer-events: none;
   border-right: 2px solid currentColor;
@@ -68,13 +73,14 @@
 .listbox {
   position: absolute;
   z-index: var(--z-dropdown);
-  top: calc(100% + var(--spacing-1));
+  top: calc(100% + var(--spacing-2));
   right: 0;
   display: grid;
   box-sizing: border-box;
-  width: 100%;
-  max-width: 100%;
-  padding: var(--spacing-1);
+  inline-size: max-content;
+  min-inline-size: 12rem;
+  max-inline-size: min(20rem, calc(100vw - (2 * var(--spacing-4))));
+  padding: var(--spacing-2);
   color: var(--text-primary);
   background: var(--color-surface-elevated);
   border: var(--border-width) solid var(--border-default);
@@ -96,7 +102,7 @@
   padding: var(--spacing-2) var(--spacing-3);
   color: var(--text-primary);
   background: var(--color-surface);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   font-size: var(--type-metadata-size);
   line-height: var(--type-metadata-lh);
   cursor: pointer;
@@ -104,7 +110,7 @@
 
 .option:hover,
 .optionActive {
-  background: var(--color-canvas);
+  background: var(--state-control-highlight);
 }
 
 .radio {
@@ -117,7 +123,11 @@
 }
 
 .option[aria-selected='true'] .radio {
-  background: radial-gradient(circle at center, var(--action-primary-bg) 0 3px, var(--color-surface) 3px);
+  background: radial-gradient(
+    circle at center,
+    var(--action-primary-bg) 0 3px,
+    var(--color-surface) 3px
+  );
   border-color: var(--action-primary-bg);
 }
 

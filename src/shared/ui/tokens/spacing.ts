@@ -15,12 +15,12 @@ export const SPACING_BASE = 4 as const; // px
 // ---------------------------------------------------------------------------
 // Numeric scale (px values as numbers for arithmetic)
 // ---------------------------------------------------------------------------
-export const SPACING_1 = 4 as const;   // xs
-export const SPACING_2 = 8 as const;   // sm
-export const SPACING_3 = 12 as const;  // md-sm
-export const SPACING_4 = 16 as const;  // md
-export const SPACING_6 = 24 as const;  // lg
-export const SPACING_8 = 32 as const;  // xl
+export const SPACING_1 = 4 as const; // xs
+export const SPACING_2 = 8 as const; // sm
+export const SPACING_3 = 12 as const; // md-sm
+export const SPACING_4 = 16 as const; // md
+export const SPACING_6 = 24 as const; // lg
+export const SPACING_8 = 32 as const; // xl
 export const SPACING_12 = 48 as const; // 2xl
 export const SPACING_16 = 64 as const; // 3xl
 
@@ -28,8 +28,8 @@ export const SPACING_16 = 64 as const; // 3xl
 // Named step aliases
 // ---------------------------------------------------------------------------
 export const spacing = {
-  /** 4px */  xs: SPACING_1,
-  /** 8px */  sm: SPACING_2,
+  /** 4px */ xs: SPACING_1,
+  /** 8px */ sm: SPACING_2,
   /** 12px */ mdSm: SPACING_3,
   /** 16px */ md: SPACING_4,
   /** 24px */ lg: SPACING_6,
@@ -50,22 +50,24 @@ export const CONTROL_HEIGHT_LG = 52 as const;
 // ---------------------------------------------------------------------------
 // Component-specific spacing
 // ---------------------------------------------------------------------------
-export const INPUT_PADDING_HORIZONTAL = SPACING_3;  // 12px
-export const CARD_INNER_SPACING_MARKETPLACE = SPACING_4;  // 16px
-export const CARD_INNER_SPACING_WORKSPACE = SPACING_3;    // 12px
-export const FORM_FIELD_STACK_GAP = SPACING_4;            // 16px
-export const SECTION_SPACING_DEFAULT = SPACING_8;         // 32px
-export const SECTION_SPACING_MAJOR = SPACING_12;          // 48px
+export const INPUT_PADDING_HORIZONTAL = SPACING_3; // 12px
+export const CARD_INNER_SPACING_MARKETPLACE = SPACING_4; // 16px
+export const CARD_INNER_SPACING_WORKSPACE = SPACING_3; // 12px
+export const FORM_FIELD_STACK_GAP = SPACING_4; // 16px
+export const SECTION_SPACING_DEFAULT = SPACING_8; // 32px
+export const SECTION_SPACING_MAJOR = SPACING_12; // 48px
 
 // ---------------------------------------------------------------------------
 // Layout tokens
 // ---------------------------------------------------------------------------
 export const LAYOUT_HEADER_HEIGHT = 64 as const; // px
-export const CONTAINER_MAX_WIDTH_PUBLIC = 1200 as const;    // px
+export const CONTAINER_MAX_WIDTH_PUBLIC = 1200 as const; // px
+export const CONTAINER_MAX_WIDTH_STANDARD = 1120 as const; // px
+export const CONTAINER_MAX_WIDTH_CATALOG = 1290 as const; // px
 export const CONTAINER_MAX_WIDTH_WORKSPACE = 1360 as const; // px
 
 // Gutter tokens per viewport
-export const GUTTER_MOBILE = SPACING_4;   // 16px
+export const GUTTER_MOBILE = SPACING_4; // 16px
 export const GUTTER_TABLET = 20 as const; // 20px (between scale steps, by design)
 
 // ---------------------------------------------------------------------------
@@ -89,6 +91,8 @@ export const spacingTokens = {
   '--section-spacing-major': `${SECTION_SPACING_MAJOR}px`,
   '--layout-header-height': `${LAYOUT_HEADER_HEIGHT}px`,
   '--container-max-public': `${CONTAINER_MAX_WIDTH_PUBLIC}px`,
+  '--container-max-standard': `${CONTAINER_MAX_WIDTH_STANDARD}px`,
+  '--container-max-catalog': `${CONTAINER_MAX_WIDTH_CATALOG}px`,
   '--container-max-workspace': `${CONTAINER_MAX_WIDTH_WORKSPACE}px`,
   '--gutter-mobile': `${GUTTER_MOBILE}px`,
   '--gutter-tablet': `${GUTTER_TABLET}px`,

@@ -18,14 +18,27 @@ export interface ObservedHttpFailure extends HttpFailureIdentity {
   url: string;
 }
 
+export interface RequestFailureIdentity {
+  method: string;
+  path: string;
+  errorText: string;
+}
+
+export interface ExpectedRequestFailure extends RequestFailureIdentity {
+  occurrences: number;
+  remaining: number;
+}
+
+export interface ObservedRequestFailure extends RequestFailureIdentity {
+  url: string;
+}
+
 export interface ConsoleErrorEvidence {
   text: string;
   url: string;
 }
 
-export type VisualViewportEvidence =
-  | { width: number; height: number }
-  | { notApplicable: string };
+export type VisualViewportEvidence = { width: number; height: number } | { notApplicable: string };
 
 type RuntimeInputValue = string | number | boolean;
 
@@ -54,6 +67,23 @@ export interface RuntimeEvidenceViolations {
   unconsumedExpectedResponses: readonly ExpectedHttpFailure[];
 }
 
+export interface HttpFailureAccounting {
+  allow(identity: HttpFailureIdentity, occurrences: number): void;
+  observe(method: string, url: string, status: number): void;
+  acceptedFailures(): readonly ObservedHttpFailure[];
+  violations(): Pick<RuntimeEvidenceViolations, 'errorResponses' | 'unconsumedExpectedResponses'>;
+}
+
+export interface RequestFailureAccounting {
+  allow(identity: RequestFailureIdentity, occurrences: number): void;
+  observe(method: string, url: string, errorText: string): void;
+  acceptedFailures(): readonly ObservedRequestFailure[];
+  violations(): {
+    requestFailures: readonly ObservedRequestFailure[];
+    unconsumedExpectedRequestFailures: readonly ExpectedRequestFailure[];
+  };
+}
+
 interface MutableRuntimeEvidence {
   pageErrors: string[];
   consoleErrors: ConsoleErrorEvidence[];
@@ -75,7 +105,8 @@ interface SetupOptions {
   command: string;
 }
 
-const RESOURCE_ERROR_PATTERN = /^Failed to load resource: the server responded with a status of (\d{3})(?: .*)?$/;
+const RESOURCE_ERROR_PATTERN =
+  /^Failed to load resource: the server responded with a status of (\d{3})(?: .*)?$/;
 
 function requestPath(url: string) {
   const parsed = new URL(url);
@@ -90,21 +121,97 @@ export function matchesHttpFailureIdentity(
   expected: HttpFailureIdentity,
   actual: HttpFailureIdentity,
 ) {
-  return expected.method === actual.method
-    && expected.path === actual.path
-    && expected.status === actual.status;
+  return (
+    expected.method === actual.method &&
+    expected.path === actual.path &&
+    expected.status === actual.status
+  );
 }
 
 export function consumeExpectedHttpFailure(
   expectedFailures: ExpectedHttpFailure[],
   actual: HttpFailureIdentity,
 ) {
-  const expected = expectedFailures.find((candidate) => (
-    candidate.remaining > 0 && matchesHttpFailureIdentity(candidate, actual)
-  ));
+  const expected = expectedFailures.find(
+    (candidate) => candidate.remaining > 0 && matchesHttpFailureIdentity(candidate, actual),
+  );
   if (!expected) return false;
   expected.remaining -= 1;
   return true;
+}
+
+export function createHttpFailureAccounting(): HttpFailureAccounting {
+  const expectedFailures: ExpectedHttpFailure[] = [];
+  const acceptedFailures: ObservedHttpFailure[] = [];
+  const errorResponses: ObservedHttpFailure[] = [];
+
+  return {
+    allow(identity, occurrences) {
+      if (!Number.isInteger(occurrences) || occurrences < 1) {
+        throw new Error(
+          `Expected a positive HTTP failure occurrence count, received ${occurrences}`,
+        );
+      }
+      expectedFailures.push({ ...identity, occurrences, remaining: occurrences });
+    },
+    observe(method, url, status) {
+      if (status < 400) return;
+      const failure = observeHttpFailure(method, url, status);
+      if (consumeExpectedHttpFailure(expectedFailures, failure)) acceptedFailures.push(failure);
+      else errorResponses.push(failure);
+    },
+    acceptedFailures() {
+      return acceptedFailures;
+    },
+    violations() {
+      return {
+        errorResponses,
+        unconsumedExpectedResponses: expectedFailures.filter(({ remaining }) => remaining > 0),
+      };
+    },
+  };
+}
+
+export function createRequestFailureAccounting(): RequestFailureAccounting {
+  const expectedFailures: ExpectedRequestFailure[] = [];
+  const acceptedFailures: ObservedRequestFailure[] = [];
+  const requestFailures: ObservedRequestFailure[] = [];
+
+  return {
+    allow(identity, occurrences) {
+      if (!Number.isInteger(occurrences) || occurrences < 1) {
+        throw new Error(
+          `Expected a positive request failure occurrence count, received ${occurrences}`,
+        );
+      }
+      expectedFailures.push({ ...identity, occurrences, remaining: occurrences });
+    },
+    observe(method, url, errorText) {
+      const failure = { method, path: requestPath(url), errorText, url };
+      const expected = expectedFailures.find(
+        (candidate) =>
+          candidate.remaining > 0 &&
+          candidate.method === failure.method &&
+          candidate.path === failure.path &&
+          candidate.errorText === failure.errorText,
+      );
+      if (expected) {
+        expected.remaining -= 1;
+        acceptedFailures.push(failure);
+      } else requestFailures.push(failure);
+    },
+    acceptedFailures() {
+      return acceptedFailures;
+    },
+    violations() {
+      return {
+        requestFailures,
+        unconsumedExpectedRequestFailures: expectedFailures.filter(
+          ({ remaining }) => remaining > 0,
+        ),
+      };
+    },
+  };
 }
 
 export function matchesAcceptedResponseConsole(
@@ -112,23 +219,45 @@ export function matchesAcceptedResponseConsole(
   accepted: ObservedHttpFailure,
 ) {
   const statusMatch = RESOURCE_ERROR_PATTERN.exec(message.text);
-  return statusMatch !== null
-    && accepted.status === Number(statusMatch[1])
-    && accepted.url === message.url;
+  return (
+    statusMatch !== null &&
+    accepted.status === Number(statusMatch[1]) &&
+    accepted.url === message.url
+  );
+}
+
+export function matchesAcceptedRequestConsole(
+  message: ConsoleErrorEvidence,
+  accepted: ObservedRequestFailure,
+) {
+  return (
+    message.url === accepted.url && message.text.includes(accepted.errorText.replace(/^net::/, ''))
+  );
 }
 
 export function findUnexpectedConsoleErrors(
   messages: readonly ConsoleErrorEvidence[],
   acceptedFailures: readonly ObservedHttpFailure[],
+  acceptedRequestFailures: readonly ObservedRequestFailure[] = [],
 ) {
   const consumedAcceptedFailures = new Set<number>();
+  const consumedAcceptedRequestFailures = new Set<number>();
   return messages.filter((message) => {
-    const acceptedIndex = acceptedFailures.findIndex((failure, index) => (
-      !consumedAcceptedFailures.has(index)
-      && matchesAcceptedResponseConsole(message, failure)
-    ));
-    if (acceptedIndex === -1) return true;
-    consumedAcceptedFailures.add(acceptedIndex);
+    const acceptedIndex = acceptedFailures.findIndex(
+      (failure, index) =>
+        !consumedAcceptedFailures.has(index) && matchesAcceptedResponseConsole(message, failure),
+    );
+    if (acceptedIndex !== -1) {
+      consumedAcceptedFailures.add(acceptedIndex);
+      return false;
+    }
+    const requestIndex = acceptedRequestFailures.findIndex(
+      (failure, index) =>
+        !consumedAcceptedRequestFailures.has(index) &&
+        matchesAcceptedRequestConsole(message, failure),
+    );
+    if (requestIndex === -1) return true;
+    consumedAcceptedRequestFailures.add(requestIndex);
     return false;
   });
 }
@@ -144,8 +273,9 @@ export function collectRuntimeEvidenceViolations(
     ),
     failedRequests: [...evidence.failedRequests],
     errorResponses: [...evidence.errorResponses],
-    unconsumedExpectedResponses: evidence.expectedHttpFailures
-      .filter(({ remaining }) => remaining > 0),
+    unconsumedExpectedResponses: evidence.expectedHttpFailures.filter(
+      ({ remaining }) => remaining > 0,
+    ),
   };
 }
 
@@ -160,22 +290,36 @@ function isNonEmptyString(value: unknown): value is string {
 function isViewportEvidence(value: unknown): value is VisualViewportEvidence {
   if (!isRecord(value)) return false;
   if ('notApplicable' in value) return isNonEmptyString(value.notApplicable);
-  return Number.isInteger(value.width)
-    && Number(value.width) > 0
-    && Number.isInteger(value.height)
-    && Number(value.height) > 0;
+  return (
+    Number.isInteger(value.width) &&
+    Number(value.width) > 0 &&
+    Number.isInteger(value.height) &&
+    Number(value.height) > 0
+  );
 }
 
 export function validateVisualScenarioEvidence(value: unknown) {
   if (!isRecord(value)) return ['scenario metadata is missing'];
   const problems: string[] = [];
-  if (!Array.isArray(value.routes) || value.routes.length === 0 || !value.routes.every(isNonEmptyString)) {
+  if (
+    !Array.isArray(value.routes) ||
+    value.routes.length === 0 ||
+    !value.routes.every(isNonEmptyString)
+  ) {
     problems.push('routes must contain at least one non-empty route');
   }
-  if (!Array.isArray(value.states) || value.states.length === 0 || !value.states.every(isNonEmptyString)) {
+  if (
+    !Array.isArray(value.states) ||
+    value.states.length === 0 ||
+    !value.states.every(isNonEmptyString)
+  ) {
     problems.push('states must contain at least one non-empty state');
   }
-  if (!Array.isArray(value.viewports) || value.viewports.length === 0 || !value.viewports.every(isViewportEvidence)) {
+  if (
+    !Array.isArray(value.viewports) ||
+    value.viewports.length === 0 ||
+    !value.viewports.every(isViewportEvidence)
+  ) {
     problems.push('viewports must contain exact dimensions or a non-applicable reason');
   }
   if (!isNonEmptyString(value.expectedOutcome)) {
@@ -183,9 +327,12 @@ export function validateVisualScenarioEvidence(value: unknown) {
   }
   if (!isRecord(value.runtimeInputs) || Object.keys(value.runtimeInputs).length === 0) {
     problems.push('runtimeInputs must contain at least one input');
-  } else if (!Object.values(value.runtimeInputs).every((input) => (
-    typeof input === 'string' || typeof input === 'number' || typeof input === 'boolean'
-  ))) {
+  } else if (
+    !Object.values(value.runtimeInputs).every(
+      (input) =>
+        typeof input === 'string' || typeof input === 'number' || typeof input === 'boolean',
+    )
+  ) {
     problems.push('runtimeInputs values must be strings, numbers, or booleans');
   }
   return problems;
@@ -221,7 +368,11 @@ export function setupVisualQualityRuntime(
   });
   page.on('response', (response) => {
     if (response.status() < 400) return;
-    const failure = observeHttpFailure(response.request().method(), response.url(), response.status());
+    const failure = observeHttpFailure(
+      response.request().method(),
+      response.url(),
+      response.status(),
+    );
     if (consumeExpectedHttpFailure(runtimeEvidence.expectedHttpFailures, failure)) {
       runtimeEvidence.acceptedHttpFailures.push(failure);
     } else {
@@ -236,9 +387,15 @@ export function setupVisualQualityRuntime(
     },
     allowHttpFailure(identity, occurrences) {
       if (!Number.isInteger(occurrences) || occurrences < 1) {
-        throw new Error(`Expected a positive HTTP failure occurrence count, received ${occurrences}`);
+        throw new Error(
+          `Expected a positive HTTP failure occurrence count, received ${occurrences}`,
+        );
       }
-      runtimeEvidence.expectedHttpFailures.push({ ...identity, occurrences, remaining: occurrences });
+      runtimeEvidence.expectedHttpFailures.push({
+        ...identity,
+        occurrences,
+        remaining: occurrences,
+      });
     },
     completeAssertions(outcome) {
       if (!isNonEmptyString(outcome)) throw new Error('Actual outcome must be a non-empty string');
@@ -287,13 +444,14 @@ export function setupVisualQualityRuntime(
       expect.soft(metadataProblems, 'mandatory visual scenario metadata').toEqual([]);
       expect.soft(actualOutcome, 'assertion completion outcome').toBeTruthy();
       expect.soft(violations.pageErrors, 'uncaught browser errors').toEqual([]);
-      expect.soft(violations.unexpectedConsoleErrors, 'unexpected browser console errors').toEqual([]);
+      expect
+        .soft(violations.unexpectedConsoleErrors, 'unexpected browser console errors')
+        .toEqual([]);
       expect.soft(violations.failedRequests, 'unexpected failed requests').toEqual([]);
       expect.soft(violations.errorResponses, 'unexpected HTTP error responses').toEqual([]);
-      expect.soft(
-        violations.unconsumedExpectedResponses,
-        'expected HTTP error responses not observed',
-      ).toEqual([]);
+      expect
+        .soft(violations.unconsumedExpectedResponses, 'expected HTTP error responses not observed')
+        .toEqual([]);
     },
   };
 }

@@ -7,6 +7,11 @@ export const mutationKeys = {
   },
 } as const;
 
-export function isPrivateQueryForSubject(queryKey: readonly unknown[], subject: string): boolean {
-  return queryKey[0] === 'private' && queryKey[1] === subject;
+export type SessionCacheEpoch = string & { readonly __sessionCacheEpoch: unique symbol };
+
+export function isPrivateQueryForEpoch(
+  queryKey: readonly unknown[],
+  epoch: SessionCacheEpoch,
+): boolean {
+  return queryKey[0] === 'private' && queryKey[1] === epoch;
 }

@@ -6,7 +6,7 @@
 
 .skipLink {
   position: fixed;
-  z-index: 1000;
+  z-index: var(--z-accessibility);
   top: var(--spacing-2);
   left: var(--spacing-2);
   padding: var(--spacing-3) var(--spacing-4);
@@ -22,7 +22,7 @@
 
 .header {
   position: sticky;
-  z-index: 10;
+  z-index: var(--z-sticky);
   top: 0;
   border-bottom: var(--border-width) solid var(--border-default);
   background: var(--color-surface);
@@ -154,8 +154,49 @@
   background: var(--color-canvas);
 }
 
+.cartLink {
+  position: relative;
+  display: inline-grid;
+  order: 1;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  place-items: center;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.cartLink:hover,
+.cartLinkActive {
+  color: var(--action-primary-bg-pressed);
+  background: var(--action-secondary-bg);
+}
+
+.cartLink:focus-visible {
+  outline: 2px solid var(--action-primary-bg);
+  outline-offset: 2px;
+}
+
+.cartBadge {
+  position: absolute;
+  top: 2px;
+  right: 1px;
+  min-width: 1rem;
+  padding: 0 var(--spacing-1);
+  color: var(--action-primary-fg);
+  background: var(--action-primary-bg);
+  border: var(--border-width) solid var(--color-surface);
+  border-radius: var(--radius-full);
+  font-size: var(--type-caption-size);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1rem;
+  text-align: center;
+}
+
 .navList {
   display: flex;
+  flex-wrap: nowrap;
   align-items: center;
   gap: var(--spacing-2);
   margin: 0;
@@ -172,6 +213,7 @@
   color: var(--text-secondary);
   font-weight: var(--font-weight-medium);
   text-decoration: none;
+  white-space: nowrap;
 }
 
 .navLink:hover,
@@ -210,6 +252,7 @@
 
 .account {
   display: flex;
+  order: 2;
   align-items: center;
   gap: var(--spacing-3);
   margin-left: auto;
@@ -217,8 +260,22 @@
   font-size: var(--type-body-sm-size);
 }
 
-.account > span {
+.headerCartAccountGroup {
+  display: contents;
+}
+
+.accountInitials {
   display: none;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  place-items: center;
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-full);
+  color: var(--action-primary-bg-pressed);
+  background: var(--action-secondary-bg);
+  font-size: var(--type-body-sm-size);
+  font-weight: var(--font-weight-semibold);
 }
 
 .menuButton {
@@ -250,7 +307,7 @@
 
 .main {
   width: 100%;
-  max-width: var(--container-max-public);
+  max-width: var(--container-max-standard);
   margin: 0 auto;
   padding: var(--spacing-8) var(--gutter-mobile) var(--spacing-16);
 }
@@ -261,10 +318,6 @@
   max-width: none;
   margin: 0;
   padding: 0;
-}
-
-.mainWorkspace {
-  max-width: var(--container-max-workspace);
 }
 
 .mainAuth {
@@ -299,28 +352,36 @@
   }
 
   .headerInner {
-    flex-wrap: nowrap;
-  }
-
-  .headerAnonymousCatalog .headerInner {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(12rem, min(34rem, calc(100% - 31.25rem))) minmax(0, 1fr);
+    grid-template-columns: max-content minmax(0, 1fr) max-content;
+    justify-content: normal;
+    flex-wrap: nowrap;
     column-gap: var(--spacing-4);
   }
 
-  .headerAnonymousCatalog .headerCatalogStart,
-  .headerAnonymousCatalog .headerCatalogEnd {
+  .headerWithoutCatalogSearch .headerInner {
+    grid-template-columns: minmax(0, 1fr) max-content;
+  }
+
+  .headerCatalogStart,
+  .headerCatalogEnd {
     display: flex;
     min-width: 0;
     align-items: center;
     gap: var(--spacing-4);
   }
-
-  .headerAnonymousCatalog .headerCatalogEnd {
+  .headerCatalogStart {
+    grid-column: 1;
+  }
+  .headerCatalogEnd {
+    grid-column: 3;
     justify-content: flex-end;
   }
+  .headerWithoutCatalogSearch .headerCatalogEnd {
+    grid-column: 2;
+  }
 
-  .headerAnonymousCatalog .navDesktop {
+  .headerAnonymous .navDesktop {
     margin-left: 0;
   }
 
@@ -331,7 +392,7 @@
   }
 
   .headerCatalog .navDesktop {
-    margin-left: var(--spacing-4);
+    margin-left: 0;
   }
 
   .headerCatalog .navCatalogAccount {
@@ -339,10 +400,17 @@
   }
 
   .catalogSearch {
+    grid-column: 2;
     flex: 1 1 12rem;
+    width: 100%;
     order: initial;
     max-width: 34rem;
-    margin-left: auto;
+    margin-left: 0;
+    justify-self: center;
+  }
+
+  .cartLink {
+    order: initial;
   }
 
   .headerCatalog .account {
@@ -357,6 +425,7 @@
   }
 
   .navAuthActions {
+    flex: 0 0 auto;
     margin-left: auto;
   }
 
@@ -364,12 +433,18 @@
     display: none;
   }
 
-  .account > span {
-    display: inline;
+  .accountInitials {
+    display: inline-grid;
   }
 
   .accountInstructor {
     margin-left: 0;
+  }
+
+  .headerCartAccountGroup {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--spacing-3) + 3px);
   }
 
   .menuButton,
@@ -381,7 +456,8 @@
 @media (prefers-reduced-motion: no-preference) {
   .skipLink,
   .navLink {
-    transition: color var(--duration-fast) var(--easing-standard),
+    transition:
+      color var(--duration-fast) var(--easing-standard),
       background-color var(--duration-fast) var(--easing-standard),
       transform var(--duration-fast) var(--easing-standard);
   }

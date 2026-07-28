@@ -1,4 +1,4 @@
-import type { AuthPolicy } from '@shared/api';
+import type { AuthPolicy, SessionCacheEpoch } from '@shared/api';
 import { API_OPERATION_BY_ID, type SelectedApiOperationId } from './operations';
 
 export interface ApiOperationMetadata {
@@ -10,18 +10,15 @@ type OperationMetadataRegistry = Readonly<Record<SelectedApiOperationId, ApiOper
 
 export const queryKeys = {
   public: {
-    operation: (operationId: SelectedApiOperationId, resource: string) => (
-      ['public', operationId, resource] as const
-    ),
+    operation: (operationId: SelectedApiOperationId, resource: string) =>
+      ['public', operationId, resource] as const,
   },
   private: {
-    subject: (subject: string) => ['private', subject] as const,
-    operationPrefix: (subject: string, operationId: SelectedApiOperationId) => (
-      ['private', subject, operationId] as const
-    ),
-    operation: (subject: string, operationId: SelectedApiOperationId, resource: string) => (
-      ['private', subject, operationId, resource] as const
-    ),
+    epoch: (epoch: SessionCacheEpoch) => ['private', epoch] as const,
+    operationPrefix: (epoch: SessionCacheEpoch, operationId: SelectedApiOperationId) =>
+      ['private', epoch, operationId] as const,
+    operation: (epoch: SessionCacheEpoch, operationId: SelectedApiOperationId, resource: string) =>
+      ['private', epoch, operationId, resource] as const,
   },
 } as const;
 

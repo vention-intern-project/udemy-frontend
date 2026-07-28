@@ -16,9 +16,10 @@ const SORT_LABEL: Readonly<Record<CatalogSort, string>> = {
 interface SortControlProps {
   value: CatalogSort;
   onChange: (sort: CatalogSort) => void;
+  onPointerOptionCommit(clientX: number, clientY: number): void;
 }
 
-export function SortControl({ value, onChange }: SortControlProps) {
+export function SortControl({ value, onChange, onPointerOptionCommit }: SortControlProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const focusListboxRef = useRef(false);
@@ -34,19 +35,27 @@ export function SortControl({ value, onChange }: SortControlProps) {
     activeIndexRef.current = index;
     setActiveIndex(index);
   }, []);
-  const close = useCallback((restoreFocus = false) => {
-    focusListboxRef.current = false;
-    setOpen(false);
-    setActive(null);
-    if (restoreFocus) requestAnimationFrame(() => triggerRef.current?.focus());
-  }, [setActive]);
-  const openList = useCallback((index = selectedIndex, focusListbox = false) => {
-    focusListboxRef.current = focusListbox;
-    setActive(index);
-    setOpen(true);
-  }, [selectedIndex, setActive]);
+  const close = useCallback(
+    (restoreFocus = false) => {
+      focusListboxRef.current = false;
+      setOpen(false);
+      setActive(null);
+      if (restoreFocus) requestAnimationFrame(() => triggerRef.current?.focus());
+    },
+    [setActive],
+  );
+  const openList = useCallback(
+    (index = selectedIndex, focusListbox = false) => {
+      focusListboxRef.current = focusListbox;
+      setActive(index);
+      setOpen(true);
+    },
+    [selectedIndex, setActive],
+  );
 
-  useEffect(() => { close(); }, [close, value]);
+  useEffect(() => {
+    close();
+  }, [close, value]);
   const setListboxRef = useCallback((element: HTMLDivElement | null) => {
     if (element && focusListboxRef.current) {
       focusListboxRef.current = false;
@@ -61,14 +70,24 @@ export function SortControl({ value, onChange }: SortControlProps) {
     document.addEventListener('pointerdown', closeOnOutsidePointer, true);
     return () => document.removeEventListener('pointerdown', closeOnOutsidePointer, true);
   }, [close, open]);
-  const select = useCallback((index: number) => {
-    const sort = CATALOG_SORT_VALUES[index];
-    if (!sort) return;
-    close();
-    onChange(sort);
-  }, [close, onChange]);
-  const supportsFinePointerHover = (pointerType: string) => pointerType === 'mouse'
-    && (typeof window.matchMedia !== 'function' || window.matchMedia('(hover: hover) and (pointer: fine)').matches);
+  const select = useCallback(
+    (index: number, pointerOriginated = false, clientX = 0, clientY = 0) => {
+      const sort = CATALOG_SORT_VALUES[index];
+      if (!sort) return;
+      if (pointerOriginated) onPointerOptionCommit?.(clientX, clientY);
+      if (sort === value) {
+        close(true);
+        return;
+      }
+      close();
+      onChange(sort);
+    },
+    [close, onChange, onPointerOptionCommit, value],
+  );
+  const supportsFinePointerHover = (pointerType: string) =>
+    pointerType === 'mouse' &&
+    (typeof window.matchMedia !== 'function' ||
+      window.matchMedia('(hover: hover) and (pointer: fine)').matches);
 
   return (
     <div
@@ -135,7 +154,12 @@ export function SortControl({ value, onChange }: SortControlProps) {
           onKeyDown={(event) => {
             if (event.key === 'ArrowDown') {
               event.preventDefault();
-              setActive(Math.min((activeIndexRef.current ?? selectedIndex) + 1, CATALOG_SORT_VALUES.length - 1));
+              setActive(
+                Math.min(
+                  (activeIndexRef.current ?? selectedIndex) + 1,
+                  CATALOG_SORT_VALUES.length - 1,
+                ),
+              );
             } else if (event.key === 'ArrowUp') {
               event.preventDefault();
               setActive(Math.max((activeIndexRef.current ?? selectedIndex) - 1, 0));
@@ -160,12 +184,14 @@ export function SortControl({ value, onChange }: SortControlProps) {
             <div
               key={sort}
               id={`${listboxId}-option-${index}`}
-              className={[styles.option, activeIndex === index && styles.optionActive].filter(Boolean).join(' ')}
+              className={[styles.option, activeIndex === index && styles.optionActive]
+                .filter(Boolean)
+                .join(' ')}
               role="option"
               aria-selected={value === sort}
               onPointerDown={(event) => event.preventDefault()}
               onMouseEnter={() => setActive(index)}
-              onClick={() => select(index)}
+              onClick={(event) => select(index, event.detail !== 0, event.clientX, event.clientY)}
             >
               <span className={styles.radio} data-part="catalog-sort-radio" aria-hidden="true" />
               {SORT_LABEL[sort]}

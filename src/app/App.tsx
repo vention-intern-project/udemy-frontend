@@ -2,7 +2,7 @@ import { BrowserRouter } from 'react-router-dom';
 
 import { SessionProvider } from '../features/auth-session';
 import { ThemeProvider } from '../shared/ui/theme';
-import { AppRouter, densityForPath, RouteErrorBoundary } from './router';
+import { ApplicationTitleBoundary, AppRouter, densityForPath } from './router';
 import { AppQueryProvider, SessionPrivateCacheLifecycle } from './query';
 import './app.css';
 
@@ -15,9 +15,9 @@ export function App() {
         <SessionProvider apiBaseUrl={import.meta.env.VITE_API_BASE_URL ?? ''}>
           <SessionPrivateCacheLifecycle />
           <BrowserRouter>
-            <RouteErrorBoundary>
+            <ApplicationTitleBoundary>
               <AppRouter />
-            </RouteErrorBoundary>
+            </ApplicationTitleBoundary>
           </BrowserRouter>
         </SessionProvider>
       </ThemeProvider>

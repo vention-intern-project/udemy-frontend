@@ -13,17 +13,26 @@ export interface CourseProgress {
 
 export type LessonProgressFeedbackTone = 'success' | 'error';
 
+export type LessonProgressFeedbackVisibility = 'visible' | 'exiting';
+
 export interface LessonProgressFeedback {
-  tone: LessonProgressFeedbackTone;
-  message: string;
+  readonly tone: LessonProgressFeedbackTone;
+  readonly message: string;
+  readonly visibility: LessonProgressFeedbackVisibility;
 }
 
-export type LessonCompletionState =
-  | { status: 'unknown' }
-  | { status: 'known'; completed: boolean };
+export interface LearningFeedbackMotionPreferences {
+  readonly reducedMotion: boolean;
+}
+
+export const DEFAULT_LEARNING_FEEDBACK_MOTION_PREFERENCES: LearningFeedbackMotionPreferences = {
+  reducedMotion: false,
+};
+
+export type LessonCompletionState = { status: 'unknown' } | { status: 'known'; completed: boolean };
 
 export interface LessonProgressAttempt {
-  subject: string;
+  subject: SessionCacheEpoch;
   workspaceIdentity: string;
   enrollmentId: number;
   courseId: number;
@@ -31,3 +40,4 @@ export interface LessonProgressAttempt {
   targetCompleted: boolean;
   identity: string;
 }
+import type { SessionCacheEpoch } from '@shared/api';

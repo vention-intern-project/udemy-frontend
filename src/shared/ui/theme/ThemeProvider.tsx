@@ -1,19 +1,14 @@
 /**
  * ThemeProvider
  *
- * React context provider for the application's density mode.
- * Applies density-mode data attribute to the document root and
- * exposes `useDensityMode()` hook for consumers.
+ * Singleton React context provider for the application's global density mode.
+ * Applies the density-mode data attribute to the document root before paint
+ * and exposes `useDensityMode()` to consumers of the one app shell.
  *
  * Usage:
  *   // Marketplace pages
  *   <ThemeProvider initialDensityMode="marketplace">
- *     <CatalogPage />
- *   </ThemeProvider>
- *
- *   // Workspace/task pages
- *   <ThemeProvider initialDensityMode="workspace">
- *     <InstructorCoursesPage />
+ *     <AppRouter />
  *   </ThemeProvider>
  *
  *   // Inside any component:
@@ -26,7 +21,7 @@ import {
   useState,
   useCallback,
   useMemo,
-  useEffect,
+  useLayoutEffect,
   useRef,
   type ReactNode,
 } from 'react';
@@ -37,63 +32,18 @@ import type { ThemeContextValue, DensityMode } from './types';
 // Context
 // ---------------------------------------------------------------------------
 const ThemeContext = createContext<ThemeContextValue | null>(null);
-const ThemeOwnershipDepthContext = createContext(0);
+const DOCUMENT_DENSITY_OWNER_KEY = Symbol.for('learnhub.document-density-owner');
+
+interface DocumentDensityOwnerRegistration {
+  readonly densityBeforeProvider: string | null;
+  readonly owner: symbol;
+}
+
+type DensityOwnedDocument = Document & {
+  [DOCUMENT_DENSITY_OWNER_KEY]?: DocumentDensityOwnerRegistration;
+};
 
 ThemeContext.displayName = 'ThemeContext';
-
-interface DensityOwner {
-  id: symbol;
-  depth: number;
-  sequence: number;
-  mode: DensityMode;
-}
-
-const densityOwners: DensityOwner[] = [];
-let densityOwnerSequence = 0;
-let densityBeforeProviders: string | null | undefined;
-
-function activeDensityOwner(): DensityOwner | undefined {
-  return densityOwners.reduce<DensityOwner | undefined>((active, owner) => {
-    if (!active || owner.depth > active.depth) return owner;
-    if (owner.depth === active.depth && owner.sequence > active.sequence) return owner;
-    return active;
-  }, undefined);
-}
-
-function applyActiveDensity() {
-  const root = document.documentElement;
-  const active = activeDensityOwner();
-
-  if (active) {
-    root.setAttribute('data-density', active.mode);
-  } else if (densityBeforeProviders === null) {
-    root.removeAttribute('data-density');
-  } else if (densityBeforeProviders !== undefined) {
-    root.setAttribute('data-density', densityBeforeProviders);
-  }
-}
-
-function registerDensityOwner(id: symbol, depth: number, mode: DensityMode) {
-  if (densityOwners.length === 0) {
-    densityBeforeProviders = document.documentElement.getAttribute('data-density');
-  }
-  densityOwners.push({ id, depth, mode, sequence: densityOwnerSequence });
-  densityOwnerSequence += 1;
-  applyActiveDensity();
-}
-
-function updateDensityOwner(id: symbol, mode: DensityMode) {
-  const owner = densityOwners.find((candidate) => candidate.id === id);
-  if (owner) owner.mode = mode;
-  applyActiveDensity();
-}
-
-function unregisterDensityOwner(id: symbol) {
-  const ownerIndex = densityOwners.findIndex((owner) => owner.id === id);
-  if (ownerIndex >= 0) densityOwners.splice(ownerIndex, 1);
-  applyActiveDensity();
-  if (densityOwners.length === 0) densityBeforeProviders = undefined;
-}
 
 // ---------------------------------------------------------------------------
 // Provider
@@ -108,43 +58,64 @@ export function ThemeProvider({
   initialDensityMode = 'marketplace',
   children,
 }: ThemeProviderProps) {
-  const parentOwnershipDepth = useContext(ThemeOwnershipDepthContext);
-  const [densityMode, setDensityModeState] =
-    useState<DensityMode>(initialDensityMode);
-  const ownerIdRef = useRef(Symbol('theme-density-owner'));
-  const densityModeRef = useRef(densityMode);
-  densityModeRef.current = densityMode;
+  const parentTheme = useContext(ThemeContext);
+  if (parentTheme !== null) {
+    throw new Error('ThemeProvider is a singleton global density owner and cannot be nested.');
+  }
+  const ownerRef = useRef(Symbol('ThemeProvider density owner'));
+  const [densityMode, setDensityModeState] = useState<DensityMode>(initialDensityMode);
 
   const setDensityMode = useCallback((mode: DensityMode) => {
     setDensityModeState(mode);
   }, []);
 
-  const value = useMemo<ThemeContextValue>(() => ({
-    densityMode,
-    setDensityMode,
-  }), [densityMode, setDensityMode]);
+  const value = useMemo<ThemeContextValue>(
+    () => ({
+      densityMode,
+      setDensityMode,
+    }),
+    [densityMode, setDensityMode],
+  );
 
-  useEffect(() => {
-    const ownerId = ownerIdRef.current;
-    registerDensityOwner(
-      ownerId,
-      parentOwnershipDepth,
-      densityModeRef.current,
-    );
-    return () => unregisterDensityOwner(ownerId);
-  }, [parentOwnershipDepth]);
+  useLayoutEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    const ownedDocument = document as DensityOwnedDocument;
+    const owner = ownerRef.current;
+    const currentOwner = ownedDocument[DOCUMENT_DENSITY_OWNER_KEY];
+    if (currentOwner && currentOwner.owner !== owner) {
+      throw new Error(
+        'ThemeProvider is a singleton global density owner and cannot span multiple React roots.',
+      );
+    }
+    if (!currentOwner) {
+      ownedDocument[DOCUMENT_DENSITY_OWNER_KEY] = {
+        densityBeforeProvider: ownedDocument.documentElement.getAttribute('data-density'),
+        owner,
+      };
+    }
+    return () => {
+      const registration = ownedDocument[DOCUMENT_DENSITY_OWNER_KEY];
+      if (registration?.owner !== owner) return;
+      if (registration.densityBeforeProvider === null)
+        ownedDocument.documentElement.removeAttribute('data-density');
+      else
+        ownedDocument.documentElement.setAttribute(
+          'data-density',
+          registration.densityBeforeProvider,
+        );
+      delete ownedDocument[DOCUMENT_DENSITY_OWNER_KEY];
+    };
+  }, []);
 
-  useEffect(() => {
-    updateDensityOwner(ownerIdRef.current, densityMode);
+  useLayoutEffect(() => {
+    if (typeof document === 'undefined') return;
+    const ownedDocument = document as DensityOwnedDocument;
+    if (ownedDocument[DOCUMENT_DENSITY_OWNER_KEY]?.owner === ownerRef.current) {
+      ownedDocument.documentElement.setAttribute('data-density', densityMode);
+    }
   }, [densityMode]);
 
-  return (
-    <ThemeOwnershipDepthContext.Provider value={parentOwnershipDepth + 1}>
-      <ThemeContext.Provider value={value}>
-        {children}
-      </ThemeContext.Provider>
-    </ThemeOwnershipDepthContext.Provider>
-  );
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 
 // ---------------------------------------------------------------------------
@@ -160,7 +131,7 @@ export function useDensityMode(): ThemeContextValue {
   if (ctx === null) {
     throw new Error(
       'useDensityMode must be used within a <ThemeProvider>. ' +
-        'Wrap the relevant page or section with <ThemeProvider initialDensityMode="marketplace|workspace">.',
+        'Wrap the application shell with its one <ThemeProvider initialDensityMode="marketplace|workspace">.',
     );
   }
   return ctx;
