@@ -26,6 +26,7 @@ import {
   FOCUS_RING_WIDTH,
   FOCUS_RING_OFFSET,
   STATE_SELECTED_BG,
+  STATE_CONTROL_HIGHLIGHT,
   STATE_DISABLED_BG,
   STATE_DISABLED_TEXT,
   FEEDBACK_SUCCESS,
@@ -127,6 +128,12 @@ describe('Color tokens', () => {
   describe('State tokens', () => {
     it('STATE_SELECTED_BG should be #DBEAFE', () => {
       expect(STATE_SELECTED_BG).toBe('#DBEAFE');
+    });
+
+    it('STATE_CONTROL_HIGHLIGHT should be #EEF0F4 without replacing selected state', () => {
+      expect(STATE_CONTROL_HIGHLIGHT).toBe('#EEF0F4');
+      expect(STATE_CONTROL_HIGHLIGHT).not.toBe(STATE_SELECTED_BG);
+      expect(colorTokens['--state-control-highlight']).toBe(STATE_CONTROL_HIGHLIGHT);
     });
 
     it('STATE_DISABLED_BG should be #E5E7EB', () => {

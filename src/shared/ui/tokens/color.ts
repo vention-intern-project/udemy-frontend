@@ -56,6 +56,7 @@ export const FOCUS_RING_OFFSET = '2px' as const;
 // State tokens
 // ---------------------------------------------------------------------------
 export const STATE_SELECTED_BG = '#DBEAFE' as const;
+export const STATE_CONTROL_HIGHLIGHT = '#EEF0F4' as const;
 export const STATE_DISABLED_BG = '#E5E7EB' as const;
 export const STATE_DISABLED_TEXT = '#9CA3AF' as const;
 export const STATE_DISABLED_OPACITY = '0.56' as const;
@@ -111,6 +112,7 @@ export const colorTokens = {
   '--focus-ring-offset': FOCUS_RING_OFFSET,
   // States
   '--state-selected': STATE_SELECTED_BG,
+  '--state-control-highlight': STATE_CONTROL_HIGHLIGHT,
   '--state-disabled-bg': STATE_DISABLED_BG,
   '--state-disabled-text': STATE_DISABLED_TEXT,
   '--state-disabled-opacity': STATE_DISABLED_OPACITY,

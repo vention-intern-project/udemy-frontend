@@ -2,7 +2,10 @@ import { Link } from 'react-router-dom';
 
 import type { CourseDetail } from '@entities/course';
 import type {
-  CourseMutationKind, CourseMutationViewState, CoursePreflightState, CoursePrimaryActionState,
+  CourseMutationKind,
+  CourseMutationViewState,
+  CoursePreflightState,
+  CoursePrimaryActionState,
 } from '@features/course-detail';
 import { Button, Notice, type AsyncState } from '@shared/ui/primitives';
 
@@ -24,21 +27,90 @@ function actionButtonState(mutationState: CourseMutationViewState): AsyncState {
   return 'idle';
 }
 
+interface ActionNotice {
+  readonly tone: 'error' | 'success' | 'warning';
+  readonly title: string;
+  readonly message: string;
+  readonly retryPreflight: boolean;
+}
+
+function actionNotice(
+  isDraft: boolean,
+  mutationState: CourseMutationViewState,
+  preflight: CoursePreflightState,
+): ActionNotice | null {
+  if (isDraft)
+    return {
+      tone: 'warning',
+      title: 'Not available',
+      message: 'Course is not published',
+      retryPreflight: false,
+    };
+  if (mutationState.status === 'error')
+    return {
+      tone: 'error',
+      title: 'Action failed',
+      message: mutationState.disposition.message,
+      retryPreflight: false,
+    };
+  if (mutationState.status === 'success') {
+    return mutationState.action === 'enroll'
+      ? {
+          tone: 'success',
+          title: 'Enrollment complete',
+          message: 'You are now enrolled in this course.',
+          retryPreflight: false,
+        }
+      : {
+          tone: 'success',
+          title: 'Added to cart',
+          message: 'This course was added to your cart.',
+          retryPreflight: false,
+        };
+  }
+  if (preflight === 'unavailable') {
+    return {
+      tone: 'error',
+      title: 'Action unavailable',
+      message: 'We could not verify your enrollment or cart.',
+      retryPreflight: true,
+    };
+  }
+  return null;
+}
+
 export function CourseActionPanel({
-  action, course, isDraft, mutationState, onRetryPreflight, onSubmitAction, preflight,
+  action,
+  course,
+  isDraft,
+  mutationState,
+  onRetryPreflight,
+  onSubmitAction,
+  preflight,
 }: CourseActionPanelProps) {
   const actionState = actionButtonState(mutationState);
+  const notice = actionNotice(isDraft, mutationState, preflight);
 
   return (
     <aside className={styles.actionPanel} aria-label="Course action">
-      <data className={styles.price} value={course.price}>{course.currency}&nbsp;{course.price}</data>
-      {isDraft ? <Notice tone="warning" title="Not available">Course is not published</Notice> : null}
-      {preflight === 'unavailable' ? (
-        <Notice tone="error" title="Action unavailable">
-          We could not verify your enrollment or cart. <Button variant="secondary" onClick={onRetryPreflight}>Try again</Button>
+      <data className={styles.price} value={course.price}>
+        {course.currency}&nbsp;{course.price}
+      </data>
+      {notice ? (
+        <Notice tone={notice.tone} title={notice.title}>
+          {notice.message}{' '}
+          {notice.retryPreflight ? (
+            <Button variant="secondary" onClick={onRetryPreflight}>
+              Try again
+            </Button>
+          ) : null}
         </Notice>
       ) : null}
-      {action?.kind === 'login' ? <Link className={styles.primaryLink} to={action.to}>{action.label}</Link> : null}
+      {action?.kind === 'login' ? (
+        <Link className={styles.primaryLink} to={action.to}>
+          {action.label}
+        </Link>
+      ) : null}
       {action?.kind === 'enroll' || action?.kind === 'cart' ? (
         <Button
           fullWidth
@@ -50,13 +122,10 @@ export function CourseActionPanel({
           {action.label}
         </Button>
       ) : null}
-      {action?.kind === 'disabled' ? <Button fullWidth disabled>{action.label}</Button> : null}
-      {mutationState.status === 'error' ? <Notice tone="error" title="Action failed">{mutationState.disposition.message}</Notice> : null}
-      {mutationState.status === 'success' && mutationState.action === 'enroll' ? (
-        <Notice tone="success" title="Enrollment complete">You are now enrolled in this course.</Notice>
-      ) : null}
-      {mutationState.status === 'success' && mutationState.action === 'cart' ? (
-        <Notice tone="success" title="Added to cart">This course was added to your cart.</Notice>
+      {action?.kind === 'disabled' ? (
+        <Button fullWidth disabled>
+          {action.label}
+        </Button>
       ) : null}
     </aside>
   );

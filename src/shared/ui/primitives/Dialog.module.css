@@ -1,7 +1,7 @@
 .backdrop {
   position: fixed;
   inset: 0;
-  z-index: var(--z-overlay);
+  z-index: var(--z-modal);
   display: grid;
   place-items: center;
   padding: var(--gutter-mobile);
@@ -21,11 +21,32 @@
   font-family: var(--font-family-base);
 }
 
-.header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--spacing-4); }
-.title { margin: 0; font-size: var(--type-section-h2-size); line-height: var(--type-section-h2-lh); }
-.description { margin-top: var(--spacing-2); color: var(--text-secondary); }
-.body { display: grid; gap: var(--spacing-4); margin-top: var(--spacing-6); }
-.actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--spacing-3); }
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-4);
+}
+.title {
+  margin: 0;
+  font-size: var(--type-section-h2-size);
+  line-height: var(--type-section-h2-lh);
+}
+.description {
+  margin-top: var(--spacing-2);
+  color: var(--text-secondary);
+}
+.body {
+  display: grid;
+  gap: var(--spacing-4);
+  margin-top: var(--spacing-6);
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--spacing-3);
+}
 
 .close {
   min-width: var(--control-height-md);
@@ -46,6 +67,10 @@
 }
 
 @media (min-width: 768px) {
-  .backdrop { padding: var(--gutter-desktop); }
-  .dialog { max-height: calc(100vh - (2 * var(--gutter-desktop))); }
+  .backdrop {
+    padding: var(--gutter-desktop);
+  }
+  .dialog {
+    max-height: calc(100vh - (2 * var(--gutter-desktop)));
+  }
 }

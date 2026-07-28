@@ -1,11 +1,84 @@
-.page, .state { display: grid; gap: var(--space-4, 16px); max-width: 1360px; margin: 0 auto; }
-.backLink { display: inline-flex; align-items: center; justify-self: start; inline-size: fit-content; max-inline-size: 100%; min-block-size: var(--control-height-md); }
-.header { display: grid; gap: var(--space-2, 8px); }
-.header h1, .header p { margin: 0; }
-.header p { color: var(--text-secondary); }
-.status { font-weight: 600; }
-.statusactive { color: var(--feedback-success-fg); }
-.statuspending_payment { color: var(--feedback-warning-fg); }
-.statuscancelled { color: var(--feedback-error-fg); }
-.loading { display: grid; gap: var(--space-3, 12px); }
-.paymentActions { display: flex; flex-wrap: wrap; gap: var(--space-2, 8px); margin-top: var(--space-3, 12px); }
+.page,
+.state {
+  display: grid;
+  gap: var(--spacing-4);
+  min-width: 0;
+}
+.readingContent {
+  display: grid;
+  gap: var(--spacing-4);
+  width: 100%;
+  max-width: calc(var(--container-max-standard) - (2 * var(--spacing-12)));
+  min-width: 0;
+  margin-inline: auto;
+}
+.backLink {
+  justify-self: start;
+  gap: var(--spacing-2);
+  color: var(--text-secondary);
+  background: transparent;
+  font-weight: var(--font-weight-bold);
+}
+
+.backLink:visited {
+  color: var(--text-secondary);
+}
+.backLink:hover,
+.backLink:active {
+  color: var(--action-primary-bg);
+  background: transparent;
+}
+
+@media (min-width: 1120px) {
+  .backLink {
+    margin-inline-start: calc(-1 * var(--spacing-12));
+  }
+}
+.header {
+  display: grid;
+  gap: var(--space-2, 8px);
+}
+.header h1,
+.header p {
+  margin: 0;
+}
+.header p {
+  color: var(--text-secondary);
+}
+.status {
+  font-weight: 600;
+}
+.statusactive {
+  color: var(--feedback-success-fg);
+}
+.statuspending_payment {
+  color: var(--feedback-warning-fg);
+}
+.statuscancelled {
+  color: var(--feedback-error-fg);
+}
+.loading {
+  display: grid;
+  gap: var(--space-3, 12px);
+}
+.paymentActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+  margin-top: var(--space-3, 12px);
+}
+.feedbackSlot {
+  display: grid;
+  align-content: start;
+  min-block-size: 64px;
+}
+.feedbackNotice,
+.feedbackNoticeExiting {
+  transition: opacity var(--duration-fast) var(--easing-standard);
+}
+.feedbackNotice {
+  opacity: 1;
+}
+.feedbackNoticeExiting {
+  opacity: 0;
+}

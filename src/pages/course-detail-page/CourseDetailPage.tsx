@@ -1,11 +1,14 @@
-import {
-  useEffect, useRef, useState,
-} from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { useParams } from 'react-router-dom';
 
 import { courseDetailFailure, useCourseDetail } from '@features/course-detail';
 import {
-  Button, Notice, Skeleton, SkeletonGroup, VisuallyHidden,
+  Button,
+  ContextualNavigationLink,
+  Notice,
+  Skeleton,
+  SkeletonGroup,
+  VisuallyHidden,
 } from '@shared/ui/primitives';
 
 import { CourseActionPanel } from './CourseActionPanel';
@@ -23,7 +26,7 @@ function CourseNotFound() {
     <section className={styles.state} aria-labelledby="course-not-found-heading">
       <h1 id="course-not-found-heading">Course not found</h1>
       <p>This course does not exist or is no longer available.</p>
-      <Link to="/">Return to the course catalog</Link>
+      <ContextualNavigationLink to="/">Return to the course catalog</ContextualNavigationLink>
     </section>
   );
 }
@@ -31,9 +34,8 @@ function CourseNotFound() {
 export function CourseDetailPage() {
   const { courseId: courseIdParam } = useParams();
   const courseId = parseCourseId(courseIdParam);
-  const {
-    action, detail, mutationState, outline, preflight, retryPreflight, submitAction,
-  } = useCourseDetail(courseId);
+  const { action, detail, mutationState, outline, preflight, retryPreflight, submitAction } =
+    useCourseDetail(courseId);
   const detailHeadingRef = useRef<HTMLHeadingElement>(null);
   const outlineHeadingRef = useRef<HTMLHeadingElement>(null);
   const retryTargetRef = useRef<'detail' | 'outline' | null>(null);
@@ -83,7 +85,9 @@ export function CourseDetailPage() {
     return (
       <section className={styles.state} aria-labelledby="course-error-heading">
         <h1 id="course-error-heading">{failure.title}</h1>
-        <Notice tone="error" title={failure.title}>{failure.message}</Notice>
+        <Notice tone="error" title={failure.title}>
+          {failure.message}
+        </Notice>
         <Button onClick={retryDetail}>Try again</Button>
       </section>
     );
@@ -95,16 +99,31 @@ export function CourseDetailPage() {
 
   return (
     <article className={styles.page}>
-      {recoveryMessage ? <VisuallyHidden as="p" role="status" aria-live="polite">{recoveryMessage}</VisuallyHidden> : null}
+      {recoveryMessage ? (
+        <VisuallyHidden as="p" role="status" aria-live="polite">
+          {recoveryMessage}
+        </VisuallyHidden>
+      ) : null}
       <header className={styles.summary}>
         <div className={styles.intro}>
           <p className={styles.eyebrow}>{isDraft ? 'Draft course' : 'Course details'}</p>
-          <h1 ref={detailHeadingRef} className={styles.recoveryTarget} tabIndex={-1}>{course.title}</h1>
+          <h1 ref={detailHeadingRef} className={styles.recoveryTarget} tabIndex={-1}>
+            {course.title}
+          </h1>
           <p className={styles.description}>{description}</p>
           <dl className={styles.metadata}>
-            <div><dt>Instructor</dt><dd>{course.instructorName}</dd></div>
-            <div><dt>Total lessons</dt><dd>{outline.data?.total ?? course.lessons.length}</dd></div>
-            <div><dt>Status</dt><dd>{isDraft ? 'Draft' : 'Published'}</dd></div>
+            <div>
+              <dt>Instructor</dt>
+              <dd>{course.instructorName}</dd>
+            </div>
+            <div>
+              <dt>Total lessons</dt>
+              <dd>{outline.data?.total ?? course.lessons.length}</dd>
+            </div>
+            <div>
+              <dt>Status</dt>
+              <dd>{isDraft ? 'Draft' : 'Published'}</dd>
+            </div>
           </dl>
         </div>
         <CourseActionPanel

@@ -4,9 +4,9 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import { queryKeys } from '@entities/api';
 import type { CheckoutDto, MockPaymentCompleteDto } from '@entities/cart';
 import type { EnrollmentStatus } from '@entities/enrollment';
-import { useSession, type SessionState } from '@features/auth-session';
+import { useSession, type SessionContextValue } from '@features/auth-session';
 import { cartQueryKey } from '@features/cart-workflow';
-import { ApiError } from '@shared/api';
+import { ApiError, type SessionCacheEpoch } from '@shared/api';
 
 import { requestCheckout, requestMockPaymentCompletion } from './api';
 import {
@@ -23,8 +23,10 @@ import {
   type PaymentStatusAttempt,
 } from './checkout-state';
 
-function subjectFor(state: SessionState): string | null {
-  return state.status === 'authenticated' && state.user.role === 'student' ? state.user.email : null;
+function epochFor(session: SessionContextValue): SessionCacheEpoch | null {
+  return session.state.status === 'authenticated' && session.state.user.role === 'student'
+    ? (session.cacheEpoch ?? null)
+    : null;
 }
 
 function checkoutFailure(error: unknown): CheckoutFeedback {
@@ -42,7 +44,8 @@ function paymentFailure(error: unknown): CheckoutFeedback {
     if (error.status === 401) return { kind: 'unauthorized' };
     if (error.status === 403 || error.status === 404) return { kind: 'not_authorized' };
     if (error.status === 400) return { kind: 'payment_status_unknown' };
-    if (error.kind === 'offline' || error.kind === 'invalid_response' || error.kind === 'aborted') return { kind: 'payment_status_unknown' };
+    if (error.kind === 'offline' || error.kind === 'invalid_response' || error.kind === 'aborted')
+      return { kind: 'payment_status_unknown' };
   }
   return { kind: 'unavailable' };
 }
@@ -50,7 +53,7 @@ function paymentFailure(error: unknown): CheckoutFeedback {
 export function useCheckoutCart(scope: CheckoutScope): CheckoutWorkflow {
   const session = useSession();
   const queryClient = useQueryClient();
-  const subject = subjectFor(session.state);
+  const subject = epochFor(session);
   const activeAttemptRef = useRef<CheckoutActiveAttempt | null>(null);
   const checkoutRecoveryRef = useRef<CartRecovery | null>(null);
   const paymentActionLockRef = useRef<PaymentActionLock | null>(null);
@@ -71,21 +74,29 @@ export function useCheckoutCart(scope: CheckoutScope): CheckoutWorkflow {
     paymentActionLockRef.current = null;
     setActiveAttempt(null);
     setPaymentActionLock(null);
-    setFeedback((current) => subject === null && current?.kind === 'unauthorized' && previousScopeRef.current === scope
-      ? current
-      : null);
+    setFeedback((current) =>
+      subject === null && current?.kind === 'unauthorized' && previousScopeRef.current === scope
+        ? current
+        : null,
+    );
     previousScopeRef.current = scope;
   }, [scope, subject]);
 
-  function identity(kind: CheckoutActiveAttempt['kind'], attemptSubject: string, attemptScope: CheckoutScope): string {
+  function identity(
+    kind: CheckoutActiveAttempt['kind'],
+    attemptSubject: SessionCacheEpoch,
+    attemptScope: CheckoutScope,
+  ): string {
     sequenceRef.current += 1;
     return `${attemptSubject}:${attemptScope}:${kind}:${sequenceRef.current}`;
   }
 
   function isCurrent(attempt: CheckoutActiveAttempt): boolean {
-    return activeAttemptRef.current?.identity === attempt.identity
-      && subjectRef.current === attempt.subject
-      && scopeRef.current === attempt.scope;
+    return (
+      activeAttemptRef.current?.identity === attempt.identity &&
+      subjectRef.current === attempt.subject &&
+      scopeRef.current === attempt.scope
+    );
   }
 
   function release(attempt: CheckoutActiveAttempt): void {
@@ -108,13 +119,23 @@ export function useCheckoutCart(scope: CheckoutScope): CheckoutWorkflow {
 
   function paymentActionsAreLocked(enrollmentId: number): boolean {
     const lock = paymentActionLockRef.current;
-    return lock !== null && lock.subject === subject && lock.scope === scope && lock.enrollmentId === enrollmentId;
+    return (
+      lock !== null &&
+      lock.subject === subject &&
+      lock.scope === scope &&
+      lock.enrollmentId === enrollmentId
+    );
   }
 
   function clearPaymentActionLock(attempt: PaymentStatusAttempt | MockPaymentAttempt): void {
     const lock = paymentActionLockRef.current;
     if (!isCurrent(attempt) || lock === null) return;
-    if (lock.subject !== attempt.subject || lock.scope !== attempt.scope || lock.enrollmentId !== attempt.enrollmentId) return;
+    if (
+      lock.subject !== attempt.subject ||
+      lock.scope !== attempt.scope ||
+      lock.enrollmentId !== attempt.enrollmentId
+    )
+      return;
     paymentActionLockRef.current = null;
     setPaymentActionLock(null);
   }
@@ -125,18 +146,29 @@ export function useCheckoutCart(scope: CheckoutScope): CheckoutWorkflow {
     return { kind: 'payment_pending' };
   }
 
-  async function invalidateForSubject(attemptSubject: string): Promise<void> {
+  async function invalidateForSubject(attemptSubject: SessionCacheEpoch): Promise<void> {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: cartQueryKey(attemptSubject), exact: true }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.private.operationPrefix(attemptSubject, 'API-021'), exact: false }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.private.operationPrefix(attemptSubject, 'API-022'), exact: false }),
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.private.operationPrefix(attemptSubject, 'API-021'),
+        exact: false,
+      }),
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.private.operationPrefix(attemptSubject, 'API-022'),
+        exact: false,
+      }),
     ]);
   }
 
-  const mutation = useMutation<CheckoutDto | MockPaymentCompleteDto, unknown, CheckoutAttempt | MockPaymentAttempt>({
-    mutationFn: (attempt) => attempt.kind === 'checkout'
-      ? requestCheckout(session)
-      : requestMockPaymentCompletion(session, attempt.enrollmentId, attempt.outcome),
+  const mutation = useMutation<
+    CheckoutDto | MockPaymentCompleteDto,
+    unknown,
+    CheckoutAttempt | MockPaymentAttempt
+  >({
+    mutationFn: (attempt) =>
+      attempt.kind === 'checkout'
+        ? requestCheckout(session)
+        : requestMockPaymentCompletion(session, attempt.enrollmentId, attempt.outcome),
     onSuccess: async (_result, attempt) => {
       try {
         await invalidateForSubject(attempt.subject);
@@ -151,9 +183,11 @@ export function useCheckoutCart(scope: CheckoutScope): CheckoutWorkflow {
         setFeedback(paymentFeedbackForStatus(status));
       } catch {
         if (isCurrent(attempt)) {
-          setFeedback(attempt.kind === 'checkout'
-            ? { kind: 'checkout_status_unknown' }
-            : { kind: 'payment_status_unknown' });
+          setFeedback(
+            attempt.kind === 'checkout'
+              ? { kind: 'checkout_status_unknown' }
+              : { kind: 'payment_status_unknown' },
+          );
         }
       }
     },
@@ -163,7 +197,8 @@ export function useCheckoutCart(scope: CheckoutScope): CheckoutWorkflow {
       if (attempt.kind === 'checkout') {
         const nextFeedback = checkoutFailure(error);
         setFeedback(nextFeedback);
-        if (nextFeedback.kind === 'recovery_required') checkoutRecoveryRef.current = attempt.recovery;
+        if (nextFeedback.kind === 'recovery_required')
+          checkoutRecoveryRef.current = attempt.recovery;
         return;
       }
       const nextFeedback = paymentFailure(error);
@@ -182,9 +217,18 @@ export function useCheckoutCart(scope: CheckoutScope): CheckoutWorkflow {
   }
 
   function checkout(recovery: CartRecovery): void {
-    if (subject === null || scope !== 'cart' || feedback?.kind === 'recovery_required' || feedback?.kind === 'checkout_status_unknown') return;
+    if (
+      subject === null ||
+      scope !== 'cart' ||
+      feedback?.kind === 'recovery_required' ||
+      feedback?.kind === 'checkout_status_unknown'
+    )
+      return;
     const attempt: CheckoutAttempt = {
-      identity: identity('checkout', subject, scope), kind: 'checkout', subject, scope,
+      identity: identity('checkout', subject, scope),
+      kind: 'checkout',
+      subject,
+      scope,
       recovery,
     };
     checkoutRecoveryRef.current = recovery;
@@ -193,11 +237,21 @@ export function useCheckoutCart(scope: CheckoutScope): CheckoutWorkflow {
 
   function recoverCheckout(): void {
     const activeFeedback = feedback;
-    if (subject === null || scope !== 'cart' || activeAttemptRef.current !== null || activeFeedback?.kind !== 'recovery_required') return;
+    if (
+      subject === null ||
+      scope !== 'cart' ||
+      activeAttemptRef.current !== null ||
+      activeFeedback?.kind !== 'recovery_required'
+    )
+      return;
     const recovery = checkoutRecoveryRef.current;
     if (recovery === null) return;
     const attempt: CheckoutRecoveryAttempt = {
-      identity: identity('checkout_recovery', subject, scope), kind: 'checkout_recovery', subject, scope, recovery,
+      identity: identity('checkout_recovery', subject, scope),
+      kind: 'checkout_recovery',
+      subject,
+      scope,
+      recovery,
     };
     activeAttemptRef.current = attempt;
     setActiveAttempt(attempt);
@@ -214,19 +268,44 @@ export function useCheckoutCart(scope: CheckoutScope): CheckoutWorkflow {
     })();
   }
 
-  function completeMockPayment(enrollmentId: number, outcome: MockPaymentAttempt['outcome'], refresh: EnrollmentStatusRefresh): void {
-    if (subject === null || activeAttemptRef.current !== null || paymentActionsAreLocked(enrollmentId)) return;
+  function completeMockPayment(
+    enrollmentId: number,
+    outcome: MockPaymentAttempt['outcome'],
+    refresh: EnrollmentStatusRefresh,
+  ): void {
+    if (
+      subject === null ||
+      activeAttemptRef.current !== null ||
+      paymentActionsAreLocked(enrollmentId)
+    )
+      return;
     const attempt: MockPaymentAttempt = {
-      identity: identity('mock_payment', subject, scope), kind: 'mock_payment', subject, scope, enrollmentId, outcome, refresh,
+      identity: identity('mock_payment', subject, scope),
+      kind: 'mock_payment',
+      subject,
+      scope,
+      enrollmentId,
+      outcome,
+      refresh,
     };
     start(attempt);
     lockPaymentActions(attempt);
   }
 
   function checkPaymentStatus(enrollmentId: number, refresh: EnrollmentStatusRefresh): void {
-    if (subject === null || activeAttemptRef.current !== null || !paymentActionsAreLocked(enrollmentId)) return;
+    if (
+      subject === null ||
+      activeAttemptRef.current !== null ||
+      !paymentActionsAreLocked(enrollmentId)
+    )
+      return;
     const attempt: PaymentStatusAttempt = {
-      identity: identity('payment_status', subject, scope), kind: 'payment_status', subject, scope, enrollmentId, refresh,
+      identity: identity('payment_status', subject, scope),
+      kind: 'payment_status',
+      subject,
+      scope,
+      enrollmentId,
+      refresh,
     };
     activeAttemptRef.current = attempt;
     setActiveAttempt(attempt);
@@ -245,13 +324,15 @@ export function useCheckoutCart(scope: CheckoutScope): CheckoutWorkflow {
     })();
   }
 
-  const checkoutBlocked = feedback?.kind === 'recovery_required' || feedback?.kind === 'checkout_status_unknown';
+  const checkoutBlocked =
+    feedback?.kind === 'recovery_required' || feedback?.kind === 'checkout_status_unknown';
   return {
     pending: activeAttempt !== null,
     checkoutBlocked,
-    paymentActionsLocked: paymentActionLock !== null
-      && paymentActionLock.subject === subject
-      && paymentActionLock.scope === scope,
+    paymentActionsLocked:
+      paymentActionLock !== null &&
+      paymentActionLock.subject === subject &&
+      paymentActionLock.scope === scope,
     feedback,
     checkout,
     recoverCheckout,

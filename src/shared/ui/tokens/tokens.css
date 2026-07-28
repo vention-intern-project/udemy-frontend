@@ -50,6 +50,7 @@
 
   /* Component states */
   --state-selected: #dbeafe;
+  --state-control-highlight: #eef0f4;
   --state-disabled-bg: #e5e7eb;
   --state-disabled-text: #9ca3af;
   --state-disabled-opacity: 0.56;
@@ -73,8 +74,8 @@
    Typography scale
    ========================================================================= */
 :root {
-  --font-family-base: "Inter", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-family-numeric: "Inter", "Segoe UI", sans-serif;
+  --font-family-base: 'Inter', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-family-numeric: 'Inter', 'Segoe UI', sans-serif;
 
   --font-weight-regular: 400;
   --font-weight-medium: 500;
@@ -130,6 +131,17 @@
   --type-numeric-emphasis-weight: 700;
 }
 
+@media (max-width: 767px) {
+  :root {
+    --type-display-size: 32px;
+    --type-display-lh: 40px;
+    --type-page-h1-size: 28px;
+    --type-page-h1-lh: 36px;
+    --type-section-h2-size: 22px;
+    --type-section-h2-lh: 30px;
+  }
+}
+
 /* =========================================================================
    Spacing scale
    ========================================================================= */
@@ -154,6 +166,8 @@
 
   --layout-header-height: 64px;
   --container-max-public: 1200px;
+  --container-max-standard: 1120px;
+  --container-max-catalog: 1290px;
   --container-max-workspace: 1360px;
 
   --gutter-mobile: 16px;
@@ -254,7 +268,7 @@
 
 /* Default (marketplace — comfortable) */
 :root,
-[data-density="marketplace"] {
+[data-density='marketplace'] {
   --density-card-inner: 16px;
   --density-section-gap: 32px;
   --density-item-gap: 24px;
@@ -263,7 +277,7 @@
 }
 
 /* Workspace — compact */
-[data-density="workspace"] {
+[data-density='workspace'] {
   --density-card-inner: 12px;
   --density-section-gap: 16px;
   --density-item-gap: 12px;
@@ -280,6 +294,7 @@
   --z-dropdown: 200;
   --z-sticky: 300;
   --z-overlay: 400;
+  --z-accessibility: 450;
   --z-modal: 500;
   --z-toast: 600;
 }

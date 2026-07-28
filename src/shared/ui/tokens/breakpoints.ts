@@ -5,7 +5,6 @@
  * Acceptance criteria require values at: 320px (xs), 768px (md), 1280px (xl).
  *
  * Container strategy: fluid with max-widths per layout context.
- * Grid columns by breakpoint documented below.
  */
 
 // ---------------------------------------------------------------------------
@@ -59,18 +58,6 @@ export const mediaQueries = {
   xl: `(min-width: ${BP_XL}px)`,
   /** min-width: 1440px */
   '2xl': `(min-width: ${BP_2XL}px)`,
-} as const;
-
-// ---------------------------------------------------------------------------
-// Grid column counts by breakpoint (catalog cards: 1/2/3/4 per sm/md/lg/xl)
-// ---------------------------------------------------------------------------
-export const catalogGridColumns = {
-  xs: 1,
-  sm: 2,
-  md: 3,
-  lg: 4,
-  xl: 4,
-  '2xl': 4,
 } as const;
 
 // ---------------------------------------------------------------------------

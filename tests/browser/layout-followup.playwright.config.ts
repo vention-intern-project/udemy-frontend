@@ -13,7 +13,7 @@ export default defineConfig({
   outputDir: '../../test-results/playwright-fe006-followup',
   reporter: 'line',
   use: {
-    baseURL: 'http://127.0.0.1:4176',
+    baseURL: 'http://127.0.0.1:4180',
     browserName: 'chromium',
     actionTimeout: 5_000,
     navigationTimeout: 10_000,

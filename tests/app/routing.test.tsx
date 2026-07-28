@@ -1,14 +1,12 @@
 // @vitest-environment jsdom
 
-import {
-  act, cleanup, render, screen, waitFor, within,
-} from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { AppRouter, densityForPath, RouteErrorBoundary } from '../../src/app/router';
+import { ApplicationTitleBoundary, AppRouter, densityForPath } from '../../src/app/router';
 import { createAppQueryClient } from '../../src/app/query';
 import type { UserProfileDto, UserRoleDto } from '../../src/entities/user';
 import { SessionProvider, type AccessTokenStore } from '../../src/features/auth-session';
@@ -31,8 +29,12 @@ function store(token: string | null): AccessTokenStore {
   let value = token;
   return {
     get: () => value,
-    set: (next) => { value = next; },
-    clear: () => { value = null; },
+    set: (next) => {
+      value = next;
+    },
+    clear: () => {
+      value = null;
+    },
   };
 }
 
@@ -41,25 +43,56 @@ function clientFor(role: UserRoleDto): ApiClient {
     request: async <TResponse, TBody = unknown>(
       options: ApiRequestOptions<TBody, TResponse>,
     ): Promise<TResponse> => {
-      const value: unknown = options.path === '/enrollments/my'
-        ? { items: [], page: 1, page_size: 20, total: 0, pages: 0, has_next: false, has_previous: false }
-        : options.path.startsWith('/enrollments/')
-          ? { id: 42, user_id: 1, course_id: 7, status: 'active', created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z', course: { id: 7, title: 'Learning details', description: null, price: '0.00', currency: 'USD' } }
-          : options.path === '/courses/7/progress'
-            ? { course_id: 7, completed_lessons: 0, total_lessons: 0, progress_percentage: 0 }
-            : options.path === '/courses/7/lessons'
-              ? { items: [], page: 1, page_size: 100, total: 0, pages: 0, has_next: false, has_previous: false }
-              : profile(role);
-      return 'decode' in options && options.decode
-        ? options.decode(value)
-        : value as TResponse;
+      const value: unknown =
+        options.path === '/enrollments/my'
+          ? {
+              items: [],
+              page: 1,
+              page_size: 20,
+              total: 0,
+              pages: 0,
+              has_next: false,
+              has_previous: false,
+            }
+          : options.path.startsWith('/enrollments/')
+            ? {
+                id: 42,
+                user_id: 1,
+                course_id: 7,
+                status: 'active',
+                created_at: '2026-07-01T00:00:00Z',
+                updated_at: '2026-07-01T00:00:00Z',
+                course: {
+                  id: 7,
+                  title: 'Learning details',
+                  description: null,
+                  price: '0.00',
+                  currency: 'USD',
+                },
+              }
+            : options.path === '/courses/7/progress'
+              ? { course_id: 7, completed_lessons: 0, total_lessons: 0, progress_percentage: 0 }
+              : options.path === '/courses/7/lessons'
+                ? {
+                    items: [],
+                    page: 1,
+                    page_size: 100,
+                    total: 0,
+                    pages: 0,
+                    has_next: false,
+                    has_previous: false,
+                  }
+                : profile(role);
+      return 'decode' in options && options.decode ? options.decode(value) : (value as TResponse);
     },
   };
 }
 
 function LocationProbe() {
   const location = useLocation();
-  return <output aria-label="current location">{`${location.pathname}${location.search}${location.hash}`}</output>;
+  return (
+    <output aria-label="current location">{`${location.pathname}${location.search}${location.hash}`}</output>
+  );
 }
 
 function FocusNavigationProbe() {
@@ -67,28 +100,42 @@ function FocusNavigationProbe() {
   const navigate = useNavigate();
   return (
     <div>
-      <button type="button" onClick={() => navigate('/login')}>Navigate pathname</button>
+      <button type="button" onClick={() => navigate('/login')}>
+        Navigate pathname
+      </button>
       <button
         type="button"
-        onClick={() => navigate({ pathname: location.pathname, search: '?focus=next', hash: location.hash })}
+        onClick={() =>
+          navigate({ pathname: location.pathname, search: '?focus=next', hash: location.hash })
+        }
       >
         Navigate search
       </button>
       <button
         type="button"
-        onClick={() => navigate({ pathname: location.pathname, search: location.search, hash: '#focus-target' })}
+        onClick={() =>
+          navigate({ pathname: location.pathname, search: location.search, hash: '#focus-target' })
+        }
       >
         Navigate focus fragment
       </button>
       <button
         type="button"
-        onClick={() => navigate({ pathname: location.pathname, search: location.search, hash: '#second-target' })}
+        onClick={() =>
+          navigate({ pathname: location.pathname, search: location.search, hash: '#second-target' })
+        }
       >
         Navigate second fragment
       </button>
       <button
         type="button"
-        onClick={() => navigate({ pathname: location.pathname, search: location.search, hash: '#missing-target' })}
+        onClick={() =>
+          navigate({
+            pathname: location.pathname,
+            search: location.search,
+            hash: '#missing-target',
+          })
+        }
       >
         Navigate missing fragment
       </button>
@@ -102,13 +149,22 @@ interface RenderAppOptions {
   readonly focusNavigationProbe?: boolean;
 }
 
-function renderApp(
-  path: string,
-  role?: UserRoleDto,
-  options: RenderAppOptions = {},
-) {
+function headerSemanticOrder(header: HTMLElement): string[] {
+  return Array.from(header.querySelectorAll('a, input, [data-account-initials]')).map((element) => {
+    if (element instanceof HTMLInputElement) {
+      return (
+        element.getAttribute('aria-label') ??
+        element.labels?.item(0)?.textContent?.trim() ??
+        element.name
+      );
+    }
+    return element.getAttribute('aria-label') ?? element.textContent?.trim() ?? '';
+  });
+}
+
+function renderApp(path: string, role?: UserRoleDto, options: RenderAppOptions = {}) {
   const request = vi.fn(async () => profile(role ?? 'student'));
-  const client = role ? clientFor(role) : { request } as ApiClient;
+  const client = role ? clientFor(role) : ({ request } as ApiClient);
   const initialPathname = new URL(path, 'https://learnhub.test').pathname;
   return render(
     <QueryClientProvider client={createAppQueryClient()}>
@@ -118,9 +174,9 @@ function renderApp(
             initialEntries={[path]}
             future={{ v7_relativeSplatPath: true, v7_startTransition: true }}
           >
-            <RouteErrorBoundary>
+            <ApplicationTitleBoundary>
               <AppRouter />
-            </RouteErrorBoundary>
+            </ApplicationTitleBoundary>
             <LocationProbe />
             {options.focusNavigationProbe ? <FocusNavigationProbe /> : null}
           </MemoryRouter>
@@ -142,21 +198,41 @@ describe('application routing and guards', () => {
     const client: ApiClient = {
       request: async <TResponse, TBody = unknown>(options: ApiRequestOptions<TBody, TResponse>) => {
         const value = options.path.endsWith('/lessons')
-          ? { items: [], page: 1, page_size: 100, total: 0, pages: 0, has_next: false, has_previous: false }
+          ? {
+              items: [],
+              page: 1,
+              page_size: 100,
+              total: 0,
+              pages: 0,
+              has_next: false,
+              has_previous: false,
+            }
           : {
-            id: 7, title: 'React foundations', description: null, price: '0.00', currency: 'USD',
-            published_at: '2026-07-01T00:00:00Z', created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z',
-            instructor: { id: 2, name: 'Ada', surname: 'Lovelace' }, lessons: [],
-          };
-        return options.decode ? options.decode(value) : value as TResponse;
+              id: 7,
+              title: 'React foundations',
+              description: null,
+              price: '0.00',
+              currency: 'USD',
+              published_at: '2026-07-01T00:00:00Z',
+              created_at: '2026-07-01T00:00:00Z',
+              updated_at: '2026-07-01T00:00:00Z',
+              instructor: { id: 2, name: 'Ada', surname: 'Lovelace' },
+              lessons: [],
+            };
+        return options.decode ? options.decode(value) : (value as TResponse);
       },
     };
     render(
       <QueryClientProvider client={createAppQueryClient()}>
         <ThemeProvider initialDensityMode="marketplace">
           <SessionProvider client={client} tokenStore={store(null)}>
-            <MemoryRouter initialEntries={['/courses/7']} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
-              <RouteErrorBoundary><AppRouter /></RouteErrorBoundary>
+            <MemoryRouter
+              initialEntries={['/courses/7']}
+              future={{ v7_relativeSplatPath: true, v7_startTransition: true }}
+            >
+              <ApplicationTitleBoundary>
+                <AppRouter />
+              </ApplicationTitleBoundary>
               <LocationProbe />
             </MemoryRouter>
           </SessionProvider>
@@ -166,12 +242,16 @@ describe('application routing and guards', () => {
 
     const login = await screen.findByRole('link', { name: 'Log in to enroll free' });
     expect(login.getAttribute('href')).toBe('/login?returnTo=%2Fcourses%2F7');
-    await act(async () => { await userEvent.setup().click(login); });
+    await act(async () => {
+      await userEvent.setup().click(login);
+    });
     await screen.findByRole('heading', { level: 1, name: 'Log in' });
-    expect(screen.getByLabelText('current location').textContent).toBe('/login?returnTo=%2Fcourses%2F7');
+    expect(screen.getByLabelText('current location').textContent).toBe(
+      '/login?returnTo=%2Fcourses%2F7',
+    );
   });
 
-  it('keeps the busy bootstrap main landmark separate from its polite status region', () => {
+  it('keeps the busy bootstrap main landmark separate from its polite status region', async () => {
     const client: ApiClient = {
       request: <TResponse,>() => new Promise<TResponse>(() => undefined),
     };
@@ -180,19 +260,25 @@ describe('application routing and guards', () => {
         <ThemeProvider initialDensityMode="marketplace">
           <SessionProvider client={client} tokenStore={store('token')}>
             <MemoryRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
-              <AppRouter />
+              <ApplicationTitleBoundary>
+                <AppRouter />
+              </ApplicationTitleBoundary>
             </MemoryRouter>
           </SessionProvider>
         </ThemeProvider>
       </QueryClientProvider>,
     );
 
+    await waitFor(() => expect(document.title).toBe('Preparing your workspace | LearnHub'));
+
     const main = screen.getByRole('main');
     expect(main.getAttribute('aria-busy')).toBe('true');
     expect(within(main).getAllByRole('status')).toHaveLength(1);
     const status = within(main).getByRole('status', { name: 'Loading application' });
     expect(status.getAttribute('aria-live')).toBe('polite');
-    expect(within(main).getByRole('heading', { level: 1, name: 'Preparing your workspace' })).toBeTruthy();
+    expect(
+      within(main).getByRole('heading', { level: 1, name: 'Preparing your workspace' }),
+    ).toBeTruthy();
     expect(main.textContent).toContain('We are verifying your session.');
   });
 
@@ -200,17 +286,44 @@ describe('application routing and guards', () => {
     renderApp('/cart?coupon=SAVE#summary');
 
     await screen.findByRole('heading', { level: 1, name: 'Log in' });
-    expect(screen.getByLabelText('current location').textContent)
-      .toBe('/login?returnTo=%2Fcart%3Fcoupon%3DSAVE%23summary');
+    expect(screen.getByLabelText('current location').textContent).toBe(
+      '/login?returnTo=%2Fcart%3Fcoupon%3DSAVE%23summary',
+    );
+  });
+
+  it('routes an anonymous AppShell Cart action through the protected login return', async () => {
+    renderApp('/');
+    const user = userEvent.setup();
+
+    await act(async () => {
+      await user.click(screen.getByRole('link', { name: 'Cart' }));
+    });
+
+    await screen.findByRole('heading', { level: 1, name: 'Log in' });
+    expect(screen.getByLabelText('current location').textContent).toBe('/login?returnTo=%2Fcart');
+  });
+
+  it('keeps anonymous Cart-to-Login actions in the stable end-side order', async () => {
+    renderApp('/login?returnTo=%2Fcart');
+    await screen.findByRole('heading', { level: 1, name: 'Log in' });
+
+    expect(headerSemanticOrder(screen.getByRole('banner'))).toEqual([
+      'LearnHub home',
+      'Catalog',
+      'Cart',
+      'Log in',
+      'Sign up',
+    ]);
   });
 
   it('renders an accessible forbidden state for an authenticated wrong role', async () => {
     renderApp('/cart', 'instructor');
 
-    expect(await screen.findByRole('heading', { level: 1, name: 'You do not have access to this page' }))
-      .toBeTruthy();
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'You do not have access to this page' }),
+    ).toBeTruthy();
     expect(screen.queryByRole('heading', { level: 1, name: 'Cart' })).toBe(null);
-    expect(screen.getByRole('link', { name: 'Back to catalog' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Back to catalog' }).getAttribute('href')).toBe('/');
   });
 
   it('shows only guest navigation to an anonymous user', async () => {
@@ -218,8 +331,7 @@ describe('application routing and guards', () => {
     await screen.findByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' });
     const catalogSearch = screen.getByRole('search', { name: 'Course catalog search' });
     const headerSearch = within(catalogSearch).getByLabelText('Search courses') as HTMLInputElement;
-    expect(headerSearch.getAttribute('placeholder'))
-      .toBe('Search courses, topics, or instructors');
+    expect(headerSearch.getAttribute('placeholder')).toBe('Search courses, topics, or instructors');
     const label = headerSearch.labels?.item(0);
     expect(label?.textContent).toBe('Search courses');
     const icon = catalogSearch.querySelector('svg[aria-hidden="true"]');
@@ -233,7 +345,7 @@ describe('application routing and guards', () => {
     expect(headerSearch.getAttribute('aria-expanded')).toBe('false');
     expect(headerSearch.getAttribute('aria-controls')).toBe(null);
     const navigation = screen.getByRole('navigation', { name: 'Primary navigation' });
-    const browse = within(navigation).getByRole('link', { name: 'Browse courses' });
+    const browse = within(navigation).getByRole('link', { name: 'Catalog' });
     expect(browse).toBeTruthy();
     const accountNavigation = screen.getByRole('navigation', { name: 'Account navigation' });
     const logIn = within(accountNavigation).getByRole('link', { name: 'Log in' });
@@ -249,10 +361,15 @@ describe('application routing and guards', () => {
     expect(header.contains(navigation)).toBe(true);
     expect(header.contains(catalogSearch)).toBe(true);
     expect(header.contains(accountNavigation)).toBe(true);
-    expect(Array.from(header.querySelectorAll('a, input')).map((element) => {
-      if (element instanceof HTMLInputElement) return element.getAttribute('aria-label') ?? element.name;
-      return element.getAttribute('aria-label') ?? element.textContent?.trim();
-    })).toEqual(['LearnHub home', 'Browse courses', 'search_query', 'Log in', 'Sign up']);
+    expect(headerSemanticOrder(header)).toEqual([
+      'LearnHub home',
+      'Catalog',
+      'Search courses',
+      'Cart',
+      'Log in',
+      'Sign up',
+    ]);
+    expect(screen.getByRole('link', { name: 'Cart' }).getAttribute('href')).toBe('/cart');
     expect(within(navigation).queryByRole('link', { name: 'Cart' })).toBe(null);
     expect(within(navigation).queryByRole('link', { name: 'Instructor courses' })).toBe(null);
   });
@@ -266,29 +383,27 @@ describe('application routing and guards', () => {
   it.each([
     ['anonymous', '/', undefined, 'Master the Skills Shaping the Future'],
     ['authenticated', '/learning', 'student', 'My learning'],
-  ] as const)('renders one complete accessible brand in the %s header', async (
-    _session,
-    path,
-    role,
-    heading,
-  ) => {
-    renderApp(path, role);
-    await screen.findByRole('heading', { level: 1, name: heading });
+  ] as const)(
+    'renders one complete accessible brand in the %s header',
+    async (_session, path, role, heading) => {
+      renderApp(path, role);
+      await screen.findByRole('heading', { level: 1, name: heading });
 
-    const brand = screen.getByRole('link', { name: 'LearnHub home' });
-    const marks = brand.querySelectorAll(':scope > svg[aria-hidden="true"]');
-    const wordmarks = brand.querySelectorAll(':scope > span');
+      const brand = screen.getByRole('link', { name: 'LearnHub home' });
+      const marks = brand.querySelectorAll(':scope > svg[aria-hidden="true"]');
+      const wordmarks = brand.querySelectorAll(':scope > span');
 
-    expect(brand.getAttribute('aria-label')).toBe('LearnHub home');
-    expect(brand.textContent?.replace(/\s+/g, ' ').trim()).toBe('LearnHub');
-    expect(marks).toHaveLength(1);
-    expect(marks[0]?.getAttribute('aria-hidden')).toBe('true');
-    expect(marks[0]?.getAttribute('focusable')).toBe('false');
-    expect(marks[0]?.textContent?.trim()).toBe('');
-    expect(marks[0]?.querySelectorAll('text')).toHaveLength(0);
-    expect(wordmarks).toHaveLength(1);
-    expect(wordmarks[0]?.textContent).toBe('LearnHub');
-  });
+      expect(brand.getAttribute('aria-label')).toBe('LearnHub home');
+      expect(brand.textContent?.replace(/\s+/g, ' ').trim()).toBe('LearnHub');
+      expect(marks).toHaveLength(1);
+      expect(marks[0]?.getAttribute('aria-hidden')).toBe('true');
+      expect(marks[0]?.getAttribute('focusable')).toBe('false');
+      expect(marks[0]?.textContent?.trim()).toBe('');
+      expect(marks[0]?.querySelectorAll('text')).toHaveLength(0);
+      expect(wordmarks).toHaveLength(1);
+      expect(wordmarks[0]?.textContent).toBe('LearnHub');
+    },
+  );
 
   it.each(['/login/help', '/signup/help'])(
     'does not mark a guest auth leaf current on unknown nested path %s',
@@ -296,11 +411,18 @@ describe('application routing and guards', () => {
       renderApp(path);
       await screen.findByRole('heading', { level: 1, name: 'Page not found' });
       const navigation = screen.getByRole('navigation', { name: 'Primary navigation' });
+      const accountNavigation = screen.getByRole('navigation', { name: 'Account navigation' });
       expect(navigation.querySelectorAll('[aria-current="page"]')).toHaveLength(0);
-      expect(within(navigation).getByRole('link', { name: 'Sign up' }).getAttribute('aria-current'))
-        .toBe(null);
-      expect(within(navigation).getByRole('link', { name: 'Log in' }).getAttribute('aria-current'))
-        .toBe(null);
+      expect(
+        within(accountNavigation)
+          .getByRole('link', { name: 'Sign up' })
+          .getAttribute('aria-current'),
+      ).toBe(null);
+      expect(
+        within(accountNavigation)
+          .getByRole('link', { name: 'Log in' })
+          .getAttribute('aria-current'),
+      ).toBe(null);
     },
   );
 
@@ -308,16 +430,69 @@ describe('application routing and guards', () => {
     renderApp('/learning', 'student');
     await screen.findByRole('heading', { level: 1, name: 'My learning' });
     const navigation = screen.getByRole('navigation', { name: 'Primary navigation' });
-    expect(within(navigation).getByRole('link', { name: 'Cart' })).toBeTruthy();
-    expect(within(navigation).getByRole('link', { name: 'My learning' }).getAttribute('aria-current'))
-      .toBe('page');
-    expect(within(navigation).queryByRole('link', { name: 'Instructor courses' })).toBe(null);
+    expect(screen.getByRole('link', { name: /Cart/ })).toBeTruthy();
+    expect(
+      within(navigation).getByRole('link', { name: 'My learning' }).getAttribute('aria-current'),
+    ).toBe('page');
+    expect(within(navigation).queryByRole('link', { name: 'My courses' })).toBe(null);
+  });
+
+  it.each([
+    [
+      '/learning',
+      'student' as const,
+      'My learning',
+      'Sam User',
+      ['LearnHub home', 'Catalog', 'My learning', 'Search courses', 'Cart', 'Sam User'],
+    ],
+    [
+      '/instructor/courses',
+      'instructor' as const,
+      'My courses',
+      'Indira User',
+      ['LearnHub home', 'Catalog', 'My courses', 'Search courses', 'Indira User'],
+    ],
+  ])(
+    'uses the D04 desktop header order and static initials marker for %s',
+    async (path, role, workspaceLabel, identity, expectedOrder) => {
+      renderApp(path, role);
+      await screen.findByRole('link', { name: workspaceLabel });
+
+      const header = document.querySelector<HTMLElement>('[data-app-shell-header]');
+      expect(header).not.toBeNull();
+      if (!header) throw new Error('Expected the application shell header.');
+      const initialsMarker = header.querySelector('[data-account-initials]');
+      expect(headerSemanticOrder(header)).toEqual(expectedOrder);
+      expect(initialsMarker?.getAttribute('aria-label')).toBe(identity);
+      expect(initialsMarker?.getAttribute('title')).toBe(identity);
+      expect(initialsMarker?.textContent).toBe(role === 'student' ? 'SU' : 'IU');
+      expect(initialsMarker?.closest('a, button')).toBeNull();
+    },
+  );
+
+  it('submits the persistent workspace search to the canonical catalog URL and resets page', async () => {
+    renderApp('/learning?page=3', 'student');
+    await screen.findByRole('heading', { level: 1, name: 'My learning' });
+    const user = userEvent.setup();
+    const search = screen.getByRole('combobox', { name: 'Search courses' });
+
+    await act(async () => {
+      await user.clear(search);
+      await user.type(search, 'React');
+      await user.keyboard('{Enter}');
+    });
+
+    await waitFor(() =>
+      expect(screen.getByLabelText('current location').textContent).toBe('/?search_query=React'),
+    );
   });
 
   it('uses route metadata to set workspace density initially and marketplace density after navigation', async () => {
     renderApp('/learning', 'student');
     await screen.findByRole('heading', { level: 1, name: 'My learning' });
-    await waitFor(() => expect(document.documentElement.getAttribute('data-density')).toBe('workspace'));
+    await waitFor(() =>
+      expect(document.documentElement.getAttribute('data-density')).toBe('workspace'),
+    );
     await waitFor(() => expect(document.title).toBe('My learning | LearnHub'));
 
     const user = userEvent.setup();
@@ -325,7 +500,9 @@ describe('application routing and guards', () => {
       await user.click(screen.getByRole('link', { name: 'LearnHub home' }));
     });
     await screen.findByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' });
-    await waitFor(() => expect(document.documentElement.getAttribute('data-density')).toBe('marketplace'));
+    await waitFor(() =>
+      expect(document.documentElement.getAttribute('data-density')).toBe('marketplace'),
+    );
     await waitFor(() => expect(document.title).toBe('Course catalog | LearnHub'));
     await waitFor(() => expect(screen.getByRole('main')).toBe(document.activeElement));
   });
@@ -342,7 +519,9 @@ describe('application routing and guards', () => {
     const user = userEvent.setup();
     const input = screen.getByRole('combobox', { name: 'Search courses' });
 
-    await act(async () => { await user.click(input); });
+    await act(async () => {
+      await user.click(input);
+    });
     const listbox = await screen.findByRole('listbox', { name: 'Recent searches' });
     expect(input.getAttribute('aria-controls')).toBe(listbox.id);
     const pointerListener = [...addEventListener.mock.calls]
@@ -354,10 +533,14 @@ describe('application routing and guards', () => {
       await user.clear(input);
       await user.type(input, 'no matching history');
     });
-    await waitFor(() => expect(screen.queryByRole('listbox', { name: 'Recent searches' })).toBeNull());
+    await waitFor(() =>
+      expect(screen.queryByRole('listbox', { name: 'Recent searches' })).toBeNull(),
+    );
     expect(input.getAttribute('aria-expanded')).toBe('false');
     expect(input.getAttribute('aria-controls')).toBeNull();
-    await waitFor(() => expect(removeEventListener).toHaveBeenCalledWith('pointerdown', pointerListener, true));
+    await waitFor(() =>
+      expect(removeEventListener).toHaveBeenCalledWith('pointerdown', pointerListener, true),
+    );
   });
 
   it.each([
@@ -367,21 +550,30 @@ describe('application routing and guards', () => {
   ])('applies Router-parity metadata and title for %s', async (path, role, expectedTitle) => {
     renderApp(path, role);
     await waitFor(() => expect(document.title).toBe(expectedTitle));
-    expect(document.querySelector('[data-layout]')?.getAttribute('data-layout'))
-      .toBe(role ? 'workspace' : 'auth');
+    expect(document.querySelector('[data-layout]')?.getAttribute('data-layout')).toBe(
+      role ? 'workspace' : 'auth',
+    );
   });
 
   it.each([
     ['/LOGIN/', undefined, 'Log in', 'auth', 'marketplace'],
     ['/COURSES/Course-42/', undefined, 'Course not found', 'public', 'marketplace'],
-    ['/INSTRUCTOR/COURSES/Course-42/ENROLLMENTS/', 'instructor', 'Course enrollments', 'workspace', 'workspace'],
+    [
+      '/INSTRUCTOR/COURSES/Course-42/ENROLLMENTS/',
+      'instructor',
+      'Course enrollments',
+      'workspace',
+      'workspace',
+    ],
   ] as const)(
     'keeps route metadata aligned with rendered routing for %s',
     async (path, role, heading, layout, density) => {
       renderApp(path, role);
       await screen.findByRole('heading', { level: 1, name: heading });
       expect(document.querySelector('[data-layout]')?.getAttribute('data-layout')).toBe(layout);
-      await waitFor(() => expect(document.documentElement.getAttribute('data-density')).toBe(density));
+      await waitFor(() =>
+        expect(document.documentElement.getAttribute('data-density')).toBe(density),
+      );
     },
   );
 
@@ -389,8 +581,9 @@ describe('application routing and guards', () => {
     renderApp('/learning/enrollments/42', 'student');
     await screen.findByRole('heading', { level: 1, name: 'Learning details' });
     const navigation = screen.getByRole('navigation', { name: 'Primary navigation' });
-    expect(within(navigation).getByRole('link', { name: 'My learning' }).getAttribute('aria-current'))
-      .toBe(null);
+    expect(
+      within(navigation).getByRole('link', { name: 'My learning' }).getAttribute('aria-current'),
+    ).toBe(null);
     expect(navigation.querySelectorAll('[aria-current="page"]')).toHaveLength(0);
   });
 
@@ -398,7 +591,7 @@ describe('application routing and guards', () => {
     renderApp('/instructor/courses', 'instructor');
     await screen.findByRole('heading', { level: 1, name: 'Instructor courses' });
     const navigation = screen.getByRole('navigation', { name: 'Primary navigation' });
-    expect(within(navigation).getByRole('link', { name: 'Instructor courses' })).toBeTruthy();
+    expect(within(navigation).getByRole('link', { name: 'My courses' })).toBeTruthy();
     expect(within(navigation).queryByRole('link', { name: 'Course enrollments' })).toBe(null);
     expect(within(navigation).queryByRole('link', { name: 'Cart' })).toBe(null);
     expect(within(navigation).queryByRole('link', { name: 'My learning' })).toBe(null);
@@ -410,8 +603,9 @@ describe('application routing and guards', () => {
     const navigation = screen.getByRole('navigation', { name: 'Primary navigation' });
     const enrollments = within(navigation).getByRole('link', { name: 'Course enrollments' });
     expect(enrollments.getAttribute('href')).toBe('/instructor/courses/42/enrollments');
-    expect(within(navigation).getByRole('link', { name: 'Instructor courses' }).getAttribute('aria-current'))
-      .toBe(null);
+    expect(
+      within(navigation).getByRole('link', { name: 'My courses' }).getAttribute('aria-current'),
+    ).toBe(null);
     expect(enrollments.getAttribute('aria-current')).toBe(null);
     expect(navigation.querySelectorAll('[aria-current="page"]')).toHaveLength(0);
   });
@@ -420,10 +614,14 @@ describe('application routing and guards', () => {
     renderApp('/instructor/courses/42/enrollments', 'instructor');
     await screen.findByRole('heading', { level: 1, name: 'Course enrollments' });
     const navigation = screen.getByRole('navigation', { name: 'Primary navigation' });
-    expect(within(navigation).getByRole('link', { name: 'Instructor courses' }).getAttribute('aria-current'))
-      .toBe(null);
-    expect(within(navigation).getByRole('link', { name: 'Course enrollments' }).getAttribute('aria-current'))
-      .toBe('page');
+    expect(
+      within(navigation).getByRole('link', { name: 'My courses' }).getAttribute('aria-current'),
+    ).toBe(null);
+    expect(
+      within(navigation)
+        .getByRole('link', { name: 'Course enrollments' })
+        .getAttribute('aria-current'),
+    ).toBe('page');
     expect(navigation.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
   });
 
@@ -445,24 +643,35 @@ describe('application routing and guards', () => {
   it('renders a not-found state for unknown routes', async () => {
     renderApp('/does-not-exist');
     expect(await screen.findByRole('heading', { level: 1, name: 'Page not found' })).toBeTruthy();
-    await waitFor(() => expect(document.title).toBe('LearnHub'));
+    expect(screen.getByRole('link', { name: 'Back to catalog' }).getAttribute('href')).toBe('/');
+    await waitFor(() => expect(document.title).toBe('Page not found | LearnHub'));
   });
 
   it('exposes the skip link and semantic landmarks', async () => {
     renderApp('/');
     await screen.findByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' });
-    expect(screen.getByRole('link', { name: 'Skip to main content' }).getAttribute('href'))
-      .toBe('#main-content');
+    expect(screen.getByRole('link', { name: 'Skip to main content' }).getAttribute('href')).toBe(
+      '#main-content',
+    );
     expect(screen.getByRole('banner')).toBeTruthy();
     expect(screen.getByRole('main')).toBeTruthy();
     expect(screen.getByRole('contentinfo')).toBeTruthy();
   });
 
-  it('focuses main for pathname and search changes without stealing hash-only fragment focus', async () => {
+  it('keeps pathname main focus while making same-path query focus scroll-safe without stealing fragment focus', async () => {
     const scheduledFrames: FrameRequestCallback[] = [];
+    const focusCalls: Array<{ options: FocusOptions | undefined; target: HTMLElement }> = [];
+    const nativeFocus = HTMLElement.prototype.focus;
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
       scheduledFrames.push(callback);
       return scheduledFrames.length;
+    });
+    vi.spyOn(HTMLElement.prototype, 'focus').mockImplementation(function recordFocus(
+      this: HTMLElement,
+      options?: FocusOptions,
+    ) {
+      focusCalls.push({ options, target: this });
+      nativeFocus.call(this, options);
     });
     const view = renderApp('/', undefined, { focusNavigationProbe: true });
     const user = userEvent.setup();
@@ -473,7 +682,9 @@ describe('application routing and guards', () => {
     await act(async () => {
       await user.click(screen.getByRole('button', { name: 'Navigate focus fragment' }));
     });
-    await waitFor(() => expect(screen.getByLabelText('current location').textContent).toBe('/#focus-target'));
+    await waitFor(() =>
+      expect(screen.getByLabelText('current location').textContent).toBe('/#focus-target'),
+    );
     firstTarget.focus();
     expect(scheduledFrames).toHaveLength(0);
     expect(firstTarget).toBe(document.activeElement);
@@ -489,7 +700,9 @@ describe('application routing and guards', () => {
       screen.getByRole('button', { name: 'Navigate focus fragment' }).click();
       screen.getByRole('button', { name: 'Navigate second fragment' }).click();
     });
-    await waitFor(() => expect(screen.getByLabelText('current location').textContent).toBe('/#second-target'));
+    await waitFor(() =>
+      expect(screen.getByLabelText('current location').textContent).toBe('/#second-target'),
+    );
     secondTarget.focus();
     expect(scheduledFrames).toHaveLength(0);
     expect(secondTarget).toBe(document.activeElement);
@@ -497,7 +710,9 @@ describe('application routing and guards', () => {
     await act(async () => {
       await user.click(screen.getByRole('button', { name: 'Navigate missing fragment' }));
     });
-    await waitFor(() => expect(screen.getByLabelText('current location').textContent).toBe('/#missing-target'));
+    await waitFor(() =>
+      expect(screen.getByLabelText('current location').textContent).toBe('/#missing-target'),
+    );
     expect(scheduledFrames).toHaveLength(0);
     expect(() => view.unmount()).not.toThrow();
 
@@ -508,15 +723,25 @@ describe('application routing and guards', () => {
     await screen.findByRole('heading', { level: 1, name: 'Log in' });
     expect(scheduledFrames).toHaveLength(1);
     act(() => scheduledFrames.shift()?.(0));
-    expect(screen.getByRole('main')).toBe(document.activeElement);
+    const main = screen.getByRole('main');
+    expect(main).toBe(document.activeElement);
+    expect(focusCalls.filter((call) => call.target === main).map((call) => call.options)).toEqual([
+      undefined,
+    ]);
 
     await act(async () => {
       await user.click(screen.getByRole('button', { name: 'Navigate search' }));
     });
-    await waitFor(() => expect(screen.getByLabelText('current location').textContent).toBe('/login?focus=next'));
+    await waitFor(() =>
+      expect(screen.getByLabelText('current location').textContent).toBe('/login?focus=next'),
+    );
     expect(scheduledFrames).toHaveLength(1);
     act(() => scheduledFrames.shift()?.(0));
-    expect(screen.getByRole('main')).toBe(document.activeElement);
+    expect(main).toBe(document.activeElement);
+    expect(focusCalls.filter((call) => call.target === main).map((call) => call.options)).toEqual([
+      undefined,
+      { preventScroll: true },
+    ]);
   });
 
   it('closes mobile navigation when Escape is pressed while its trigger remains focused', async () => {
@@ -534,7 +759,9 @@ describe('application routing and guards', () => {
       await user.keyboard('{Escape}');
     });
 
-    await waitFor(() => expect(screen.queryByRole('navigation', { name: 'Mobile navigation' })).toBe(null));
+    await waitFor(() =>
+      expect(screen.queryByRole('navigation', { name: 'Mobile navigation' })).toBe(null),
+    );
     await waitFor(() => expect(trigger).toBe(document.activeElement));
   });
 
@@ -547,14 +774,19 @@ describe('application routing and guards', () => {
     await act(async () => {
       await user.click(trigger);
     });
-    const currentRouteLink = within(screen.getByRole('navigation', { name: 'Mobile navigation' }))
-      .getByRole('link', { name: 'Instructor courses' });
+    const currentRouteLink = within(
+      screen.getByRole('navigation', { name: 'Mobile navigation' }),
+    ).getByRole('link', { name: 'My courses' });
     await act(async () => {
       await user.click(currentRouteLink);
     });
 
-    await waitFor(() => expect(screen.getByLabelText('current location').textContent).toBe('/instructor/courses'));
-    await waitFor(() => expect(screen.queryByRole('navigation', { name: 'Mobile navigation' })).toBe(null));
+    await waitFor(() =>
+      expect(screen.getByLabelText('current location').textContent).toBe('/instructor/courses'),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole('navigation', { name: 'Mobile navigation' })).toBe(null),
+    );
     await waitFor(() => expect(trigger).toBe(document.activeElement));
   });
 
@@ -576,9 +808,9 @@ describe('application routing and guards', () => {
         <ThemeProvider initialDensityMode="marketplace">
           <SessionProvider client={client} tokenStore={store('token')}>
             <MemoryRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
-              <RouteErrorBoundary>
+              <ApplicationTitleBoundary>
                 <AppRouter />
-              </RouteErrorBoundary>
+              </ApplicationTitleBoundary>
             </MemoryRouter>
           </SessionProvider>
         </ThemeProvider>
@@ -586,8 +818,10 @@ describe('application routing and guards', () => {
     );
 
     await screen.findByRole('heading', { level: 1, name: 'Session check failed' });
-    expect(screen.getByRole('alert').textContent)
-      .toContain('We could not verify your session. Check your connection and try again.');
+    await waitFor(() => expect(document.title).toBe('Session check failed | LearnHub'));
+    expect(screen.getByRole('alert').textContent).toContain(
+      'We could not verify your session. Check your connection and try again.',
+    );
     expect(document.body.textContent).not.toContain('private upstream hostname');
   });
 });

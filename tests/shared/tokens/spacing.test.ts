@@ -27,7 +27,9 @@ import {
   SECTION_SPACING_DEFAULT,
   SECTION_SPACING_MAJOR,
   LAYOUT_HEADER_HEIGHT,
+  CONTAINER_MAX_WIDTH_CATALOG,
   CONTAINER_MAX_WIDTH_PUBLIC,
+  CONTAINER_MAX_WIDTH_STANDARD,
   CONTAINER_MAX_WIDTH_WORKSPACE,
   GUTTER_MOBILE,
   GUTTER_TABLET,
@@ -75,8 +77,16 @@ describe('Spacing tokens', () => {
     });
 
     it('all scale values should be multiples of 4', () => {
-      const scaleValues = [SPACING_1, SPACING_2, SPACING_3, SPACING_4,
-                           SPACING_6, SPACING_8, SPACING_12, SPACING_16];
+      const scaleValues = [
+        SPACING_1,
+        SPACING_2,
+        SPACING_3,
+        SPACING_4,
+        SPACING_6,
+        SPACING_8,
+        SPACING_12,
+        SPACING_16,
+      ];
       for (const value of scaleValues) {
         expect(value % 4).toBe(0);
       }
@@ -166,6 +176,14 @@ describe('Spacing tokens', () => {
       expect(CONTAINER_MAX_WIDTH_PUBLIC).toBe(1200);
     });
 
+    it('CONTAINER_MAX_WIDTH_STANDARD should be 1120', () => {
+      expect(CONTAINER_MAX_WIDTH_STANDARD).toBe(1120);
+    });
+
+    it('CONTAINER_MAX_WIDTH_CATALOG should be 1290', () => {
+      expect(CONTAINER_MAX_WIDTH_CATALOG).toBe(1290);
+    });
+
     it('CONTAINER_MAX_WIDTH_WORKSPACE should be 1360', () => {
       expect(CONTAINER_MAX_WIDTH_WORKSPACE).toBe(1360);
     });
@@ -180,6 +198,14 @@ describe('Spacing tokens', () => {
 
     it('gutter desktop token should be 24px', () => {
       expect(spacingTokens['--gutter-desktop']).toBe('24px');
+    });
+
+    it('catalog container token should be 1290px', () => {
+      expect(spacingTokens['--container-max-catalog']).toBe('1290px');
+    });
+
+    it('standard container token should be 1120px', () => {
+      expect(spacingTokens['--container-max-standard']).toBe('1120px');
     });
   });
 

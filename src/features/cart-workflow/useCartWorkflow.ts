@@ -2,7 +2,8 @@ import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tan
 import { useEffect, useRef, useState } from 'react';
 
 import type { Cart } from '@entities/cart';
-import { useSession, type SessionState } from '@features/auth-session';
+import { useSession, type SessionContextValue } from '@features/auth-session';
+import type { SessionCacheEpoch } from '@shared/api';
 
 import { clearCart, removeCartItem, requestCart } from './api';
 import { cartFailureState, cartQueryKey, type CartFailureState } from './cart-state';
@@ -10,14 +11,14 @@ import { cartFailureState, cartQueryKey, type CartFailureState } from './cart-st
 export type CartMutationKind = 'remove' | 'clear';
 
 export interface CartRemoveAttempt {
-  subject: string;
+  subject: SessionCacheEpoch;
   kind: 'remove';
   courseId: number;
   identity: string;
 }
 
 export interface CartClearAttempt {
-  subject: string;
+  subject: SessionCacheEpoch;
   kind: 'clear';
   identity: string;
 }
@@ -49,54 +50,67 @@ export interface CartWorkflow {
   retry(): Promise<boolean>;
 }
 
-function cartSubject(state: SessionState): string | null {
-  return state.status === 'authenticated' && state.user.role === 'student' ? state.user.email : null;
+function cartEpoch(session: SessionContextValue): SessionCacheEpoch | null {
+  return session.state.status === 'authenticated' && session.state.user.role === 'student'
+    ? (session.cacheEpoch ?? null)
+    : null;
 }
 
-function removeAttempt(subject: string, courseId: number): CartRemoveAttempt {
+function removeAttempt(subject: SessionCacheEpoch, courseId: number): CartRemoveAttempt {
   return { subject, kind: 'remove', courseId, identity: `${subject}:remove:${courseId}` };
 }
 
-function clearAttempt(subject: string): CartClearAttempt {
+function clearAttempt(subject: SessionCacheEpoch): CartClearAttempt {
   return { subject, kind: 'clear', identity: `${subject}:clear:all` };
 }
 
 export function useCartWorkflow(): CartWorkflow {
   const session = useSession();
   const queryClient = useQueryClient();
-  const subject = cartSubject(session.state);
+  const subject = cartEpoch(session);
   const [feedback, setFeedback] = useState<CartFeedback | null>(null);
   const activeAttemptRef = useRef<CartMutationAttempt | null>(null);
   const [activeAttempt, setActiveAttempt] = useState<CartMutationAttempt | null>(null);
   const subjectRef = useRef(subject);
   subjectRef.current = subject;
   const cart = useQuery({
-    queryKey: cartQueryKey(subject ?? 'anonymous'),
+    queryKey: subject ? cartQueryKey(subject) : ['disabled', 'cart'],
     queryFn: ({ signal }) => requestCart(session, signal),
     enabled: subject !== null,
   });
 
-  useEffect(() => { setFeedback(null); }, [subject]);
+  useEffect(() => {
+    setFeedback(null);
+  }, [subject]);
 
   const mutation = useMutation<void, unknown, CartMutationAttempt>({
-    mutationFn: (attempt) => attempt.kind === 'remove'
-      ? removeCartItem(session, attempt.courseId)
-      : clearCart(session),
+    mutationFn: (attempt) =>
+      attempt.kind === 'remove' ? removeCartItem(session, attempt.courseId) : clearCart(session),
     onSuccess: async (_result, attempt) => {
       try {
         await queryClient.invalidateQueries(
           { queryKey: cartQueryKey(attempt.subject), exact: true },
           { throwOnError: true },
         );
-        if (subjectRef.current === attempt.subject) setFeedback({ kind: attempt.kind, success: true });
+        if (subjectRef.current === attempt.subject)
+          setFeedback({ kind: attempt.kind, success: true });
       } catch (error) {
         if (subjectRef.current === attempt.subject) {
-          setFeedback({ kind: attempt.kind, success: false, failure: cartFailureState(error, 'synchronization') });
+          setFeedback({
+            kind: attempt.kind,
+            success: false,
+            failure: cartFailureState(error, 'synchronization'),
+          });
         }
       }
     },
     onError: (error, attempt) => {
-      if (subjectRef.current === attempt.subject) setFeedback({ kind: attempt.kind, success: false, failure: cartFailureState(error, attempt.kind) });
+      if (subjectRef.current === attempt.subject)
+        setFeedback({
+          kind: attempt.kind,
+          success: false,
+          failure: cartFailureState(error, attempt.kind),
+        });
     },
     onSettled: (_result, _error, attempt) => {
       if (activeAttemptRef.current?.identity !== attempt.identity) return;
@@ -135,8 +149,12 @@ export function useCartWorkflow(): CartWorkflow {
     cart,
     feedback,
     isBusy: activeAttempt !== null,
-    remove: (courseId: number) => { if (subject) submit(removeAttempt(subject, courseId)); },
-    clear: () => { if (subject) submit(clearAttempt(subject)); },
+    remove: (courseId: number) => {
+      if (subject) submit(removeAttempt(subject, courseId));
+    },
+    clear: () => {
+      if (subject) submit(clearAttempt(subject));
+    },
     isPendingRemove,
     isPendingClear,
     retry,

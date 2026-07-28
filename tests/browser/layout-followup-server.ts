@@ -6,7 +6,7 @@ export default async function startLayoutFollowupServer() {
     logLevel: 'warn',
     envFile: false,
     appType: 'spa',
-    server: { host: '127.0.0.1', port: 4176, strictPort: true },
+    server: { host: '127.0.0.1', port: 4180, strictPort: true },
   });
   try {
     await server.listen();

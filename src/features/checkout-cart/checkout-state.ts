@@ -1,5 +1,6 @@
 import type { Cart, MockPaymentStatusDto } from '@entities/cart';
 import type { EnrollmentStatus } from '@entities/enrollment';
+import type { SessionCacheEpoch } from '@shared/api';
 
 export type CheckoutScope = 'cart' | `enrollment:${number}`;
 
@@ -14,7 +15,7 @@ export interface EnrollmentStatusRefresh {
 export interface CheckoutAttempt {
   readonly identity: string;
   readonly kind: 'checkout';
-  readonly subject: string;
+  readonly subject: SessionCacheEpoch;
   readonly scope: 'cart';
   readonly recovery: CartRecovery;
 }
@@ -22,7 +23,7 @@ export interface CheckoutAttempt {
 export interface CheckoutRecoveryAttempt {
   readonly identity: string;
   readonly kind: 'checkout_recovery';
-  readonly subject: string;
+  readonly subject: SessionCacheEpoch;
   readonly scope: 'cart';
   readonly recovery: CartRecovery;
 }
@@ -30,7 +31,7 @@ export interface CheckoutRecoveryAttempt {
 export interface MockPaymentAttempt {
   readonly identity: string;
   readonly kind: 'mock_payment';
-  readonly subject: string;
+  readonly subject: SessionCacheEpoch;
   readonly scope: CheckoutScope;
   readonly enrollmentId: number;
   readonly outcome: MockPaymentStatusDto;
@@ -40,7 +41,7 @@ export interface MockPaymentAttempt {
 export interface PaymentStatusAttempt {
   readonly identity: string;
   readonly kind: 'payment_status';
-  readonly subject: string;
+  readonly subject: SessionCacheEpoch;
   readonly scope: CheckoutScope;
   readonly enrollmentId: number;
   readonly refresh: EnrollmentStatusRefresh;
@@ -48,25 +49,53 @@ export interface PaymentStatusAttempt {
 
 export interface PaymentActionLock {
   readonly identity: string;
-  readonly subject: string;
+  readonly subject: SessionCacheEpoch;
   readonly scope: CheckoutScope;
   readonly enrollmentId: number;
 }
 
-export type CheckoutActiveAttempt = CheckoutAttempt | CheckoutRecoveryAttempt | MockPaymentAttempt | PaymentStatusAttempt;
+export type CheckoutActiveAttempt =
+  | CheckoutAttempt
+  | CheckoutRecoveryAttempt
+  | MockPaymentAttempt
+  | PaymentStatusAttempt;
 
-export interface CheckoutAcceptedFeedback { readonly kind: 'checkout_accepted'; }
-export interface CheckoutRecoveryRequiredFeedback { readonly kind: 'recovery_required'; }
-export interface CheckoutStatusUnknownFeedback { readonly kind: 'checkout_status_unknown'; }
-export interface CheckoutUnauthorizedFeedback { readonly kind: 'unauthorized'; }
-export interface CheckoutNotAuthorizedFeedback { readonly kind: 'not_authorized'; }
-export interface CheckoutConflictFeedback { readonly kind: 'conflict'; }
-export interface CheckoutCartChangedFeedback { readonly kind: 'cart_changed'; }
-export interface CheckoutUnavailableFeedback { readonly kind: 'unavailable'; }
-export interface PaymentCompletedFeedback { readonly kind: 'payment_completed'; }
-export interface PaymentDeclinedFeedback { readonly kind: 'payment_declined'; }
-export interface PaymentPendingFeedback { readonly kind: 'payment_pending'; }
-export interface PaymentStatusUnknownFeedback { readonly kind: 'payment_status_unknown'; }
+export interface CheckoutAcceptedFeedback {
+  readonly kind: 'checkout_accepted';
+}
+export interface CheckoutRecoveryRequiredFeedback {
+  readonly kind: 'recovery_required';
+}
+export interface CheckoutStatusUnknownFeedback {
+  readonly kind: 'checkout_status_unknown';
+}
+export interface CheckoutUnauthorizedFeedback {
+  readonly kind: 'unauthorized';
+}
+export interface CheckoutNotAuthorizedFeedback {
+  readonly kind: 'not_authorized';
+}
+export interface CheckoutConflictFeedback {
+  readonly kind: 'conflict';
+}
+export interface CheckoutCartChangedFeedback {
+  readonly kind: 'cart_changed';
+}
+export interface CheckoutUnavailableFeedback {
+  readonly kind: 'unavailable';
+}
+export interface PaymentCompletedFeedback {
+  readonly kind: 'payment_completed';
+}
+export interface PaymentDeclinedFeedback {
+  readonly kind: 'payment_declined';
+}
+export interface PaymentPendingFeedback {
+  readonly kind: 'payment_pending';
+}
+export interface PaymentStatusUnknownFeedback {
+  readonly kind: 'payment_status_unknown';
+}
 
 export type CheckoutFeedback =
   | CheckoutAcceptedFeedback
@@ -89,6 +118,10 @@ export interface CheckoutWorkflow {
   readonly feedback: CheckoutFeedback | null;
   checkout(recovery: CartRecovery): void;
   recoverCheckout(): void;
-  completeMockPayment(enrollmentId: number, outcome: MockPaymentStatusDto, refresh: EnrollmentStatusRefresh): void;
+  completeMockPayment(
+    enrollmentId: number,
+    outcome: MockPaymentStatusDto,
+    refresh: EnrollmentStatusRefresh,
+  ): void;
   checkPaymentStatus(enrollmentId: number, refresh: EnrollmentStatusRefresh): void;
 }

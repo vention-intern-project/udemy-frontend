@@ -10,9 +10,57 @@
   font: inherit;
 }
 
-.control[aria-invalid='true'] { border-color: var(--feedback-error); }
-.control:disabled { color: var(--state-disabled-text); background: var(--state-disabled-bg); cursor: not-allowed; }
+.control[aria-invalid='true'] {
+  border-color: var(--feedback-error);
+}
+.control:disabled {
+  color: var(--state-disabled-text);
+  background: var(--state-disabled-bg);
+  cursor: not-allowed;
+}
 .control:focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring);
   outline-offset: var(--focus-ring-offset);
+}
+
+@supports (appearance: base-select) and selector(::picker(select)) {
+  .control,
+  .control::picker(select) {
+    appearance: base-select;
+  }
+
+  .control::picker-icon {
+    width: 1.25rem;
+    height: 1.25rem;
+    color: var(--border-default);
+    transition:
+      color var(--duration-fast) var(--easing-standard),
+      rotate var(--duration-fast) var(--easing-standard);
+  }
+
+  .control:open::picker-icon {
+    color: var(--text-secondary);
+    rotate: 180deg;
+  }
+
+  .control::picker(select) {
+    margin-block-start: var(--spacing-1);
+    padding: var(--spacing-1);
+    background: var(--color-surface-elevated);
+    border: var(--border-width) solid var(--border-default);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-2);
+  }
+
+  .control option {
+    padding: var(--spacing-2) var(--spacing-3);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    background: var(--color-surface);
+  }
+
+  .control option:hover,
+  .control option:focus-visible {
+    background: var(--state-control-highlight);
+  }
 }

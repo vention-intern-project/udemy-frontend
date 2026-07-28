@@ -1,4 +1,5 @@
-import type { CSSProperties, HTMLAttributes } from 'react';
+import type { HTMLAttributes } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 import styles from './Pagination.module.css';
 import { VisuallyHidden } from './VisuallyHidden';
@@ -17,21 +18,17 @@ export interface PaginationProps extends Omit<HTMLAttributes<HTMLElement>, 'onCh
 
 type PageItem = number | 'ellipsis-start' | 'ellipsis-end';
 
-const currentPageStyle = {
-  color: 'var(--action-primary-fg)',
-  background: 'var(--action-primary-bg)',
-  borderColor: 'var(--action-primary-bg)',
-  cursor: 'default',
-} satisfies CSSProperties;
-
 function pageItems(currentPage: number, totalPages: number): PageItem[] {
   if (!Number.isSafeInteger(currentPage) || !Number.isSafeInteger(totalPages)) return [1];
   if (totalPages <= 7) return Array.from({ length: totalPages }, (_, index) => index + 1);
 
-  const adjacentPages = [currentPage - 1, currentPage, currentPage + 1]
-    .filter(Number.isSafeInteger);
+  const adjacentPages = [currentPage - 1, currentPage, currentPage + 1].filter(
+    Number.isSafeInteger,
+  );
   const values = new Set([1, totalPages, ...adjacentPages]);
-  const pages = Array.from(values).filter((page) => page >= 1 && page <= totalPages).sort((a, b) => a - b);
+  const pages = Array.from(values)
+    .filter((page) => page >= 1 && page <= totalPages)
+    .sort((a, b) => a - b);
   const result: PageItem[] = [];
   pages.forEach((page, index) => {
     if (index > 0 && page - pages[index - 1] > 1) {
@@ -70,21 +67,29 @@ export function Pagination({
 
   const changePage = (page: number, allowBeyondTotal = false) => {
     if (
-      Number.isSafeInteger(page)
-      && page !== safeCurrent
-      && page >= 1
-      && (allowBeyondTotal || page <= safeTotal)
-      && (page >= safeCurrent || previousAvailable)
-      && (page <= safeCurrent || nextAvailable)
+      Number.isSafeInteger(page) &&
+      page !== safeCurrent &&
+      page >= 1 &&
+      (allowBeyondTotal || page <= safeTotal) &&
+      (page >= safeCurrent || previousAvailable) &&
+      (page <= safeCurrent || nextAvailable)
     ) {
       onPageChange(page);
     }
   };
 
-  const pageAvailable = (page: number) => (
-    (page >= safeCurrent || previousAvailable)
-    && (page <= safeCurrent || nextAvailable)
-  );
+  const pageAvailable = (page: number) =>
+    (page >= safeCurrent || previousAvailable) && (page <= safeCurrent || nextAvailable);
+  const visiblePageItems = pageItems(safeCurrent, safeTotal);
+  const hasVisibleCurrentPage = visiblePageItems.includes(safeCurrent);
+  const directionClassName = [
+    styles.button,
+    directionDisplay === 'arrows' && styles.direction,
+    'ui-pagination__button',
+    directionDisplay === 'arrows' && 'ui-pagination__button--direction',
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   return (
     <nav
@@ -95,37 +100,49 @@ export function Pagination({
       <VisuallyHidden role="status" aria-live="polite" aria-atomic="true">
         Page {safeCurrent} of {safeTotal}
       </VisuallyHidden>
-      <button
-        type="button"
-        className={[
-          styles.button,
-          directionDisplay === 'arrows' && styles.direction,
-          'ui-pagination__button',
-          directionDisplay === 'arrows' && 'ui-pagination__button--direction',
-        ].filter(Boolean).join(' ')}
-        disabled={!previousAvailable}
-        onClick={() => {
-          if (previousAvailable && previousTarget !== undefined) changePage(previousTarget, true);
-        }}
-        aria-label="Go to previous page"
-      >
-        {directionDisplay === 'arrows' ? <span aria-hidden="true">&lt;</span> : 'Previous'}
-      </button>
+      {previousAvailable && previousTarget !== undefined ? (
+        <button
+          type="button"
+          className={directionClassName}
+          onClick={() => changePage(previousTarget, true)}
+          aria-label="Go to previous page"
+        >
+          {directionDisplay === 'arrows' ? (
+            <ChevronLeft size={20} aria-hidden="true" />
+          ) : (
+            'Previous'
+          )}
+        </button>
+      ) : (
+        <span
+          className={[styles.directionSlot, 'ui-pagination__direction-slot'].join(' ')}
+          aria-hidden="true"
+        />
+      )}
       <div className={[styles.pages, 'ui-pagination__pages'].join(' ')}>
-        {pageItems(safeCurrent, safeTotal).map((item) =>
+        {visiblePageItems.map((item) =>
           typeof item === 'number' ? (
-            <button
-              key={item}
-              type="button"
-              className={[styles.button, 'ui-pagination__button'].join(' ')}
-              aria-label={`Go to page ${item}`}
-              aria-current={item === safeCurrent ? 'page' : undefined}
-              disabled={item === safeCurrent || !pageAvailable(item)}
-              style={item === safeCurrent ? currentPageStyle : undefined}
-              onClick={() => changePage(item)}
-            >
-              {item}
-            </button>
+            item === safeCurrent ? (
+              <span
+                key={item}
+                className={[styles.currentPage, 'ui-pagination__current-page'].join(' ')}
+                aria-current="page"
+                aria-label={`Page ${item}, current page`}
+              >
+                {item}
+              </span>
+            ) : (
+              <button
+                key={item}
+                type="button"
+                className={[styles.button, 'ui-pagination__button'].join(' ')}
+                aria-label={`Go to page ${item}`}
+                disabled={!pageAvailable(item)}
+                onClick={() => changePage(item)}
+              >
+                {item}
+              </button>
+            )
           ) : (
             <span
               key={item}
@@ -136,23 +153,31 @@ export function Pagination({
             </span>
           ),
         )}
+        {!hasVisibleCurrentPage ? (
+          <span
+            className={[styles.currentPage, 'ui-pagination__current-page'].join(' ')}
+            aria-current="page"
+            aria-label={`Page ${safeCurrent}, current page`}
+          >
+            {safeCurrent}
+          </span>
+        ) : null}
       </div>
-      <button
-        type="button"
-        className={[
-          styles.button,
-          directionDisplay === 'arrows' && styles.direction,
-          'ui-pagination__button',
-          directionDisplay === 'arrows' && 'ui-pagination__button--direction',
-        ].filter(Boolean).join(' ')}
-        disabled={!nextAvailable}
-        onClick={() => {
-          if (nextAvailable && nextTarget !== undefined) changePage(nextTarget, true);
-        }}
-        aria-label="Go to next page"
-      >
-        {directionDisplay === 'arrows' ? <span aria-hidden="true">&gt;</span> : 'Next'}
-      </button>
+      {nextAvailable && nextTarget !== undefined ? (
+        <button
+          type="button"
+          className={directionClassName}
+          onClick={() => changePage(nextTarget, true)}
+          aria-label="Go to next page"
+        >
+          {directionDisplay === 'arrows' ? <ChevronRight size={20} aria-hidden="true" /> : 'Next'}
+        </button>
+      ) : (
+        <span
+          className={[styles.directionSlot, 'ui-pagination__direction-slot'].join(' ')}
+          aria-hidden="true"
+        />
+      )}
     </nav>
   );
 }

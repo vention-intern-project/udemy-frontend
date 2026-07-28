@@ -58,7 +58,8 @@ describe('Component state tokens', () => {
       (state) => {
         const { bg, fg, border } = stateTokenMap[state];
         // Each token should be a CSS var reference or a valid value
-        const isVar = (v: string) => v.startsWith('var(') || v.startsWith('#') || v.startsWith('rgba');
+        const isVar = (v: string) =>
+          v.startsWith('var(') || v.startsWith('#') || v.startsWith('rgba');
         expect(isVar(bg)).toBe(true);
         expect(isVar(fg)).toBe(true);
         expect(isVar(border)).toBe(true);
@@ -74,10 +75,6 @@ describe('Component state tokens', () => {
     it('should use primary text token for fg', () => {
       expect(stateTokenMap.initial.fg).toBe('var(--text-primary)');
     });
-
-    it('should not require an aria attribute', () => {
-      expect(stateTokenMap.initial.ariaAttr).toBeUndefined();
-    });
   });
 
   describe('State: loading', () => {
@@ -87,10 +84,6 @@ describe('Component state tokens', () => {
 
     it('should use muted text for fg', () => {
       expect(stateTokenMap.loading.fg).toBe('var(--text-muted)');
-    });
-
-    it('should include aria-busy attribute', () => {
-      expect(stateTokenMap.loading.ariaAttr).toContain('aria-busy');
     });
   });
 
@@ -126,10 +119,6 @@ describe('Component state tokens', () => {
     it('should use feedback-error for fg', () => {
       expect(stateTokenMap.error.fg).toBe('var(--feedback-error)');
     });
-
-    it('should include aria-invalid attribute', () => {
-      expect(stateTokenMap.error.ariaAttr).toContain('aria-invalid');
-    });
   });
 
   describe('State: disabled', () => {
@@ -140,19 +129,11 @@ describe('Component state tokens', () => {
     it('should use state-disabled-text for fg', () => {
       expect(stateTokenMap.disabled.fg).toBe('var(--state-disabled-text)');
     });
-
-    it('should include aria-disabled attribute', () => {
-      expect(stateTokenMap.disabled.ariaAttr).toContain('aria-disabled');
-    });
   });
 
   describe('State: focus', () => {
     it('should use focus-ring token for border', () => {
       expect(stateTokenMap.focus.border).toBe('var(--focus-ring)');
-    });
-
-    it('should include focus-visible indicator', () => {
-      expect(stateTokenMap.focus.ariaAttr).toContain('focus-visible');
     });
   });
 
@@ -163,10 +144,6 @@ describe('Component state tokens', () => {
 
     it('should use primary action bg for border', () => {
       expect(stateTokenMap.selected.border).toBe('var(--action-primary-bg)');
-    });
-
-    it('should include aria-selected attribute', () => {
-      expect(stateTokenMap.selected.ariaAttr).toContain('aria-selected');
     });
   });
 

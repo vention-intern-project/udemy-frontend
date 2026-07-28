@@ -1,18 +1,31 @@
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { Enrollment, EnrollmentList, EnrollmentStatus } from '@entities/enrollment';
 import type { LessonOutline } from '@entities/course';
-import { ApiError } from '@shared/api';
-import { useSession, type SessionState } from '@features/auth-session';
+import { ApiError, type SessionCacheEpoch } from '@shared/api';
+import { useSession, type SessionContextValue } from '@features/auth-session';
 
 import {
-  requestCourseProgress, requestLearningEnrollment, requestLearningEnrollments,
-  requestLessonOutline, setLessonCompletion,
+  requestCourseProgress,
+  requestLearningEnrollment,
+  requestLearningEnrollments,
+  requestLessonOutline,
+  setLessonCompletion,
 } from './api';
-import type { CourseProgress, LessonCompletionState, LessonProgressAttempt, LessonProgressFeedback } from './model';
+import { DEFAULT_LEARNING_FEEDBACK_MOTION_PREFERENCES } from './model';
+import type {
+  CourseProgress,
+  LearningFeedbackMotionPreferences,
+  LessonCompletionState,
+  LessonProgressAttempt,
+  LessonProgressFeedback,
+} from './model';
 import {
-  learningCourseProgressQueryKey, learningDetailQueryKey, learningListQueryKey, learningOutlineQueryKey,
+  learningCourseProgressQueryKey,
+  learningDetailQueryKey,
+  learningListQueryKey,
+  learningOutlineQueryKey,
 } from './query-keys';
 
 export interface LearningFailure {
@@ -38,6 +51,9 @@ export interface LearningWorkspaceWorkflow {
   retryEnrollment(): Promise<unknown>;
   retryWorkspace(): Promise<unknown>;
 }
+
+const SUCCESS_FEEDBACK_VISIBLE_MS = 4000;
+const SUCCESS_FEEDBACK_EXIT_MS = 120;
 
 interface LessonRowStateScope {
   readonly identity: string;
@@ -65,19 +81,30 @@ function lessonMutationFailureKind(error: unknown): LessonMutationFailureKind {
   return 'rejected';
 }
 
-function learningSubject(state: SessionState): string | null {
-  return state.status === 'authenticated' && state.user.role === 'student' ? state.user.email : null;
+function learningEpoch(session: SessionContextValue): SessionCacheEpoch | null {
+  return session.state.status === 'authenticated' && session.state.user.role === 'student'
+    ? (session.cacheEpoch ?? null)
+    : null;
 }
 
 function statusAllowsProgress(status: EnrollmentStatus | undefined): boolean {
   return status === 'active';
 }
 
-function workspaceIdentity(subject: string | null, enrollmentId: number | null): string | null {
+function workspaceIdentity(
+  subject: SessionCacheEpoch | null,
+  enrollmentId: number | null,
+): string | null {
   return subject !== null && enrollmentId !== null ? `${subject}:${enrollmentId}` : null;
 }
 
-function attemptFor(subject: string, enrollmentId: number, courseId: number, lessonId: number, targetCompleted: boolean): LessonProgressAttempt {
+function attemptFor(
+  subject: SessionCacheEpoch,
+  enrollmentId: number,
+  courseId: number,
+  lessonId: number,
+  targetCompleted: boolean,
+): LessonProgressAttempt {
   return {
     subject,
     workspaceIdentity: workspaceIdentity(subject, enrollmentId) as string,
@@ -91,93 +118,185 @@ function attemptFor(subject: string, enrollmentId: number, courseId: number, les
 
 export function learningFailure(error: unknown): LearningFailure {
   if (error instanceof ApiError && (error.status === 403 || error.status === 404)) {
-    return { title: 'Learning workspace unavailable', message: 'This learning workspace is unavailable.', unavailable: true };
+    return {
+      title: 'Learning workspace unavailable',
+      message: 'This learning workspace is unavailable.',
+      unavailable: true,
+    };
   }
   if (error instanceof ApiError && error.status === 401) {
-    return { title: 'Sign in required', message: 'Your session has ended. Sign in to continue learning.', unavailable: false };
+    return {
+      title: 'Sign in required',
+      message: 'Your session has ended. Sign in to continue learning.',
+      unavailable: false,
+    };
   }
   if (error instanceof ApiError && error.kind === 'invalid_response') {
-    return { title: 'Learning data is unavailable', message: 'The server returned an invalid response. Try again.', unavailable: false };
+    return {
+      title: 'Learning data is unavailable',
+      message: 'The server returned an invalid response. Try again.',
+      unavailable: false,
+    };
   }
-  return { title: 'Learning data is unavailable', message: 'Try again in a moment.', unavailable: false };
+  return {
+    title: 'Learning data is unavailable',
+    message: 'Try again in a moment.',
+    unavailable: false,
+  };
 }
 
 export function useLearningList(page: number): LearningListWorkflow {
   const session = useSession();
-  const subject = learningSubject(session.state);
+  const subject = learningEpoch(session);
   const enrollments = useQuery({
-    queryKey: learningListQueryKey(subject ?? 'anonymous', page),
+    queryKey: subject ? learningListQueryKey(subject, page) : ['disabled', 'learning-list', page],
     queryFn: ({ signal }) => requestLearningEnrollments(session, page, signal),
     enabled: subject !== null,
   });
   return { enrollments, retry: () => enrollments.refetch() };
 }
 
-export function useLearningWorkspace(enrollmentId: number | null): LearningWorkspaceWorkflow {
+export function useLearningWorkspace(
+  enrollmentId: number | null,
+  feedbackMotion: LearningFeedbackMotionPreferences = DEFAULT_LEARNING_FEEDBACK_MOTION_PREFERENCES,
+): LearningWorkspaceWorkflow {
   const session = useSession();
   const queryClient = useQueryClient();
-  const subject = learningSubject(session.state);
+  const subject = learningEpoch(session);
   const scope = workspaceIdentity(subject, enrollmentId);
   const currentScopeRef = useRef(scope);
   currentScopeRef.current = scope;
-  const [rowScope, setRowScope] = useState<LessonRowStateScope>({ identity: scope ?? '', states: new Map() });
+  const [rowScope, setRowScope] = useState<LessonRowStateScope>({
+    identity: scope ?? '',
+    states: new Map(),
+  });
   const rowScopeRef = useRef(rowScope);
   rowScopeRef.current = rowScope;
   const [feedback, setFeedback] = useState<LessonProgressFeedback | null>(null);
-  const [mutationUnavailableScope, setMutationUnavailableScope] = useState<MutationUnavailableScope | null>(null);
+  const feedbackMotionRef = useRef(feedbackMotion);
+  feedbackMotionRef.current = feedbackMotion;
+  const feedbackVisibleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const feedbackExitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [mutationUnavailableScope, setMutationUnavailableScope] =
+    useState<MutationUnavailableScope | null>(null);
   const mutationUnavailableScopeRef = useRef(mutationUnavailableScope);
   mutationUnavailableScopeRef.current = mutationUnavailableScope;
   const locksRef = useRef(new Set<string>());
   const [pending, setPending] = useState<ReadonlyMap<string, LessonProgressAttempt>>(new Map());
 
+  const clearFeedbackTimers = useCallback(() => {
+    if (feedbackVisibleTimerRef.current !== null) clearTimeout(feedbackVisibleTimerRef.current);
+    if (feedbackExitTimerRef.current !== null) clearTimeout(feedbackExitTimerRef.current);
+    feedbackVisibleTimerRef.current = null;
+    feedbackExitTimerRef.current = null;
+  }, []);
+
+  const setPersistentFeedback = useCallback(
+    (nextFeedback: LessonProgressFeedback | null) => {
+      clearFeedbackTimers();
+      setFeedback(nextFeedback);
+    },
+    [clearFeedbackTimers],
+  );
+
+  const setTransientSuccessFeedback = useCallback(
+    (message: string, attempt: LessonProgressAttempt) => {
+      clearFeedbackTimers();
+      setFeedback({ tone: 'success', message, visibility: 'visible' });
+      feedbackVisibleTimerRef.current = setTimeout(() => {
+        if (currentScopeRef.current !== attempt.workspaceIdentity) return;
+        setFeedback((current) =>
+          current?.tone === 'success' ? { ...current, visibility: 'exiting' } : current,
+        );
+        if (feedbackMotionRef.current.reducedMotion) {
+          setFeedback(null);
+          return;
+        }
+        feedbackExitTimerRef.current = setTimeout(() => {
+          if (currentScopeRef.current === attempt.workspaceIdentity) setFeedback(null);
+        }, SUCCESS_FEEDBACK_EXIT_MS);
+      }, SUCCESS_FEEDBACK_VISIBLE_MS);
+    },
+    [clearFeedbackTimers],
+  );
+
   useEffect(() => {
     const nextScope = { identity: scope ?? '', states: new Map<number, LessonCompletionState>() };
     rowScopeRef.current = nextScope;
     setRowScope(nextScope);
-    setFeedback(null);
+    setPersistentFeedback(null);
     mutationUnavailableScopeRef.current = null;
     setMutationUnavailableScope(null);
     locksRef.current.clear();
     setPending(new Map());
-  }, [scope]);
+  }, [scope, setPersistentFeedback]);
+
+  useEffect(() => clearFeedbackTimers, [clearFeedbackTimers]);
 
   const enrollment = useQuery({
-    queryKey: learningDetailQueryKey(subject ?? 'anonymous', enrollmentId ?? 0),
+    queryKey: subject
+      ? learningDetailQueryKey(subject, enrollmentId ?? 0)
+      : ['disabled', 'learning-detail'],
     queryFn: ({ signal }) => requestLearningEnrollment(session, enrollmentId as number, signal),
     enabled: subject !== null && enrollmentId !== null,
   });
   const courseId = enrollment.data?.courseId;
-  const enabled = subject !== null && courseId !== undefined && statusAllowsProgress(enrollment.data?.status);
+  const enabled =
+    subject !== null && courseId !== undefined && statusAllowsProgress(enrollment.data?.status);
   const progress = useQuery({
-    queryKey: learningCourseProgressQueryKey(subject ?? 'anonymous', courseId ?? 0),
+    queryKey: subject
+      ? learningCourseProgressQueryKey(subject, courseId ?? 0)
+      : ['disabled', 'learning-progress'],
     queryFn: ({ signal }) => requestCourseProgress(session, courseId as number, signal),
     enabled,
   });
   const outline = useQuery({
-    queryKey: learningOutlineQueryKey(subject ?? 'anonymous', courseId ?? 0),
+    queryKey: subject
+      ? learningOutlineQueryKey(subject, courseId ?? 0)
+      : ['disabled', 'learning-outline'],
     queryFn: ({ signal }) => requestLessonOutline(session, courseId as number, signal),
     enabled,
   });
 
-  const mutation = useMutation<{ lessonId: number; completed: boolean }, unknown, LessonProgressAttempt, LessonMutationSnapshot>({
+  const mutation = useMutation<
+    { lessonId: number; completed: boolean },
+    unknown,
+    LessonProgressAttempt,
+    LessonMutationSnapshot
+  >({
     mutationFn: async (attempt) => {
-      const result = await setLessonCompletion(session, attempt.courseId, attempt.lessonId, attempt.targetCompleted);
+      const result = await setLessonCompletion(
+        session,
+        attempt.courseId,
+        attempt.lessonId,
+        attempt.targetCompleted,
+      );
       if (result.lessonId !== attempt.lessonId || result.completed !== attempt.targetCompleted) {
         throw new TypeError('Invalid lesson progress mutation response');
       }
       return result;
     },
     onMutate: (attempt) => {
-      const priorScope = rowScopeRef.current.identity === attempt.workspaceIdentity ? rowScopeRef.current : { identity: attempt.workspaceIdentity, states: new Map<number, LessonCompletionState>() };
-      const previous = priorScope.states.get(attempt.lessonId) ?? { status: 'unknown' } as LessonCompletionState;
+      const priorScope =
+        rowScopeRef.current.identity === attempt.workspaceIdentity
+          ? rowScopeRef.current
+          : {
+              identity: attempt.workspaceIdentity,
+              states: new Map<number, LessonCompletionState>(),
+            };
+      const previous =
+        priorScope.states.get(attempt.lessonId) ?? ({ status: 'unknown' } as LessonCompletionState);
       const nextScope: LessonRowStateScope = {
         identity: priorScope.identity,
-        states: new Map(priorScope.states).set(attempt.lessonId, { status: 'known', completed: attempt.targetCompleted }),
+        states: new Map(priorScope.states).set(attempt.lessonId, {
+          status: 'known',
+          completed: attempt.targetCompleted,
+        }),
       };
       rowScopeRef.current = nextScope;
       setRowScope(nextScope);
       setPending((current) => new Map(current).set(attempt.identity, attempt));
-      setFeedback(null);
+      setPersistentFeedback(null);
       return { attempt, previous };
     },
     onSuccess: async (result, attempt) => {
@@ -186,19 +305,28 @@ export function useLearningWorkspace(enrollmentId: number | null): LearningWorks
         if (current.identity === attempt.workspaceIdentity) {
           const nextScope: LessonRowStateScope = {
             identity: current.identity,
-            states: new Map(current.states).set(result.lessonId, { status: 'known', completed: result.completed }),
+            states: new Map(current.states).set(result.lessonId, {
+              status: 'known',
+              completed: result.completed,
+            }),
           };
           rowScopeRef.current = nextScope;
           setRowScope(nextScope);
         }
-        setFeedback({
-          tone: 'success',
-          message: result.completed ? 'Lesson marked complete.' : 'Lesson marked incomplete.',
-        });
+        setTransientSuccessFeedback(
+          result.completed ? 'Lesson marked complete.' : 'Lesson marked incomplete.',
+          attempt,
+        );
       }
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: learningCourseProgressQueryKey(attempt.subject, attempt.courseId), exact: true }),
-        queryClient.invalidateQueries({ queryKey: learningDetailQueryKey(attempt.subject, attempt.enrollmentId), exact: true }),
+        queryClient.invalidateQueries({
+          queryKey: learningCourseProgressQueryKey(attempt.subject, attempt.courseId),
+          exact: true,
+        }),
+        queryClient.invalidateQueries({
+          queryKey: learningDetailQueryKey(attempt.subject, attempt.enrollmentId),
+          exact: true,
+        }),
       ]);
     },
     onError: async (error, attempt, context) => {
@@ -208,7 +336,7 @@ export function useLearningWorkspace(enrollmentId: number | null): LearningWorks
         const unavailableScope = { identity: attempt.workspaceIdentity };
         mutationUnavailableScopeRef.current = unavailableScope;
         setMutationUnavailableScope(unavailableScope);
-        setFeedback(null);
+        setPersistentFeedback(null);
         return;
       }
       if (isCurrentScope && context && failureKind !== 'uncertain') {
@@ -234,15 +362,31 @@ export function useLearningWorkspace(enrollmentId: number | null): LearningWorks
             rowScopeRef.current = nextScope;
             setRowScope(nextScope);
           }
-          setFeedback({ tone: 'error', message: 'We could not confirm the lesson update. Progress is being refreshed.' });
+          setPersistentFeedback({
+            tone: 'error',
+            message: 'We could not confirm the lesson update. Progress is being refreshed.',
+            visibility: 'visible',
+          });
         }
         await Promise.all([
-          queryClient.invalidateQueries({ queryKey: learningCourseProgressQueryKey(attempt.subject, attempt.courseId), exact: true }),
-          queryClient.invalidateQueries({ queryKey: learningDetailQueryKey(attempt.subject, attempt.enrollmentId), exact: true }),
+          queryClient.invalidateQueries({
+            queryKey: learningCourseProgressQueryKey(attempt.subject, attempt.courseId),
+            exact: true,
+          }),
+          queryClient.invalidateQueries({
+            queryKey: learningDetailQueryKey(attempt.subject, attempt.enrollmentId),
+            exact: true,
+          }),
         ]);
         return;
       }
-      if (isCurrentScope) setFeedback({ tone: 'error', message: 'Lesson progress could not be updated. Try again.' });
+      if (isCurrentScope) {
+        setPersistentFeedback({
+          tone: 'error',
+          message: 'Lesson progress could not be updated. Try again.',
+          visibility: 'visible',
+        });
+      }
     },
     onSettled: (_result, _error, attempt) => {
       locksRef.current.delete(attempt.identity);
@@ -254,12 +398,14 @@ export function useLearningWorkspace(enrollmentId: number | null): LearningWorks
     },
   });
 
-  const completionState = (lessonId: number): LessonCompletionState => (
-    rowScope.identity === (scope ?? '') ? rowScope.states.get(lessonId) ?? { status: 'unknown' } : { status: 'unknown' }
-  );
-  const isPending = (lessonId: number): boolean => Array.from(pending.values()).some((attempt) => (
-    attempt.workspaceIdentity === scope && attempt.lessonId === lessonId
-  ));
+  const completionState = (lessonId: number): LessonCompletionState =>
+    rowScope.identity === (scope ?? '')
+      ? (rowScope.states.get(lessonId) ?? { status: 'unknown' })
+      : { status: 'unknown' };
+  const isPending = (lessonId: number): boolean =>
+    Array.from(pending.values()).some(
+      (attempt) => attempt.workspaceIdentity === scope && attempt.lessonId === lessonId,
+    );
   const setCompletion = (lessonId: number, completed: boolean) => {
     if (!subject || !courseId || !statusAllowsProgress(enrollment.data?.status)) return;
     if (enrollmentId === null) return;

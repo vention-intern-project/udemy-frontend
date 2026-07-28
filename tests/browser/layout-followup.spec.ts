@@ -27,6 +27,8 @@ interface LayoutGeometry {
   body: RectGeometry;
   header: RectGeometry;
   main: RectGeometry;
+  mainPaddingLeft: number;
+  mainPaddingRight: number;
   panel: RectGeometry;
   panelPaddingLeft: number;
   panelPaddingRight: number;
@@ -40,6 +42,8 @@ interface LayoutGeometry {
 
 interface CatalogGeometry {
   hero: RectGeometry;
+  heroContent: RectGeometry;
+  heroContentPaddingLeft: number;
   heroHeight: number;
   titleLeft: number;
   titleTop: number;
@@ -48,6 +52,7 @@ interface CatalogGeometry {
   contentPaddingLeft: number;
   contentPaddingRight: number;
   results: RectGeometry;
+  headerInner: RectGeometry;
   filter: CatalogFilterGeometry;
 }
 
@@ -67,8 +72,6 @@ interface CatalogFilterGeometry {
   formRight: number;
   rangeLeft: number;
   rangeRight: number;
-  labelTop: number;
-  labelBottom: number;
   minimum: CatalogFilterControlGeometry;
   maximum: CatalogFilterControlGeometry;
 }
@@ -96,18 +99,51 @@ interface StateLayoutGeometry {
   clippedControls: string[];
 }
 
-const directCommand = 'npx playwright test --config tests/browser/layout-followup.playwright.config.ts --project=chromium --workers=1 --retries=0 --reporter=line';
+const directCommand =
+  'npx playwright test --config tests/browser/layout-followup.playwright.config.ts --project=chromium --workers=1 --retries=0 --reporter=line';
 const capabilityFiles = [
   'tests/browser/layout-followup.spec.ts',
   'tests/browser/support/visual-quality.ts',
 ] as const;
 const visualQualityRuntime = new WeakMap<Page, VisualQualityRuntime>();
 
+const layoutEmptyCart = { id: 1, items: [], total_price: '0.00', currency: 'USD', item_count: 0 };
+const layoutEmptyEnrollments = {
+  items: [],
+  page: 1,
+  page_size: 100,
+  total: 0,
+  pages: 0,
+  has_next: false,
+  has_previous: false,
+};
+
 test.beforeEach(async ({ page }, testInfo) => {
-  visualQualityRuntime.set(page, setupVisualQualityRuntime(page, testInfo, {
-    capabilityFiles,
-    command: directCommand,
-  }));
+  visualQualityRuntime.set(
+    page,
+    setupVisualQualityRuntime(page, testInfo, {
+      capabilityFiles,
+      command: directCommand,
+    }),
+  );
+  await page.route(
+    (url) => url.pathname === '/cart' && url.search === '',
+    async (route) => {
+      const request = route.request();
+      expect(request.method()).toBe('GET');
+      expect(request.headers().authorization).toMatch(/^Bearer\s+\S+$/);
+      await fulfillJson(route, 200, layoutEmptyCart);
+    },
+  );
+  await page.route(
+    (url) => url.pathname === '/enrollments/my' && url.search === '?page=1&page_size=100',
+    async (route) => {
+      const request = route.request();
+      expect(request.method()).toBe('GET');
+      expect(request.headers().authorization).toMatch(/^Bearer\s+\S+$/);
+      await fulfillJson(route, 200, layoutEmptyEnrollments);
+    },
+  );
   await installCatalogFixture(page);
 });
 
@@ -139,6 +175,10 @@ function parsePixels(value: string) {
   return parsed;
 }
 
+function expectedCatalogHeroHeight(viewportWidth: number): number {
+  return Math.max(192, Math.min(viewportWidth * 0.28, 288));
+}
+
 async function captureLayout(page: Page): Promise<LayoutGeometry> {
   return page.evaluate(() => {
     const rect = (element: Element): RectGeometry => {
@@ -153,15 +193,21 @@ async function captureLayout(page: Page): Promise<LayoutGeometry> {
     const headerSurface = document.querySelector('[data-app-shell-header]');
     const header = headerSurface?.firstElementChild;
     const main = document.querySelector('main');
-    const panel = document.querySelector('[data-part="catalog-discovery-layout"]')
-      ?? main?.querySelector(':scope > section[aria-labelledby]');
+    const panel =
+      document.querySelector('[data-part="catalog-discovery-layout"]') ??
+      main?.querySelector(':scope > section[aria-labelledby]');
     if (!header || !main || !panel) throw new Error('Layout geometry targets are unavailable');
     const panelStyle = getComputedStyle(panel);
+    const mainStyle = getComputedStyle(main);
     const heading = panel.querySelector('h1')?.parentElement ?? null;
     const fields = panel.querySelector(':scope > form');
     const field = panel.querySelector('[data-part="field"]');
     const footer = panel.querySelector(':scope > div:last-child');
-    const clippedControls = [...document.querySelectorAll<HTMLElement>('header a, header button, main input, main select, main button, main a')]
+    const clippedControls = [
+      ...document.querySelectorAll<HTMLElement>(
+        'header a, header button, main input, main select, main button, main a',
+      ),
+    ]
       .filter((element) => {
         const value = element.getBoundingClientRect();
         return value.left < -0.5 || value.right > window.innerWidth + 0.5;
@@ -175,6 +221,8 @@ async function captureLayout(page: Page): Promise<LayoutGeometry> {
       body: rect(document.body),
       header: rect(header),
       main: rect(main),
+      mainPaddingLeft: Number.parseFloat(mainStyle.paddingLeft),
+      mainPaddingRight: Number.parseFloat(mainStyle.paddingRight),
       panel: rect(panel),
       panelPaddingLeft: Number.parseFloat(panelStyle.paddingLeft),
       panelPaddingRight: Number.parseFloat(panelStyle.paddingRight),
@@ -202,7 +250,9 @@ async function captureStateLayout(page: Page): Promise<StateLayoutGeometry> {
     const main = document.querySelector('main#main-content');
     const card = main?.firstElementChild;
     if (!main || !card) throw new Error('Application state geometry targets are unavailable');
-    const clippedControls = [...document.querySelectorAll<HTMLElement>('main a, main button, main input')]
+    const clippedControls = [
+      ...document.querySelectorAll<HTMLElement>('main a, main button, main input'),
+    ]
       .filter((element) => {
         const value = element.getBoundingClientRect();
         return value.left < -0.5 || value.right > window.innerWidth + 0.5;
@@ -232,25 +282,38 @@ async function captureCatalogGeometry(page: Page): Promise<CatalogGeometry> {
       };
     };
     const hero = catalog.querySelector('[data-part="catalog-hero"]');
+    const heroContent = hero?.firstElementChild;
     const heading = hero?.querySelector('h1');
     const description = hero?.querySelector('p');
     const content = catalog.querySelector('[data-part="catalog-content"]');
+    const headerInner = document.querySelector<HTMLElement>('[data-app-shell-header] > div');
     const results = content?.querySelector('[data-part="catalog-discovery-layout"]');
     const filter = catalog.querySelector<HTMLFormElement>('form[aria-label="Course filters"]');
     const priceRange = filter?.querySelector('fieldset');
-    const priceLabel = priceRange?.querySelector('[data-part="catalog-filter-price-label"]');
     const minimum = filter?.querySelector<HTMLInputElement>('input[name="min_price"]');
     const maximum = filter?.querySelector<HTMLInputElement>('input[name="max_price"]');
-    if (!hero || !heading || !description || !content || !results || !filter || !priceRange || !priceLabel || !minimum || !maximum) {
+    if (
+      !hero ||
+      !heroContent ||
+      !heading ||
+      !description ||
+      !content ||
+      !results ||
+      !filter ||
+      !priceRange ||
+      !minimum ||
+      !maximum ||
+      !headerInner
+    ) {
       throw new Error('Catalog geometry targets are unavailable');
     }
     const heroRect = hero.getBoundingClientRect();
+    const heroContentStyle = getComputedStyle(heroContent);
     const headingRect = heading.getBoundingClientRect();
     const descriptionRect = description.getBoundingClientRect();
     const contentStyle = getComputedStyle(content);
     const filterRect = filter.getBoundingClientRect();
     const priceRangeRect = priceRange.getBoundingClientRect();
-    const priceLabelRect = priceLabel.getBoundingClientRect();
     const controlGeometry = (input: HTMLInputElement): CatalogFilterControlGeometry => {
       const inputRect = input.getBoundingClientRect();
       return {
@@ -266,6 +329,8 @@ async function captureCatalogGeometry(page: Page): Promise<CatalogGeometry> {
     };
     return {
       hero: rect(hero),
+      heroContent: rect(heroContent),
+      heroContentPaddingLeft: Number.parseFloat(heroContentStyle.paddingLeft),
       heroHeight: heroRect.height,
       titleLeft: headingRect.left,
       titleTop: headingRect.top - heroRect.top,
@@ -274,13 +339,12 @@ async function captureCatalogGeometry(page: Page): Promise<CatalogGeometry> {
       contentPaddingLeft: Number.parseFloat(contentStyle.paddingLeft),
       contentPaddingRight: Number.parseFloat(contentStyle.paddingRight),
       results: rect(results),
+      headerInner: rect(headerInner),
       filter: {
         formLeft: filterRect.left,
         formRight: filterRect.right,
         rangeLeft: priceRangeRect.left,
         rangeRight: priceRangeRect.right,
-        labelTop: priceLabelRect.top,
-        labelBottom: priceLabelRect.bottom,
         minimum: controlGeometry(minimum),
         maximum: controlGeometry(maximum),
       },
@@ -293,10 +357,16 @@ async function capturePasswordField(page: Page, id: string): Promise<PasswordFie
     const frame = input.parentElement;
     const button = frame?.querySelector('button');
     const icon = button?.querySelector('svg');
-    if (!frame || !button || !icon) throw new Error(`Password action geometry is unavailable for ${input.id}`);
+    if (!frame || !button || !icon)
+      throw new Error(`Password action geometry is unavailable for ${input.id}`);
     const rect = (element: Element): RectGeometry => {
       const value = element.getBoundingClientRect();
-      return { left: value.left, right: value.right, width: value.width, centerX: (value.left + value.right) / 2 };
+      return {
+        left: value.left,
+        right: value.right,
+        width: value.width,
+        centerX: (value.left + value.right) / 2,
+      };
     };
     const inputRect = input.getBoundingClientRect();
     const buttonRect = button.getBoundingClientRect();
@@ -326,7 +396,9 @@ function expectInlinePasswordAction(geometry: PasswordFieldGeometry) {
   expect(geometry.button.right).toBeLessThanOrEqual(geometry.input.right - 4);
   expect(Math.abs(geometry.button.centerX - (geometry.input.right - 22))).toBeLessThanOrEqual(0.5);
   expect(geometry.paddingInlineEnd).toBeGreaterThanOrEqual(geometry.button.width + 16);
-  expect(geometry.button.left - (geometry.input.right - geometry.paddingInlineEnd)).toBeGreaterThanOrEqual(8);
+  expect(
+    geometry.button.left - (geometry.input.right - geometry.paddingInlineEnd),
+  ).toBeGreaterThanOrEqual(8);
   expect(geometry.iconAriaHidden).toBe('true');
   expect(geometry.iconFocusable).toBe('false');
 }
@@ -366,49 +438,76 @@ function expectCatalogFilterGeometry(geometry: CatalogFilterGeometry, width: num
   expect(geometry.maximum.label).toBe('Max price');
   expect(geometry.minimum.focusable).toBe(true);
   expect(geometry.maximum.focusable).toBe(true);
-  expect(geometry.minimum.width).toBeCloseTo(128, 1);
-  expect(geometry.maximum.width).toBeCloseTo(128, 1);
-  expect(geometry.minimum.height).toBeCloseTo(36, 1);
-  expect(geometry.maximum.height).toBeCloseTo(36, 1);
+  if (width >= 768) {
+    expect(geometry.minimum.width).toBe(120);
+    expect(geometry.maximum.width).toBe(120);
+  } else {
+    expect(geometry.minimum.width).toBeGreaterThanOrEqual(128);
+    expect(geometry.maximum.width).toBeGreaterThanOrEqual(128);
+  }
+  expect(Math.abs(geometry.minimum.width - geometry.maximum.width)).toBeLessThanOrEqual(1);
+  expect(geometry.minimum.height).toBe(44);
+  expect(geometry.maximum.height).toBe(44);
   expect(geometry.minimum.left).toBeGreaterThanOrEqual(-0.5);
   expect(geometry.maximum.right).toBeLessThanOrEqual(width + 0.5);
   expect(geometry.minimum.right).toBeLessThanOrEqual(geometry.maximum.left);
   expect(Math.abs(geometry.minimum.top - geometry.maximum.top)).toBeLessThanOrEqual(1);
-  if (width < 480) {
-    expect(geometry.labelBottom).toBeLessThanOrEqual(geometry.minimum.top + 1);
-  } else {
-    expect(Math.abs(
-      ((geometry.labelTop + geometry.labelBottom) / 2)
-      - ((geometry.minimum.top + geometry.minimum.bottom) / 2),
-    )).toBeLessThanOrEqual(1);
-  }
 }
 
 const routeCases = [
-  { path: '/', heading: 'Master the Skills Shaping the Future', submitName: null, firstInvalidLabel: null },
-  { path: '/login', heading: 'Log in', submitName: 'Log in', firstInvalidLabel: /^Email/ },
-  { path: '/signup', heading: 'Create account', submitName: 'Create account', firstInvalidLabel: /^Email/ },
-  { path: '/forgot-password', heading: 'Forgot password', submitName: 'Continue', firstInvalidLabel: /^Email/ },
   {
-    path: '/reset-password?token=layout-followup-token', heading: 'Reset password', submitName: 'Reset password',
+    path: '/',
+    heading: 'Master the Skills Shaping the Future',
+    submitName: null,
+    firstInvalidLabel: null,
+  },
+  { path: '/login', heading: 'Log in', submitName: 'Log in', firstInvalidLabel: /^Email/ },
+  {
+    path: '/signup',
+    heading: 'Create account',
+    submitName: 'Create account',
+    firstInvalidLabel: /^Email/,
+  },
+  {
+    path: '/forgot-password',
+    heading: 'Forgot password',
+    submitName: 'Continue',
+    firstInvalidLabel: /^Email/,
+  },
+  {
+    path: '/reset-password?token=layout-followup-token',
+    heading: 'Reset password',
+    submitName: 'Reset password',
     firstInvalidLabel: /^New password/,
   },
 ] as const;
 
 for (const width of [320, 768, 1280]) {
-  test(`React Router variants retain route metadata and geometry at ${width}px`, async ({ page }) => {
+  test(`React Router variants retain route metadata and geometry at ${width}px`, async ({
+    page,
+  }) => {
     setScenario(page, {
       routes: ['/LOGIN/', '/COURSES/Route-42/', '/INSTRUCTOR/COURSES/Route-42/ENROLLMENTS/'],
       states: ['anonymous auth/public variants', 'authenticated instructor workspace variant'],
       viewports: [{ width, height: 800 }],
-      expectedOutcome: 'Case, trailing-slash, and parameter variants retain the intended layout, density, geometry, and overflow behavior.',
-      runtimeInputs: { width, router: 'React Router matchPath semantics', data: 'deterministic mocked GET /me' },
+      expectedOutcome:
+        'Case, trailing-slash, and parameter variants retain the intended layout, density, geometry, and overflow behavior.',
+      runtimeInputs: {
+        width,
+        router: 'React Router matchPath semantics',
+        data: 'deterministic mocked GET /me',
+      },
     });
     await page.setViewportSize({ width, height: 800 });
 
     for (const routeCase of [
       { path: '/LOGIN/', heading: 'Log in', layout: 'auth', density: 'marketplace' },
-      { path: '/COURSES/Route-42/', heading: 'Course details', layout: 'public', density: 'marketplace' },
+      {
+        path: '/COURSES/Route-42/',
+        heading: 'Course not found',
+        layout: 'public',
+        density: 'marketplace',
+      },
     ] as const) {
       await page.goto(routeCase.path);
       await expect(page.getByRole('heading', { level: 1, name: routeCase.heading })).toBeVisible();
@@ -417,15 +516,17 @@ for (const width of [320, 768, 1280]) {
       expectCleanLayout(await captureLayout(page), width);
     }
 
-    await page.route('**/me', (route) => fulfillJson(route, 200, {
-      email: 'instructor@example.com',
-      name: 'Grace',
-      surname: 'Hopper',
-      role: 'instructor',
-      birthday: null,
-      phone_number: null,
-      created_at: '2026-07-22T00:00:00Z',
-    }));
+    await page.route('**/me', (route) =>
+      fulfillJson(route, 200, {
+        email: 'instructor@example.com',
+        name: 'Grace',
+        surname: 'Hopper',
+        role: 'instructor',
+        birthday: null,
+        phone_number: null,
+        created_at: '2026-07-22T00:00:00Z',
+      }),
+    );
     await page.evaluate(() => localStorage.setItem('learnhub.access-token', 'route-variant-token'));
     await page.goto('/INSTRUCTOR/COURSES/Route-42/ENROLLMENTS/');
     await expect(page.getByRole('heading', { level: 1, name: 'Course enrollments' })).toBeVisible();
@@ -433,16 +534,22 @@ for (const width of [320, 768, 1280]) {
     await expect(page.locator('html')).toHaveAttribute('data-density', 'workspace');
     expectCleanLayout(await captureLayout(page), width);
 
-    completeScenario(page, 'All route variants retained route metadata, centered geometry, and overflow-free rendering.');
+    completeScenario(
+      page,
+      'All route variants retained route metadata, centered geometry, and overflow-free rendering.',
+    );
   });
 }
 
-test('visual quality runtime helpers reject mismatches, exhaustion and missing evidence', async ({ page }) => {
+test('visual quality runtime helpers reject mismatches, exhaustion and missing evidence', async ({
+  page,
+}) => {
   setScenario(page, {
     routes: ['support runtime'],
     states: ['adversarial exact-match contract'],
     viewports: [{ notApplicable: 'pure support helper assertions' }],
-    expectedOutcome: 'Exact response and console identities match one-to-one; missing runtime evidence fails closed.',
+    expectedOutcome:
+      'Exact response and console identities match one-to-one; missing runtime evidence fails closed.',
     runtimeInputs: { network: 'synthetic pure values', browserNavigation: false },
   });
 
@@ -453,15 +560,27 @@ test('visual quality runtime helpers reject mismatches, exhaustion and missing e
     url: 'http://127.0.0.1:4176/login?source=visual',
   };
   const expectedFailures = [{ ...acceptedFailure, occurrences: 1, remaining: 1 }];
-  expect(consumeExpectedHttpFailure(expectedFailures, {
-    method: 'GET', path: '/login?source=visual', status: 400,
-  })).toBe(false);
-  expect(consumeExpectedHttpFailure(expectedFailures, {
-    method: 'POST', path: '/login?source=other', status: 400,
-  })).toBe(false);
-  expect(consumeExpectedHttpFailure(expectedFailures, {
-    method: 'POST', path: '/login?source=visual', status: 401,
-  })).toBe(false);
+  expect(
+    consumeExpectedHttpFailure(expectedFailures, {
+      method: 'GET',
+      path: '/login?source=visual',
+      status: 400,
+    }),
+  ).toBe(false);
+  expect(
+    consumeExpectedHttpFailure(expectedFailures, {
+      method: 'POST',
+      path: '/login?source=other',
+      status: 400,
+    }),
+  ).toBe(false);
+  expect(
+    consumeExpectedHttpFailure(expectedFailures, {
+      method: 'POST',
+      path: '/login?source=visual',
+      status: 401,
+    }),
+  ).toBe(false);
   expect(expectedFailures[0].remaining).toBe(1);
   expect(consumeExpectedHttpFailure(expectedFailures, acceptedFailure)).toBe(true);
   expect(expectedFailures[0].remaining).toBe(0);
@@ -473,13 +592,22 @@ test('visual quality runtime helpers reject mismatches, exhaustion and missing e
     text: 'Failed to load resource: the server responded with a status of 400 (Bad Request)',
     url: acceptedFailure.url,
   };
-  expect(matchesAcceptedResponseConsole({ ...resourceMessage, url: 'http://127.0.0.1:4176/other' }, acceptedFailure))
-    .toBe(false);
-  expect(matchesAcceptedResponseConsole({ ...resourceMessage, text: 'unrelated console error' }, acceptedFailure))
-    .toBe(false);
+  expect(
+    matchesAcceptedResponseConsole(
+      { ...resourceMessage, url: 'http://127.0.0.1:4176/other' },
+      acceptedFailure,
+    ),
+  ).toBe(false);
+  expect(
+    matchesAcceptedResponseConsole(
+      { ...resourceMessage, text: 'unrelated console error' },
+      acceptedFailure,
+    ),
+  ).toBe(false);
   expect(matchesAcceptedResponseConsole(resourceMessage, acceptedFailure)).toBe(true);
-  expect(findUnexpectedConsoleErrors([resourceMessage, resourceMessage], [acceptedFailure]))
-    .toEqual([resourceMessage]);
+  expect(
+    findUnexpectedConsoleErrors([resourceMessage, resourceMessage], [acceptedFailure]),
+  ).toEqual([resourceMessage]);
 
   const violations = collectRuntimeEvidenceViolations({
     pageErrors: ['synthetic page error'],
@@ -490,22 +618,30 @@ test('visual quality runtime helpers reject mismatches, exhaustion and missing e
     expectedHttpFailures: [{ ...acceptedFailure, occurrences: 2, remaining: 1 }],
   });
   expect(violations.pageErrors).toEqual(['synthetic page error']);
-  expect(violations.unexpectedConsoleErrors).toEqual([{ text: 'unrelated console error', url: '' }]);
+  expect(violations.unexpectedConsoleErrors).toEqual([
+    { text: 'unrelated console error', url: '' },
+  ]);
   expect(violations.failedRequests).toEqual(['GET /offline: synthetic failure']);
   expect(violations.errorResponses).toHaveLength(1);
   expect(violations.unconsumedExpectedResponses).toHaveLength(1);
   expect(validateVisualScenarioEvidence(undefined)).toEqual(['scenario metadata is missing']);
 
-  completeScenario(page, 'Pure adversarial helpers rejected every mismatch and exposed every fail-closed violation.');
+  completeScenario(
+    page,
+    'Pure adversarial helpers rejected every mismatch and exposed every fail-closed violation.',
+  );
 });
 
 for (const width of [320, 390, 768, 1280, 1440]) {
-  test(`catalog and auth normal/validation layouts stay centered and spaced at ${width}px`, async ({ page }) => {
+  test(`catalog and auth normal/validation layouts stay centered and spaced at ${width}px`, async ({
+    page,
+  }) => {
     setScenario(page, {
       routes: [...routeCases.map(({ path }) => path), '/courses/:courseId'],
       states: ['normal', 'client validation'],
       viewports: [{ width, height: 800 }],
-      expectedOutcome: 'Catalog, course details, and auth panels stay centered, spaced, associated, and overflow-free.',
+      expectedOutcome:
+        'Catalog, course details, and auth panels stay centered, spaced, associated, and overflow-free.',
       runtimeInputs: { width, data: 'public deterministic routes' },
     });
     await page.setViewportSize({ width, height: 800 });
@@ -525,12 +661,30 @@ for (const width of [320, 390, 768, 1280, 1440]) {
         const geometry = await captureCatalogGeometry(page);
         expect(Math.abs(geometry.hero.left)).toBeLessThanOrEqual(1);
         expect(Math.abs(geometry.hero.right - width)).toBeLessThanOrEqual(1);
-        expect(geometry.heroHeight).toBeCloseTo(320, 0);
-        expect(geometry.titleTop).toBe(width >= 768 ? 84 : 48);
+        expect(geometry.heroHeight).toBeGreaterThanOrEqual(expectedCatalogHeroHeight(width) - 1);
+        expect(geometry.titleTop).toBe(32);
         expect(geometry.descriptionGap).toBe(12);
-        expect(Math.abs(geometry.results.left - geometry.content.left - geometry.contentPaddingLeft)).toBeLessThanOrEqual(1);
-        expect(Math.abs(geometry.content.right - geometry.results.right - geometry.contentPaddingRight)).toBeLessThanOrEqual(1);
-        expect(Math.abs(geometry.titleLeft - geometry.results.left)).toBeLessThanOrEqual(1);
+        expect(
+          Math.abs(geometry.results.left - geometry.content.left - geometry.contentPaddingLeft),
+        ).toBeLessThanOrEqual(1);
+        expect(
+          Math.abs(geometry.content.right - geometry.results.right - geometry.contentPaddingRight),
+        ).toBeLessThanOrEqual(1);
+        expect(
+          Math.abs(
+            geometry.titleLeft - geometry.heroContent.left - geometry.heroContentPaddingLeft,
+          ),
+        ).toBeLessThanOrEqual(1);
+        if (width >= 1338) {
+          expect(geometry.heroContent.width).toBeCloseTo(1290, 1);
+          expect(geometry.content.width).toBeCloseTo(1290, 1);
+          expect(geometry.headerInner.width).toBeCloseTo(1200, 1);
+          expect(geometry.heroContent.left).toBeCloseTo((width - 1290) / 2, 1);
+          expect(geometry.headerInner.left).toBeCloseTo((width - 1200) / 2, 1);
+        } else {
+          expect(geometry.heroContent.width).toBeLessThanOrEqual(1290);
+          expect(geometry.headerInner.width).toBeLessThanOrEqual(1200);
+        }
         expectCatalogFilterGeometry(geometry.filter, width);
       }
 
@@ -560,18 +714,25 @@ for (const width of [320, 390, 768, 1280, 1440]) {
     }
 
     await page.goto('/courses/layout-followup-course');
-    await expect(page.getByRole('heading', { level: 1, name: 'Course details' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'Course not found' })).toBeVisible();
     const publicPlaceholder = await captureLayout(page);
     expectCleanLayout(publicPlaceholder, width);
-    expect(publicPlaceholder.panelPaddingLeft).toBe(32);
-    expect(publicPlaceholder.panelPaddingRight).toBe(32);
-    completeScenario(page, 'All normal and validation layouts matched their semantic, spacing, geometry, and overflow assertions.');
+    expect(publicPlaceholder.mainPaddingLeft).toBe(width >= 768 ? 24 : 16);
+    expect(publicPlaceholder.mainPaddingRight).toBe(width >= 768 ? 24 : 16);
+    completeScenario(
+      page,
+      'All normal and validation layouts matched their semantic, spacing, geometry, and overflow assertions.',
+    );
   });
 }
 
 const passwordRouteCases = [
   {
-    path: '/login', heading: 'Log in', submitName: 'Log in', fieldIds: ['password'], firstInvalidLabel: /^Email/,
+    path: '/login',
+    heading: 'Log in',
+    submitName: 'Log in',
+    fieldIds: ['password'],
+    firstInvalidLabel: /^Email/,
   },
   {
     path: '/signup',
@@ -590,12 +751,15 @@ const passwordRouteCases = [
 ] as const;
 
 for (const width of [320, 390, 768, 1280, 1440]) {
-  test(`password actions remain inline, independent and accessible at ${width}px`, async ({ page }) => {
+  test(`password actions remain inline, independent and accessible at ${width}px`, async ({
+    page,
+  }) => {
     setScenario(page, {
       routes: passwordRouteCases.map(({ path }) => path),
       states: ['password hidden', 'password revealed', 'keyboard focus', 'client validation'],
       viewports: [{ width, height: 900 }],
-      expectedOutcome: 'Every password action remains inline, independent, keyboard-operable, visible on focus, and associated.',
+      expectedOutcome:
+        'Every password action remains inline, independent, keyboard-operable, visible on focus, and associated.',
       runtimeInputs: { width, input: 'synthetic non-secret password value' },
     });
     await page.setViewportSize({ width, height: 900 });
@@ -608,7 +772,9 @@ for (const width of [320, 390, 768, 1280, 1440]) {
       for (const [index, id] of routeCase.fieldIds.entries()) {
         const input = inputs[index];
         const reveal = page.locator(`#${id} + [data-part="trailing-action"] button`);
-        await input.fill('Long password value that must stay clear of the inline reveal control 1234567890');
+        await input.fill(
+          'Long password value that must stay clear of the inline reveal control 1234567890',
+        );
         await expect(input).toHaveAttribute('type', 'password');
         await expect(reveal).toHaveAttribute('type', 'button');
         await expect(reveal).toHaveAttribute('aria-controls', id);
@@ -654,22 +820,30 @@ for (const width of [320, 390, 768, 1280, 1440]) {
         await expect(inputs[index]).toHaveAttribute('aria-invalid', 'true');
         const describedBy = await inputs[index].getAttribute('aria-describedby');
         expect(describedBy?.split(' ')).toContain(`${id}-error`);
-        await expect(page.locator(`#${id} + [data-part="trailing-action"] button`))
-          .toHaveAttribute('aria-controls', id);
+        await expect(page.locator(`#${id} + [data-part="trailing-action"] button`)).toHaveAttribute(
+          'aria-controls',
+          id,
+        );
       }
       expectCleanLayout(await captureLayout(page), width);
     }
-    completeScenario(page, 'Every password control passed geometry, independence, keyboard, focus, and association assertions.');
+    completeScenario(
+      page,
+      'Every password control passed geometry, independence, keyboard, focus, and association assertions.',
+    );
   });
 }
 
 for (const width of [320, 390]) {
-  test(`mobile navigation closed/open/closed preserves canvas geometry at ${width}px`, async ({ page }) => {
+  test(`mobile navigation closed/open/closed preserves canvas geometry at ${width}px`, async ({
+    page,
+  }) => {
     setScenario(page, {
       routes: ['/'],
       states: ['mobile navigation closed', 'mobile navigation open', 'focus restored after Escape'],
       viewports: [{ width, height: 600 }],
-      expectedOutcome: 'Opening and closing mobile navigation preserves canvas geometry and restores keyboard focus.',
+      expectedOutcome:
+        'Opening and closing mobile navigation preserves canvas geometry and restores keyboard focus.',
       runtimeInputs: { width, activation: 'keyboard Enter and Escape' },
     });
     await page.setViewportSize({ width, height: 600 });
@@ -681,7 +855,9 @@ for (const width of [320, 390]) {
     const trigger = page.getByRole('button', { name: 'Open navigation', exact: true });
     await trigger.focus();
     await page.keyboard.press('Enter');
-    await expect(page.getByRole('navigation', { name: 'Mobile navigation', exact: true })).toBeVisible();
+    await expect(
+      page.getByRole('navigation', { name: 'Mobile navigation', exact: true }),
+    ).toBeVisible();
     const open = await captureLayout(page);
     expectCleanLayout(open, width);
     expect(open.body).toEqual(closed.body);
@@ -692,14 +868,19 @@ for (const width of [320, 390]) {
     expect(open.panel.centerX).toBe(closed.panel.centerX);
 
     await page.keyboard.press('Escape');
-    await expect(page.getByRole('navigation', { name: 'Mobile navigation', exact: true })).toHaveCount(0);
+    await expect(
+      page.getByRole('navigation', { name: 'Mobile navigation', exact: true }),
+    ).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Open navigation', exact: true })).toBeFocused();
     const restored = await captureLayout(page);
     expect(restored.body).toEqual(closed.body);
     expect(restored.documentScrollWidth).toBe(closed.documentScrollWidth);
     expect(restored.header.centerX).toBe(closed.header.centerX);
     expect(restored.main.centerX).toBe(closed.main.centerX);
-    completeScenario(page, 'Mobile navigation preserved canvas geometry and restored focus to its trigger.');
+    completeScenario(
+      page,
+      'Mobile navigation preserved canvas geometry and restored focus to its trigger.',
+    );
   });
 }
 
@@ -707,8 +888,12 @@ test('mobile navigation yields to desktop navigation at the 768px transition', a
   setScenario(page, {
     routes: ['/'],
     states: ['mobile navigation open', 'desktop navigation visible after reflow'],
-    viewports: [{ width: 390, height: 600 }, { width: 768, height: 800 }],
-    expectedOutcome: 'The mobile menu yields to desktop navigation at the intermediate breakpoint without overflow.',
+    viewports: [
+      { width: 390, height: 600 },
+      { width: 768, height: 800 },
+    ],
+    expectedOutcome:
+      'The mobile menu yields to desktop navigation at the intermediate breakpoint without overflow.',
     runtimeInputs: { transition: '390x600 to 768x800', activation: 'keyboard Enter' },
   });
   await page.setViewportSize({ width: 390, height: 600 });
@@ -717,28 +902,42 @@ test('mobile navigation yields to desktop navigation at the 768px transition', a
   const trigger = page.getByRole('button', { name: 'Open navigation', exact: true });
   await trigger.focus();
   await page.keyboard.press('Enter');
-  await expect(page.getByRole('navigation', { name: 'Mobile navigation', exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('navigation', { name: 'Mobile navigation', exact: true }),
+  ).toBeVisible();
 
   await page.setViewportSize({ width: 768, height: 800 });
-  await expect(page.getByRole('navigation', { name: 'Primary navigation', exact: true })).toBeVisible();
-  await expect(page.getByRole('navigation', { name: 'Mobile navigation', exact: true })).toBeHidden();
+  await expect(
+    page.getByRole('navigation', { name: 'Primary navigation', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('navigation', { name: 'Mobile navigation', exact: true }),
+  ).toBeHidden();
   await expect(page.getByRole('button', { name: 'Close navigation', exact: true })).toBeHidden();
   expectCleanLayout(await captureLayout(page), 768);
-  completeScenario(page, 'Desktop navigation replaced the open mobile menu with clean intermediate-width geometry.');
+  completeScenario(
+    page,
+    'Desktop navigation replaced the open mobile menu with clean intermediate-width geometry.',
+  );
 });
 
 for (const width of [320, 768, 1440]) {
-  test(`representative login pending/error states retain layout and focus at ${width}px`, async ({ page }) => {
+  test(`representative login pending/error states retain layout and focus at ${width}px`, async ({
+    page,
+  }) => {
     setScenario(page, {
       routes: ['/login'],
       states: ['normal', 'pending', 'public-safe server error'],
       viewports: [{ width, height: 800 }],
-      expectedOutcome: 'Login pending and exact 400 error states preserve layout, disable actions, focus the alert, and hide private detail.',
+      expectedOutcome:
+        'Login pending and exact 400 error states preserve layout, disable actions, focus the alert, and hide private detail.',
       runtimeInputs: { width, expectedHttpFailure: 'POST /login 400 x1' },
     });
     runtimeFor(page).allowHttpFailure({ method: 'POST', path: '/login', status: 400 }, 1);
     let releaseRequest!: () => void;
-    const requestGate = new Promise<void>((resolve) => { releaseRequest = resolve; });
+    const requestGate = new Promise<void>((resolve) => {
+      releaseRequest = resolve;
+    });
     await page.route('**/login', async (route) => {
       if (route.request().method() !== 'POST') return route.fallback();
       await requestGate;
@@ -768,7 +967,10 @@ for (const width of [320, 768, 1440]) {
     expectCleanLayout(failed, width);
     expect(failed.panel.centerX).toBe(normal.panel.centerX);
     expect(failed.panelPaddingLeft).toBe(normal.panelPaddingLeft);
-    completeScenario(page, 'Pending and error states preserved layout and focus while exposing only stable public copy.');
+    completeScenario(
+      page,
+      'Pending and error states preserved layout and focus while exposing only stable public copy.',
+    );
   });
 }
 
@@ -778,7 +980,8 @@ for (const width of [320, 390, 768, 1280, 1440]) {
       routes: ['/'],
       states: ['session bootstrap 503 error', 'keyboard retry', 'authenticated recovery'],
       viewports: [{ width, height: 900 }],
-      expectedOutcome: 'An exact GET /me 503 shows safe centered error copy, supports visible keyboard focus, and recovers on one retry.',
+      expectedOutcome:
+        'An exact GET /me 503 shows safe centered error copy, supports visible keyboard focus, and recovers on one retry.',
       runtimeInputs: {
         width,
         accessToken: 'synthetic local token',
@@ -802,7 +1005,7 @@ for (const width of [320, 390, 768, 1280, 1440]) {
         email: 'visual.student@example.com',
         name: 'Visual',
         surname: 'Student',
-        role: 'student',
+        role: 'instructor',
         birthday: null,
         phone_number: null,
         created_at: '2026-07-22T00:00:00Z',
@@ -811,10 +1014,14 @@ for (const width of [320, 390, 768, 1280, 1440]) {
 
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/');
-    await expect(page.getByRole('heading', { level: 1, name: 'Session check failed' })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Session check failed' }),
+    ).toBeVisible();
     const alert = page.getByRole('alert');
     await expect(alert).toContainText('Unable to start the application');
-    await expect(alert).toContainText('We could not verify your session. Check your connection and try again.');
+    await expect(alert).toContainText(
+      'We could not verify your session. Check your connection and try again.',
+    );
     await expect(page.getByRole('main')).not.toContainText('VISUAL_PRIVATE_SESSION_DIAGNOSTIC');
     await expect(page.getByRole('main')).not.toContainText('visual-quality-synthetic-token');
     expectCleanStateLayout(await captureStateLayout(page), width);
@@ -824,21 +1031,29 @@ for (const width of [320, 390, 768, 1280, 1440]) {
     await expect(retry).toBeFocused();
     expect(await retry.evaluate((button) => button.matches(':focus-visible'))).toBe(true);
     await page.keyboard.press('Enter');
-    await expect(page.getByRole('heading', {
-      level: 1,
-      name: 'Master the Skills Shaping the Future',
-    })).toBeVisible();
+    await expect(
+      page.getByRole('heading', {
+        level: 1,
+        name: 'Master the Skills Shaping the Future',
+      }),
+    ).toBeVisible();
     await expect(page.getByRole('heading', { level: 2, name: 'Found 1 course' })).toBeVisible();
     if (width < 768) {
-      await expect(page.getByRole('button', { name: 'Open navigation', exact: true })).toBeVisible();
+      await expect(
+        page.getByRole('button', { name: 'Open navigation', exact: true }),
+      ).toBeVisible();
       await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toHaveCount(0);
     } else {
-      await expect(page.getByRole('navigation', { name: 'Primary navigation' }))
-        .toContainText('My learning');
+      await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toContainText(
+        'My courses',
+      );
     }
     expectCleanLayout(await captureLayout(page), width);
     expect(attempts).toBe(2);
-    completeScenario(page, 'The exact 503 rendered safe centered copy, keyboard focus stayed visible, and one retry recovered cleanly.');
+    completeScenario(
+      page,
+      'The exact 503 rendered safe centered copy, keyboard focus stayed visible, and one retry recovered cleanly.',
+    );
   });
 }
 
@@ -847,7 +1062,8 @@ test('spacing values remain valid finite pixels', async ({ page }) => {
     routes: ['/login'],
     states: ['normal spacing token values'],
     viewports: [{ width: 1280, height: 900 }],
-    expectedOutcome: 'Computed panel spacing values are finite and match the established desktop values.',
+    expectedOutcome:
+      'Computed panel spacing values are finite and match the established desktop values.',
     runtimeInputs: { width: 1280, source: 'computed CSS pixels' },
   });
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -857,19 +1073,25 @@ test('spacing values remain valid finite pixels', async ({ page }) => {
     return [style.paddingLeft, style.paddingRight, style.gap];
   });
   expect(values.map(parsePixels)).toEqual([32, 32, 24]);
-  completeScenario(page, 'Computed padding and gap values were finite and matched 32, 32, and 24 pixels.');
+  completeScenario(
+    page,
+    'Computed padding and gap values were finite and matched 32, 32, and 24 pixels.',
+  );
 });
 
 for (const reflowCase of [
   { physicalWidth: 768, effectiveWidth: 384 },
   { physicalWidth: 1280, effectiveWidth: 640 },
 ] as const) {
-  test(`preserves shell and auth reflow at effective 200% from ${reflowCase.physicalWidth}px`, async ({ page }) => {
+  test(`preserves shell and auth reflow at effective 200% from ${reflowCase.physicalWidth}px`, async ({
+    page,
+  }) => {
     setScenario(page, {
       routes: ['/', '/login'],
       states: ['effective 200% reflow', 'catalog filter keyboard focus'],
       viewports: [{ width: reflowCase.effectiveWidth, height: 900 }],
-      expectedOutcome: 'Shell, catalog filters, and auth controls reflow without overflow, clipping, or an unusable header geometry seam.',
+      expectedOutcome:
+        'Shell, catalog filters, and auth controls reflow without overflow, clipping, or an unusable header geometry seam.',
       runtimeInputs: reflowCase,
     });
     await page.setViewportSize({ width: reflowCase.effectiveWidth, height: 900 });
@@ -907,8 +1129,14 @@ for (const reflowCase of [
 
     await page.keyboard.press('Tab');
     await expect(page.getByRole('link', { name: 'Skip to main content' })).toBeFocused();
-    expect(await page.getByRole('link', { name: 'Skip to main content' })
-      .evaluate((link) => link.matches(':focus-visible'))).toBe(true);
-    completeScenario(page, 'The effective-width viewport retained clean reflow, a measurable banner seam, and visible keyboard focus.');
+    expect(
+      await page
+        .getByRole('link', { name: 'Skip to main content' })
+        .evaluate((link) => link.matches(':focus-visible')),
+    ).toBe(true);
+    completeScenario(
+      page,
+      'The effective-width viewport retained clean reflow, a measurable banner seam, and visible keyboard focus.',
+    );
   });
 }
