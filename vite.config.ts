@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // https://vitejs.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [react()],
   resolve: {
     alias: {
@@ -18,15 +18,10 @@ export default defineConfig({
       '@app': resolve(__dirname, 'src/app'),
     },
   },
+  optimizeDeps: mode === 'test' ? { noDiscovery: true } : undefined,
   test: {
     globals: true,
     environment: 'node',
     include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
-    deps: {
-      optimizer: {
-        web: { enabled: false },
-        ssr: { enabled: false },
-      },
-    },
   },
-});
+}));
