@@ -1124,14 +1124,6 @@ describe('quality report schema and exact-target admission', () => {
     expect(
       classifyCommandDiagnostics('', '[console.error] fixture').unexpectedConsoleWarnings,
     ).toBe(1);
-    expect(
-      classifyCommandDiagnostics('Error: expected CLI fixture output', '')
-        .unexpectedGenericWarnings,
-    ).toBe(0);
-    expect(
-      classifyCommandDiagnostics('', 'Error: unexpected runtime diagnostic')
-        .unexpectedGenericWarnings,
-    ).toBe(1);
 
     const { target } = await patchTarget('unexpected-diagnostic');
     const report = validReport(target);

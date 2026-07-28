@@ -22,5 +22,11 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
+    deps: {
+      optimizer: {
+        web: { enabled: false },
+        ssr: { enabled: false },
+      },
+    },
   },
 });

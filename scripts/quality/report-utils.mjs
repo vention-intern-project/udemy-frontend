@@ -285,12 +285,12 @@ export function classifyCommandDiagnostics(stdout = '', stderr = '') {
     output,
     /(?:console\.(?:warn|error)|\[(?:console\.)?(?:warn|error)\])/gi,
   );
-  const stderrWithoutAllowedRouterNotices = stderr.replace(
+  const outputWithoutAllowedRouterNotices = output.replace(
     /⚠️ React Router Future Flag Warning: (?:React Router will begin wrapping state updates in `React\.startTransition` in v7\.|Relative route resolution within Splat routes is changing in v7\.)/g,
     '',
   );
   const unexpectedGenericWarnings = countMatches(
-    stderrWithoutAllowedRouterNotices,
+    outputWithoutAllowedRouterNotices,
     /(?:^|\n)\s*(?:Warning|WARN|ERROR|Error):/gm,
   );
   return diagnosticSummary({
