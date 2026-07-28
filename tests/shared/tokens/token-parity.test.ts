@@ -54,7 +54,15 @@ interface CssDeclarationRule {
 type CssTokenMap = Readonly<Record<string, string>>;
 
 function normalizeCssValue(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, ' ');
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/(['"])([^'"]*)\1/g, '"$2"')
+    .replace(/\s+/g, ' ');
+}
+
+function normalizeCssSelector(selector: string): string {
+  return selector.trim().replace(/(['"])([^'"]*)\1/g, '"$2"');
 }
 
 function cssDeclarationRules(source: string): CssDeclarationRule[] {
@@ -97,7 +105,14 @@ function declarationsFor(
 ): Map<string, string> {
   const declarations = new Map<string, string>();
   for (const rule of rules) {
-    if (rule.media !== media || !rule.selectors.includes(selector)) continue;
+    if (
+      rule.media !== media ||
+      !rule.selectors.some(
+        (ruleSelector) => normalizeCssSelector(ruleSelector) === normalizeCssSelector(selector),
+      )
+    ) {
+      continue;
+    }
     for (const [name, value] of rule.values) declarations.set(name, value);
   }
   return declarations;
@@ -276,13 +291,8 @@ describe('TypeScript and CSS token parity', () => {
   });
 
   it('keeps deliberately dual-published base typography values synchronized', () => {
-    for (const [name, value] of Object.entries(typographyTokens)) {
-      expect(tokensCss).toMatch(
-        new RegExp(
-          `${name.replace(/[-]/g, '\\$&')}\\s*:\\s*${value.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')}`,
-        ),
-      );
-    }
+    const rootDeclarations = declarationsFor(cssDeclarationRules(tokensCss), ':root', null);
+    expect(tokenValueMismatches(typographyTokens, rootDeclarations)).toEqual([]);
   });
 
   it('publishes the accepted mobile Display, H1, and H2 overrides', () => {
