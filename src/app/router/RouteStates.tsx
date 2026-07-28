@@ -1,6 +1,10 @@
-import { Link } from 'react-router-dom';
-
-import { Button, Notice, Skeleton, SkeletonGroup } from '../../shared/ui/primitives';
+import {
+  Button,
+  ContextualNavigationLink,
+  Notice,
+  Skeleton,
+  SkeletonGroup,
+} from '../../shared/ui/primitives';
 import styles from './RouteStates.module.css';
 
 interface RetryStateProps {
@@ -45,7 +49,9 @@ export function RenderErrorState({ onRetry }: RetryStateProps) {
         <p>We could not display this page. Try again or return to the catalog.</p>
         <div>
           <Button onClick={onRetry}>Try again</Button>
-          <Link className={styles.linkButton} to="/">Back to catalog</Link>
+          <ContextualNavigationLink className={styles.linkButton} to="/">
+            Back to catalog
+          </ContextualNavigationLink>
         </div>
       </div>
     </main>
@@ -59,7 +65,9 @@ export function ForbiddenState() {
         <p className={styles.eyebrow}>403</p>
         <h1 id="forbidden-title">You do not have access to this page</h1>
         <p>Use an account with the required role, or return to the catalog.</p>
-        <Link className={styles.linkButton} to="/">Back to catalog</Link>
+        <ContextualNavigationLink className={styles.linkButton} to="/">
+          Back to catalog
+        </ContextualNavigationLink>
       </div>
     </section>
   );
@@ -72,7 +80,9 @@ export function NotFoundState() {
         <p className={styles.eyebrow}>404</p>
         <h1 id="not-found-title">Page not found</h1>
         <p>The address may be incorrect, or the page may have moved.</p>
-        <Link className={styles.linkButton} to="/">Back to catalog</Link>
+        <ContextualNavigationLink className={styles.linkButton} to="/">
+          Back to catalog
+        </ContextualNavigationLink>
       </div>
     </section>
   );

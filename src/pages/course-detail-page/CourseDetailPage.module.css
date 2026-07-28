@@ -2,9 +2,7 @@
 .loading,
 .state {
   width: 100%;
-  max-width: var(--container-max-public);
-  margin: 0 auto;
-  padding: var(--spacing-8) var(--gutter-mobile) var(--spacing-16);
+  padding: 0;
 }
 
 .page {
@@ -177,13 +175,6 @@
 }
 
 @media (min-width: 768px) {
-  .page,
-  .loading,
-  .state {
-    padding-right: var(--gutter-desktop);
-    padding-left: var(--gutter-desktop);
-  }
-
   .summary {
     grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
   }

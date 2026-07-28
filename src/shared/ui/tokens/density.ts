@@ -6,7 +6,7 @@
  * - workspace:   compact spacing for task/management flows
  *
  * Density affects: vertical rhythm, card inner spacing, type emphasis,
- * form density, and section gaps.
+ * form density, and section gaps. It does not alter typography.
  */
 
 // ---------------------------------------------------------------------------
@@ -33,8 +33,6 @@ export interface DensityTokenSet {
   formFieldGap: string;
   /** Container horizontal gutter */
   gutter: string;
-  /** Primary heading token name used in this density context */
-  headingType: string;
 }
 
 export const densityTokens: Readonly<Record<DensityMode, DensityTokenSet>> = {
@@ -43,12 +41,11 @@ export const densityTokens: Readonly<Record<DensityMode, DensityTokenSet>> = {
    * Larger vertical spacing, card-forward layout.
    */
   marketplace: {
-    cardInnerPadding: '16px',   // --spacing-4
-    sectionGap: '32px',         // --spacing-8 (default section spacing)
-    itemGap: '24px',            // --spacing-6
-    formFieldGap: '16px',       // --spacing-4
-    gutter: '24px',             // --gutter-desktop
-    headingType: '--type-card-h3-size', // larger card titles
+    cardInnerPadding: '16px', // --spacing-4
+    sectionGap: '32px', // --spacing-8 (default section spacing)
+    itemGap: '24px', // --spacing-6
+    formFieldGap: '16px', // --spacing-4
+    gutter: '24px', // --gutter-desktop
   },
 
   /**
@@ -56,12 +53,11 @@ export const densityTokens: Readonly<Record<DensityMode, DensityTokenSet>> = {
    * Tighter gutters and spacing while maintaining >=44px touch targets.
    */
   workspace: {
-    cardInnerPadding: '12px',   // --spacing-3
-    sectionGap: '16px',         // --spacing-4
-    itemGap: '12px',            // --spacing-3
-    formFieldGap: '16px',       // --spacing-4 (form fields keep standard gap)
-    gutter: '16px',             // --gutter-mobile (compact side padding)
-    headingType: '--type-body-md-size', // body clarity over display typography
+    cardInnerPadding: '12px', // --spacing-3
+    sectionGap: '16px', // --spacing-4
+    itemGap: '12px', // --spacing-3
+    formFieldGap: '16px', // --spacing-4 (form fields keep standard gap)
+    gutter: '16px', // --gutter-mobile (compact side padding)
   },
 } as const;
 

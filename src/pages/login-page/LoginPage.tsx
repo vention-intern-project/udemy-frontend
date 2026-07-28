@@ -16,7 +16,7 @@ import {
   validateLogin,
   type AuthFieldErrors,
 } from '@features/auth-workflows';
-import { useSession } from '@features/auth-session';
+import { sanitizeInternalReturnTo, useSession } from '@features/auth-session';
 import { mutationKeys } from '@shared/api';
 import { Button, Input } from '@shared/ui/primitives';
 
@@ -30,11 +30,22 @@ interface LoginMutationVariables {
 export function LoginPage() {
   const session = useSession();
   const location = useLocation();
+  const returnTo = sanitizeInternalReturnTo(
+    new URLSearchParams(location.search).get('returnTo'),
+    globalThis.location?.origin,
+  );
+  const signupDestination = returnTo
+    ? `/signup?returnTo=${encodeURIComponent(returnTo)}`
+    : '/signup';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fieldErrors, setFieldErrors] = useState<AuthFieldErrors>({});
   const [summary, setSummary] = useState<string | null>(null);
-  const { ref: summaryRef, requestFocus: requestSummaryFocus } = useAuthErrorFocus(summary, fieldErrors, FIELD_ORDER);
+  const { ref: summaryRef, requestFocus: requestSummaryFocus } = useAuthErrorFocus(
+    summary,
+    fieldErrors,
+    FIELD_ORDER,
+  );
   const attempts = useSubmissionAttemptLifecycle(location.key);
   const mutation = useMutation({
     mutationKey: mutationKeys.auth.login,
@@ -78,19 +89,53 @@ export function LoginPage() {
   return (
     <AuthFormShell
       title="Log in"
-      description="Access your learning or instructor workspace."
-      footer={<><span>New to LearnHub?</span> <AuthLink to="/signup">Create an account</AuthLink></>}
+      description={
+        returnTo === '/cart'
+          ? 'Log in with a student account to view your cart and continue checkout.'
+          : 'Access your learning or instructor workspace.'
+      }
+      footer={
+        <>
+          <span>New to LearnHub?</span>{' '}
+          <AuthLink to={signupDestination}>Create an account</AuthLink>
+        </>
+      }
     >
       <form noValidate onSubmit={submit}>
-        {summary && Object.keys(fieldErrors).length === 0 ? <FormErrorAlert ref={summaryRef} summary={summary} /> : null}
-        <Input id="email" name="email" type="email" label="Email" autoComplete="email" required
-          value={email} error={fieldErrors.email} disabled={mutation.isPending}
-          onChange={(event) => setEmail(event.currentTarget.value)} />
-        <PasswordField id="password" name="password" label="Password" autoComplete="current-password"
-          value={password} error={fieldErrors.password} disabled={mutation.isPending} onChange={setPassword} />
+        {summary && Object.keys(fieldErrors).length === 0 ? (
+          <FormErrorAlert ref={summaryRef} summary={summary} />
+        ) : null}
+        <Input
+          id="email"
+          name="email"
+          type="email"
+          label="Email"
+          autoComplete="email"
+          required
+          value={email}
+          error={fieldErrors.email}
+          disabled={mutation.isPending}
+          onChange={(event) => setEmail(event.currentTarget.value)}
+        />
+        <PasswordField
+          id="password"
+          name="password"
+          label="Password"
+          autoComplete="current-password"
+          value={password}
+          error={fieldErrors.password}
+          disabled={mutation.isPending}
+          onChange={setPassword}
+        />
         <AuthLink to="/forgot-password">Forgot your password?</AuthLink>
-        <Button type="submit" fullWidth state={mutation.isPending ? 'loading' : 'idle'}
-          loadingLabel="Logging in...">Log in</Button>
+        <Button
+          type="submit"
+          fullWidth
+          state={mutation.isPending ? 'loading' : 'idle'}
+          loadingLabel="Logging in..."
+        >
+          Log in
+        </Button>
       </form>
     </AuthFormShell>
   );

@@ -1,25 +1,39 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { QueryClientProvider, type QueryClient } from '@tanstack/react-query';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CatalogPage } from '../../src/pages/catalog-page';
-import { SessionProvider, useSession, type AccessTokenStore } from '../../src/features/auth-session';
-import type { ApiClient, ApiRequestOptions } from '../../src/shared/api';
+import { createAppQueryClient } from '../../src/app/query';
+import {
+  SessionProvider,
+  useSession,
+  type AccessTokenStore,
+} from '../../src/features/auth-session';
+import { ApiError, type ApiClient, type ApiRequestOptions } from '../../src/shared/api';
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
 const catalogItem = {
-  id: 7, title: 'React', description: null, price: '9.99', currency: 'USD', published_at: null,
-  instructor: { id: 1, name: 'Ada', surname: 'Lovelace' }, lessons: [],
+  id: 7,
+  title: 'React',
+  description: null,
+  price: '9.99',
+  currency: 'USD',
+  published_at: null,
+  instructor: { id: 1, name: 'Ada', surname: 'Lovelace' },
+  lessons: [],
 };
 
 interface CatalogPaginationFixture {
+  items?: Array<Omit<typeof catalogItem, 'published_at'> & { published_at: string | null }>;
   page?: number;
   pages?: number;
   has_next?: boolean;
@@ -27,11 +41,30 @@ interface CatalogPaginationFixture {
 }
 
 function response(overrides: CatalogPaginationFixture = {}) {
-  return { items: [catalogItem], page: 1, page_size: 20, total: 1, pages: 1, has_next: false, has_previous: false, ...overrides };
+  return {
+    items: [catalogItem],
+    page: 1,
+    page_size: 20,
+    total: 1,
+    pages: 1,
+    has_next: false,
+    has_previous: false,
+    ...overrides,
+  };
 }
 
-function tokenStore(): AccessTokenStore {
-  return { get: () => null, set: () => true, clear: () => undefined };
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((next, fail) => {
+    resolve = next;
+    reject = fail;
+  });
+  return { promise, reject, resolve };
+}
+
+function tokenStore(token: string | null = null): AccessTokenStore {
+  return { get: () => token, set: () => true, clear: () => undefined };
 }
 
 function HistoryControls() {
@@ -39,8 +72,12 @@ function HistoryControls() {
   const location = useLocation();
   return (
     <>
-      <button type="button" onClick={() => navigate(-1)}>Back</button>
-      <button type="button" onClick={() => navigate(1)}>Forward</button>
+      <button type="button" onClick={() => navigate(-1)}>
+        Back
+      </button>
+      <button type="button" onClick={() => navigate(1)}>
+        Forward
+      </button>
       <output aria-label="catalog location">{`${location.pathname}${location.search}`}</output>
     </>
   );
@@ -51,16 +88,47 @@ function CatalogSessionStatus() {
   return <output aria-label="catalog session status">{state.status}</output>;
 }
 
-function renderCatalog(request: ApiClient['request'], initialEntries: string[], initialIndex = initialEntries.length - 1) {
+function CatalogSessionSwitchControl() {
+  const { acceptAccessToken, state } = useSession();
+  return (
+    <>
+      <button type="button" onClick={() => acceptAccessToken('second-token')}>
+        Switch catalog session
+      </button>
+      <output aria-label="catalog session status">{state.status}</output>
+    </>
+  );
+}
+
+interface CatalogRenderOptions {
+  queryClient?: QueryClient;
+  tokenStore?: AccessTokenStore;
+  withSessionSwitchControl?: boolean;
+}
+
+function renderCatalog(
+  request: ApiClient['request'],
+  initialEntries: string[],
+  initialIndex = initialEntries.length - 1,
+  token: string | null = null,
+  options: CatalogRenderOptions = {},
+) {
   return render(
-    <SessionProvider client={{ request }} tokenStore={tokenStore()}>
-      <MemoryRouter initialEntries={initialEntries} initialIndex={initialIndex} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
-        <main id="main-content" tabIndex={-1}>
-          <CatalogPage />
-        </main>
-        <HistoryControls />
-      </MemoryRouter>
-    </SessionProvider>,
+    <QueryClientProvider client={options.queryClient ?? createAppQueryClient()}>
+      <SessionProvider client={{ request }} tokenStore={options.tokenStore ?? tokenStore(token)}>
+        <MemoryRouter
+          initialEntries={initialEntries}
+          initialIndex={initialIndex}
+          future={{ v7_relativeSplatPath: true, v7_startTransition: true }}
+        >
+          <main id="main-content" tabIndex={-1}>
+            <CatalogPage />
+          </main>
+          <HistoryControls />
+          {options.withSessionSwitchControl ? <CatalogSessionSwitchControl /> : null}
+        </MemoryRouter>
+      </SessionProvider>
+    </QueryClientProvider>,
   );
 }
 
@@ -79,24 +147,24 @@ describe('CatalogPage public URL and pagination behavior', () => {
     };
     const requestHeaders = new Map<string, Headers>();
     const fetchImplementation: typeof fetch = async (input, init) => {
-      const requestUrl = typeof input === 'string'
-        ? input
-        : input instanceof URL
-          ? input.href
-          : input.url;
+      const requestUrl =
+        typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
       const pathname = new URL(requestUrl).pathname;
       requestHeaders.set(pathname, new Headers(init?.headers));
 
       if (pathname === '/me') {
-        return new Response(JSON.stringify({
-          email: 'learner@example.test',
-          name: 'Ada',
-          surname: 'Lovelace',
-          role: 'student',
-          birthday: null,
-          phone_number: null,
-          created_at: '2026-07-24T00:00:00Z',
-        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        return new Response(
+          JSON.stringify({
+            email: 'learner@example.test',
+            name: 'Ada',
+            surname: 'Lovelace',
+            role: 'student',
+            birthday: null,
+            phone_number: null,
+            created_at: '2026-07-24T00:00:00Z',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
       }
       if (pathname === '/courses') {
         return new Response(JSON.stringify({ detail: 'Catalog unavailable' }), {
@@ -109,19 +177,26 @@ describe('CatalogPage public URL and pagination behavior', () => {
     const fetchSpy = vi.fn(fetchImplementation);
 
     render(
-      <SessionProvider
-        apiBaseUrl="https://api.learnhub.test"
-        fetchImplementation={fetchSpy}
-        tokenStore={store}
-      >
-        <MemoryRouter initialEntries={['/']} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
-          <CatalogPage />
-          <CatalogSessionStatus />
-        </MemoryRouter>
-      </SessionProvider>,
+      <QueryClientProvider client={createAppQueryClient()}>
+        <SessionProvider
+          apiBaseUrl="https://api.learnhub.test"
+          fetchImplementation={fetchSpy}
+          tokenStore={store}
+        >
+          <MemoryRouter
+            initialEntries={['/']}
+            future={{ v7_relativeSplatPath: true, v7_startTransition: true }}
+          >
+            <CatalogPage />
+            <CatalogSessionStatus />
+          </MemoryRouter>
+        </SessionProvider>
+      </QueryClientProvider>,
     );
 
-    await waitFor(() => expect(screen.getByLabelText('catalog session status').textContent).toBe('authenticated'));
+    await waitFor(() =>
+      expect(screen.getByLabelText('catalog session status').textContent).toBe('authenticated'),
+    );
     expect(await screen.findByText('We could not load courses')).toBeTruthy();
     expect(requestHeaders.get('/me')?.get('Authorization')).toBe('Bearer stored-access-token');
     expect(requestHeaders.get('/courses')?.get('Authorization')).toBeNull();
@@ -135,27 +210,762 @@ describe('CatalogPage public URL and pagination behavior', () => {
     renderCatalog(request, ['/']);
 
     await screen.findByRole('link', { name: 'React' });
-    const heading = screen.getByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' });
+    const heading = screen.getByRole('heading', {
+      level: 1,
+      name: 'Master the Skills Shaping the Future',
+    });
     expect(heading.textContent).toBe('Master the Skills Shaping the Future');
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
-    expect(screen.getByText('Browse courses crafted by industry experts. Advance your career in technology, design, business, and leadership.')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Browse courses crafted by industry experts. Advance your career in technology, design, business, and leadership.',
+      ),
+    ).toBeTruthy();
     expect(document.querySelector('[data-part="catalog-hero"] img')).toBeNull();
   });
 
-  it('renders one whole-card link with a unified tooltip and disabled cart action without mutations', async () => {
+  it('shares student preflight across cards and submits one paid action for repeated activation', async () => {
+    const requestPaths: string[] = [];
+    let cartItemCount = 0;
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      requestPaths.push(options.path);
+      const value =
+        options.path === '/me'
+          ? {
+              email: 'student@example.test',
+              name: 'Student',
+              surname: 'One',
+              role: 'student',
+              birthday: null,
+              phone_number: null,
+              created_at: '2026-01-01T00:00:00Z',
+            }
+          : options.path === '/courses'
+            ? {
+                items: [
+                  { ...catalogItem, published_at: '2026-07-27T00:00:00Z' },
+                  {
+                    ...catalogItem,
+                    id: 8,
+                    title: 'TypeScript',
+                    published_at: '2026-07-27T00:00:00Z',
+                  },
+                ],
+                page: 1,
+                page_size: 20,
+                total: 2,
+                pages: 1,
+                has_next: false,
+                has_previous: false,
+              }
+            : options.path === '/cart'
+              ? {
+                  id: 1,
+                  items: [],
+                  total_price: '0.00',
+                  currency: 'USD',
+                  item_count: cartItemCount,
+                }
+              : options.path === '/enrollments/my'
+                ? {
+                    items: [],
+                    page: 1,
+                    page_size: 100,
+                    total: 0,
+                    pages: 0,
+                    has_next: false,
+                    has_previous: false,
+                  }
+                : options.path === '/cart/items'
+                  ? (() => {
+                      cartItemCount = 1;
+                      return {
+                        id: 1,
+                        course_id: 7,
+                        added_at: '2026-07-27T00:00:00Z',
+                        course: { id: 7, title: 'React', price: '9.99', currency: 'USD' },
+                      };
+                    })()
+                  : undefined;
+      return options.decode ? options.decode(value) : (value as TResponse);
+    };
+    const user = userEvent.setup();
+    renderCatalog(request, ['/'], 0, 'student-token');
+
+    await waitFor(() => expect(requestPaths.filter((path) => path === '/cart')).toHaveLength(1));
+    await waitFor(() =>
+      expect(requestPaths.filter((path) => path === '/enrollments/my')).toHaveLength(1),
+    );
+    const [action] = await screen.findAllByRole('button', { name: 'Add to cart' });
+    expect(requestPaths.filter((path) => path === '/cart')).toHaveLength(1);
+    expect(requestPaths.filter((path) => path === '/enrollments/my')).toHaveLength(1);
+    await act(async () => {
+      await user.dblClick(action);
+    });
+    await screen.findByRole('button', { name: 'Remove' });
+    expect(requestPaths.filter((path) => path === '/cart/items')).toHaveLength(1);
+  });
+
+  it('keeps a confirmed cart removal visibly pending and sends one DELETE for repeated activation', async () => {
+    const removal = deferred<undefined>();
+    let cartContainsCourse = true;
+    let removeRequests = 0;
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/cart/items/7') {
+        removeRequests += 1;
+        const value = await removal.promise;
+        return options.decode ? options.decode(value) : (value as TResponse);
+      }
+      const value =
+        options.path === '/me'
+          ? {
+              email: 'student@example.test',
+              name: 'Student',
+              surname: 'One',
+              role: 'student',
+              birthday: null,
+              phone_number: null,
+              created_at: '2026-01-01T00:00:00Z',
+            }
+          : options.path === '/courses'
+            ? response({ items: [{ ...catalogItem, published_at: '2026-07-27T00:00:00Z' }] })
+            : options.path === '/cart'
+              ? {
+                  id: 1,
+                  items: cartContainsCourse
+                    ? [
+                        {
+                          id: 1,
+                          course_id: 7,
+                          added_at: '2026-07-27T00:00:00Z',
+                          course: { id: 7, title: 'React', price: '9.99', currency: 'USD' },
+                        },
+                      ]
+                    : [],
+                  total_price: cartContainsCourse ? '9.99' : '0.00',
+                  currency: 'USD',
+                  item_count: cartContainsCourse ? 1 : 0,
+                }
+              : options.path === '/enrollments/my'
+                ? {
+                    items: [],
+                    page: 1,
+                    page_size: 100,
+                    total: 0,
+                    pages: 0,
+                    has_next: false,
+                    has_previous: false,
+                  }
+                : undefined;
+      return options.decode ? options.decode(value) : (value as TResponse);
+    };
+    const user = userEvent.setup();
+    renderCatalog(request, ['/'], 0, 'student-token');
+
+    const cartStatus = await screen.findByText('In cart', { exact: true });
+    expect(cartStatus.getAttribute('data-part')).toBe('course-card-cart-status');
+    expect(cartStatus.tagName).toBe('SPAN');
+    expect(cartStatus.children).toHaveLength(0);
+    expect(cartStatus.textContent).toBe('In cart');
+    expect(cartStatus.textContent).not.toContain('✓');
+    const remove = await screen.findByRole('button', { name: 'Remove' });
+    await act(async () => {
+      await user.dblClick(remove);
+    });
+    const pending = await screen.findByRole('button', { name: 'Removing…' });
+    expect((pending as HTMLButtonElement).disabled).toBe(true);
+    expect(pending.getAttribute('aria-busy')).toBe('true');
+    expect(removeRequests).toBe(1);
+
+    cartContainsCourse = false;
+    await act(async () => {
+      removal.resolve(undefined);
+    });
+    await screen.findByRole('button', { name: 'Add to cart' });
+  });
+
+  it.each([
+    [
+      'a paid cart conflict',
+      '9.99',
+      '/cart/items',
+      'Course already in cart',
+      'Remove',
+      '/cart',
+      false,
+    ],
+    [
+      'a free enrollment conflict',
+      '0.00',
+      '/enrollments',
+      'Already enrolled in this course',
+      'Enrolled',
+      '/enrollments/my',
+      true,
+    ],
+  ])(
+    'maps %s to its authoritative terminal owner without exposing server detail',
+    async (
+      _scenario,
+      price,
+      mutationPath,
+      conflictMessage,
+      expectedAction,
+      authoritativePath,
+      expectedStatus,
+    ) => {
+      const requestPaths: string[] = [];
+      const request: ApiClient['request'] = async <TResponse, TBody>(
+        options: ApiRequestOptions<TBody, TResponse>,
+      ) => {
+        requestPaths.push(options.path);
+        if (options.path === '/cart/items' || options.path === '/enrollments') {
+          throw new ApiError({ kind: 'conflict', status: 409, message: conflictMessage });
+        }
+        const value =
+          options.path === '/me'
+            ? {
+                email: 'student@example.test',
+                name: 'Student',
+                surname: 'One',
+                role: 'student',
+                birthday: null,
+                phone_number: null,
+                created_at: '2026-01-01T00:00:00Z',
+              }
+            : options.path === '/courses'
+              ? {
+                  items: [{ ...catalogItem, price, published_at: '2026-07-27T00:00:00Z' }],
+                  page: 1,
+                  page_size: 20,
+                  total: 1,
+                  pages: 1,
+                  has_next: false,
+                  has_previous: false,
+                }
+              : options.path === '/cart'
+                ? { id: 1, items: [], total_price: '0.00', currency: 'USD', item_count: 0 }
+                : {
+                    items: [],
+                    page: 1,
+                    page_size: 100,
+                    total: 0,
+                    pages: 0,
+                    has_next: false,
+                    has_previous: false,
+                  };
+        return options.decode ? options.decode(value) : (value as TResponse);
+      };
+      const user = userEvent.setup();
+      renderCatalog(request, ['/'], 0, 'student-token');
+
+      const action = await screen.findByRole('button', {
+        name: price === '0.00' ? 'Enroll free' : 'Add to cart',
+      });
+      await act(async () => {
+        await user.dblClick(action);
+      });
+
+      if (expectedStatus) {
+        expect(
+          (await screen.findByText(expectedAction)).closest(
+            '[data-part="course-card-action-status"]',
+          ),
+        ).toBeTruthy();
+        expect(screen.queryByRole('button', { name: expectedAction })).toBeNull();
+      } else {
+        const terminalAction = await screen.findByRole('button', { name: expectedAction });
+        expect(terminalAction).toBeTruthy();
+        if (expectedAction === 'Remove') {
+          expect((terminalAction as HTMLButtonElement).disabled).toBe(true);
+          expect(terminalAction.getAttribute('aria-busy')).toBe('true');
+          expect(screen.queryByRole('button', { name: 'Already in cart' })).toBeNull();
+        }
+      }
+      expect(requestPaths.filter((path) => path === mutationPath)).toHaveLength(1);
+      expect(requestPaths.filter((path) => path === authoritativePath)).toHaveLength(2);
+      const nonAuthoritativePath = authoritativePath === '/cart' ? '/enrollments/my' : '/cart';
+      expect(requestPaths.filter((path) => path === nonAuthoritativePath)).toHaveLength(1);
+      expect(screen.queryByText(conflictMessage)).toBeNull();
+    },
+  );
+
+  it('unlocks a known Cart conflict after authoritative membership and permits one removal', async () => {
+    const requestPaths: string[] = [];
+    let cartRequests = 0;
+    let removed = false;
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      requestPaths.push(`${options.method ?? 'GET'} ${options.path}`);
+      if (options.path === '/cart/items') {
+        throw new ApiError({ kind: 'conflict', status: 409, message: 'Course already in cart' });
+      }
+      if (options.path === '/cart/items/7') {
+        removed = true;
+        return undefined as TResponse;
+      }
+      const value =
+        options.path === '/me'
+          ? {
+              email: 'student@example.test',
+              name: 'Student',
+              surname: 'One',
+              role: 'student',
+              birthday: null,
+              phone_number: null,
+              created_at: '2026-01-01T00:00:00Z',
+            }
+          : options.path === '/courses'
+            ? response({ items: [{ ...catalogItem, published_at: '2026-07-27T00:00:00Z' }] })
+            : options.path === '/cart'
+              ? (() => {
+                  cartRequests += 1;
+                  const containsCourse = cartRequests >= 2 && !removed;
+                  return {
+                    id: 1,
+                    items: containsCourse
+                      ? [
+                          {
+                            id: 1,
+                            course_id: 7,
+                            added_at: '2026-07-27T00:00:00Z',
+                            course: { id: 7, title: 'React', price: '9.99', currency: 'USD' },
+                          },
+                        ]
+                      : [],
+                    total_price: containsCourse ? '9.99' : '0.00',
+                    currency: 'USD',
+                    item_count: containsCourse ? 1 : 0,
+                  };
+                })()
+              : {
+                  items: [],
+                  page: 1,
+                  page_size: 100,
+                  total: 0,
+                  pages: 0,
+                  has_next: false,
+                  has_previous: false,
+                };
+      return options.decode ? options.decode(value) : (value as TResponse);
+    };
+    const user = userEvent.setup();
+    renderCatalog(request, ['/'], 0, 'student-token');
+
+    const addToCart = await screen.findByRole('button', { name: 'Add to cart' });
+    await act(async () => {
+      await user.click(addToCart);
+    });
+    const remove = await screen.findByRole('button', { name: 'Remove' });
+    expect((remove as HTMLButtonElement).disabled).toBe(false);
+    expect(remove.getAttribute('aria-busy')).toBeNull();
+    await act(async () => {
+      await user.dblClick(remove);
+    });
+    await screen.findByRole('button', { name: 'Add to cart' });
+
+    expect(requestPaths.filter((path) => path === 'POST /cart/items')).toHaveLength(1);
+    expect(requestPaths.filter((path) => path === 'DELETE /cart/items/7')).toHaveLength(1);
+  });
+
+  it('clears a generic conflict override only after both authoritative preflight owners settle', async () => {
+    const requestPaths: string[] = [];
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      requestPaths.push(options.path);
+      if (options.path === '/cart/items') {
+        throw new ApiError({ kind: 'conflict', status: 409, message: 'Unexpected conflict' });
+      }
+      const value =
+        options.path === '/me'
+          ? {
+              email: 'student@example.test',
+              name: 'Student',
+              surname: 'One',
+              role: 'student',
+              birthday: null,
+              phone_number: null,
+              created_at: '2026-01-01T00:00:00Z',
+            }
+          : options.path === '/courses'
+            ? {
+                items: [{ ...catalogItem, published_at: '2026-07-27T00:00:00Z' }],
+                page: 1,
+                page_size: 20,
+                total: 1,
+                pages: 1,
+                has_next: false,
+                has_previous: false,
+              }
+            : options.path === '/cart'
+              ? { id: 1, items: [], total_price: '0.00', currency: 'USD', item_count: 0 }
+              : {
+                  items: [],
+                  page: 1,
+                  page_size: 100,
+                  total: 0,
+                  pages: 0,
+                  has_next: false,
+                  has_previous: false,
+                };
+      return options.decode ? options.decode(value) : (value as TResponse);
+    };
+    const user = userEvent.setup();
+    renderCatalog(request, ['/'], 0, 'student-token');
+
+    const initialAction = await screen.findByRole('button', { name: 'Add to cart' });
+    await act(async () => {
+      await user.click(initialAction);
+    });
+
+    expect(await screen.findByRole('button', { name: 'Add to cart' })).toBeTruthy();
+    expect(requestPaths.filter((path) => path === '/cart')).toHaveLength(2);
+    expect(requestPaths.filter((path) => path === '/enrollments/my')).toHaveLength(2);
+    expect(screen.queryByText('Unexpected conflict')).toBeNull();
+  });
+
+  it.each([
+    ['offline', new ApiError({ kind: 'offline', status: null, message: 'private offline detail' })],
+    ['5xx', new ApiError({ kind: 'server', status: 503, message: 'private server detail' })],
+  ])(
+    're-enables the same action after a %s failure without a speculative cache write',
+    async (_scenario, failure) => {
+      let mutationCount = 0;
+      let cartItemCount = 0;
+      const request: ApiClient['request'] = async <TResponse, TBody>(
+        options: ApiRequestOptions<TBody, TResponse>,
+      ) => {
+        if (options.path === '/cart/items') {
+          mutationCount += 1;
+          if (mutationCount === 1) throw failure;
+          cartItemCount = 1;
+          return undefined as TResponse;
+        }
+        const value =
+          options.path === '/me'
+            ? {
+                email: 'student@example.test',
+                name: 'Student',
+                surname: 'One',
+                role: 'student',
+                birthday: null,
+                phone_number: null,
+                created_at: '2026-01-01T00:00:00Z',
+              }
+            : options.path === '/courses'
+              ? {
+                  items: [{ ...catalogItem, published_at: '2026-07-27T00:00:00Z' }],
+                  page: 1,
+                  page_size: 20,
+                  total: 1,
+                  pages: 1,
+                  has_next: false,
+                  has_previous: false,
+                }
+              : options.path === '/cart'
+                ? {
+                    id: 1,
+                    items:
+                      cartItemCount === 0
+                        ? []
+                        : [
+                            {
+                              id: 2,
+                              course_id: 7,
+                              added_at: '2026-07-27T00:00:00Z',
+                              course: { id: 7, title: 'React', price: '9.99', currency: 'USD' },
+                            },
+                          ],
+                    total_price: '0.00',
+                    currency: 'USD',
+                    item_count: cartItemCount,
+                  }
+                : {
+                    items: [],
+                    page: 1,
+                    page_size: 100,
+                    total: 0,
+                    pages: 0,
+                    has_next: false,
+                    has_previous: false,
+                  };
+        return options.decode ? options.decode(value) : (value as TResponse);
+      };
+      const user = userEvent.setup();
+      renderCatalog(request, ['/'], 0, 'student-token');
+
+      const action = await screen.findByRole('button', { name: 'Add to cart' });
+      await act(async () => {
+        await user.click(action);
+      });
+      expect(
+        await screen.findByText('The action failed. Check your connection and try again.'),
+      ).toBeTruthy();
+      expect(
+        (screen.getByRole('button', { name: 'Add to cart' }) as HTMLButtonElement).disabled,
+      ).toBe(false);
+      expect(screen.queryByText(failure.message)).toBeNull();
+
+      await act(async () => {
+        await user.click(screen.getByRole('button', { name: 'Add to cart' }));
+      });
+      expect(await screen.findByRole('button', { name: 'Remove' })).toBeTruthy();
+      expect(mutationCount).toBe(2);
+    },
+  );
+
+  it('fails closed with normalized feedback for an unknown mutation error', async () => {
+    const rawError = new Error('private upstream implementation detail');
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/cart/items') throw rawError;
+      const value =
+        options.path === '/me'
+          ? {
+              email: 'student@example.test',
+              name: 'Student',
+              surname: 'One',
+              role: 'student',
+              birthday: null,
+              phone_number: null,
+              created_at: '2026-01-01T00:00:00Z',
+            }
+          : options.path === '/courses'
+            ? {
+                items: [{ ...catalogItem, published_at: '2026-07-27T00:00:00Z' }],
+                page: 1,
+                page_size: 20,
+                total: 1,
+                pages: 1,
+                has_next: false,
+                has_previous: false,
+              }
+            : options.path === '/cart'
+              ? { id: 1, items: [], total_price: '0.00', currency: 'USD', item_count: 0 }
+              : {
+                  items: [],
+                  page: 1,
+                  page_size: 100,
+                  total: 0,
+                  pages: 0,
+                  has_next: false,
+                  has_previous: false,
+                };
+      return options.decode ? options.decode(value) : (value as TResponse);
+    };
+    const user = userEvent.setup();
+    renderCatalog(request, ['/'], 0, 'student-token');
+
+    const action = await screen.findByRole('button', { name: 'Add to cart' });
+    await act(async () => {
+      await user.click(action);
+    });
+
+    expect(await screen.findByRole('button', { name: 'Action unavailable' })).toBeTruthy();
+    expect(screen.getByText('This action is currently unavailable.')).toBeTruthy();
+    expect(screen.queryByText(rawError.message)).toBeNull();
+  });
+
+  it('suppresses a retired session mutation outcome and derives fresh state for the replacement epoch', async () => {
+    const mutation = deferred<unknown>();
+    const sessionStore: AccessTokenStore & { value: string | null } = {
+      value: 'first-token',
+      get() {
+        return this.value;
+      },
+      set(token) {
+        this.value = token;
+      },
+      clear() {
+        this.value = null;
+      },
+    };
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/cart/items') return mutation.promise as TResponse;
+      if (options.path === '/me') {
+        const value = {
+          email: 'student@example.test',
+          name: 'Student',
+          surname: 'One',
+          role: 'student',
+          birthday: null,
+          phone_number: null,
+          created_at: '2026-01-01T00:00:00Z',
+        };
+        return options.decode ? options.decode(value) : (value as TResponse);
+      }
+      const value =
+        options.path === '/courses'
+          ? {
+              items: [{ ...catalogItem, published_at: '2026-07-27T00:00:00Z' }],
+              page: 1,
+              page_size: 20,
+              total: 1,
+              pages: 1,
+              has_next: false,
+              has_previous: false,
+            }
+          : options.path === '/cart'
+            ? { id: 1, items: [], total_price: '0.00', currency: 'USD', item_count: 0 }
+            : {
+                items: [],
+                page: 1,
+                page_size: 100,
+                total: 0,
+                pages: 0,
+                has_next: false,
+                has_previous: false,
+              };
+      return options.decode ? options.decode(value) : (value as TResponse);
+    };
+    const queryClient = createAppQueryClient();
+    const invalidateQueries = vi.spyOn(queryClient, 'invalidateQueries');
+    const user = userEvent.setup();
+    renderCatalog(request, ['/'], 0, null, {
+      queryClient,
+      tokenStore: sessionStore,
+      withSessionSwitchControl: true,
+    });
+
+    const action = await screen.findByRole('button', { name: 'Add to cart' });
+    await act(async () => {
+      await user.click(action);
+    });
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Switch catalog session' }));
+    });
+    await waitFor(() =>
+      expect(screen.getByLabelText('catalog session status').textContent).toBe('authenticated'),
+    );
+    await screen.findByRole('button', { name: 'Add to cart' });
+    invalidateQueries.mockClear();
+
+    await act(async () => {
+      mutation.resolve(undefined);
+      await mutation.promise;
+    });
+
+    expect(invalidateQueries).not.toHaveBeenCalled();
+    expect(screen.queryByText('The course is in your cart.')).toBeNull();
+    expect(
+      (screen.getByRole('button', { name: 'Add to cart' }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
+  it('replaces changed-query cards with stable skeleton geometry before showing its failure', async () => {
+    const first = deferred<unknown>();
+    const second = deferred<unknown>();
+    const request: ApiClient['request'] = vi
+      .fn()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const user = userEvent.setup();
+    renderCatalog(request, ['/?search_query=first', '/?search_query=second'], 0);
+
+    first.resolve(response());
+    await screen.findByRole('link', { name: 'React' });
+
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Forward' }));
+    });
+    expect(screen.getByRole('heading', { level: 2, name: 'Loading course results…' })).toBeTruthy();
+    expect(screen.getByRole('status', { name: 'Catalog refresh status' }).textContent).toBe('');
+    expect(screen.queryByRole('link', { name: 'React' })).toBeNull();
+    expect(document.querySelector('[data-part="catalog-result-list"]')).toBeTruthy();
+    expect(document.querySelectorAll('[data-part="skeleton"]')).toHaveLength(4);
+    expect(
+      document.querySelector('[data-part="catalog-discovery-results"]')?.getAttribute('aria-busy'),
+    ).toBe('true');
+    expect(
+      document.querySelectorAll('[data-part="catalog-refresh-status"][aria-live="polite"]'),
+    ).toHaveLength(1);
+
+    await act(async () => {
+      second.reject(new ApiError({ kind: 'server', status: 500, message: 'Unavailable' }));
+    });
+    expect(await screen.findByText('We could not load courses')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'React' })).toBeNull();
+    expect(document.querySelectorAll('[data-part="skeleton"]')).toHaveLength(0);
+    expect(screen.getByRole('status', { name: 'Catalog refresh status' }).textContent).toBe('');
+  });
+
+  it('renders one whole-card link with a controlled disclosure popover and disabled cart action without mutations', async () => {
+    const user = userEvent.setup();
     const requests: ApiRequestOptions[] = [];
     const items = [
-      { ...catalogItem, id: 7, title: 'React', description: 'A concise course description.', price: '94.99', currency: 'USD', published_at: null, lessons: [{ id: 1, title: 'Intro' }, { id: 2, title: 'Hooks' }, { id: 3, title: 'State' }, { id: 4, title: 'Testing' }] },
-      { ...catalogItem, id: 8, title: 'TypeScript', description: null, price: '0.00', currency: 'UZS', published_at: '2026-07-01T00:00:00Z', lessons: [{ id: 5, title: 'Intro' }] },
-      { ...catalogItem, id: 9, title: 'Draft free', description: 'A longer course description that remains visible without truncation.', price: '0.00', currency: 'USD', published_at: null },
-      { ...catalogItem, id: 10, title: 'Published paid', description: 'A published paid course.', price: '29.99', currency: 'USD', published_at: '2026-07-02T00:00:00Z' },
-      { ...catalogItem, id: 11, title: 'Invalid price', description: 'An invalid-price course.', price: 'not-a-decimal', currency: 'US', published_at: null },
+      {
+        ...catalogItem,
+        id: 7,
+        title: 'React',
+        description: 'A concise course description.',
+        price: '94.99',
+        currency: 'USD',
+        published_at: null,
+        lessons: [
+          { id: 1, title: 'Intro' },
+          { id: 2, title: 'Hooks' },
+          { id: 3, title: 'State' },
+          { id: 4, title: 'Testing' },
+        ],
+      },
+      {
+        ...catalogItem,
+        id: 8,
+        title: 'TypeScript',
+        description: null,
+        price: '0.00',
+        currency: 'UZS',
+        published_at: '2026-07-01T00:00:00Z',
+        lessons: [{ id: 5, title: 'Intro' }],
+      },
+      {
+        ...catalogItem,
+        id: 9,
+        title: 'Draft free',
+        description: 'A longer course description that remains visible without truncation.',
+        price: '0',
+        currency: 'USD',
+        published_at: null,
+      },
+      {
+        ...catalogItem,
+        id: 10,
+        title: 'Published paid',
+        description: 'A published paid course.',
+        price: '29.99',
+        currency: 'USD',
+        published_at: '2026-07-02T00:00:00Z',
+      },
+      {
+        ...catalogItem,
+        id: 11,
+        title: 'Invalid price',
+        description: 'An invalid-price course.',
+        price: 'not-a-decimal',
+        currency: 'US',
+        published_at: null,
+      },
     ];
     const request: ApiClient['request'] = async <TResponse,>(options: ApiRequestOptions) => {
       requests.push(options);
-      return ({
-        items, page: 1, page_size: 20, total: items.length, pages: 2, has_next: true, has_previous: false,
-      }) as TResponse;
+      return {
+        items,
+        page: 1,
+        page_size: 20,
+        total: items.length,
+        pages: 2,
+        has_next: true,
+        has_previous: false,
+      } as TResponse;
     };
     renderCatalog(request, ['/']);
 
@@ -167,57 +977,175 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(reactLink.getAttribute('href')).toBe('/courses/7');
     expect(screen.getByRole('heading', { level: 3, name: 'React' })).toBeTruthy();
     expect(screen.getByText('$94.99')).toBeTruthy();
-    expect(within(reactCard as HTMLElement).getByText('View Draft', { exact: true })).toBeTruthy();
+    expect(within(reactCard as HTMLElement).getByText('View draft', { exact: true })).toBeTruthy();
     expect(reactCard?.querySelector('[data-part="course-card-body"] p')).toBeNull();
     const reactMetadata = reactCard?.querySelector('[data-part="course-card-metadata"]');
     expect(reactMetadata?.textContent).toBe('Ada Lovelace · 4 lessons');
     expect(reactMetadata?.querySelectorAll('p')).toHaveLength(0);
-    expect(within(reactMetadata as HTMLElement).getByText('Ada Lovelace', { exact: true })).toBeTruthy();
+    expect(
+      within(reactMetadata as HTMLElement).getByText('Ada Lovelace', { exact: true }),
+    ).toBeTruthy();
     expect(reactMetadata?.textContent).not.toContain('by ');
-    const metadataSeparator = reactMetadata?.querySelector('[data-part="course-card-metadata-separator"]');
-    expect(reactMetadata?.querySelectorAll('[data-part="course-card-metadata-separator"]')).toHaveLength(1);
+    const metadataSeparator = reactMetadata?.querySelector(
+      '[data-part="course-card-metadata-separator"]',
+    );
+    expect(
+      reactMetadata?.querySelectorAll('[data-part="course-card-metadata-separator"]'),
+    ).toHaveLength(1);
     expect(metadataSeparator?.textContent).toBe(' · ');
     expect(metadataSeparator?.getAttribute('aria-hidden')).toBe('true');
-    expect(within(reactMetadata as HTMLElement).getByText('4 lessons', { exact: true })).toBeTruthy();
+    expect(
+      within(reactMetadata as HTMLElement).getByText('4 lessons', { exact: true }),
+    ).toBeTruthy();
     expect(reactMetadata?.textContent).not.toContain('Instructor');
     const draftExplanationId = reactLink.getAttribute('aria-describedby');
-    expect(draftExplanationId).toBeTruthy();
-    const tooltip = document.getElementById(draftExplanationId ?? '');
-    expect(tooltip?.getAttribute('role')).toBe('tooltip');
-    expect(tooltip?.firstElementChild?.textContent).toBe('This course is not available for enrollment yet.');
-    expect(tooltip?.firstElementChild?.textContent).toBe('This course is not available for enrollment yet.');
-    expect(tooltip?.children.item(1)?.getAttribute('aria-hidden')).toBe('true');
-    expect(tooltip?.children.item(1)?.textContent).toBe('About React');
+    expect(draftExplanationId).toBeNull();
+    expect(within(reactCard as HTMLElement).queryByRole('dialog')).toBeNull();
+    const price = reactCard?.querySelector('[data-part="course-card-price"]');
+    if (!price) throw new Error('Card price is required.');
+    const reactDisclosure = within(reactCard as HTMLElement).getByRole('button', {
+      name: 'View draft',
+    });
+    expect(reactDisclosure.getAttribute('aria-expanded')).toBe('false');
+    expect(reactDisclosure.getAttribute('aria-pressed')).toBe('false');
+    await act(async () => {
+      reactLink.focus();
+    });
+    expect(reactDisclosure.getAttribute('aria-expanded')).toBe('true');
+    expect(reactDisclosure.getAttribute('aria-pressed')).toBe('false');
+    expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+    await act(async () => {
+      fireEvent.blur(reactLink);
+    });
+    expect(reactDisclosure.getAttribute('aria-expanded')).toBe('false');
+    await act(async () => {
+      await user.click(reactDisclosure);
+    });
+    expect(reactDisclosure.getAttribute('aria-expanded')).toBe('true');
+    expect(reactDisclosure.getAttribute('aria-pressed')).toBe('true');
+    expect(reactDisclosure.textContent).toBe('View draft');
+    const openDescriptionId = reactLink.getAttribute('aria-describedby');
+    expect(openDescriptionId).toBeTruthy();
+    expect(reactDisclosure.getAttribute('aria-controls')).toBe(openDescriptionId);
+    const tooltip = document.getElementById(openDescriptionId ?? '');
+    if (!tooltip) throw new Error('Open card popover is required.');
+    const tooltipContent = tooltip.querySelector('[data-part="course-card-tooltip-content"]');
+    if (!tooltipContent) throw new Error('Open card tooltip reading surface is required.');
+    expect(price.compareDocumentPosition(tooltip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(tooltip?.getAttribute('role')).toBe('dialog');
+    expect(tooltipContent.firstElementChild?.textContent).toBe(
+      'This course is not available for enrollment yet.',
+    );
+    expect(tooltipContent.children.item(1)?.textContent).toBe('About React');
     expect(tooltip?.textContent).toContain('A concise course description.');
     expect(tooltip?.textContent).not.toContain('published_at');
     expect(tooltip?.textContent).not.toContain('Draft means this course');
     expect(tooltip?.style.getPropertyValue('--catalog-tooltip-tail-top')).toBe('');
-    expect(tooltip?.getAttribute('data-placement')).toBe('inline');
-    const price = reactCard?.querySelector('[data-part="course-card-price"]');
-    if (!tooltip || !price) throw new Error('Card tooltip and price are required.');
-    expect(tooltip.compareDocumentPosition(price) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(tooltip?.getAttribute('data-placement')).toBe('bottom');
+    expect(tooltip.getAttribute('data-placement')).toBe('bottom');
     const publishedLink = screen.getByRole('link', { name: 'TypeScript' });
-    const publishedTooltip = document.getElementById(publishedLink.getAttribute('aria-describedby') ?? '');
-    expect(within(publishedLink.closest('article') as HTMLElement).getByText('View details', { exact: true })).toBeTruthy();
+    const publishedDisclosure = within(publishedLink.closest('article') as HTMLElement).getByRole(
+      'button',
+      { name: 'View details' },
+    );
+    expect(publishedDisclosure.getAttribute('aria-expanded')).toBe('false');
+    expect(
+      publishedDisclosure.querySelector('[data-part="course-card-disclosure-pill"]')?.textContent,
+    ).toBe('View details');
+    await act(async () => {
+      await user.click(publishedDisclosure);
+    });
+    const publishedTooltip = document.getElementById(
+      publishedLink.getAttribute('aria-describedby') ?? '',
+    );
+    expect(reactDisclosure.getAttribute('aria-expanded')).toBe('false');
+    expect(reactDisclosure.getAttribute('aria-pressed')).toBe('false');
+    expect(reactLink.getAttribute('aria-describedby')).toBeNull();
+    expect(within(reactCard as HTMLElement).queryByRole('dialog')).toBeNull();
+    expect(publishedDisclosure.getAttribute('aria-expanded')).toBe('true');
+    expect(publishedDisclosure.getAttribute('aria-pressed')).toBe('true');
+    expect(publishedDisclosure.textContent).toBe('View details');
+    expect(publishedTooltip?.textContent).toContain('No course description is available.');
+    await act(async () => {
+      await user.keyboard('{Escape}');
+    });
+    expect(publishedDisclosure.getAttribute('aria-expanded')).toBe('false');
+    expect(publishedDisclosure.getAttribute('aria-pressed')).toBe('false');
+    expect(
+      publishedDisclosure.querySelector('[data-part="course-card-disclosure-pill"]')?.textContent,
+    ).toBe('View details');
+    await act(async () => {
+      await user.click(publishedDisclosure);
+    });
+    await act(async () => {
+      reactLink.focus();
+    });
+    expect(reactDisclosure.getAttribute('aria-expanded')).toBe('false');
+    expect(reactDisclosure.getAttribute('aria-pressed')).toBe('false');
+    expect(publishedDisclosure.getAttribute('aria-expanded')).toBe('true');
+    expect(publishedDisclosure.getAttribute('aria-pressed')).toBe('true');
+    expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+    await act(async () => {
+      fireEvent.blur(reactLink);
+    });
+    expect(publishedDisclosure.getAttribute('aria-expanded')).toBe('true');
+    expect(publishedDisclosure.getAttribute('aria-pressed')).toBe('true');
+    expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+    await act(async () => {
+      await user.click(publishedDisclosure);
+    });
+    expect(publishedDisclosure.getAttribute('aria-expanded')).toBe('false');
+    expect(publishedDisclosure.getAttribute('aria-pressed')).toBe('false');
+    expect(reactLink.getAttribute('href')).toBe('/courses/7');
+    expect(
+      within(publishedLink.closest('article') as HTMLElement).getByText('View details', {
+        exact: true,
+      }),
+    ).toBeTruthy();
     expect(publishedTooltip?.textContent).not.toContain('Published means this course');
     expect(publishedTooltip?.textContent).not.toContain('published_at');
-    expect(screen.getByText('No course description is available.')).toBeTruthy();
-    expect(Array.from(document.querySelectorAll('[data-part="course-card-price"]')).some((price) => price.textContent === 'UZS\u00A00.00')).toBe(true);
     expect(screen.getByText('Price unavailable')).toBeTruthy();
-    const cartButton = reactCard?.querySelector('button') as HTMLButtonElement;
-    expect(cartButton.textContent).toContain('Not available');
+    const cartButton = reactCard?.querySelector(
+      '[data-part="course-card-actions"] button',
+    ) as HTMLButtonElement;
+    expect(cartButton.textContent).toContain('Not published');
+    expect(cartButton.querySelector('svg')).toBeNull();
     expect(cartButton.disabled).toBe(true);
     expect(cartButton.closest('[data-part="course-card-actions"]')).toBeTruthy();
     const freeCard = screen.getByRole('link', { name: 'TypeScript' }).closest('article');
-    expect(freeCard?.querySelector('[data-part="course-card-metadata"]')?.textContent).toBe('Ada Lovelace · 1 lesson');
-    expect((freeCard?.querySelector('button') as HTMLButtonElement).textContent).toContain('Enroll Free');
-    expect((freeCard?.querySelector('button') as HTMLButtonElement).disabled).toBe(true);
+    expect(freeCard?.querySelector('[data-part="course-card-metadata"]')?.textContent).toBe(
+      'Ada Lovelace · 1 lesson',
+    );
+    const freePrice = freeCard?.querySelector<HTMLDataElement>(
+      '[data-part="course-card-price"] data',
+    );
+    expect(freePrice?.value).toBe('0.00');
+    expect(freePrice?.textContent).toBe('FREE');
+    const freeLogin = within(freeCard as HTMLElement).getByRole('link', { name: 'Enroll free' });
+    expect(freeLogin.getAttribute('href')).toBe('/login?returnTo=%2Fcourses%2F8');
+    expect(freeLogin.closest('[data-part="course-card-actions"]')).toBeTruthy();
+    expect(freeLogin.querySelector('.lucide-user-plus')).toBeTruthy();
     const draftFreeCard = screen.getByRole('link', { name: 'Draft free' }).closest('article');
-    expect((draftFreeCard?.querySelector('button') as HTMLButtonElement).textContent).toContain('Not available');
-    expect((draftFreeCard?.querySelector('button') as HTMLButtonElement).disabled).toBe(true);
-    const publishedPaidCard = screen.getByRole('link', { name: 'Published paid' }).closest('article');
-    expect((publishedPaidCard?.querySelector('button') as HTMLButtonElement).textContent).toContain('Add to cart');
-    expect((publishedPaidCard?.querySelector('button') as HTMLButtonElement).disabled).toBe(true);
+    const draftFreePrice = draftFreeCard?.querySelector<HTMLDataElement>(
+      '[data-part="course-card-price"] data',
+    );
+    expect(draftFreePrice?.value).toBe('0');
+    expect(draftFreePrice?.textContent).toBe('FREE');
+    const draftFreeButton = draftFreeCard?.querySelector(
+      '[data-part="course-card-actions"] button',
+    ) as HTMLButtonElement;
+    expect(draftFreeButton.textContent).toContain('Not published');
+    expect(draftFreeButton.querySelector('svg')).toBeNull();
+    expect(draftFreeButton.disabled).toBe(true);
+    const publishedPaidCard = screen
+      .getByRole('link', { name: 'Published paid' })
+      .closest('article');
+    const paidLogin = within(publishedPaidCard as HTMLElement).getByRole('link', {
+      name: 'Add to cart',
+    });
+    expect(paidLogin.getAttribute('href')).toBe('/login?returnTo=%2Fcourses%2F10');
+    expect(paidLogin.closest('[data-part="course-card-actions"]')).toBeTruthy();
+    expect(paidLogin.querySelector('.lucide-shopping-cart')).toBeTruthy();
     const pluralResultHeading = screen.getByRole('heading', { level: 2, name: 'Found 5 courses' });
     expect(pluralResultHeading.textContent).toBe('Found 5 courses');
     expect(pluralResultHeading.firstChild?.textContent).toBe('Found ');
@@ -230,24 +1158,333 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(requests.every((requestOptions) => requestOptions.path === '/courses')).toBe(true);
   });
 
+  it('delays fine-pointer popovers, preserves card-to-popover continuity, and keeps pin/focus arbitration truthful', async () => {
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })),
+    );
+    const items = [
+      {
+        ...catalogItem,
+        id: 7,
+        title: 'React',
+        description: 'React description.',
+        published_at: '2026-07-01T00:00:00Z',
+      },
+      {
+        ...catalogItem,
+        id: 8,
+        title: 'TypeScript',
+        description: 'TypeScript description.',
+        published_at: '2026-07-02T00:00:00Z',
+      },
+    ];
+    const request: ApiClient['request'] = async <TResponse,>() =>
+      ({
+        items,
+        page: 1,
+        page_size: 20,
+        total: items.length,
+        pages: 1,
+        has_next: false,
+        has_previous: false,
+      }) as TResponse;
+    renderCatalog(request, ['/']);
+
+    const reactLink = await screen.findByRole('link', { name: 'React' });
+    vi.useFakeTimers();
+    const reactCard = reactLink.closest('article') as HTMLElement;
+    const reactTrigger = within(reactCard).getByRole('button', { name: 'View details' });
+    const typeScriptCard = screen
+      .getByRole('link', { name: 'TypeScript' })
+      .closest('article') as HTMLElement;
+    const typeScriptTrigger = within(typeScriptCard).getByRole('button', { name: 'View details' });
+    const action = within(reactCard).getByRole('link', { name: 'Add to cart' });
+
+    fireEvent.pointerEnter(reactCard, { pointerType: 'mouse' });
+    await act(async () => {
+      vi.advanceTimersByTime(279);
+    });
+    typeScriptTrigger.focus();
+    fireEvent.click(typeScriptTrigger);
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(screen.getByRole('dialog').getAttribute('aria-label')).toBe(
+      'Course description: TypeScript',
+    );
+    fireEvent.click(typeScriptTrigger);
+    await act(async () => {
+      vi.advanceTimersByTime(280);
+    });
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    fireEvent.pointerLeave(reactCard, { pointerType: 'mouse' });
+    fireEvent.pointerEnter(reactCard, { pointerType: 'mouse' });
+    await act(async () => {
+      vi.advanceTimersByTime(279);
+    });
+    fireEvent.click(reactTrigger);
+    fireEvent.click(reactTrigger);
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    fireEvent.pointerLeave(reactCard, { pointerType: 'mouse' });
+    fireEvent.pointerEnter(reactCard, { pointerType: 'mouse' });
+    await act(async () => {
+      vi.advanceTimersByTime(279);
+    });
+    expect(screen.queryByRole('dialog', { name: 'Course description: React' })).toBeNull();
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+    });
+    const popover = screen.getByRole('dialog', { name: 'Course description: React' });
+    expect(reactTrigger.getAttribute('aria-expanded')).toBe('true');
+    expect(reactTrigger.getAttribute('aria-controls')).toBe(popover.id);
+    expect(popover.textContent).toContain('React description.');
+
+    fireEvent.pointerLeave(reactCard, { pointerType: 'mouse' });
+    await act(async () => {
+      vi.advanceTimersByTime(179);
+    });
+    expect(popover).toBeTruthy();
+    fireEvent.pointerEnter(popover, { pointerType: 'mouse' });
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(screen.getByRole('dialog', { name: 'Course description: React' })).toBeTruthy();
+    fireEvent.pointerLeave(popover, { pointerType: 'mouse' });
+    await act(async () => {
+      vi.advanceTimersByTime(180);
+    });
+    expect(screen.queryByRole('dialog', { name: 'Course description: React' })).toBeNull();
+
+    fireEvent.pointerEnter(action, { pointerType: 'mouse' });
+    await act(async () => {
+      vi.advanceTimersByTime(280);
+    });
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    fireEvent.click(reactTrigger);
+    expect(reactTrigger.getAttribute('aria-pressed')).toBe('true');
+    fireEvent.pointerEnter(typeScriptCard, { pointerType: 'mouse' });
+    await act(async () => {
+      vi.advanceTimersByTime(280);
+    });
+    expect(screen.getByRole('dialog').getAttribute('aria-label')).toBe('Course description: React');
+    fireEvent.click(typeScriptTrigger);
+    expect(reactTrigger.getAttribute('aria-expanded')).toBe('false');
+    expect(typeScriptTrigger.getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(typeScriptTrigger);
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    fireEvent.click(reactTrigger);
+    fireEvent.pointerDown(document.body, { pointerType: 'mouse' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(reactTrigger);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await act(async () => {
+      vi.advanceTimersByTime(16);
+    });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(reactTrigger);
+    vi.useRealTimers();
+  });
+
+  it('suppresses only pointer Sort hover-through until the uncovered card exits', async () => {
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })),
+    );
+    const items = [
+      {
+        ...catalogItem,
+        id: 7,
+        title: 'React',
+        description: 'React description.',
+        published_at: '2026-07-01T00:00:00Z',
+      },
+    ];
+    const request: ApiClient['request'] = async <TResponse,>() =>
+      ({
+        items,
+        page: 1,
+        page_size: 20,
+        total: items.length,
+        pages: 1,
+        has_next: false,
+        has_previous: false,
+      }) as TResponse;
+    renderCatalog(request, ['/']);
+
+    const reactCard = (await screen.findByRole('link', { name: 'React' })).closest(
+      'article',
+    ) as HTMLElement;
+    const elementsFromPoint = vi.fn(() => [reactCard]);
+    Object.defineProperty(document, 'elementsFromPoint', {
+      configurable: true,
+      value: elementsFromPoint,
+    });
+    const sortTrigger = document.querySelector<HTMLButtonElement>(
+      '[data-part="catalog-sort-trigger"]',
+    );
+    if (!sortTrigger) throw new Error('Expected the Sort trigger.');
+    const currentSortLabel = sortTrigger.getAttribute('aria-label')?.replace('Sort by: ', '');
+    if (!currentSortLabel) throw new Error('Expected the Sort trigger label.');
+    vi.useFakeTimers();
+
+    const selectCurrentOptionWithPointer = () => {
+      fireEvent.click(sortTrigger);
+      fireEvent.click(screen.getByRole('option', { name: currentSortLabel }), {
+        detail: 1,
+        clientX: 1167,
+        clientY: 442,
+      });
+    };
+
+    selectCurrentOptionWithPointer();
+    await act(async () => {
+      vi.advanceTimersByTime(16);
+    });
+    fireEvent.pointerEnter(reactCard, { pointerType: 'mouse' });
+    await act(async () => {
+      vi.advanceTimersByTime(281);
+    });
+    expect(screen.queryByRole('dialog', { name: 'Course description: React' })).toBeNull();
+
+    fireEvent.pointerLeave(reactCard, { pointerType: 'mouse' });
+    fireEvent.pointerEnter(reactCard, { pointerType: 'mouse' });
+    await act(async () => {
+      vi.advanceTimersByTime(280);
+    });
+    expect(screen.getByRole('dialog', { name: 'Course description: React' })).toBeTruthy();
+
+    fireEvent.pointerLeave(reactCard, { pointerType: 'mouse' });
+    await act(async () => {
+      vi.advanceTimersByTime(180);
+    });
+    selectCurrentOptionWithPointer();
+    await act(async () => {
+      vi.advanceTimersByTime(16);
+    });
+    fireEvent.pointerEnter(reactCard, { pointerType: 'mouse' });
+    await act(async () => {
+      vi.advanceTimersByTime(281);
+    });
+    expect(screen.queryByRole('dialog', { name: 'Course description: React' })).toBeNull();
+    fireEvent.pointerLeave(reactCard, { pointerType: 'mouse' });
+    fireEvent.pointerEnter(reactCard, { pointerType: 'mouse' });
+    await act(async () => {
+      vi.advanceTimersByTime(280);
+    });
+    expect(screen.getByRole('dialog', { name: 'Course description: React' })).toBeTruthy();
+    delete (document as Partial<Document>).elementsFromPoint;
+    vi.useRealTimers();
+  });
+
+  it('keeps instructor catalog actions neutral without student reads or mutations', async () => {
+    const requestPaths: string[] = [];
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      requestPaths.push(options.path);
+      const value =
+        options.path === '/me'
+          ? {
+              email: 'teacher@example.test',
+              name: 'Teacher',
+              surname: 'One',
+              role: 'instructor',
+              birthday: null,
+              phone_number: null,
+              created_at: '2026-01-01T00:00:00Z',
+            }
+          : options.path === '/courses'
+            ? response({
+                items: [
+                  {
+                    ...catalogItem,
+                    title: 'Instructor paid',
+                    published_at: '2026-07-27T00:00:00Z',
+                  },
+                  {
+                    ...catalogItem,
+                    id: 8,
+                    title: 'Instructor free',
+                    price: '0.00',
+                    published_at: '2026-07-27T00:00:00Z',
+                  },
+                  { ...catalogItem, id: 9, title: 'Instructor draft', published_at: null },
+                ],
+              })
+            : undefined;
+      return options.decode ? options.decode(value) : (value as TResponse);
+    };
+    renderCatalog(request, ['/'], 0, 'instructor-token');
+
+    const paidCard = (await screen.findByRole('link', { name: 'Instructor paid' })).closest(
+      'article',
+    ) as HTMLElement;
+    const freeCard = screen
+      .getByRole('link', { name: 'Instructor free' })
+      .closest('article') as HTMLElement;
+    const draftCard = screen
+      .getByRole('link', { name: 'Instructor draft' })
+      .closest('article') as HTMLElement;
+    for (const card of [paidCard, freeCard]) {
+      const action = within(card).getByRole('button', {
+        name: 'Not available for this account',
+      }) as HTMLButtonElement;
+      expect(action.disabled).toBe(true);
+      expect(action.querySelector('svg')).toBeNull();
+    }
+    const draftAction = within(draftCard).getByRole('button', {
+      name: 'Not published',
+    }) as HTMLButtonElement;
+    expect(draftAction.disabled).toBe(true);
+    expect(draftAction.querySelector('svg')).toBeNull();
+    expect([...requestPaths].sort()).toEqual(['/courses', '/me']);
+  });
+
   it('canonicalizes legacy sort before its request, applies sort immediately, and applies a changed price range on blur', async () => {
     const animationFrames: FrameRequestCallback[] = [];
-    vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => {
-      animationFrames.push(callback);
-      return animationFrames.length;
-    }));
+    vi.stubGlobal(
+      'requestAnimationFrame',
+      vi.fn((callback: FrameRequestCallback) => {
+        animationFrames.push(callback);
+        return animationFrames.length;
+      }),
+    );
     const user = userEvent.setup();
     const requests: ApiRequestOptions[] = [];
     const request: ApiClient['request'] = async <TResponse,>(options: ApiRequestOptions) => {
       requests.push(options);
       return response() as TResponse;
     };
-    renderCatalog(request, ['/?search_query=first', '/?search_query=React&min_price=30&max_price=10&sort=-id&page=3']);
+    renderCatalog(request, [
+      '/?search_query=first',
+      '/?search_query=React&min_price=30&max_price=10&sort=-id&page=3',
+    ]);
 
     await screen.findByRole('link', { name: 'React' });
-    expect(screen.getByText('Ada Lovelace').parentElement?.textContent).toBe('Ada Lovelace · 0 lessons');
-    expect(requests[0]?.query).toEqual({ search_query: 'React', min_price: undefined, max_price: undefined, sort: '-created_at', page: 3, page_size: 20 });
-    await waitFor(() => expect(screen.getByLabelText('catalog location').textContent).toBe('/?search_query=React&sort=-created_at&page=3'));
+    expect(screen.getByText('Ada Lovelace').parentElement?.textContent).toBe(
+      'Ada Lovelace · 0 lessons',
+    );
+    expect(requests[0]?.query).toEqual({
+      search_query: 'React',
+      min_price: undefined,
+      max_price: undefined,
+      sort: '-created_at',
+      page: 3,
+      page_size: 20,
+    });
+    await waitFor(() =>
+      expect(screen.getByLabelText('catalog location').textContent).toBe(
+        '/?search_query=React&sort=-created_at&page=3',
+      ),
+    );
 
     const filters = screen.getByRole('form', { name: 'Course filters' });
     expect(filters.querySelector('input[name="search_query"], select')).toBeNull();
@@ -257,19 +1494,29 @@ describe('CatalogPage public URL and pagination behavior', () => {
     const visualPriceLabel = priceRange.querySelector('[data-part="catalog-filter-price-label"]');
     expect(semanticLegend?.textContent).toBe('Price range');
     expect(semanticLegend?.getAttribute('class')).toBeTruthy();
-    expect(visualPriceLabel?.textContent).toBe('Price range:');
-    expect(visualPriceLabel?.getAttribute('aria-hidden')).toBe('true');
+    expect(visualPriceLabel).toBeNull();
     const minimum = screen.getByLabelText('Min price') as HTMLInputElement;
     const maximum = screen.getByLabelText('Max price') as HTMLInputElement;
+    expect(screen.getByRole('spinbutton', { name: 'Min price' })).toBe(minimum);
+    expect(screen.getByRole('spinbutton', { name: 'Max price' })).toBe(maximum);
     expect(minimum.placeholder).toBe('Min price');
     expect(maximum.placeholder).toBe('Max price');
     expect(minimum.labels?.item(0)?.textContent).toBe('Min price');
     expect(maximum.labels?.item(0)?.textContent).toBe('Max price');
+    expect(minimum.labels?.item(0)?.firstChild?.textContent).toBe('Min');
+    expect(maximum.labels?.item(0)?.firstChild?.textContent).toBe('Max');
+    fireEvent.change(minimum, { target: { value: '5' } });
+    fireEvent.change(maximum, { target: { value: '25' } });
+    expect(minimum.labels?.item(0)?.textContent).toBe('Min price');
+    expect(maximum.labels?.item(0)?.textContent).toBe('Max price');
+    fireEvent.change(minimum, { target: { value: '' } });
+    fireEvent.change(maximum, { target: { value: '' } });
     expect(within(filters).queryByRole('button', { name: /apply/i })).toBeNull();
     expect(screen.queryByLabelText('Search courses')).toBeNull();
     const sortTrigger = screen.getByRole('button', { name: 'Sort by: Newest' });
     expect(sortTrigger.getAttribute('data-part')).toBe('catalog-sort-trigger');
     expect(sortTrigger.getAttribute('aria-controls')).toBe(null);
+    expect(screen.getByText('Sort', { exact: true }).getAttribute('aria-hidden')).toBe('true');
     const toolbarControls = document.querySelector('[data-part="catalog-toolbar-controls"]');
     expect(toolbarControls).toBeTruthy();
     expect(within(toolbarControls as HTMLElement).queryByRole('combobox')).toBeNull();
@@ -277,7 +1524,9 @@ describe('CatalogPage public URL and pagination behavior', () => {
       filters,
       sortTrigger.closest('[data-part="catalog-sort-toolbar"]'),
     ]);
-    await act(async () => { await user.hover(sortTrigger); });
+    await act(async () => {
+      await user.hover(sortTrigger);
+    });
     const listbox = screen.getByRole('listbox', { name: 'Sort by options' });
     expect(sortTrigger.getAttribute('aria-haspopup')).toBe('listbox');
     expect(sortTrigger.getAttribute('aria-expanded')).toBe('true');
@@ -285,12 +1534,26 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(listbox.getAttribute('aria-activedescendant')).toBe(`${listbox.id}-option-1`);
     const sortOptions = within(listbox).getAllByRole('option');
     expect(sortOptions.map((option) => option.textContent)).toEqual([
-      'Oldest', 'Newest', 'Low to High', 'High to Low', 'A to Z', 'Z to A',
+      'Oldest',
+      'Newest',
+      'Low to High',
+      'High to Low',
+      'A to Z',
+      'Z to A',
     ]);
-    expect(sortOptions.map((option) => option.getAttribute('aria-selected'))).toEqual(['false', 'true', 'false', 'false', 'false', 'false']);
+    expect(sortOptions.map((option) => option.getAttribute('aria-selected'))).toEqual([
+      'false',
+      'true',
+      'false',
+      'false',
+      'false',
+      'false',
+    ]);
     expect(listbox.querySelectorAll('input[type="radio"]')).toHaveLength(0);
     expect(listbox.querySelectorAll('[data-part="catalog-sort-radio"]')).toHaveLength(6);
-    await act(async () => { await user.unhover(sortTrigger); });
+    await act(async () => {
+      await user.unhover(sortTrigger);
+    });
     expect(screen.queryByRole('listbox', { name: 'Sort by options' })).toBeNull();
     expect(sortTrigger.getAttribute('aria-expanded')).toBe('false');
     expect(sortTrigger.getAttribute('aria-controls')).toBe(null);
@@ -308,31 +1571,73 @@ describe('CatalogPage public URL and pagination behavior', () => {
     const keyboardListbox = await screen.findByRole('listbox', { name: 'Sort by options' });
     expect(keyboardListbox).toBe(document.activeElement);
     expect(keyboardListbox.getAttribute('data-part')).toBe('catalog-sort-listbox');
-    await act(async () => { await user.keyboard('{ArrowDown}{Enter}'); });
-    await waitFor(() => expect(screen.getByLabelText('catalog location').textContent).toBe('/?search_query=React&sort=price'));
-    await waitFor(() => expect(requests[requests.length - 1]?.query).toEqual({ search_query: 'React', min_price: undefined, max_price: undefined, sort: 'price', page: 1, page_size: 20 }));
+    await act(async () => {
+      await user.keyboard('{ArrowDown}{Enter}');
+    });
+    await waitFor(() =>
+      expect(screen.getByLabelText('catalog location').textContent).toBe(
+        '/?search_query=React&sort=price',
+      ),
+    );
+    await waitFor(() =>
+      expect(requests[requests.length - 1]?.query).toEqual({
+        search_query: 'React',
+        min_price: undefined,
+        max_price: undefined,
+        sort: 'price',
+        page: 1,
+        page_size: 20,
+      }),
+    );
     expect(keyboardListbox.isConnected).toBe(false);
     await waitFor(() => expect(animationFrames).toHaveLength(1));
     const mainContent = document.getElementById('main-content');
     if (!mainContent) throw new Error('Route focus target is missing.');
     mainContent.focus();
     expect(mainContent).toBe(document.activeElement);
-    await act(async () => { animationFrames.shift()?.(0); });
+    await act(async () => {
+      animationFrames.shift()?.(0);
+    });
     expect(animationFrames).toHaveLength(1);
-    await act(async () => { animationFrames.shift()?.(0); });
-    expect(screen.getByRole('button', { name: 'Sort by: Low to High' })).toBe(document.activeElement);
+    await act(async () => {
+      animationFrames.shift()?.(0);
+    });
+    expect(screen.getByRole('button', { name: 'Sort by: Low to High' })).toBe(
+      document.activeElement,
+    );
 
     await act(async () => {
       await user.type(screen.getByLabelText('Min price'), '5');
       await user.click(screen.getByLabelText('Max price'));
     });
-    await waitFor(() => expect(screen.getByLabelText('catalog location').textContent).toBe('/?search_query=React&min_price=5&sort=price'));
-    await waitFor(() => expect(requests[requests.length - 1]?.query).toEqual({ search_query: 'React', min_price: 5, max_price: undefined, sort: 'price', page: 1, page_size: 20 }));
+    await waitFor(() =>
+      expect(screen.getByLabelText('catalog location').textContent).toBe(
+        '/?search_query=React&min_price=5&sort=price',
+      ),
+    );
+    await waitFor(() =>
+      expect(requests[requests.length - 1]?.query).toEqual({
+        search_query: 'React',
+        min_price: 5,
+        max_price: undefined,
+        sort: 'price',
+        page: 1,
+        page_size: 20,
+      }),
+    );
 
-    await act(async () => { await user.click(screen.getByRole('button', { name: 'Back' })); });
-    await waitFor(() => expect((screen.getByLabelText('Min price') as HTMLInputElement).value).toBe(''));
-    await act(async () => { await user.click(screen.getByRole('button', { name: 'Forward' })); });
-    await waitFor(() => expect((screen.getByLabelText('Min price') as HTMLInputElement).value).toBe('5'));
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Back' }));
+    });
+    await waitFor(() =>
+      expect((screen.getByLabelText('Min price') as HTMLInputElement).value).toBe(''),
+    );
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Forward' }));
+    });
+    await waitFor(() =>
+      expect((screen.getByLabelText('Min price') as HTMLInputElement).value).toBe('5'),
+    );
   });
 
   it('keeps a hover-open Sort popup open through an ordinary trigger click and activates an option', async () => {
@@ -347,23 +1652,78 @@ describe('CatalogPage public URL and pagination behavior', () => {
     await screen.findByRole('link', { name: 'React' });
     const sortTrigger = screen.getByRole('button', { name: 'Sort by: Oldest' });
 
-    await act(async () => { await user.hover(sortTrigger); });
+    await act(async () => {
+      await user.hover(sortTrigger);
+    });
     expect(screen.getByRole('listbox', { name: 'Sort by options' })).toBeTruthy();
-    await act(async () => { await user.click(sortTrigger); });
+    await act(async () => {
+      await user.click(sortTrigger);
+    });
     const listbox = screen.getByRole('listbox', { name: 'Sort by options' });
     expect(sortTrigger.getAttribute('aria-expanded')).toBe('true');
 
     fireEvent.click(within(listbox).getByRole('option', { name: 'Low to High' }));
-    await waitFor(() => expect(screen.getByLabelText('catalog location').textContent).toBe('/?sort=price'));
-    await waitFor(() => expect(requests[requests.length - 1]?.query).toEqual({
-      search_query: undefined, min_price: undefined, max_price: undefined, sort: 'price', page: 1, page_size: 20,
-    }));
+    await waitFor(() =>
+      expect(screen.getByLabelText('catalog location').textContent).toBe('/?sort=price'),
+    );
+    await waitFor(() =>
+      expect(requests[requests.length - 1]?.query).toEqual({
+        search_query: undefined,
+        min_price: undefined,
+        max_price: undefined,
+        sort: 'price',
+        page: 1,
+        page_size: 20,
+      }),
+    );
 
     fireEvent.pointerEnter(sortTrigger, { pointerType: 'touch' });
     fireEvent.click(sortTrigger);
     expect(screen.getByRole('listbox', { name: 'Sort by options' })).toBeTruthy();
     fireEvent.click(sortTrigger);
     expect(screen.queryByRole('listbox', { name: 'Sort by options' })).toBeNull();
+  });
+
+  it('closes a current Sort option without navigation, request, or focus churn', async () => {
+    const animationFrames: FrameRequestCallback[] = [];
+    vi.stubGlobal(
+      'requestAnimationFrame',
+      vi.fn((callback: FrameRequestCallback) => {
+        animationFrames.push(callback);
+        return animationFrames.length;
+      }),
+    );
+    const user = userEvent.setup();
+    const requests: ApiRequestOptions[] = [];
+    const request: ApiClient['request'] = async <TResponse,>(options: ApiRequestOptions) => {
+      requests.push(options);
+      return response({ page: 2, pages: 2, has_previous: true }) as TResponse;
+    };
+    renderCatalog(request, ['/?sort=price&page=2']);
+
+    await screen.findByRole('link', { name: 'React' });
+    const trigger = screen.getByRole('button', { name: 'Sort by: Low to High' });
+    const requestCount = requests.length;
+    const location = screen.getByLabelText('catalog location').textContent;
+
+    await act(async () => {
+      trigger.focus();
+      await user.keyboard('{Enter}');
+    });
+    const listbox = await screen.findByRole('listbox', { name: 'Sort by options' });
+    expect(listbox).toBe(document.activeElement);
+    await act(async () => {
+      await user.keyboard('{Enter}');
+    });
+
+    expect(screen.queryByRole('listbox', { name: 'Sort by options' })).toBeNull();
+    expect(screen.getByLabelText('catalog location').textContent).toBe(location);
+    expect(requests).toHaveLength(requestCount);
+    expect(animationFrames).toHaveLength(1);
+    await act(async () => {
+      animationFrames.shift()?.(0);
+    });
+    expect(trigger).toBe(document.activeElement);
   });
 
   it('shows linked negative-price validation on blur without changing the URL or requesting, then applies a corrected value', async () => {
@@ -393,10 +1753,19 @@ describe('CatalogPage public URL and pagination behavior', () => {
       await user.type(minimum, '5');
       await user.tab();
     });
-    await waitFor(() => expect(screen.getByLabelText('catalog location').textContent).toBe('/?min_price=5'));
-    await waitFor(() => expect(requests[1]?.query).toEqual({
-      search_query: undefined, min_price: 5, max_price: undefined, sort: 'created_at', page: 1, page_size: 20,
-    }));
+    await waitFor(() =>
+      expect(screen.getByLabelText('catalog location').textContent).toBe('/?min_price=5'),
+    );
+    await waitFor(() =>
+      expect(requests[1]?.query).toEqual({
+        search_query: undefined,
+        min_price: 5,
+        max_price: undefined,
+        sort: 'created_at',
+        page: 1,
+        page_size: 20,
+      }),
+    );
   });
 
   it('links an inverted-range error to Max price, then applies Enter once and clears to a max-only range', async () => {
@@ -416,7 +1785,9 @@ describe('CatalogPage public URL and pagination behavior', () => {
       await user.type(minimum, '10');
       await user.click(maximum);
     });
-    await waitFor(() => expect(screen.getByLabelText('catalog location').textContent).toBe('/?min_price=10'));
+    await waitFor(() =>
+      expect(screen.getByLabelText('catalog location').textContent).toBe('/?min_price=10'),
+    );
     await waitFor(() => expect(requests).toHaveLength(2));
 
     await act(async () => {
@@ -434,9 +1805,15 @@ describe('CatalogPage public URL and pagination behavior', () => {
       await user.type(maximum, '15');
       await user.keyboard('{Enter}');
     });
-    await waitFor(() => expect(screen.getByLabelText('catalog location').textContent).toBe('/?min_price=10&max_price=15'));
+    await waitFor(() =>
+      expect(screen.getByLabelText('catalog location').textContent).toBe(
+        '/?min_price=10&max_price=15',
+      ),
+    );
     await waitFor(() => expect(requests).toHaveLength(3));
-    await act(async () => { await user.tab(); });
+    await act(async () => {
+      await user.tab();
+    });
     await new Promise((resolve) => window.setTimeout(resolve, 0));
     expect(requests).toHaveLength(3);
 
@@ -444,10 +1821,17 @@ describe('CatalogPage public URL and pagination behavior', () => {
       await user.clear(minimum);
       await user.click(maximum);
     });
-    await waitFor(() => expect(screen.getByLabelText('catalog location').textContent).toBe('/?max_price=15'));
+    await waitFor(() =>
+      expect(screen.getByLabelText('catalog location').textContent).toBe('/?max_price=15'),
+    );
     await waitFor(() => expect(requests).toHaveLength(4));
     expect(requests[3]?.query).toEqual({
-      search_query: undefined, min_price: undefined, max_price: 15, sort: 'created_at', page: 1, page_size: 20,
+      search_query: undefined,
+      min_price: undefined,
+      max_price: 15,
+      sort: 'created_at',
+      page: 1,
+      page_size: 20,
     });
   });
 
@@ -471,7 +1855,9 @@ describe('CatalogPage public URL and pagination behavior', () => {
     });
     await new Promise((resolve) => window.setTimeout(resolve, 0));
     expect(requests).toHaveLength(1);
-    expect(screen.getByLabelText('catalog location').textContent).toBe('/?search_query=React&min_price=5&max_price=10&sort=-price&page=3');
+    expect(screen.getByLabelText('catalog location').textContent).toBe(
+      '/?search_query=React&min_price=5&max_price=10&sort=-price&page=3',
+    );
 
     await act(async () => {
       await user.click(minimum);
@@ -479,17 +1865,30 @@ describe('CatalogPage public URL and pagination behavior', () => {
       await user.type(minimum, '7');
       await user.click(maximum);
     });
-    await waitFor(() => expect(screen.getByLabelText('catalog location').textContent).toBe('/?search_query=React&min_price=7&max_price=10&sort=-price'));
+    await waitFor(() =>
+      expect(screen.getByLabelText('catalog location').textContent).toBe(
+        '/?search_query=React&min_price=7&max_price=10&sort=-price',
+      ),
+    );
     await waitFor(() => expect(requests).toHaveLength(2));
 
     await act(async () => {
       await user.clear(maximum);
       await user.tab();
     });
-    await waitFor(() => expect(screen.getByLabelText('catalog location').textContent).toBe('/?search_query=React&min_price=7&sort=-price'));
+    await waitFor(() =>
+      expect(screen.getByLabelText('catalog location').textContent).toBe(
+        '/?search_query=React&min_price=7&sort=-price',
+      ),
+    );
     await waitFor(() => expect(requests).toHaveLength(3));
     expect(requests[2]?.query).toEqual({
-      search_query: 'React', min_price: 7, max_price: undefined, sort: '-price', page: 1, page_size: 20,
+      search_query: 'React',
+      min_price: 7,
+      max_price: undefined,
+      sort: '-price',
+      page: 1,
+      page_size: 20,
     });
   });
 
@@ -503,15 +1902,17 @@ describe('CatalogPage public URL and pagination behavior', () => {
     renderCatalog(request, ['/']);
 
     await screen.findByRole('link', { name: 'React' });
-    const next = screen.getByRole('button', { name: 'Go to next page' }) as HTMLButtonElement;
-    expect(next.textContent).toBe('>');
     const pageOne = screen.getByRole('button', { name: 'Go to page 1' }) as HTMLButtonElement;
     const pageThree = screen.getByRole('button', { name: 'Go to page 3' }) as HTMLButtonElement;
-    expect(next.disabled).toBe(true);
+    expect(screen.queryByRole('button', { name: 'Go to next page' })).toBeNull();
+    const currentPage = screen.getByLabelText('Page 2, current page');
+    expect(currentPage.getAttribute('aria-current')).toBe('page');
+    expect(currentPage.textContent).toBe('2');
     expect(pageOne.disabled).toBe(true);
     expect(pageThree.disabled).toBe(true);
-    expect(screen.getAllByRole('status').some((status) => status.textContent?.includes('Page 2 of 3'))).toBe(true);
-    await user.click(next);
+    expect(
+      screen.getAllByRole('status').some((status) => status.textContent?.includes('Page 2 of 3')),
+    ).toBe(true);
     await user.click(pageOne);
     await user.click(pageThree);
     expect(requestCount).toBe(1);
@@ -528,19 +1929,31 @@ describe('CatalogPage public URL and pagination behavior', () => {
     renderCatalog(request, ['/?page=99']);
 
     await screen.findByRole('link', { name: 'React' });
-    expect(screen.getAllByRole('status').some((status) => status.textContent?.includes('Page 99 of 1'))).toBe(true);
-    const previous = screen.getByRole('button', { name: 'Go to previous page' }) as HTMLButtonElement;
+    expect(
+      screen.getAllByRole('status').some((status) => status.textContent?.includes('Page 99 of 1')),
+    ).toBe(true);
+    const previous = screen.getByRole('button', {
+      name: 'Go to previous page',
+    }) as HTMLButtonElement;
     const pageOne = screen.getByRole('button', { name: 'Go to page 1' }) as HTMLButtonElement;
-    const next = screen.getByRole('button', { name: 'Go to next page' }) as HTMLButtonElement;
     expect(previous.disabled).toBe(false);
     expect(pageOne.disabled).toBe(false);
-    expect(next.disabled).toBe(true);
+    expect(screen.queryByRole('button', { name: 'Go to next page' })).toBeNull();
+    const currentPage = screen.getByLabelText('Page 99, current page');
+    expect(currentPage.getAttribute('aria-current')).toBe('page');
+    expect(currentPage.textContent).toBe('99');
 
-    await act(async () => { await user.click(previous); });
-    await waitFor(() => expect(screen.getByLabelText('catalog location').textContent).toBe('/?page=98'));
+    await act(async () => {
+      await user.click(previous);
+    });
+    await waitFor(() =>
+      expect(screen.getByLabelText('catalog location').textContent).toBe('/?page=98'),
+    );
     await waitFor(() => expect(requests[1]?.query?.page).toBe(98));
 
-    await act(async () => { await user.click(pageOne); });
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Go to page 1' }));
+    });
     await waitFor(() => expect(screen.getByLabelText('catalog location').textContent).toBe('/'));
     await waitFor(() => expect(requests[2]?.query?.page).toBe(1));
   });
@@ -550,27 +1963,56 @@ describe('CatalogPage public URL and pagination behavior', () => {
     const requests: ApiRequestOptions[] = [];
     const request: ApiClient['request'] = async <TResponse,>(options: ApiRequestOptions) => {
       requests.push(options);
-      return response({ page: options.query?.page as number, pages: 2, has_next: options.query?.page === 1, has_previous: options.query?.page === 2 }) as TResponse;
+      return response({
+        page: options.query?.page as number,
+        pages: 2,
+        has_next: options.query?.page === 1,
+        has_previous: options.query?.page === 2,
+      }) as TResponse;
     };
     renderCatalog(request, ['/?search_query=React&min_price=5&sort=-price']);
 
     await screen.findByRole('link', { name: 'React' });
     expect(requests[0]?.query).toEqual({
-      search_query: 'React', min_price: 5, max_price: undefined, sort: '-price', page: 1, page_size: 20,
+      search_query: 'React',
+      min_price: 5,
+      max_price: undefined,
+      sort: '-price',
+      page: 1,
+      page_size: 20,
     });
 
     const next = screen.getByRole('button', { name: 'Go to next page' }) as HTMLButtonElement;
-    const pageOne = screen.getByRole('button', { name: 'Go to page 1' }) as HTMLButtonElement;
     expect(next.disabled).toBe(false);
-    expect(pageOne.disabled).toBe(true);
-    expect(pageOne.getAttribute('aria-current')).toBe('page');
-    await act(async () => { await user.click(next); });
+    expect(screen.queryByRole('button', { name: 'Go to page 1' })).toBeNull();
+    const firstCurrentPage = screen.getByLabelText('Page 1, current page');
+    expect(firstCurrentPage.getAttribute('aria-current')).toBe('page');
+    expect(firstCurrentPage.textContent).toBe('1');
+    await act(async () => {
+      await user.click(next);
+    });
 
-    await waitFor(() => expect(screen.getByLabelText('catalog location').textContent).toBe('/?search_query=React&min_price=5&sort=-price&page=2'));
-    await waitFor(() => expect(requests[1]?.query).toEqual({
-      search_query: 'React', min_price: 5, max_price: undefined, sort: '-price', page: 2, page_size: 20,
-    }));
-    expect((screen.getByRole('button', { name: 'Go to page 2' }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole('button', { name: 'Go to previous page' }) as HTMLButtonElement).disabled).toBe(false);
+    await waitFor(() =>
+      expect(screen.getByLabelText('catalog location').textContent).toBe(
+        '/?search_query=React&min_price=5&sort=-price&page=2',
+      ),
+    );
+    await waitFor(() =>
+      expect(requests[1]?.query).toEqual({
+        search_query: 'React',
+        min_price: 5,
+        max_price: undefined,
+        sort: '-price',
+        page: 2,
+        page_size: 20,
+      }),
+    );
+    expect(screen.queryByRole('button', { name: 'Go to page 2' })).toBeNull();
+    const secondCurrentPage = screen.getByLabelText('Page 2, current page');
+    expect(secondCurrentPage.getAttribute('aria-current')).toBe('page');
+    expect(secondCurrentPage.textContent).toBe('2');
+    expect(
+      (screen.getByRole('button', { name: 'Go to previous page' }) as HTMLButtonElement).disabled,
+    ).toBe(false);
   });
 });

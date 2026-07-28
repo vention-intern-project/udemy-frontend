@@ -12,7 +12,10 @@ function required(value: string, label: string): string | undefined {
 }
 
 export function validateEmail(email: string): string | undefined {
-  return required(email, 'Email') ?? (!EMAIL_PATTERN.test(email) ? 'Enter a valid email address.' : undefined);
+  return (
+    required(email, 'Email') ??
+    (!EMAIL_PATTERN.test(email) ? 'Enter a valid email address.' : undefined)
+  );
 }
 
 export function validateLogin(input: LoginRequestDto): AuthFieldErrors {
@@ -29,8 +32,9 @@ export function validateSignup(input: SignupInput): AuthFieldErrors {
     name: required(input.name, 'First name'),
     surname: required(input.surname, 'Last name'),
     password: required(input.password, 'Password'),
-    passwordConfirmation: required(input.passwordConfirmation, 'Password confirmation')
-      ?? (input.passwordConfirmation !== input.password ? 'Passwords do not match.' : undefined),
+    passwordConfirmation:
+      required(input.passwordConfirmation, 'Password confirmation') ??
+      (input.passwordConfirmation !== input.password ? 'Passwords do not match.' : undefined),
     role: allowedRoles.includes(input.role) ? undefined : 'Choose a valid role.',
   };
 }
@@ -38,13 +42,16 @@ export function validateSignup(input: SignupInput): AuthFieldErrors {
 export function validateReset(input: ResetPasswordInput): AuthFieldErrors {
   return {
     password: required(input.newPassword, 'New password'),
-    passwordConfirmation: required(input.passwordConfirmation, 'Password confirmation')
-      ?? (input.passwordConfirmation !== input.newPassword ? 'Passwords do not match.' : undefined),
+    passwordConfirmation:
+      required(input.passwordConfirmation, 'Password confirmation') ??
+      (input.passwordConfirmation !== input.newPassword ? 'Passwords do not match.' : undefined),
   };
 }
 
 export function compactFieldErrors(errors: AuthFieldErrors): AuthFieldErrors {
-  return Object.fromEntries(Object.entries(errors).filter((entry) => Boolean(entry[1]))) as AuthFieldErrors;
+  return Object.fromEntries(
+    Object.entries(errors).filter((entry) => Boolean(entry[1])),
+  ) as AuthFieldErrors;
 }
 
 const SERVER_FIELD_NAMES: Readonly<Record<string, AuthField>> = {
@@ -70,14 +77,13 @@ function safeServerFieldMessage(field: AuthField, type: string): string {
   if (normalizedType.includes('missing') || normalizedType.includes('required')) {
     return `${SERVER_FIELD_LABELS[field]} is required.`;
   }
-  if (field === 'email' && (
-    normalizedType.includes('email') || normalizedType.includes('pattern')
-  )) {
+  if (
+    field === 'email' &&
+    (normalizedType.includes('email') || normalizedType.includes('pattern'))
+  ) {
     return 'Enter a valid email address.';
   }
-  if (field === 'role' && (
-    normalizedType.includes('enum') || normalizedType.includes('literal')
-  )) {
+  if (field === 'role' && (normalizedType.includes('enum') || normalizedType.includes('literal'))) {
     return 'Choose a valid role.';
   }
   return 'Check this field and submit again.';
@@ -90,12 +96,12 @@ export interface FormFailure {
 
 type AuthFailureOperation = 'signup' | 'login' | 'forgot' | 'reset';
 
-export function mapAuthFailure(
-  error: unknown,
-  operation: AuthFailureOperation,
-): FormFailure {
+export function mapAuthFailure(error: unknown, operation: AuthFailureOperation): FormFailure {
   if (error instanceof ApiError && error.kind === 'offline') {
-    return { summary: 'You appear to be offline. Check your connection and submit again.', fields: {} };
+    return {
+      summary: 'You appear to be offline. Check your connection and submit again.',
+      fields: {},
+    };
   }
 
   if (error instanceof ApiError && error.kind === 'validation') {
@@ -105,17 +111,28 @@ export function mapAuthFailure(
       if (key && !fields[key]) fields[key] = safeServerFieldMessage(key, issue.type);
     });
     return {
-      summary: 'Review the highlighted fields and submit again.',
+      summary:
+        Object.keys(fields).length > 0
+          ? 'Review the highlighted fields and submit again.'
+          : 'We could not process this form. Check your details and try again.',
       fields,
     };
   }
 
-  const summary = operation === 'signup'
-    ? 'We could not create this account. The email may already be in use.'
-    : operation === 'login'
-      ? 'The email or password was not accepted.'
-      : operation === 'reset'
-        ? 'This reset link is invalid or has expired. Request a new link and try again.'
-        : 'We could not process the request. Please try again.';
+  if (
+    error instanceof ApiError &&
+    (error.kind === 'server' || error.kind === 'http' || error.kind === 'invalid_response')
+  ) {
+    return { summary: 'We could not complete that request. Please try again.', fields: {} };
+  }
+
+  const summary =
+    operation === 'signup'
+      ? 'We could not create this account. The email may already be in use.'
+      : operation === 'login'
+        ? 'The email or password was not accepted.'
+        : operation === 'reset'
+          ? 'This reset link is invalid or has expired. Request a new link and try again.'
+          : 'We could not process the request. Please try again.';
   return { summary, fields: {} };
 }

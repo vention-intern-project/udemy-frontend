@@ -1,9 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 
 import {
-  draftFromCatalogQuery, validateCatalogDraft,
-  type CatalogFilterValidationErrors, type CatalogPriceField, type CatalogPriceRange,
-  type CatalogPriceRangeDraft, type CatalogQuery,
+  draftFromCatalogQuery,
+  validateCatalogDraft,
+  type CatalogFilterValidationErrors,
+  type CatalogPriceField,
+  type CatalogPriceRange,
+  type CatalogPriceRangeDraft,
+  type CatalogQuery,
 } from '@features/catalog-discovery';
 import { Input, VisuallyHidden } from '@shared/ui/primitives';
 
@@ -24,11 +28,16 @@ function priceRangeMatches(left: CatalogPriceRange, right: CatalogPriceRange): b
 }
 
 export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
-  const [draft, setDraft] = useState<CatalogPriceRangeDraft>(() => priceDraftFromCatalogQuery(query));
+  const [draft, setDraft] = useState<CatalogPriceRangeDraft>(() =>
+    priceDraftFromCatalogQuery(query),
+  );
   const [errors, setErrors] = useState<CatalogFilterValidationErrors>({});
   const draftRef = useRef(draft);
   const queryRef = useRef(query);
-  const lastAppliedRangeRef = useRef<CatalogPriceRange>({ min_price: query.min_price, max_price: query.max_price });
+  const lastAppliedRangeRef = useRef<CatalogPriceRange>({
+    min_price: query.min_price,
+    max_price: query.max_price,
+  });
 
   draftRef.current = draft;
   queryRef.current = query;
@@ -64,7 +73,11 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
       min_price: currentQuery.min_price,
       max_price: currentQuery.max_price,
     };
-    if (priceRangeMatches(nextRange, currentRange) || priceRangeMatches(nextRange, lastAppliedRangeRef.current)) return;
+    if (
+      priceRangeMatches(nextRange, currentRange) ||
+      priceRangeMatches(nextRange, lastAppliedRangeRef.current)
+    )
+      return;
 
     lastAppliedRangeRef.current = nextRange;
     onApply({
@@ -89,21 +102,19 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
       }}
     >
       <fieldset className={styles.priceRange}>
-        <VisuallyHidden as="legend">Price range</VisuallyHidden>
-        <span
-          className={styles.legend}
-          data-part="catalog-filter-price-label"
-          aria-hidden="true"
-        >
-          Price range:
-        </span>
+        <legend className={styles.legend}>Price range</legend>
         <Input
-          label={<VisuallyHidden>Min price</VisuallyHidden>}
+          label={
+            <>
+              <span>Min</span>
+              <VisuallyHidden> price</VisuallyHidden>
+            </>
+          }
           name="min_price"
           type="number"
+          placeholder="Min price"
           inputMode="decimal"
           min="0"
-          placeholder="Min price"
           fieldClassName={styles.field}
           value={draft.min_price}
           error={errors.min_price}
@@ -117,12 +128,17 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
           }}
         />
         <Input
-          label={<VisuallyHidden>Max price</VisuallyHidden>}
+          label={
+            <>
+              <span>Max</span>
+              <VisuallyHidden> price</VisuallyHidden>
+            </>
+          }
           name="max_price"
           type="number"
+          placeholder="Max price"
           inputMode="decimal"
           min="0"
-          placeholder="Max price"
           fieldClassName={styles.field}
           value={draft.max_price}
           error={errors.max_price}

@@ -4,6 +4,7 @@ export default async function startPrimitivesServer() {
   const server = await createServer({
     root: 'tests/browser/primitives-harness',
     configFile: false,
+    envFile: false,
     clearScreen: false,
     logLevel: 'warn',
     appType: 'spa',

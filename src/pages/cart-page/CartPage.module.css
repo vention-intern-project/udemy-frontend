@@ -1,8 +1,277 @@
-.page { display: grid; gap: var(--spacing-4); min-width: 0; }
-.header { display: grid; gap: var(--spacing-4); padding: var(--spacing-4); border: var(--border-width) solid var(--border-default); border-radius: var(--radius-lg); background: var(--color-surface); }
-.header h1, .item h2 { margin: 0; color: var(--text-primary); }.header p, .item p { margin: var(--spacing-1) 0 0; color: var(--text-secondary); }
-.eyebrow, .label { color: var(--text-muted); font-size: var(--type-caption-size); font-weight: var(--font-weight-semibold); }
-.summary { display: grid; gap: var(--spacing-2); min-width: 0; align-content: start; padding: var(--spacing-3); border-radius: var(--radius-md); background: var(--color-canvas); }.summary strong { overflow-wrap: anywhere; color: var(--text-primary); font-size: var(--type-card-h3-size); }
-.items { display: grid; gap: var(--spacing-3); }.item { display: grid; gap: var(--spacing-3); min-width: 0; padding: var(--spacing-4); border: var(--border-width) solid var(--border-default); border-radius: var(--radius-lg); background: var(--color-surface); }.item h2, .item p { overflow-wrap: anywhere; }.item button { justify-self: start; }
-.state, .loading { display: grid; gap: var(--spacing-4); max-width: 42rem; padding: var(--spacing-4); border: var(--border-width) solid var(--border-default); border-radius: var(--radius-lg); background: var(--color-surface); }.catalogLink { display: inline-flex; width: fit-content; min-height: var(--control-height-md); align-items: center; color: var(--action-link); font-weight: var(--font-weight-semibold); }
-@media (min-width: 768px) { .header { grid-template-columns: minmax(0, 1fr) minmax(14rem, 20rem); align-items: start; }.item { grid-template-columns: minmax(0, 1fr) minmax(8rem, auto) auto; align-items: center; }.item button { justify-self: end; } }
+.page {
+  display: grid;
+  gap: var(--spacing-3);
+  min-width: 0;
+}
+.header {
+  display: grid;
+  gap: var(--spacing-3);
+  min-width: 0;
+}
+.header h1,
+.item h2 {
+  margin: 0;
+  color: var(--text-primary);
+}
+.header p,
+.item p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+.toolbar,
+.titleRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  min-width: 0;
+}
+.toolbar {
+  gap: var(--spacing-2);
+}
+.titleRow {
+  gap: var(--spacing-6);
+  align-items: baseline;
+}
+.titleRow p {
+  color: var(--text-muted);
+  font-size: var(--type-body-md-size);
+  font-weight: var(--font-weight-regular);
+  line-height: var(--type-body-md-lh);
+}
+.eyebrow,
+.label {
+  color: var(--text-muted);
+  font-size: var(--type-caption-size);
+  font-weight: var(--font-weight-semibold);
+}
+.eyebrow {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+.eyebrow {
+  font-size: var(--type-body-sm-size);
+  font-weight: var(--font-weight-regular);
+  line-height: var(--type-body-sm-lh);
+}
+.eyebrow svg {
+  flex: none;
+}
+.content {
+  display: grid;
+  gap: var(--spacing-4);
+  min-width: 0;
+  align-items: start;
+}
+.courseList {
+  min-width: 0;
+}
+.clearCartLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+.clearCartButton.clearCartButton:not(:disabled) {
+  color: var(--action-secondary-fg);
+  background: var(--color-surface);
+  border-color: var(--border-default);
+}
+.clearCartButton.clearCartButton:hover:not(:disabled) {
+  background: var(--action-secondary-bg-hover);
+  border-color: var(--action-secondary-fg);
+}
+.clearCartButton.clearCartButton:active:not(:disabled) {
+  background: var(--action-secondary-bg-pressed);
+  border-color: var(--action-secondary-fg);
+}
+.items {
+  display: grid;
+  gap: var(--spacing-3);
+  min-width: 0;
+}
+.item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--spacing-3);
+  min-width: 0;
+  padding: var(--spacing-4);
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+.preview {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 9;
+  min-width: 0;
+  color: var(--text-muted);
+  background: var(--state-disabled-bg);
+  border-radius: var(--radius-md);
+  font-size: var(--type-caption-size);
+  font-weight: var(--font-weight-semibold);
+  text-decoration: none;
+}
+.preview:hover {
+  background: var(--color-canvas);
+}
+.preview:focus-visible,
+.courseLink:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+.courseInfo,
+.price,
+.removeAction {
+  min-width: 0;
+}
+.courseLink {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: var(--type-card-h3-size);
+  line-height: var(--type-card-h3-lh);
+  text-decoration: none;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.courseLink:hover {
+  color: var(--action-link);
+  text-decoration: underline;
+}
+.price p:last-child {
+  overflow-wrap: anywhere;
+  font-weight: var(--font-weight-semibold);
+}
+.removeAction {
+  display: grid;
+  justify-items: start;
+}
+.removeButton {
+  width: var(--control-height-md);
+  min-width: var(--control-height-md);
+  padding: 0;
+  color: var(--text-muted);
+  background: transparent;
+  border-color: transparent;
+}
+.removeButton:hover:not(:disabled) {
+  color: var(--action-primary-bg);
+  background: transparent;
+  border-color: transparent;
+}
+.summary {
+  display: grid;
+  gap: var(--spacing-2);
+  min-width: 0;
+  align-content: start;
+  padding: var(--spacing-4);
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+.summaryHeading {
+  margin: 0 0 var(--spacing-2);
+  color: var(--text-primary);
+  font-size: var(--type-section-h2-size);
+  font-weight: var(--type-section-h2-weight);
+  line-height: var(--type-section-h2-lh);
+}
+.summaryDivider {
+  width: 100%;
+  margin: 0;
+  border: 0;
+  border-block-start: var(--border-width) solid var(--border-default);
+}
+.summary .label {
+  margin-block: var(--spacing-1);
+  font-size: var(--type-body-sm-size);
+  line-height: var(--type-body-sm-lh);
+}
+.summary strong {
+  margin-block-end: var(--spacing-2);
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
+  font-size: var(--type-section-h2-size);
+  font-weight: var(--type-section-h2-weight);
+  line-height: var(--type-section-h2-lh);
+}
+.totalUnavailable {
+  color: var(--text-secondary);
+}
+.mockCheckoutDisclosure {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--spacing-2);
+  margin-block: var(--spacing-2);
+  color: var(--text-muted);
+  font-size: var(--type-body-sm-size);
+  line-height: var(--type-body-sm-lh);
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+.mockCheckoutDisclosure svg {
+  flex: none;
+}
+.mockCheckoutDisclosure span {
+  min-width: 0;
+}
+.state,
+.loading {
+  display: grid;
+  gap: var(--spacing-4);
+  max-width: 42rem;
+  padding: var(--spacing-4);
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+.emptyState {
+  justify-items: center;
+  margin-inline: auto;
+  text-align: center;
+}
+.catalogLink {
+  display: inline-flex;
+  width: fit-content;
+  min-height: var(--control-height-md);
+  align-items: center;
+  color: var(--action-link);
+  font-weight: var(--font-weight-semibold);
+}
+.catalogLink:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+@media (min-width: 768px) {
+  .header h1 {
+    font-size: 36px;
+    line-height: 44px;
+  }
+}
+@media (min-width: 1024px) {
+  .header,
+  .content {
+    grid-template-columns: minmax(0, 1fr) minmax(16rem, 20rem);
+  }
+  .eyebrow,
+  .toolbar {
+    grid-column: 1;
+  }
+  .toolbar {
+    justify-content: space-between;
+  }
+  .clearCartButton {
+    margin-inline-start: auto;
+  }
+  .item {
+    grid-template-columns: minmax(7rem, 10rem) minmax(0, 1fr) minmax(8rem, auto) var(
+        --control-height-md
+      );
+    align-items: center;
+  }
+  .removeAction {
+    justify-items: end;
+  }
+}

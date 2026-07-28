@@ -28,7 +28,9 @@ async function expectNoHorizontalOverflow(page: Page) {
     body: document.body.scrollWidth,
   }));
 
-  expect(widths.document, 'document must not overflow horizontally').toBeLessThanOrEqual(widths.viewport);
+  expect(widths.document, 'document must not overflow horizontally').toBeLessThanOrEqual(
+    widths.viewport,
+  );
   expect(widths.body, 'body must not overflow horizontally').toBeLessThanOrEqual(widths.viewport);
 }
 
@@ -95,15 +97,21 @@ const viewports = [
 ] as const;
 
 for (const viewport of viewports) {
-  test(`renders semantic primitive states without reflow at ${viewport.width}px`, async ({ page }) => {
+  test(`renders semantic primitive states without reflow at ${viewport.width}px`, async ({
+    page,
+  }) => {
     const runtime = monitorRuntime(page);
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await page.goto('/');
 
-    await expect(page.getByRole('heading', { level: 1, name: 'Shared UI primitives' })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Shared UI primitives' }),
+    ).toBeVisible();
     await expect(page.getByRole('button', { name: 'Primary action' })).toBeEnabled();
     await expect(page.getByRole('button', { name: 'Secondary action' })).toBeEnabled();
-    await expect(page.getByRole('button', { name: 'Destructive action', exact: true })).toBeEnabled();
+    await expect(
+      page.getByRole('button', { name: 'Destructive action', exact: true }),
+    ).toBeEnabled();
 
     const loadingButton = page.locator('button[data-state="loading"]');
     await expect(loadingButton).toBeDisabled();
@@ -122,7 +130,9 @@ for (const viewport of viewports) {
     await expect(requiredInput).toHaveAttribute('required', '');
     const requiredDescription = await requiredInput.getAttribute('aria-describedby');
     expect(requiredDescription).toBeTruthy();
-    await expect(page.locator(`[id="${requiredDescription}"]`)).toHaveText('Use a clear, unique title.');
+    await expect(page.locator(`[id="${requiredDescription}"]`)).toHaveText(
+      'Use a clear, unique title.',
+    );
 
     const invalidInput = page.getByRole('textbox', { name: 'Instructor email' });
     await expect(invalidInput).toHaveAttribute('aria-invalid', 'true');
@@ -130,14 +140,29 @@ for (const viewport of viewports) {
     await expect(page.getByRole('combobox', { name: 'Course level' })).toHaveValue('intermediate');
     await expect(page.getByRole('textbox', { name: 'Course description' })).toBeVisible();
 
-    await expect(page.getByRole('alert').filter({ hasText: 'The request could not be completed.' })).toHaveCount(1);
-    await expect(page.getByRole('status').filter({ hasText: 'A polite informational update.' })).toHaveCount(1);
-    await expect(page.getByRole('status', { name: 'Loading course preview' })).toHaveAttribute('aria-busy', 'true');
+    await expect(
+      page.getByRole('alert').filter({ hasText: 'The request could not be completed.' }),
+    ).toHaveCount(1);
+    await expect(
+      page.getByRole('status').filter({ hasText: 'A polite informational update.' }),
+    ).toHaveCount(1);
+    await expect(page.getByRole('status', { name: 'Loading course preview' })).toHaveAttribute(
+      'aria-busy',
+      'true',
+    );
 
     const pagination = page.getByRole('navigation', { name: 'Course results pages' });
     await expect(pagination.locator('[aria-current="page"]')).toHaveText('2');
+    await expect(pagination.locator('[aria-current="page"]')).toHaveAttribute(
+      'aria-label',
+      'Page 2, current page',
+    );
     await pagination.getByRole('button', { name: 'Go to next page' }).click();
     await expect(pagination.locator('[aria-current="page"]')).toHaveText('3');
+    await expect(pagination.locator('[aria-current="page"]')).toHaveAttribute(
+      'aria-label',
+      'Page 3, current page',
+    );
     await expect(pagination.getByRole('status')).toHaveText('Page 3 of 8');
 
     const paginationTargets = await pagination.getByRole('button').all();
@@ -190,17 +215,29 @@ test('supports native keyboard activation and visible forward/reverse focus', as
   const nextPage = page.getByRole('button', { name: 'Go to next page' });
   await nextPage.focus();
   await page.keyboard.press('Enter');
-  await expect(page.getByRole('navigation', { name: 'Course results pages' }).locator('[aria-current="page"]')).toHaveText('3');
+  await expect(
+    page.getByRole('navigation', { name: 'Course results pages' }).locator('[aria-current="page"]'),
+  ).toHaveText('3');
+  await expect(
+    page.getByRole('navigation', { name: 'Course results pages' }).locator('[aria-current="page"]'),
+  ).toHaveAttribute('aria-label', 'Page 3, current page');
 
   const previousPage = page.getByRole('button', { name: 'Go to previous page' });
   await previousPage.focus();
   await page.keyboard.press('Space');
-  await expect(page.getByRole('navigation', { name: 'Course results pages' }).locator('[aria-current="page"]')).toHaveText('2');
+  await expect(
+    page.getByRole('navigation', { name: 'Course results pages' }).locator('[aria-current="page"]'),
+  ).toHaveText('2');
+  await expect(
+    page.getByRole('navigation', { name: 'Course results pages' }).locator('[aria-current="page"]'),
+  ).toHaveAttribute('aria-label', 'Page 2, current page');
 
   runtime.assertClean();
 });
 
-test('traps dialog focus in both directions, closes with Escape, and restores focus', async ({ page }) => {
+test('traps dialog focus in both directions, closes with Escape, and restores focus', async ({
+  page,
+}) => {
   const runtime = monitorRuntime(page);
   await page.goto('/');
 
@@ -226,7 +263,45 @@ test('traps dialog focus in both directions, closes with Escape, and restores fo
   runtime.assertClean();
 });
 
-test('keeps destructive confirmation modal while pending and announces one recoverable error', async ({ page }) => {
+test('isolates nested dialog interaction in the modal portal and restores the active layer', async ({
+  page,
+}) => {
+  const runtime = monitorRuntime(page);
+  await page.goto('/');
+
+  const invoker = page.getByRole('button', { name: 'Open dialog', exact: true });
+  await invoker.click();
+  const parentDialog = page.getByRole('dialog', { name: 'Edit lesson' });
+  await expect(parentDialog).toBeVisible();
+  await expect(page.locator('#root')).toHaveAttribute('inert', '');
+  await expect(page.locator('[data-dialog-portal-root]')).toHaveCount(1);
+
+  const nestedInvoker = parentDialog.getByRole('button', { name: 'Open nested dialog' });
+  await nestedInvoker.click();
+  const nestedDialog = page.getByRole('dialog', { name: 'Confirm nested edit' });
+  await expect(nestedDialog).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(1);
+  await expect(nestedDialog.locator('..')).toHaveCSS('z-index', '500');
+
+  await invoker.focus();
+  await expect(nestedDialog).toContainText('This dialog must be the only active modal layer.');
+  await expect(nestedDialog.getByRole('button', { name: 'Close dialog' })).toBeFocused();
+
+  await page.keyboard.press('Escape');
+  await expect(nestedDialog).toBeHidden();
+  await expect(parentDialog).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Edit lesson' })).toHaveCount(1);
+  await expect(nestedInvoker).toBeFocused();
+
+  await page.keyboard.press('Escape');
+  await expect(parentDialog).toBeHidden();
+  await expect(invoker).toBeFocused();
+  runtime.assertClean();
+});
+
+test('keeps destructive confirmation modal while pending and announces one recoverable error', async ({
+  page,
+}) => {
   const runtime = monitorRuntime(page);
   await page.goto('/');
 
@@ -266,7 +341,9 @@ test('keeps destructive confirmation modal while pending and announces one recov
   const alertId = await alert.getAttribute('id');
   expect(alertId).toBeTruthy();
   await expect(failedConfirm).toHaveAttribute('aria-describedby', alertId!);
-  await expect(dialog.getByText('Demo failure: the item was not deleted.', { exact: true })).toHaveCount(1);
+  await expect(
+    dialog.getByText('Demo failure: the item was not deleted.', { exact: true }),
+  ).toHaveCount(1);
 
   await cancel.focus();
   await page.keyboard.press('Enter');
@@ -275,19 +352,23 @@ test('keeps destructive confirmation modal while pending and announces one recov
   runtime.assertClean();
 });
 
-test('disables spinner and skeleton animations when reduced motion is requested', async ({ page }) => {
+test('disables spinner and skeleton animations when reduced motion is requested', async ({
+  page,
+}) => {
   const runtime = monitorRuntime(page);
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
 
-  expect(await page.evaluate(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches)).toBe(true);
+  expect(
+    await page.evaluate(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches),
+  ).toBe(true);
 
   const spinner = page.locator('[data-part="spinner"]');
   await expect(spinner).toHaveCSS('animation-name', 'none');
 
   const skeletons = page.locator('[data-part="skeleton"]');
   await expect(skeletons).toHaveCount(3);
-  for (let index = 0; index < await skeletons.count(); index += 1) {
+  for (let index = 0; index < (await skeletons.count()); index += 1) {
     await expect(skeletons.nth(index)).toHaveCSS('animation-name', 'none');
   }
 

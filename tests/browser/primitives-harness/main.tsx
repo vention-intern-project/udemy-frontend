@@ -19,6 +19,7 @@ import './styles.css';
 
 function PrimitivesHarness() {
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [nestedDialogOpen, setNestedDialogOpen] = useState(false);
   const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [confirmationPending, setConfirmationPending] = useState(false);
   const [confirmationError, setConfirmationError] = useState<string>();
@@ -38,7 +39,10 @@ function PrimitivesHarness() {
       <header className="harness-header">
         <p className="harness-eyebrow">Browser accessibility verification</p>
         <h1>Shared UI primitives</h1>
-        <p>Use the keyboard to verify visible focus, native activation, modal focus trapping, and state announcements.</p>
+        <p>
+          Use the keyboard to verify visible focus, native activation, modal focus trapping, and
+          state announcements.
+        </p>
       </header>
 
       <section className="harness-section" aria-labelledby="buttons-heading">
@@ -47,9 +51,15 @@ function PrimitivesHarness() {
           <Button>Primary action</Button>
           <Button variant="secondary">Secondary action</Button>
           <Button variant="destructive">Destructive action</Button>
-          <Button state="loading" statusMessage="Saving changes">Save</Button>
-          <Button state="success" statusMessage="Changes saved">Saved</Button>
-          <Button state="error" statusMessage="Save failed">Retry save</Button>
+          <Button state="loading" statusMessage="Saving changes">
+            Save
+          </Button>
+          <Button state="success" statusMessage="Changes saved">
+            Saved
+          </Button>
+          <Button state="error" statusMessage="Save failed">
+            Retry save
+          </Button>
           <Button disabled>Disabled action</Button>
         </div>
       </section>
@@ -58,7 +68,11 @@ function PrimitivesHarness() {
         <h2 id="fields-heading">Form anatomy</h2>
         <div className="harness-grid">
           <Input label="Course title" required helpText="Use a clear, unique title." />
-          <Input label="Instructor email" defaultValue="invalid" error="Enter a valid email address." />
+          <Input
+            label="Instructor email"
+            defaultValue="invalid"
+            error="Enter a valid email address."
+          />
           <Select label="Course level" defaultValue="intermediate">
             <option value="beginner">Beginner</option>
             <option value="intermediate">Intermediate</option>
@@ -74,9 +88,15 @@ function PrimitivesHarness() {
           <Notice tone="info" title="Information" onDismiss={() => undefined}>
             A polite informational update.
           </Notice>
-          <Notice tone="success" title="Success">The course was saved.</Notice>
-          <Notice tone="warning" title="Warning">Review the lesson order.</Notice>
-          <Notice tone="error" title="Error">The request could not be completed.</Notice>
+          <Notice tone="success" title="Success">
+            The course was saved.
+          </Notice>
+          <Notice tone="warning" title="Warning">
+            Review the lesson order.
+          </Notice>
+          <Notice tone="error" title="Error">
+            The request could not be completed.
+          </Notice>
           <SkeletonGroup label="Loading course preview">
             <Skeleton width="45%" />
             <Skeleton width="100%" />
@@ -87,7 +107,12 @@ function PrimitivesHarness() {
 
       <section className="harness-section" aria-labelledby="pagination-heading">
         <h2 id="pagination-heading">Pagination</h2>
-        <Pagination currentPage={page} totalPages={8} onPageChange={setPage} label="Course results pages" />
+        <Pagination
+          currentPage={page}
+          totalPages={8}
+          onPageChange={setPage}
+          label="Course results pages"
+        />
       </section>
 
       <section className="harness-section" aria-labelledby="dialogs-heading">
@@ -108,8 +133,27 @@ function PrimitivesHarness() {
       >
         <Input label="Lesson title" defaultValue="Accessible components" />
         <div className="harness-row harness-row--end">
-          <Button variant="secondary" onClick={() => setDialogOpen(false)}>Cancel</Button>
+          <Button variant="secondary" onClick={() => setNestedDialogOpen(true)}>
+            Open nested dialog
+          </Button>
+          <Button variant="secondary" onClick={() => setDialogOpen(false)}>
+            Cancel
+          </Button>
           <Button onClick={() => setDialogOpen(false)}>Save lesson</Button>
+        </div>
+      </Dialog>
+
+      <Dialog
+        open={nestedDialogOpen}
+        title="Confirm nested edit"
+        description="This dialog must be the only active modal layer."
+        onClose={() => setNestedDialogOpen(false)}
+      >
+        <div className="harness-row harness-row--end">
+          <Button variant="secondary" onClick={() => setNestedDialogOpen(false)}>
+            Cancel nested edit
+          </Button>
+          <Button onClick={() => setNestedDialogOpen(false)}>Confirm nested edit</Button>
         </div>
       </Dialog>
 

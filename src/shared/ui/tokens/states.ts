@@ -25,16 +25,19 @@ export type ComponentState =
 // State token map — maps each state to its semantic CSS variable names
 // These CSS variable names are defined in tokens.css.
 // ---------------------------------------------------------------------------
-export const stateTokenMap: Readonly<Record<ComponentState, Readonly<{
-  /** Background color CSS variable */
-  bg: string;
-  /** Foreground/text color CSS variable */
-  fg: string;
-  /** Border color CSS variable */
-  border: string;
-  /** ARIA attribute (or other a11y/data attribute) for the state (where applicable) */
-  ariaAttr?: string;
-}>>> = {
+export const stateTokenMap: Readonly<
+  Record<
+    ComponentState,
+    Readonly<{
+      /** Background color CSS variable */
+      bg: string;
+      /** Foreground/text color CSS variable */
+      fg: string;
+      /** Border color CSS variable */
+      border: string;
+    }>
+  >
+> = {
   initial: {
     bg: 'var(--color-surface)',
     fg: 'var(--text-primary)',
@@ -44,7 +47,6 @@ export const stateTokenMap: Readonly<Record<ComponentState, Readonly<{
     bg: 'var(--color-surface)',
     fg: 'var(--text-muted)',
     border: 'var(--border-default)',
-    ariaAttr: 'aria-busy="true"',
   },
   empty: {
     bg: 'var(--color-canvas)',
@@ -60,25 +62,21 @@ export const stateTokenMap: Readonly<Record<ComponentState, Readonly<{
     bg: 'var(--feedback-error-bg)',
     fg: 'var(--feedback-error)',
     border: 'var(--feedback-error)',
-    ariaAttr: 'aria-invalid="true"',
   },
   disabled: {
     bg: 'var(--state-disabled-bg)',
     fg: 'var(--state-disabled-text)',
     border: 'var(--border-default)',
-    ariaAttr: 'aria-disabled="true"',
   },
   focus: {
     bg: 'var(--color-surface)',
     fg: 'var(--text-primary)',
     border: 'var(--focus-ring)',
-    ariaAttr: 'data-focus-visible',
   },
   selected: {
     bg: 'var(--state-selected)',
     fg: 'var(--text-primary)',
     border: 'var(--action-primary-bg)',
-    ariaAttr: 'aria-selected="true"',
   },
 } as const;
 

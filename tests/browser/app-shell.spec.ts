@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page, type Request } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import {
   breakpointTokens,
   colorTokens,
@@ -9,6 +9,14 @@ import {
   zIndexTokens,
 } from '@shared/ui/tokens';
 import { installCatalogFixture } from './support/catalog-fixture';
+import {
+  createHttpFailureAccounting,
+  createRequestFailureAccounting,
+  findUnexpectedConsoleErrors,
+  type ConsoleErrorEvidence,
+  type HttpFailureIdentity,
+  type RequestFailureIdentity,
+} from './support/visual-quality';
 
 type BackendRole = 'student' | 'instructor' | 'admin';
 type ShellSurfaceViewportWidth = 320 | 390 | 768 | 1280 | 1440;
@@ -25,6 +33,9 @@ interface RepresentativeTokenSnapshot {
   durationBase: string;
   breakpointMd: string;
   zDropdown: string;
+  zSticky: string;
+  zAccessibility: string;
+  zModal: string;
   densityCardInner: string;
   htmlColor: string;
   htmlBackgroundColor: string;
@@ -32,9 +43,45 @@ interface RepresentativeTokenSnapshot {
   bodyBackgroundColor: string;
 }
 
-async function readRepresentativeTokenSnapshot(
-  page: Page,
-): Promise<RepresentativeTokenSnapshot> {
+interface HeaderSlotBox {
+  height: number;
+  width: number;
+  x: number;
+  y: number;
+}
+
+interface StudentHeaderGeometry {
+  account: HeaderSlotBox;
+  cartAccountGap: number;
+  cart: HeaderSlotBox;
+  catalog: HeaderSlotBox;
+  clientWidth: number;
+  hasVerticalScrollbar: boolean;
+  innerWidth: number;
+  learning: HeaderSlotBox;
+  learningWhiteSpace: string;
+  overflowFree: boolean;
+  search: HeaderSlotBox;
+  standardGap: number;
+}
+
+interface ExpectedRequestFailureInput extends RequestFailureIdentity {
+  occurrences?: number;
+}
+
+const CART_STRICT_MODE_ABORT: RequestFailureIdentity = {
+  method: 'GET',
+  path: '/cart',
+  errorText: 'net::ERR_ABORTED',
+};
+
+const ENROLLMENTS_STRICT_MODE_ABORT: RequestFailureIdentity = {
+  method: 'GET',
+  path: '/enrollments/my?page=1&page_size=20',
+  errorText: 'net::ERR_ABORTED',
+};
+
+async function readRepresentativeTokenSnapshot(page: Page): Promise<RepresentativeTokenSnapshot> {
   return page.evaluate(() => {
     const root = document.documentElement;
     const rootStyle = getComputedStyle(root);
@@ -51,6 +98,9 @@ async function readRepresentativeTokenSnapshot(
       durationBase: readToken('--duration-base'),
       breakpointMd: readToken('--bp-md'),
       zDropdown: readToken('--z-dropdown'),
+      zSticky: readToken('--z-sticky'),
+      zAccessibility: readToken('--z-accessibility'),
+      zModal: readToken('--z-modal'),
       densityCardInner: readToken('--density-card-inner'),
       htmlColor: rootStyle.color,
       htmlBackgroundColor: rootStyle.backgroundColor,
@@ -82,31 +132,58 @@ async function resolveBrowserFontFamily(page: Page, value: string) {
   }, value);
 }
 
-function monitorRuntime(page: Page, expectedHttpResourceErrors: readonly number[] = []) {
+function monitorRuntime(
+  page: Page,
+  expectedHttpFailures: readonly HttpFailureIdentity[] = [],
+  expectedRequestFailures: readonly ExpectedRequestFailureInput[] = [],
+) {
   const pageErrors: string[] = [];
-  const consoleErrors: string[] = [];
-  const requestFailures: string[] = [];
+  const consoleErrors: ConsoleErrorEvidence[] = [];
+  const responseAccounting = createHttpFailureAccounting();
+  const requestAccounting = createRequestFailureAccounting();
+  expectedHttpFailures.forEach((failure) => responseAccounting.allow(failure, 1));
+  expectedRequestFailures.forEach(({ occurrences = 1, ...failure }) => {
+    requestAccounting.allow(failure, occurrences);
+  });
   page.on('pageerror', (error) => pageErrors.push(error.stack ?? error.message));
   page.on('console', (message) => {
-    if (message.type() === 'error') consoleErrors.push(message.text());
+    if (message.type() === 'error')
+      consoleErrors.push({ text: message.text(), url: message.location().url });
   });
-  page.on('requestfailed', (request: Request) => {
-    requestFailures.push(`${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`);
+  page.on('requestfailed', (request) => {
+    requestAccounting.observe(
+      request.method(),
+      request.url(),
+      request.failure()?.errorText ?? 'unknown',
+    );
+  });
+  page.on('response', (response) => {
+    responseAccounting.observe(response.request().method(), response.url(), response.status());
   });
   return () => {
-    const remainingExpectedStatuses = [...expectedHttpResourceErrors];
-    const unexpectedRequestFailures = requestFailures.filter((failure) => !failure.endsWith('net::ERR_ABORTED'));
-    const unexpectedConsoleErrors = consoleErrors.filter((message) => {
-      const match = /^Failed to load resource: the server responded with a status of (\d{3}) \(.+\)$/.exec(message);
-      const status = match ? Number(match[1]) : null;
-      const expectedIndex = status === null ? -1 : remainingExpectedStatuses.indexOf(status);
-      if (expectedIndex < 0) return true;
-      remainingExpectedStatuses.splice(expectedIndex, 1);
-      return false;
-    });
+    const unexpectedConsoleErrors = findUnexpectedConsoleErrors(
+      consoleErrors,
+      responseAccounting.acceptedFailures(),
+      requestAccounting.acceptedFailures(),
+    );
     expect(pageErrors, 'uncaught browser errors').toEqual([]);
     expect(unexpectedConsoleErrors, 'unexpected browser console errors').toEqual([]);
-    expect(unexpectedRequestFailures, 'unexpected browser request failures').toEqual([]);
+    expect(
+      requestAccounting.violations().requestFailures,
+      'unexpected browser request failures',
+    ).toEqual([]);
+    expect(
+      requestAccounting.violations().unconsumedExpectedRequestFailures,
+      'expected browser request failures not observed',
+    ).toEqual([]);
+    expect(
+      responseAccounting.violations().errorResponses,
+      'unexpected HTTP error responses',
+    ).toEqual([]);
+    expect(
+      responseAccounting.violations().unconsumedExpectedResponses,
+      'expected HTTP error responses not observed',
+    ).toEqual([]);
   };
 }
 
@@ -114,19 +191,52 @@ async function mockAuthenticatedSession(page: Page, role: BackendRole) {
   await page.addInitScript(() => {
     localStorage.setItem('learnhub.access-token', 'browser-test-token');
   });
-  await page.route('**/me', async (route) => route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({
-      email: `${role}@example.com`,
-      name: role === 'student' ? 'Sam' : role === 'instructor' ? 'Indira' : 'Alex',
-      surname: 'User',
-      role,
-      birthday: null,
-      phone_number: null,
-      created_at: '2026-07-20T00:00:00Z',
+  await page.route('**/me', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        email: `${role}@example.com`,
+        name: role === 'student' ? 'Sam' : role === 'instructor' ? 'Indira' : 'Alex',
+        surname: 'User',
+        role,
+        birthday: null,
+        phone_number: null,
+        created_at: '2026-07-20T00:00:00Z',
+      }),
     }),
-  }));
+  );
+}
+
+async function mockStudentWorkspaceData(page: Page) {
+  await page.route('**/cart', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        id: 1,
+        items: [],
+        total_price: '0.00',
+        currency: 'USD',
+        item_count: 0,
+      }),
+    }),
+  );
+  await page.route('**/enrollments/my**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        items: [],
+        page: 1,
+        page_size: 20,
+        total: 0,
+        pages: 0,
+        has_next: false,
+        has_previous: false,
+      }),
+    }),
+  );
 }
 
 async function expectNoHorizontalOverflow(page: Page) {
@@ -147,13 +257,18 @@ async function expectNoHorizontalOverflow(page: Page) {
 async function expectShellSurfacesAtViewportEdges(page: Page, width: ShellSurfaceViewportWidth) {
   await page.setViewportSize({ width, height: 900 });
   await page.goto('/');
-  await page.getByRole('contentinfo').evaluate((footer) => footer.scrollIntoView({
-    block: 'center',
-    inline: 'nearest',
-  }));
-  await page.evaluate(() => new Promise<void>((resolve) => (
-    requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
-  )));
+  await page.getByRole('contentinfo').evaluate((footer) =>
+    footer.scrollIntoView({
+      block: 'center',
+      inline: 'nearest',
+    }),
+  );
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
 
   const geometry = await page.evaluate(() => {
     const header = document.querySelector('[data-app-shell-header]');
@@ -178,6 +293,7 @@ async function expectShellSurfacesAtViewportEdges(page: Page, width: ShellSurfac
       viewport: window.innerWidth,
       viewportHeight: window.innerHeight,
       scrollbarGutter: getComputedStyle(document.documentElement).scrollbarGutter,
+      rootOverflowY: getComputedStyle(document.documentElement).overflowY,
       root: { left: rootRect.left, right: rootRect.right, width: rootRect.width },
       header: { left: headerRect.left, right: headerRect.right },
       footer: { left: footerRect.left, right: footerRect.right },
@@ -189,6 +305,7 @@ async function expectShellSurfacesAtViewportEdges(page: Page, width: ShellSurfac
     };
   });
   expect(geometry.scrollbarGutter).toBe('auto');
+  expect(geometry.rootOverflowY).toBe('scroll');
   expect(geometry.footerVisible).toBe(true);
   expect(geometry.root.width).toBeGreaterThan(0);
   expect(geometry.root.left).toBeGreaterThanOrEqual(-1);
@@ -196,40 +313,48 @@ async function expectShellSurfacesAtViewportEdges(page: Page, width: ShellSurfac
   const physicalLeftGap = Math.max(0, geometry.root.left);
   const physicalRightGap = Math.max(0, geometry.viewport - geometry.root.right);
   expect(physicalLeftGap).toBeLessThanOrEqual(1);
-  expect(physicalRightGap).toBeLessThanOrEqual(1);
+  expect(physicalRightGap).toBeGreaterThanOrEqual(0);
+  expect(physicalRightGap).toBeLessThanOrEqual(17);
   for (const surface of [geometry.header, geometry.footer]) {
     expect(Math.abs(surface.left - geometry.root.left)).toBeLessThanOrEqual(1);
     expect(Math.abs(surface.right - geometry.root.right)).toBeLessThanOrEqual(1);
   }
 
   const screenshot = await page.screenshot({ animations: 'disabled' });
-  const edgePixels = await page.evaluate(async ({ imageBase64, points }) => {
-    const image = new Image();
-    image.src = `data:image/png;base64,${imageBase64}`;
-    await image.decode();
-    const canvas = document.createElement('canvas');
-    canvas.width = image.naturalWidth;
-    canvas.height = image.naturalHeight;
-    const context = canvas.getContext('2d');
-    if (!context) throw new Error('Screenshot pixel probe is unavailable');
-    context.drawImage(image, 0, 0);
-    const scaleX = image.naturalWidth / window.innerWidth;
-    const scaleY = image.naturalHeight / window.innerHeight;
-    return points.map(({ x, y }) => Array.from(context.getImageData(
-      Math.min(image.naturalWidth - 1, Math.max(0, Math.floor(x * scaleX))),
-      Math.min(image.naturalHeight - 1, Math.max(0, Math.floor(y * scaleY))),
-      1,
-      1,
-    ).data));
-  }, {
-    imageBase64: screenshot.toString('base64'),
-    points: [
-      { x: 0, y: geometry.headerY },
-      { x: geometry.viewport - 1, y: geometry.headerY },
-      { x: 0, y: geometry.footerY },
-      { x: geometry.viewport - 1, y: geometry.footerY },
-    ],
-  });
+  const edgePixels = await page.evaluate(
+    async ({ imageBase64, points }) => {
+      const image = new Image();
+      image.src = `data:image/png;base64,${imageBase64}`;
+      await image.decode();
+      const canvas = document.createElement('canvas');
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Screenshot pixel probe is unavailable');
+      context.drawImage(image, 0, 0);
+      const scaleX = image.naturalWidth / window.innerWidth;
+      const scaleY = image.naturalHeight / window.innerHeight;
+      return points.map(({ x, y }) =>
+        Array.from(
+          context.getImageData(
+            Math.min(image.naturalWidth - 1, Math.max(0, Math.floor(x * scaleX))),
+            Math.min(image.naturalHeight - 1, Math.max(0, Math.floor(y * scaleY))),
+            1,
+            1,
+          ).data,
+        ),
+      );
+    },
+    {
+      imageBase64: screenshot.toString('base64'),
+      points: [
+        { x: 0, y: geometry.headerY },
+        { x: Math.max(0, Math.ceil(geometry.root.right) - 1), y: geometry.headerY },
+        { x: 0, y: geometry.footerY },
+        { x: Math.max(0, Math.ceil(geometry.root.right) - 1), y: geometry.footerY },
+      ],
+    },
+  );
   expect(edgePixels[0]).toEqual(geometry.headerColor);
   expect(edgePixels[1]).toEqual(geometry.headerColor);
   expect(edgePixels[2]).toEqual(geometry.footerColor);
@@ -256,12 +381,12 @@ async function expectBrandComposition(brand: Locator) {
     const outline = mark?.querySelector('rect');
     const book = mark?.querySelector('path');
     if (
-      marks.length !== 1
-      || wordmarks.length !== 1
-      || !(mark instanceof SVGElement)
-      || !(wordmark instanceof HTMLElement)
-      || !(outline instanceof SVGElement)
-      || !(book instanceof SVGElement)
+      marks.length !== 1 ||
+      wordmarks.length !== 1 ||
+      !(mark instanceof SVGElement) ||
+      !(wordmark instanceof HTMLElement) ||
+      !(outline instanceof SVGElement) ||
+      !(book instanceof SVGElement)
     ) {
       throw new Error('Brand composition targets are unavailable');
     }
@@ -292,14 +417,16 @@ async function expectBrandComposition(brand: Locator) {
       centerDelta: Math.abs(
         (markRect.top + markRect.bottom) / 2 - (wordmarkRect.top + wordmarkRect.bottom) / 2,
       ),
-      markInsideLink: markRect.left >= linkRect.left - 0.5
-        && markRect.right <= linkRect.right + 0.5
-        && markRect.top >= linkRect.top - 0.5
-        && markRect.bottom <= linkRect.bottom + 0.5,
-      wordmarkInsideLink: wordmarkRect.left >= linkRect.left - 0.5
-        && wordmarkRect.right <= linkRect.right + 0.5
-        && wordmarkRect.top >= linkRect.top - 0.5
-        && wordmarkRect.bottom <= linkRect.bottom + 0.5,
+      markInsideLink:
+        markRect.left >= linkRect.left - 0.5 &&
+        markRect.right <= linkRect.right + 0.5 &&
+        markRect.top >= linkRect.top - 0.5 &&
+        markRect.bottom <= linkRect.bottom + 0.5,
+      wordmarkInsideLink:
+        wordmarkRect.left >= linkRect.left - 0.5 &&
+        wordmarkRect.right <= linkRect.right + 0.5 &&
+        wordmarkRect.top >= linkRect.top - 0.5 &&
+        wordmarkRect.bottom <= linkRect.bottom + 0.5,
       outlineStroke: outlineStyle.stroke,
       bookFill: bookStyle.fill,
       expectedPurple: resolveColor('--action-primary-bg'),
@@ -358,7 +485,8 @@ async function expectBrandContainedInHeader(brand: Locator) {
   const containment = await brand.evaluate((link) => {
     const header = link.closest('[data-app-shell-header]');
     const inner = header?.firstElementChild;
-    if (!(inner instanceof HTMLElement)) throw new Error('Header containment target is unavailable');
+    if (!(inner instanceof HTMLElement))
+      throw new Error('Header containment target is unavailable');
     const linkRect = link.getBoundingClientRect();
     const innerRect = inner.getBoundingClientRect();
     return {
@@ -380,7 +508,7 @@ async function expectAnonymousDesktopHeaderGeometry(page: Page, width: DesktopVi
   const brand = page.getByRole('link', { name: 'LearnHub home' });
   const navigation = page.getByRole('navigation', { name: 'Primary navigation' });
   const accountNavigation = page.getByRole('navigation', { name: 'Account navigation' });
-  const browse = navigation.getByRole('link', { name: 'Browse courses' });
+  const browse = navigation.getByRole('link', { name: 'Catalog' });
   const login = accountNavigation.getByRole('link', { name: 'Log in' });
   const signup = accountNavigation.getByRole('link', { name: 'Sign up' });
   await expectBrandComposition(brand);
@@ -388,7 +516,7 @@ async function expectAnonymousDesktopHeaderGeometry(page: Page, width: DesktopVi
   await expect(browse).toBeVisible();
   await expect(login).toBeVisible();
   await expect(signup).toBeVisible();
-  expect(await navigation.locator('a').allTextContents()).toEqual(['Browse courses']);
+  expect(await navigation.locator('a').allTextContents()).toEqual(['Catalog']);
   expect(await accountNavigation.locator('a').allTextContents()).toEqual(['Log in', 'Sign up']);
 
   const [brandBox, browseBox, loginBox, signupBox] = await Promise.all([
@@ -397,22 +525,12 @@ async function expectAnonymousDesktopHeaderGeometry(page: Page, width: DesktopVi
     requiredBoundingBox(login),
     requiredBoundingBox(signup),
   ]);
-  const headerContentRight = await brand.evaluate((link) => {
-    const header = link.closest('[data-app-shell-header]');
-    const inner = header?.firstElementChild;
-    if (!(inner instanceof HTMLElement)) throw new Error('Header geometry target is unavailable');
-    const rect = inner.getBoundingClientRect();
-    return rect.right - Number.parseFloat(getComputedStyle(inner).paddingRight);
-  });
   const brandToBrowseGap = browseBox.x - (brandBox.x + brandBox.width);
-  const browseToLoginGap = loginBox.x - (browseBox.x + browseBox.width);
   const loginToSignupGap = signupBox.x - (loginBox.x + loginBox.width);
   expect(brandToBrowseGap).toBeGreaterThanOrEqual(0);
   expect(brandToBrowseGap).toBeLessThanOrEqual(32);
   expect(loginToSignupGap).toBeGreaterThanOrEqual(0);
   expect(loginToSignupGap).toBeLessThanOrEqual(16);
-  expect(browseToLoginGap).toBeGreaterThan(loginToSignupGap);
-  expect(Math.abs(signupBox.x + signupBox.width - headerContentRight)).toBeLessThanOrEqual(1);
 
   const idleStyles = await Promise.all([
     browse.evaluate((link) => {
@@ -457,14 +575,18 @@ async function expectAnonymousDesktopHeaderGeometry(page: Page, width: DesktopVi
   expect(idleStyles[1].color).toBe(idleStyles[1].expectedColor);
   expect(idleStyles[1].background).toBe(idleStyles[1].expectedBackground);
   await signup.hover();
-  await expect.poll(() => signup.evaluate((link) => {
-    const probe = document.createElement('span');
-    probe.style.background = 'var(--action-primary-bg-hover)';
-    document.body.append(probe);
-    const expectedBackground = getComputedStyle(probe).backgroundColor;
-    probe.remove();
-    return getComputedStyle(link).backgroundColor === expectedBackground;
-  })).toBe(true);
+  await expect
+    .poll(() =>
+      signup.evaluate((link) => {
+        const probe = document.createElement('span');
+        probe.style.background = 'var(--action-primary-bg-hover)';
+        document.body.append(probe);
+        const expectedBackground = getComputedStyle(probe).backgroundColor;
+        probe.remove();
+        return getComputedStyle(link).backgroundColor === expectedBackground;
+      }),
+    )
+    .toBe(true);
   await signup.focus();
   await expect(signup).toBeFocused();
   const focusStyle = await signup.evaluate((link) => getComputedStyle(link).outlineStyle);
@@ -472,7 +594,8 @@ async function expectAnonymousDesktopHeaderGeometry(page: Page, width: DesktopVi
   await expectNoHorizontalOverflow(page);
 
   await page.goto('/login');
-  const activeLogin = page.getByRole('navigation', { name: 'Primary navigation' })
+  const activeLogin = page
+    .getByRole('navigation', { name: 'Account navigation' })
     .getByRole('link', { name: 'Log in' });
   await expect(activeLogin).toHaveAttribute('aria-current', 'page');
   const activeLoginStyle = await activeLogin.evaluate((link) => {
@@ -501,14 +624,10 @@ async function expectAnonymousMobileNavigation(page: Page, width: MobileViewport
   await menu.focus();
   await page.keyboard.press('Enter');
   const navigation = page.getByRole('navigation', { name: 'Mobile navigation' });
-  const browse = navigation.getByRole('link', { name: 'Browse courses' });
+  const browse = navigation.getByRole('link', { name: 'Catalog' });
   const login = navigation.getByRole('link', { name: 'Log in' });
   const signup = navigation.getByRole('link', { name: 'Sign up' });
-  expect(await navigation.locator('a').allTextContents()).toEqual([
-    'Browse courses',
-    'Log in',
-    'Sign up',
-  ]);
+  expect(await navigation.locator('a').allTextContents()).toEqual(['Catalog', 'Log in', 'Sign up']);
   await browse.focus();
   await page.keyboard.press('Tab');
   await expect(login).toBeFocused();
@@ -517,29 +636,53 @@ async function expectAnonymousMobileNavigation(page: Page, width: MobileViewport
   await expectNoHorizontalOverflow(page);
 }
 
-async function expectInstructorDesktopHeaderGeometry(page: Page, width: DesktopViewportWidth) {
+async function expectInstructorDesktopHeaderNavigation(page: Page, width: DesktopViewportWidth) {
   await page.setViewportSize({ width, height: 900 });
   await page.goto('/instructor/courses');
   await expect(page.getByRole('heading', { level: 1, name: 'Instructor courses' })).toBeVisible();
 
   const navigation = page.getByRole('navigation', { name: 'Primary navigation' });
-  const instructorCourses = navigation.getByRole('link', { name: 'Instructor courses' });
-  const profile = page.getByText('Indira - instructor', { exact: true });
+  const instructorCourses = navigation.getByRole('link', { name: 'My courses' });
+  const profile = page.getByLabel('Indira User');
   await expect(navigation).toBeVisible();
   await expect(instructorCourses).toBeVisible();
   await expect(instructorCourses).toHaveAttribute('aria-current', 'page');
   await expect(profile).toBeVisible();
+  await expect(page.getByRole('link', { name: /^Cart/ })).toHaveCount(0);
 
-  const [linkBox, profileBox] = await Promise.all([
-    requiredBoundingBox(instructorCourses),
-    requiredBoundingBox(profile),
-  ]);
-  const gap = profileBox.x - (linkBox.x + linkBox.width);
-  expect(linkBox.x + linkBox.width).toBeLessThan(profileBox.x);
-  expect(gap).toBeGreaterThan(0);
-  expect(gap).toBeLessThanOrEqual(24);
+  await requiredBoundingBox(instructorCourses);
+  await requiredBoundingBox(profile);
   await expectNoHorizontalOverflow(page);
-  return gap;
+}
+
+async function readStudentHeaderGeometry(page: Page): Promise<StudentHeaderGeometry> {
+  return page.getByRole('banner').evaluate((header) => {
+    const read = (selector: string) => {
+      const element = header.querySelector<HTMLElement>(selector);
+      if (!element) throw new Error(`Missing header slot target: ${selector}`);
+      const rect = element.getBoundingClientRect();
+      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+    };
+    const root = document.documentElement;
+    const cart = read('a[aria-label^="Cart"]');
+    const account = read('[data-account-initials]');
+    return {
+      catalog: read('nav[aria-label="Primary navigation"] a[href="/"]'),
+      search: read('input[name="search_query"]'),
+      cart,
+      account,
+      cartAccountGap: account.x - (cart.x + cart.width),
+      learning: read('a[href="/learning"]'),
+      clientWidth: root.clientWidth,
+      innerWidth: window.innerWidth,
+      hasVerticalScrollbar: root.scrollHeight > root.clientHeight,
+      learningWhiteSpace: getComputedStyle(
+        header.querySelector<HTMLElement>('a[href="/learning"]')!,
+      ).whiteSpace,
+      overflowFree: root.scrollWidth <= root.clientWidth,
+      standardGap: Number.parseFloat(getComputedStyle(root).getPropertyValue('--spacing-4')),
+    };
+  });
 }
 
 async function expectMenuAtHeaderContentEdge(page: Page) {
@@ -561,9 +704,9 @@ async function expectMobileMenuGeometry(page: Page) {
     const label = labels.item(0);
     const header = button.closest('[data-app-shell-header]');
     if (
-      labels.length !== 1
-      || !(label instanceof HTMLElement)
-      || !(header instanceof HTMLElement)
+      labels.length !== 1 ||
+      !(label instanceof HTMLElement) ||
+      !(header instanceof HTMLElement)
     ) {
       throw new Error('Mobile menu geometry targets are unavailable');
     }
@@ -656,7 +799,9 @@ test('keeps anonymous mobile navigation in visual and keyboard order', async ({ 
   assertRuntimeClean();
 });
 
-test('keeps header and footer surfaces at the physical viewport edges without symmetric gutters', async ({ page }) => {
+test('keeps header and footer surfaces at the physical viewport edges without symmetric gutters', async ({
+  page,
+}) => {
   const assertRuntimeClean = monitorRuntime(page);
   for (const width of [320, 390, 768, 1280, 1440] as const) {
     await expectShellSurfacesAtViewportEdges(page, width);
@@ -665,8 +810,13 @@ test('keeps header and footer surfaces at the physical viewport edges without sy
 });
 
 test('keeps the complete LearnHub brand accessible when authenticated', async ({ page }) => {
-  const assertRuntimeClean = monitorRuntime(page);
+  const assertRuntimeClean = monitorRuntime(
+    page,
+    [],
+    [ENROLLMENTS_STRICT_MODE_ABORT, CART_STRICT_MODE_ABORT],
+  );
   await mockAuthenticatedSession(page, 'student');
+  await mockStudentWorkspaceData(page);
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/learning');
   const brand = page.getByRole('link', { name: 'LearnHub home' });
@@ -675,38 +825,36 @@ test('keeps the complete LearnHub brand accessible when authenticated', async ({
   assertRuntimeClean();
 });
 
-test('exposes representative production tokens across marketplace and workspace density', async ({ page }) => {
+test('exposes representative production tokens across marketplace and workspace density', async ({
+  page,
+}) => {
   const assertRuntimeClean = monitorRuntime(page);
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.goto('/');
 
   const marketplace = await readRepresentativeTokenSnapshot(page);
-  const expectedCanvasColor = await resolveBrowserColor(
-    page,
-    colorTokens['--color-canvas'],
-  );
-  const expectedTextColor = await resolveBrowserColor(
-    page,
-    colorTokens['--text-primary'],
-  );
+  const expectedCanvasColor = await resolveBrowserColor(page, colorTokens['--color-canvas']);
+  const expectedTextColor = await resolveBrowserColor(page, colorTokens['--text-primary']);
   const expectedFontFamily = await resolveBrowserFontFamily(
     page,
     typographyTokens['--font-family-base'],
   );
 
   expect(marketplace.density).toBe('marketplace');
-  expect(marketplace.colorCanvas.toLowerCase())
-    .toBe(colorTokens['--color-canvas'].toLowerCase());
-  expect(marketplace.textPrimary.toLowerCase())
-    .toBe(colorTokens['--text-primary'].toLowerCase());
+  expect(marketplace.colorCanvas.toLowerCase()).toBe(colorTokens['--color-canvas'].toLowerCase());
+  expect(marketplace.textPrimary.toLowerCase()).toBe(colorTokens['--text-primary'].toLowerCase());
   expect(marketplace.fontFamilyBase).toBe(typographyTokens['--font-family-base']);
   expect(marketplace.spacing2).toBe(spacingTokens['--spacing-2']);
   expect(marketplace.controlHeightMd).toBe(spacingTokens['--control-height-md']);
   expect(marketplace.durationBase).toBe(motionTokens['--duration-base']);
   expect(marketplace.breakpointMd).toBe(breakpointTokens['--bp-md']);
   expect(marketplace.zDropdown).toBe(zIndexTokens['--z-dropdown']);
-  expect(marketplace.densityCardInner)
-    .toBe(densityTokens.marketplace.cardInnerPadding);
+  expect(marketplace.zSticky).toBe(zIndexTokens['--z-sticky']);
+  expect(marketplace.zAccessibility).toBe(zIndexTokens['--z-accessibility']);
+  expect(marketplace.zModal).toBe(zIndexTokens['--z-modal']);
+  expect(Number(marketplace.zSticky)).toBeLessThan(Number(marketplace.zAccessibility));
+  expect(Number(marketplace.zAccessibility)).toBeLessThan(Number(marketplace.zModal));
+  expect(marketplace.densityCardInner).toBe(densityTokens.marketplace.cardInnerPadding);
   expect(marketplace.htmlColor).toBe(expectedTextColor);
   expect(marketplace.htmlBackgroundColor).toBe(expectedCanvasColor);
   expect(marketplace.bodyBackgroundColor).toBe(expectedCanvasColor);
@@ -714,71 +862,317 @@ test('exposes representative production tokens across marketplace and workspace 
 
   await mockAuthenticatedSession(page, 'instructor');
   await page.goto('/instructor/courses');
-  await expect(page.getByRole('heading', { level: 1, name: 'Instructor courses' }))
-    .toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Instructor courses' })).toBeVisible();
 
   const workspace = await readRepresentativeTokenSnapshot(page);
   expect(workspace.density).toBe('workspace');
-  expect(workspace.densityCardInner)
-    .toBe(densityTokens.workspace.cardInnerPadding);
+  expect(workspace.densityCardInner).toBe(densityTokens.workspace.cardInnerPadding);
   expect(workspace.colorCanvas).toBe(marketplace.colorCanvas);
   expect(workspace.spacing2).toBe(marketplace.spacing2);
   expect(workspace.controlHeightMd).toBe(marketplace.controlHeightMd);
   expect(workspace.durationBase).toBe(marketplace.durationBase);
   expect(workspace.breakpointMd).toBe(marketplace.breakpointMd);
   expect(workspace.zDropdown).toBe(marketplace.zDropdown);
+  expect(workspace.zSticky).toBe(marketplace.zSticky);
+  expect(workspace.zAccessibility).toBe(marketplace.zAccessibility);
+  expect(workspace.zModal).toBe(marketplace.zModal);
   await expectNoHorizontalOverflow(page);
   assertRuntimeClean();
 });
 
-test('keeps instructor courses immediately adjacent to the desktop profile', async ({ page }) => {
+test('keeps the accepted instructor navigation and initials marker at desktop widths', async ({
+  page,
+}) => {
   const assertRuntimeClean = monitorRuntime(page);
   await mockAuthenticatedSession(page, 'instructor');
-  const gapAt768 = await expectInstructorDesktopHeaderGeometry(page, 768);
-  const gapAt1280 = await expectInstructorDesktopHeaderGeometry(page, 1280);
-  expect(Math.abs(gapAt768 - gapAt1280)).toBeLessThanOrEqual(1);
+  await expectInstructorDesktopHeaderNavigation(page, 768);
+  await expectInstructorDesktopHeaderNavigation(page, 1280);
+  assertRuntimeClean();
+});
+
+test('keeps anonymous Cart-to-Login actions in their stable desktop end group', async ({
+  page,
+}) => {
+  const assertRuntimeClean = monitorRuntime(page);
+  await page.setViewportSize({ width: 1024, height: 800 });
+  await page.goto('/login?returnTo=%2Fcart');
+  await expect(page.getByRole('heading', { level: 1, name: 'Log in' })).toBeVisible();
+
+  const geometry = await page.getByRole('banner').evaluate((header) => {
+    const byName = (name: string) =>
+      Array.from(header.querySelectorAll<HTMLAnchorElement>('a')).find(
+        (link) => (link.getAttribute('aria-label') ?? link.textContent?.trim()) === name,
+      );
+    const cart = byName('Cart');
+    const logIn = byName('Log in');
+    const signUp = byName('Sign up');
+    if (!cart || !logIn || !signUp)
+      throw new Error('Anonymous Cart/auth header controls are missing.');
+    const rect = (element: Element) => {
+      const box = element.getBoundingClientRect();
+      return { left: box.left, top: box.top, width: box.width, height: box.height };
+    };
+    return {
+      sequence: Array.from(header.querySelectorAll('a, input')).map((element) =>
+        element instanceof HTMLInputElement
+          ? element.name
+          : (element.getAttribute('aria-label') ?? element.textContent?.trim()),
+      ),
+      cart: rect(cart),
+      logIn: rect(logIn),
+      signUp: rect(signUp),
+      loginWhiteSpace: getComputedStyle(logIn).whiteSpace,
+      signUpWhiteSpace: getComputedStyle(signUp).whiteSpace,
+    };
+  });
+  expect(geometry.sequence).toEqual(['LearnHub home', 'Catalog', 'Cart', 'Log in', 'Sign up']);
+  expect(geometry.cart.height).toBeGreaterThanOrEqual(44);
+  expect(geometry.logIn.height).toBeGreaterThanOrEqual(44);
+  expect(geometry.signUp.height).toBeGreaterThanOrEqual(44);
+  expect(geometry.loginWhiteSpace).toBe('nowrap');
+  expect(geometry.signUpWhiteSpace).toBe('nowrap');
   assertRuntimeClean();
 });
 
 test('shows a bootstrap state then student-only workspace navigation', async ({ page }) => {
-  const assertRuntimeClean = monitorRuntime(page);
+  const assertRuntimeClean = monitorRuntime(
+    page,
+    [],
+    [ENROLLMENTS_STRICT_MODE_ABORT, CART_STRICT_MODE_ABORT],
+  );
   await mockAuthenticatedSession(page, 'student');
+  await mockStudentWorkspaceData(page);
   await page.route('**/me', async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 150));
     await route.fallback();
   });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/learning');
-  await expect(page.getByRole('heading', { level: 1, name: 'Preparing your workspace' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Preparing your workspace' }),
+  ).toBeVisible();
   await expect(page.getByRole('heading', { level: 1, name: 'My learning' })).toBeVisible();
   await expect(page).toHaveTitle('My learning | LearnHub');
   const navigation = page.getByRole('navigation', { name: 'Primary navigation' });
-  await expect(navigation.getByRole('link', { name: 'Cart' })).toBeVisible();
-  await expect(navigation.getByRole('link', { name: 'My learning' })).toHaveAttribute('aria-current', 'page');
-  await expect(navigation.getByRole('link', { name: 'Instructor courses' })).toHaveCount(0);
-  await expect(page.getByText('Sam - student', { exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: /^Cart/ })).toBeVisible();
+  await expect(navigation.getByRole('link', { name: 'My learning' })).toHaveAttribute(
+    'aria-current',
+    'page',
+  );
+  await expect(navigation.getByRole('link', { name: 'My courses' })).toHaveCount(0);
+  await expect(page.getByLabel('Sam User')).toBeVisible();
   assertRuntimeClean();
 });
 
-test('rejects malformed successful session data without authenticating or clearing it as a 401', async ({ page }) => {
+test('keeps the student Catalog, Search, Cart, and account slots stable across Catalog, My learning, and Cart', async ({
+  page,
+}) => {
+  const assertRuntimeClean = monitorRuntime(
+    page,
+    [],
+    [CART_STRICT_MODE_ABORT, ENROLLMENTS_STRICT_MODE_ABORT],
+  );
+  await mockAuthenticatedSession(page, 'student');
+  await mockStudentWorkspaceData(page);
+  await page.route('**/courses**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        items: [],
+        page: 1,
+        page_size: 20,
+        total: 0,
+        pages: 0,
+        has_next: false,
+        has_previous: false,
+      }),
+    }),
+  );
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/');
+  await expect(page.getByRole('link', { name: 'Catalog', exact: true })).toBeVisible();
+
+  const readSlots = () =>
+    page.getByRole('banner').evaluate((header) => {
+      const read = (selector: string) => {
+        const element = header.querySelector<HTMLElement>(selector);
+        if (!element) throw new Error(`Missing header slot target: ${selector}`);
+        const rect = element.getBoundingClientRect();
+        return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+      };
+      return {
+        catalog: read('nav[aria-label="Primary navigation"] a[href="/"]'),
+        search: read('input[name="search_query"]'),
+        cart: read('a[aria-label^="Cart"]'),
+        account: read('[data-account-initials]'),
+        learningWhiteSpace: getComputedStyle(
+          header.querySelector<HTMLElement>('a[href="/learning"]')!,
+        ).whiteSpace,
+        overflowFree: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+      };
+    });
+
+  const catalogSlots = await readSlots();
+  await page.getByRole('link', { name: 'My learning', exact: true }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'My learning' })).toBeVisible();
+  const learningSlots = await readSlots();
+
+  await page.getByRole('link', { name: /^Cart/ }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Cart' })).toBeVisible();
+  const cartSlots = await readSlots();
+
+  expect(learningSlots).toEqual(catalogSlots);
+  expect(cartSlots).toEqual(catalogSlots);
+  expect(learningSlots.learningWhiteSpace).toBe('nowrap');
+  expect(learningSlots.search.width).toBeCloseTo(544, 1);
+  expect(learningSlots.cart.height).toBeGreaterThanOrEqual(44);
+  expect(learningSlots.account.height).toBeGreaterThanOrEqual(44);
+  expect(learningSlots.overflowFree).toBe(true);
+  assertRuntimeClean();
+});
+
+test('keeps Search within the actual My learning-to-Cart desktop gap', async ({ page }) => {
+  const assertRuntimeClean = monitorRuntime(
+    page,
+    [],
+    [
+      { ...ENROLLMENTS_STRICT_MODE_ABORT, occurrences: 6 },
+      { ...CART_STRICT_MODE_ABORT, occurrences: 6 },
+    ],
+  );
+  await mockAuthenticatedSession(page, 'student');
+  await mockStudentWorkspaceData(page);
+
+  for (const width of [1024, 1090, 1100, 1110, 1280, 1440] as const) {
+    await page.setViewportSize({ width, height: 720 });
+    await page.goto('/learning');
+    await expect(page.getByRole('heading', { level: 1, name: 'My learning' })).toBeVisible();
+
+    const geometry = await readStudentHeaderGeometry(page);
+    const learningRight = geometry.learning.x + geometry.learning.width;
+    const searchRight = geometry.search.x + geometry.search.width;
+    const freeGapCenter = (learningRight + geometry.cart.x) / 2;
+    const searchCenter = (geometry.search.x + searchRight) / 2;
+
+    expect(geometry.standardGap).toBeGreaterThan(0);
+    expect(geometry.search.x).toBeGreaterThanOrEqual(learningRight + geometry.standardGap - 0.5);
+    expect(geometry.cart.x).toBeGreaterThanOrEqual(searchRight + geometry.standardGap - 0.5);
+    expect(searchCenter).toBeCloseTo(freeGapCenter, 1);
+    expect(geometry.search.width).toBeLessThanOrEqual(544);
+    expect(geometry.cart.height).toBeGreaterThanOrEqual(44);
+    expect(geometry.account.height).toBeGreaterThanOrEqual(44);
+    expect(geometry.cartAccountGap).toBeCloseTo(15, 1);
+    expect(geometry.learningWhiteSpace).toBe('nowrap');
+    expect(geometry.overflowFree).toBe(true);
+  }
+
+  assertRuntimeClean();
+});
+
+test('preserves student header geometry when Catalog alone requires a document scrollbar', async ({
+  page,
+}) => {
+  const assertRuntimeClean = monitorRuntime(
+    page,
+    [],
+    [
+      { ...CART_STRICT_MODE_ABORT, occurrences: 13 },
+      { ...ENROLLMENTS_STRICT_MODE_ABORT, occurrences: 4 },
+    ],
+  );
+  await mockAuthenticatedSession(page, 'student');
+  await mockStudentWorkspaceData(page);
+  await page.route('**/courses**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        items: [],
+        page: 1,
+        page_size: 20,
+        total: 0,
+        pages: 0,
+        has_next: false,
+        has_previous: false,
+      }),
+    }),
+  );
+
+  for (const width of [1090, 1100, 1110, 1280] as const) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/');
+    await page.evaluate(() => {
+      const spacer = document.createElement('div');
+      spacer.id = 'scrollbar-geometry-spacer';
+      spacer.setAttribute('aria-hidden', 'true');
+      spacer.style.blockSize = '200vh';
+      document.body.append(spacer);
+    });
+    const tallCatalog = await readStudentHeaderGeometry(page);
+    expect(tallCatalog.hasVerticalScrollbar).toBe(true);
+
+    await page.evaluate(() => document.querySelector('#scrollbar-geometry-spacer')?.remove());
+    await page.goto('/learning');
+    await expect(page.getByRole('heading', { level: 1, name: 'My learning' })).toBeVisible();
+    const shortLearning = await readStudentHeaderGeometry(page);
+    expect(shortLearning.hasVerticalScrollbar).toBe(false);
+
+    expect(shortLearning.catalog).toEqual(tallCatalog.catalog);
+    expect(shortLearning.search).toEqual(tallCatalog.search);
+    expect(shortLearning.cart).toEqual(tallCatalog.cart);
+    expect(shortLearning.account).toEqual(tallCatalog.account);
+    expect(shortLearning.clientWidth).toBe(tallCatalog.clientWidth);
+    expect(shortLearning.learningWhiteSpace).toBe('nowrap');
+    expect(shortLearning.overflowFree).toBe(true);
+
+    await page.goto('/');
+    await expect(page.getByRole('link', { name: 'Catalog', exact: true })).toBeVisible();
+    await page.evaluate(() => {
+      const spacer = document.createElement('div');
+      spacer.id = 'scrollbar-geometry-spacer';
+      spacer.setAttribute('aria-hidden', 'true');
+      spacer.style.blockSize = '200vh';
+      document.body.append(spacer);
+    });
+    const returnedTallCatalog = await readStudentHeaderGeometry(page);
+    expect(returnedTallCatalog).toEqual(tallCatalog);
+  }
+
+  await page.setViewportSize({ width: 390, height: 720 });
+  await page.goto('/');
+  await expectNoHorizontalOverflow(page);
+  assertRuntimeClean();
+});
+
+test('rejects malformed successful session data without authenticating or clearing it as a 401', async ({
+  page,
+}) => {
   const assertRuntimeClean = monitorRuntime(page);
-  await page.addInitScript(() => localStorage.setItem('learnhub.access-token', 'potentially-valid-token'));
-  await page.route('**/me', async (route) => route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({ role: 'student' }),
-  }));
+  await page.addInitScript(() =>
+    localStorage.setItem('learnhub.access-token', 'potentially-valid-token'),
+  );
+  await page.route('**/me', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ role: 'student' }),
+    }),
+  );
   await page.goto('/learning');
   await expect(page.getByRole('heading', { level: 1, name: 'Session check failed' })).toBeVisible();
   await expect(page.getByText(/student/)).toHaveCount(0);
   await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toHaveCount(0);
-  expect(await page.evaluate(() => localStorage.getItem('learnhub.access-token')))
-    .toBe('potentially-valid-token');
-  await expect(page).toHaveTitle('LearnHub');
+  expect(await page.evaluate(() => localStorage.getItem('learnhub.access-token'))).toBe(
+    'potentially-valid-token',
+  );
+  await expect(page).toHaveTitle('Session check failed | LearnHub');
   assertRuntimeClean();
 });
 
-test('keeps Router metadata, layout, density, and titles aligned for a case/trailing parameter route', async ({ page }) => {
+test('keeps Router metadata, layout, density, and titles aligned for a case/trailing parameter route', async ({
+  page,
+}) => {
   const assertRuntimeClean = monitorRuntime(page);
   await mockAuthenticatedSession(page, 'instructor');
   await page.setViewportSize({ width: 1280, height: 720 });
@@ -802,30 +1196,45 @@ test('keeps wrong-role content hidden behind an accessible forbidden state', asy
   await mockAuthenticatedSession(page, 'instructor');
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/cart');
-  await expect(page.getByRole('heading', { level: 1, name: 'You do not have access to this page' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'You do not have access to this page' }),
+  ).toBeVisible();
   await expect(page.getByRole('heading', { level: 1, name: 'Cart' })).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Back to catalog' })).toBeVisible();
   assertRuntimeClean();
 });
 
 test('clears an invalid stored bearer when /me rejects it', async ({ page }) => {
-  const assertRuntimeClean = monitorRuntime(page, [401]);
+  const assertRuntimeClean = monitorRuntime(page, [{ method: 'GET', path: '/me', status: 401 }]);
   await page.addInitScript(() => localStorage.setItem('learnhub.access-token', 'expired-token'));
-  await page.route('**/me', async (route) => route.fulfill({
-    status: 401,
-    contentType: 'application/json',
-    body: JSON.stringify({ detail: 'Expired token' }),
-  }));
+  await page.route('**/me', async (route) =>
+    route.fulfill({
+      status: 401,
+      contentType: 'application/json',
+      body: JSON.stringify({ detail: 'Expired token' }),
+    }),
+  );
   await page.goto('/');
-  await expect(page.getByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' }),
+  ).toBeVisible();
   await expect(page.getByRole('heading', { level: 2, name: 'Found 1 course' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Log in' })).toBeVisible();
+  await expect(
+    page
+      .getByRole('navigation', { name: 'Account navigation' })
+      .getByRole('link', { name: 'Log in', exact: true }),
+  ).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('learnhub.access-token'))).toBe(null);
   assertRuntimeClean();
 });
 
 test('announces a recoverable session error and retries /me', async ({ page }) => {
-  const assertRuntimeClean = monitorRuntime(page, [503]);
+  const assertRuntimeClean = monitorRuntime(
+    page,
+    [{ method: 'GET', path: '/me', status: 503 }],
+    [CART_STRICT_MODE_ABORT],
+  );
+  await mockStudentWorkspaceData(page);
   await page.addInitScript(() => localStorage.setItem('learnhub.access-token', 'retry-token'));
   let attempts = 0;
   await page.route('**/me', async (route) => {
@@ -858,7 +1267,9 @@ test('announces a recoverable session error and retries /me', async ({ page }) =
     'We could not verify your session. Check your connection and try again.',
   );
   await page.getByRole('button', { name: 'Try again' }).click();
-  await expect(page.getByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' }),
+  ).toBeVisible();
   await expect(page.getByRole('heading', { level: 2, name: 'Found 1 course' })).toBeVisible();
   expect(attempts).toBe(2);
   assertRuntimeClean();
@@ -871,7 +1282,7 @@ test('supports keyboard-operated mobile navigation and focus restoration', async
   await page.goto('/instructor/courses#mobile-menu-focus');
   await expect(page.getByRole('heading', { level: 1, name: 'Instructor courses' })).toBeVisible();
   const brand = page.getByRole('link', { name: 'LearnHub home' });
-  const profile = page.getByText('Indira - instructor', { exact: true });
+  const profile = page.getByLabel('Indira User');
   await expectBrandComposition(brand);
   await expectBrandContainedInHeader(brand);
   await expect(profile).toBeHidden();
@@ -887,14 +1298,15 @@ test('supports keyboard-operated mobile navigation and focus restoration', async
   await expectMobileMenuGeometry(page);
 
   await page.keyboard.press('Enter');
-  await page.getByRole('link', { name: 'Instructor courses' }).last().focus();
+  await page.getByRole('link', { name: 'My courses' }).last().focus();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('navigation', { name: 'Mobile navigation' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Open navigation' })).toBeFocused();
 
   await page.keyboard.press('Enter');
-  const currentRouteLink = page.getByRole('navigation', { name: 'Mobile navigation' })
-    .getByRole('link', { name: 'Instructor courses' });
+  const currentRouteLink = page
+    .getByRole('navigation', { name: 'Mobile navigation' })
+    .getByRole('link', { name: 'My courses' });
   await expect(currentRouteLink).toHaveAttribute('aria-current', 'page');
   await currentRouteLink.focus();
   await page.keyboard.press('Enter');
@@ -919,7 +1331,10 @@ test('supports keyboard-operated mobile navigation and focus restoration', async
   assertRuntimeClean();
 });
 
-test('preserves the source mobile menu and focus for modified and new-tab activation', async ({ page, context }) => {
+test('preserves the source mobile menu and focus for modified and new-tab activation', async ({
+  page,
+  context,
+}) => {
   const assertRuntimeClean = monitorRuntime(page);
   await mockAuthenticatedSession(page, 'instructor');
   await page.setViewportSize({ width: 390, height: 844 });
@@ -929,12 +1344,12 @@ test('preserves the source mobile menu and focus for modified and new-tab activa
   const menu = page.getByRole('button', { name: 'Open navigation' });
 
   async function openAndFocusInstructorCourses() {
-    if (await page.getByRole('navigation', { name: 'Mobile navigation' }).count() === 0) {
+    if ((await page.getByRole('navigation', { name: 'Mobile navigation' }).count()) === 0) {
       await menu.click();
     }
     const navigation = page.getByRole('navigation', { name: 'Mobile navigation' });
     await expect(navigation).toBeVisible();
-    const link = navigation.getByRole('link', { name: 'Instructor courses' });
+    const link = navigation.getByRole('link', { name: 'My courses' });
     await link.focus();
     await expect(link).toBeFocused();
     return { navigation, link };
@@ -999,15 +1414,88 @@ test('renders the not-found route at mobile width without overflow', async ({ pa
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/missing-page');
   await expect(page.getByRole('heading', { level: 1, name: 'Page not found' })).toBeVisible();
-  await expect(page).toHaveTitle('LearnHub');
-  await expect(page.getByRole('link', { name: 'Skip to main content' })).toHaveAttribute('href', '#main-content');
+  await expect(page).toHaveTitle('Page not found | LearnHub');
+  await expect(page.getByRole('link', { name: 'Skip to main content' })).toHaveAttribute(
+    'href',
+    '#main-content',
+  );
   await expectNoHorizontalOverflow(page);
   await page.setViewportSize({ width: 320, height: 740 });
   await expectNoHorizontalOverflow(page);
   assertRuntimeClean();
 });
 
-test('removes non-essential shell transitions when reduced motion is requested', async ({ page }) => {
+test('keeps focused skip navigation above sticky search chrome and below the dialog modal tier', async ({
+  page,
+}) => {
+  const assertRuntimeClean = monitorRuntime(page);
+  await page.addInitScript(() => {
+    localStorage.setItem('learnhub.catalog-search-history', JSON.stringify(['React testing']));
+  });
+  await installCatalogFixture(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/');
+
+  const search = page.getByRole('combobox', { name: 'Search courses' });
+  const searchListbox = page.getByRole('listbox', { name: 'Recent searches' });
+  await search.focus();
+  await expect(searchListbox).toBeVisible();
+  const dropdownLayers = await page.evaluate(() => {
+    const header = document.querySelector('[data-app-shell-header]');
+    const listbox = document.querySelector('[role="listbox"]');
+    if (!(header instanceof HTMLElement) || !(listbox instanceof HTMLElement)) {
+      throw new Error('Open search layering targets are unavailable');
+    }
+    return {
+      header: getComputedStyle(header).zIndex,
+      searchListbox: getComputedStyle(listbox).zIndex,
+    };
+  });
+  const skipLink = page.getByRole('link', { name: 'Skip to main content' });
+  await skipLink.focus();
+  await expect(skipLink).toBeFocused();
+  await expect(searchListbox).toHaveCount(0);
+  await expect
+    .poll(async () => {
+      const box = await skipLink.boundingBox();
+      return box !== null && box.y + box.height > 0;
+    })
+    .toBe(true);
+
+  const focusedSkipLayers = await page.evaluate(() => {
+    const skip = document.querySelector('a[href="#main-content"]');
+    if (!(skip instanceof HTMLElement)) {
+      throw new Error('Focused skip-link layering target is unavailable');
+    }
+    const rootStyle = getComputedStyle(document.documentElement);
+    const skipRect = skip.getBoundingClientRect();
+    return {
+      skip: getComputedStyle(skip).zIndex,
+      modal: rootStyle.getPropertyValue('--z-modal').trim(),
+      skipVisible: skipRect.bottom > 0 && skipRect.top < window.innerHeight,
+    };
+  });
+
+  expect(dropdownLayers).toEqual({
+    header: zIndexTokens['--z-sticky'],
+    searchListbox: zIndexTokens['--z-dropdown'],
+  });
+  expect(focusedSkipLayers).toEqual({
+    skip: zIndexTokens['--z-accessibility'],
+    // Dialog's portalled backdrop consumes this modal tier.
+    modal: zIndexTokens['--z-modal'],
+    skipVisible: true,
+  });
+  expect(Number(dropdownLayers.searchListbox)).toBeLessThan(Number(dropdownLayers.header));
+  expect(Number(dropdownLayers.header)).toBeLessThan(Number(focusedSkipLayers.skip));
+  expect(Number(focusedSkipLayers.skip)).toBeLessThan(Number(focusedSkipLayers.modal));
+  await expectNoHorizontalOverflow(page);
+  assertRuntimeClean();
+});
+
+test('removes non-essential shell transitions when reduced motion is requested', async ({
+  page,
+}) => {
   const assertRuntimeClean = monitorRuntime(page);
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.setViewportSize({ width: 1280, height: 844 });

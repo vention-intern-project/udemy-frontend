@@ -37,28 +37,21 @@ describe('Density mode tokens', () => {
       expect(densityTokens.workspace).toBeDefined();
     });
 
-    const REQUIRED_PROPS: Array<keyof typeof densityTokens['marketplace']> = [
+    const REQUIRED_PROPS: Array<keyof (typeof densityTokens)['marketplace']> = [
       'cardInnerPadding',
       'sectionGap',
       'itemGap',
       'formFieldGap',
       'gutter',
-      'headingType',
     ];
 
-    it.each(REQUIRED_PROPS)(
-      'marketplace density should have property: %s',
-      (prop) => {
-        expect(densityTokens.marketplace[prop]).toBeTruthy();
-      },
-    );
+    it.each(REQUIRED_PROPS)('marketplace density should have property: %s', (prop) => {
+      expect(densityTokens.marketplace[prop]).toBeTruthy();
+    });
 
-    it.each(REQUIRED_PROPS)(
-      'workspace density should have property: %s',
-      (prop) => {
-        expect(densityTokens.workspace[prop]).toBeTruthy();
-      },
-    );
+    it.each(REQUIRED_PROPS)('workspace density should have property: %s', (prop) => {
+      expect(densityTokens.workspace[prop]).toBeTruthy();
+    });
   });
 
   describe('Marketplace density values (comfortable)', () => {
@@ -190,9 +183,7 @@ describe('Density mode tokens', () => {
       const mktVars = buildDensityVars('marketplace');
       const wsVars = buildDensityVars('workspace');
       // At least some values differ
-      const allSame = Object.keys(mktVars).every(
-        (k) => mktVars[k] === wsVars[k],
-      );
+      const allSame = Object.keys(mktVars).every((k) => mktVars[k] === wsVars[k]);
       expect(allSame).toBe(false);
     });
   });

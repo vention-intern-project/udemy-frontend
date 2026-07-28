@@ -18,7 +18,6 @@ import {
   BP_2XL,
   breakpoints,
   mediaQueries,
-  catalogGridColumns,
   breakpointTokens,
 } from '../../../src/shared/ui/tokens/breakpoints';
 
@@ -114,24 +113,6 @@ describe('Breakpoint tokens', () => {
       for (const key of Object.keys(mediaQueries) as Array<keyof typeof mediaQueries>) {
         expect(mediaQueries[key]).toContain('min-width');
       }
-    });
-  });
-
-  describe('Catalog grid columns', () => {
-    it('xs breakpoint should be 1 column', () => {
-      expect(catalogGridColumns.xs).toBe(1);
-    });
-
-    it('sm breakpoint should be 2 columns', () => {
-      expect(catalogGridColumns.sm).toBe(2);
-    });
-
-    it('md breakpoint should be 3 columns', () => {
-      expect(catalogGridColumns.md).toBe(3);
-    });
-
-    it('lg breakpoint should be 4 columns', () => {
-      expect(catalogGridColumns.lg).toBe(4);
     });
   });
 

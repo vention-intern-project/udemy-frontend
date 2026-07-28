@@ -1,0 +1,29 @@
+.link {
+  display: inline-flex;
+  align-items: center;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  min-block-size: var(--control-height-md);
+  padding-inline: var(--spacing-3);
+  border-radius: var(--radius-md);
+  color: var(--action-link);
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+
+.link:visited {
+  color: var(--action-link);
+}
+
+.link:hover {
+  background: var(--action-secondary-bg-hover);
+}
+
+.link:active {
+  background: var(--action-secondary-bg-pressed);
+}
+
+.link:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}

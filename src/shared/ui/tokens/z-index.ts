@@ -1,7 +1,7 @@
 /**
  * Z-index scale tokens
  *
- * 7-tier z-index system for predictable layering.
+ * 8-tier z-index system for predictable layering.
  * Each tier has a defined semantic role; no ad-hoc z-index values.
  */
 
@@ -23,6 +23,9 @@ export const Z_STICKY = 300 as const;
 /** Overlay backdrop / scrim behind modals */
 export const Z_OVERLAY = 400 as const;
 
+/** Keyboard accessibility escape routes above non-modal overlays but below dialogs */
+export const Z_ACCESSIBILITY = 450 as const;
+
 /** Modals, dialogs, drawers */
 export const Z_MODAL = 500 as const;
 
@@ -38,6 +41,7 @@ export const zIndex = {
   dropdown: Z_DROPDOWN,
   sticky: Z_STICKY,
   overlay: Z_OVERLAY,
+  accessibility: Z_ACCESSIBILITY,
   modal: Z_MODAL,
   toast: Z_TOAST,
 } as const;
@@ -53,6 +57,7 @@ export const zIndexTokens = {
   '--z-dropdown': String(Z_DROPDOWN),
   '--z-sticky': String(Z_STICKY),
   '--z-overlay': String(Z_OVERLAY),
+  '--z-accessibility': String(Z_ACCESSIBILITY),
   '--z-modal': String(Z_MODAL),
   '--z-toast': String(Z_TOAST),
 } as const;

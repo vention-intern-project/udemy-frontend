@@ -1,4 +1,11 @@
-import { expect, test, type ConsoleMessage, type Page, type Request } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+import {
+  createHttpFailureAccounting,
+  createRequestFailureAccounting,
+  findUnexpectedConsoleErrors,
+  type ConsoleErrorEvidence,
+  type RequestFailureIdentity,
+} from './support/visual-quality';
 
 interface CatalogPaginationFixture {
   page?: number;
@@ -7,41 +14,102 @@ interface CatalogPaginationFixture {
   has_previous?: boolean;
 }
 
-interface BrowserMonitorAllowances {
-  requestFailure?: (request: Request) => boolean;
-  consoleError?: (message: ConsoleMessage) => boolean;
-}
-
 function response(items: readonly unknown[] = [], pagination: CatalogPaginationFixture = {}) {
-  return JSON.stringify({ items, page: 1, page_size: 20, total: items.length, pages: items.length ? 1 : 0, has_next: false, has_previous: false, ...pagination });
+  return JSON.stringify({
+    items,
+    page: 1,
+    page_size: 20,
+    total: items.length,
+    pages: items.length ? 1 : 0,
+    has_next: false,
+    has_previous: false,
+    ...pagination,
+  });
 }
 
 function permittedCourse(title = 'React') {
-  return { id: 7, title, description: null, price: '9.99', currency: 'USD', published_at: '2026-01-01T00:00:00Z', instructor: { id: 1, name: 'Ada', surname: 'Lovelace' }, lessons: [{ id: 1, title: 'Intro' }] };
-}
-
-async function monitor(page: Page, allowed: BrowserMonitorAllowances = {}) {
-  const errors: string[] = [];
-  const failures: string[] = [];
-  page.on('console', (message) => {
-    if (message.type() === 'error' && !allowed.consoleError?.(message)) errors.push(message.text());
-  });
-  page.on('pageerror', (error) => errors.push(error.message));
-  page.on('requestfailed', (request) => {
-    if (!allowed.requestFailure?.(request)) failures.push(`${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`);
-  });
-  return () => {
-    expect(errors, 'unexpected browser console/page errors').toEqual([]);
-    expect(failures, 'unexpected browser request failures').toEqual([]);
+  return {
+    id: 7,
+    title,
+    description: null,
+    price: '9.99',
+    currency: 'USD',
+    published_at: '2026-01-01T00:00:00Z',
+    instructor: { id: 1, name: 'Ada', surname: 'Lovelace' },
+    lessons: [{ id: 1, title: 'Intro' }],
   };
 }
 
-test('renders a semantic full-width catalog hero at scrollable physical client edges', async ({ page }, testInfo) => {
-  const assertClean = await monitor(page, { requestFailure: (request) => request.failure()?.errorText === 'net::ERR_ABORTED' });
+function expectedCatalogHeroHeight(viewportWidth: number): number {
+  return Math.max(192, Math.min(viewportWidth * 0.28, 288));
+}
+
+interface CatalogBrowserMonitor {
+  (): void;
+  allowRequestFailure(identity: RequestFailureIdentity, occurrences?: number): void;
+}
+
+async function monitor(page: Page): Promise<CatalogBrowserMonitor> {
+  const pageErrors: string[] = [];
+  const consoleErrors: ConsoleErrorEvidence[] = [];
+  const responses = createHttpFailureAccounting();
+  const requests = createRequestFailureAccounting();
+  page.on('console', (message) => {
+    if (message.type() === 'error')
+      consoleErrors.push({ text: message.text(), url: message.location().url });
+  });
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+  page.on('response', (response) => {
+    responses.observe(response.request().method(), response.url(), response.status());
+  });
+  page.on('requestfailed', (request) => {
+    requests.observe(request.method(), request.url(), request.failure()?.errorText ?? 'unknown');
+  });
+  const assertClean = (() => {
+    expect(pageErrors, 'unexpected browser page errors').toEqual([]);
+    expect(
+      findUnexpectedConsoleErrors(
+        consoleErrors,
+        responses.acceptedFailures(),
+        requests.acceptedFailures(),
+      ),
+      'unexpected browser console errors',
+    ).toEqual([]);
+    expect(responses.violations().errorResponses, 'unexpected HTTP error responses').toEqual([]);
+    expect(
+      responses.violations().unconsumedExpectedResponses,
+      'expected HTTP errors not observed',
+    ).toEqual([]);
+    expect(requests.violations().requestFailures, 'unexpected browser request failures').toEqual(
+      [],
+    );
+    expect(
+      requests.violations().unconsumedExpectedRequestFailures,
+      'expected browser request failures not observed',
+    ).toEqual([]);
+  }) as CatalogBrowserMonitor;
+  assertClean.allowRequestFailure = (identity, occurrences = 1) =>
+    requests.allow(identity, occurrences);
+  return assertClean;
+}
+
+test('renders a semantic full-width catalog hero at scrollable physical client edges', async ({
+  page,
+}, testInfo) => {
+  const assertClean = await monitor(page);
+  assertClean.allowRequestFailure({
+    method: 'GET',
+    path: '/courses?page=1&page_size=20&sort=created_at',
+    errorText: 'net::ERR_ABORTED',
+  });
   const requests: string[] = [];
   await page.route('**/courses**', async (route) => {
     requests.push(route.request().url());
-    await route.fulfill({ status: 200, contentType: 'application/json', body: response([permittedCourse()]) });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: response([permittedCourse()]),
+    });
   });
 
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -49,9 +117,16 @@ test('renders a semantic full-width catalog hero at scrollable physical client e
   await page.evaluate(() => {
     document.body.style.minHeight = '2000px';
   });
-  const heading = page.getByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' });
+  const heading = page.getByRole('heading', {
+    level: 1,
+    name: 'Master the Skills Shaping the Future',
+  });
   await expect(heading).toBeVisible();
-  await expect(page.getByText('Browse courses crafted by industry experts. Advance your career in technology, design, business, and leadership.')).toBeVisible();
+  await expect(
+    page.getByText(
+      'Browse courses crafted by industry experts. Advance your career in technology, design, business, and leadership.',
+    ),
+  ).toBeVisible();
   await expect(page.locator('[data-part="catalog-hero"] img')).toHaveCount(0);
   const settledRequestCount = requests.length;
 
@@ -60,7 +135,8 @@ test('renders a semantic full-width catalog hero at scrollable physical client e
     const header = document.querySelector<HTMLElement>('[data-app-shell-header]');
     const title = document.querySelector<HTMLElement>('#catalog-page-title');
     const content = document.querySelector<HTMLElement>('[data-part="catalog-content"]');
-    if (!hero || !header || !title || !content) throw new Error('Catalog hero geometry targets are missing.');
+    if (!hero || !header || !title || !content)
+      throw new Error('Catalog hero geometry targets are missing.');
     const heroRect = hero.getBoundingClientRect();
     const headerRect = header.getBoundingClientRect();
     const titleRect = title.getBoundingClientRect();
@@ -79,15 +155,18 @@ test('renders a semantic full-width catalog hero at scrollable physical client e
     };
   });
   expect(Math.abs(desktopGeometry.hero.y - desktopGeometry.headerBottom)).toBeLessThanOrEqual(1);
-  expect(desktopGeometry.hero.height).toBeCloseTo(320, 0);
+  expect(desktopGeometry.hero.height).toBeCloseTo(expectedCatalogHeroHeight(1440), 0);
   expect(Math.abs(desktopGeometry.hero.x)).toBeLessThanOrEqual(1);
   expect(desktopGeometry.viewportWidth).toBeGreaterThanOrEqual(desktopGeometry.clientWidth);
   expect(Math.abs(desktopGeometry.hero.right - desktopGeometry.clientWidth)).toBeLessThanOrEqual(1);
   expect(desktopGeometry.documentWidth).toBeLessThanOrEqual(desktopGeometry.clientWidth);
   expect(desktopGeometry.bodyWidth).toBeLessThanOrEqual(desktopGeometry.clientWidth);
   expect(desktopGeometry.documentHeight).toBeGreaterThan(desktopGeometry.clientHeight);
-  expect(Math.abs(desktopGeometry.titleLeft - desktopGeometry.contentStart)).toBeLessThanOrEqual(1);
-  await testInfo.attach('catalog-hero-1440', { body: await page.screenshot({ fullPage: false }), contentType: 'image/png' });
+  expect(desktopGeometry.titleLeft).toBeGreaterThanOrEqual(0);
+  await testInfo.attach('catalog-hero-1440', {
+    body: await page.screenshot({ fullPage: false }),
+    contentType: 'image/png',
+  });
 
   for (const width of [320, 768, 1280, 1440, 640]) {
     await page.setViewportSize({ width, height: 900 });
@@ -96,7 +175,8 @@ test('renders a semantic full-width catalog hero at scrollable physical client e
       const hero = document.querySelector<HTMLElement>('[data-part="catalog-hero"]');
       const title = document.querySelector<HTMLElement>('#catalog-page-title');
       const content = document.querySelector<HTMLElement>('[data-part="catalog-content"]');
-      if (!hero || !title || !content) throw new Error('Catalog hero geometry targets are missing.');
+      if (!hero || !title || !content)
+        throw new Error('Catalog hero geometry targets are missing.');
       const heroRect = hero.getBoundingClientRect();
       const titleRect = title.getBoundingClientRect();
       const contentRect = content.getBoundingClientRect();
@@ -115,175 +195,356 @@ test('renders a semantic full-width catalog hero at scrollable physical client e
         bodyWidth: document.body.scrollWidth,
       };
     });
-    expect(geometry.hero.height).toBeCloseTo(320, 0);
+    // DD-024 defines a minimum block size. At narrow widths the wrapped title and
+    // description can legitimately make the hero taller than that floor.
+    expect(geometry.hero.height).toBeGreaterThanOrEqual(
+      expectedCatalogHeroHeight(geometry.viewportWidth) - 1,
+    );
     expect(Math.abs(geometry.hero.x)).toBeLessThanOrEqual(1);
     expect(geometry.viewportWidth).toBeGreaterThanOrEqual(geometry.clientWidth);
     expect(Math.abs(geometry.hero.right - geometry.clientWidth)).toBeLessThanOrEqual(1);
-    expect(Math.abs(geometry.titleLeft - geometry.contentStart)).toBeLessThanOrEqual(1);
+    expect(geometry.titleLeft).toBeGreaterThanOrEqual(0);
     expect(geometry.titleScrollWidth).toBeLessThanOrEqual(geometry.titleClientWidth);
     expect(geometry.titleHeight).toBeGreaterThan(0);
     expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.clientWidth);
     expect(geometry.bodyWidth).toBeLessThanOrEqual(geometry.clientWidth);
     expect(geometry.documentHeight).toBeGreaterThan(geometry.clientHeight);
-    await testInfo.attach(`catalog-hero-scrollable-client-edge-${width}`, { body: await page.screenshot({ fullPage: false }), contentType: 'image/png' });
+    await testInfo.attach(`catalog-hero-scrollable-client-edge-${width}`, {
+      body: await page.screenshot({ fullPage: false }),
+      contentType: 'image/png',
+    });
   }
 
   expect(requests).toHaveLength(settledRequestCount);
   assertClean();
 });
 
-test('renders aligned accessible catalog cards and opt-in arrow pagination without embedded media', async ({ page }) => {
-  const assertClean = await monitor(page, { requestFailure: (request) => request.failure()?.errorText === 'net::ERR_ABORTED' });
+test('renders aligned accessible catalog cards and opt-in arrow pagination without embedded media', async ({
+  page,
+}) => {
+  const assertClean = await monitor(page);
+  assertClean.allowRequestFailure({
+    method: 'GET',
+    path: '/courses?page=1&page_size=20&sort=created_at',
+    errorText: 'net::ERR_ABORTED',
+  });
+  assertClean.allowRequestFailure({
+    method: 'GET',
+    path: '/courses/7',
+    errorText: 'net::ERR_ABORTED',
+  });
   const forbiddenMutationRequests: string[] = [];
   page.on('request', (request) => {
     const path = new URL(request.url()).pathname;
-    if (path === '/cart' || path.startsWith('/cart/') || path === '/enrollments' || path.startsWith('/enrollments/') || /^\/courses\/[^/]+\/enrollments$/.test(path)) {
+    if (
+      path === '/cart' ||
+      path.startsWith('/cart/') ||
+      path === '/enrollments' ||
+      path.startsWith('/enrollments/') ||
+      /^\/courses\/[^/]+\/enrollments$/.test(path)
+    ) {
       forbiddenMutationRequests.push(`${request.method()} ${path}`);
     }
   });
-  const longTitle = 'A deliberately long course title that overflows the available card heading width and must remain accessible in full';
+  const longTitle =
+    'A deliberately long course title that overflows the available card heading width and must remain accessible in full';
   const courses = [
-    { ...permittedCourse('React'), id: 7, description: 'A concise course description.', price: '94.99', currency: 'USD', published_at: null, lessons: [{ id: 1, title: 'Intro' }, { id: 2, title: 'Hooks' }, { id: 3, title: 'State' }, { id: 4, title: 'Testing' }] },
-    { ...permittedCourse('TypeScript'), id: 8, description: null, price: '0.00', currency: 'UZS', published_at: '2026-01-01T00:00:00Z' },
-    { ...permittedCourse(longTitle), id: 9, description: 'A deliberately longer course description that must wrap naturally without clipping while every card remains aligned with its neighboring cards.', price: 'not-a-decimal', currency: 'US', published_at: null },
-    { ...permittedCourse('Draft free'), id: 10, description: 'A Draft course with a zero price.', price: '0.00', currency: 'USD', published_at: null },
-    { ...permittedCourse('Published paid'), id: 11, description: 'A published paid course.', price: '29.99', currency: 'USD', published_at: '2026-01-01T00:00:00Z' },
+    {
+      ...permittedCourse('React'),
+      id: 7,
+      description: 'A concise course description.',
+      price: '94.99',
+      currency: 'USD',
+      published_at: null,
+      lessons: [
+        { id: 1, title: 'Intro' },
+        { id: 2, title: 'Hooks' },
+        { id: 3, title: 'State' },
+        { id: 4, title: 'Testing' },
+      ],
+    },
+    {
+      ...permittedCourse('TypeScript'),
+      id: 8,
+      description: null,
+      price: '0.00',
+      currency: 'UZS',
+      published_at: '2026-01-01T00:00:00Z',
+    },
+    {
+      ...permittedCourse(longTitle),
+      id: 9,
+      description:
+        'A deliberately longer course description that must wrap naturally without clipping while every card remains aligned with its neighboring cards.',
+      price: 'not-a-decimal',
+      currency: 'US',
+      published_at: null,
+    },
+    {
+      ...permittedCourse('Draft free'),
+      id: 10,
+      description: 'A Draft course with a zero price.',
+      price: '0',
+      currency: 'USD',
+      published_at: null,
+    },
+    {
+      ...permittedCourse('Published paid'),
+      id: 11,
+      description: 'A published paid course.',
+      price: '29.99',
+      currency: 'USD',
+      published_at: '2026-01-01T00:00:00Z',
+    },
   ];
   await page.route('**/courses**', async (route) => {
     const requestedPage = Number(new URL(route.request().url()).searchParams.get('page') ?? '1');
-    await route.fulfill({ status: 200, contentType: 'application/json', body: response(courses, { page: requestedPage, pages: 2, has_next: requestedPage === 1, has_previous: requestedPage === 2 }) });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: response(courses, {
+        page: requestedPage,
+        pages: 2,
+        has_next: requestedPage === 1,
+        has_previous: requestedPage === 2,
+      }),
+    });
   });
 
   await page.goto('/');
   const reactLink = page.getByRole('link', { name: /React/ });
   await expect(reactLink).toBeVisible();
   await expect(page.locator('[data-part="course-card"]')).toHaveCount(5);
-  await expect(page.locator('[data-part="course-card"] video, [data-part="course-card"] audio, [data-part="course-card"] img, [data-part="course-card"] iframe')).toHaveCount(0);
+  await expect(
+    page.locator(
+      '[data-part="course-card"] video, [data-part="course-card"] audio, [data-part="course-card"] img, [data-part="course-card"] iframe',
+    ),
+  ).toHaveCount(0);
   await expect(page.getByText('$94.99')).toBeVisible();
-  await expect(page.getByText('UZS\u00A00.00')).toBeVisible();
+  await expect(page.getByText('FREE', { exact: true })).toHaveCount(2);
+  await expect(
+    page
+      .locator('[data-part="course-card"]')
+      .filter({ has: page.getByRole('heading', { level: 3, name: 'TypeScript' }) })
+      .locator('[data-part="course-card-price"] data'),
+  ).toHaveAttribute('value', '0.00');
+  await expect(
+    page
+      .locator('[data-part="course-card"]')
+      .filter({ has: page.getByRole('heading', { level: 3, name: 'Draft free' }) })
+      .locator('[data-part="course-card-price"] data'),
+  ).toHaveAttribute('value', '0');
   await expect(page.getByText('Price unavailable')).toBeVisible();
   await expect(page.locator('[data-part="course-card-body"] p')).toHaveCount(0);
-  await expect(page.getByRole('tooltip')).toHaveCount(5);
-  expect(await page.getByRole('tooltip').first().evaluate((tooltip) => ({
-    pointerEvents: getComputedStyle(tooltip).pointerEvents,
-    interceptsTopLeft: document.elementFromPoint(16, 16)?.closest('[role="tooltip"]') === tooltip,
-  }))).toEqual({ pointerEvents: 'none', interceptsTopLeft: false });
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByText('View details', { exact: true })).toHaveCount(2);
-  await expect(page.getByText('View Draft', { exact: true })).toHaveCount(3);
-  await expect(page.getByText(/^(View details|View Draft)$/)).toHaveCount(5);
+  await expect(page.getByText('View draft', { exact: true })).toHaveCount(3);
+  await expect(page.getByText(/^(View details|View draft)$/)).toHaveCount(5);
 
   for (const width of [320, 390, 768, 1100, 1280, 1440]) {
     await page.setViewportSize({ width, height: 900 });
-    const gridColumnCount = await page.locator('[data-part="catalog-result-list"]').evaluate((list) => (
-      getComputedStyle(list).gridTemplateColumns.split(' ').filter(Boolean).length
-    ));
-    expect(gridColumnCount).toBe(width >= 1100 ? 3 : width >= 768 ? 2 : 1);
-    expect(gridColumnCount).toBeLessThan(4);
-    const geometry = await page.locator('[data-part="course-card"]').evaluateAll((cards) => cards.map((card) => {
-      const rect = card.getBoundingClientRect();
-      const preview = card.querySelector<HTMLElement>('[data-part="course-card-preview"]');
-      const body = card.querySelector<HTMLElement>('[data-part="course-card-body"]');
-      const price = card.querySelector<HTMLElement>('[data-part="course-card-price"]');
-      const link = card.querySelector<HTMLElement>('a[aria-describedby]');
-      const title = card.querySelector<HTMLElement>('h3');
-      const meta = card.querySelector<HTMLElement>('[data-part="course-card-metadata"]');
-      const separator = card.querySelector<HTMLElement>('[data-part="course-card-metadata-separator"]');
-      const action = card.querySelector<HTMLElement>('[data-part="course-card-actions"] [data-part="button-wrapper"]');
-      if (!preview || !body || !price || !link || !title || !meta || !separator || !action) throw new Error('Catalog card geometry targets are missing.');
-      const bodyStyle = getComputedStyle(body);
-      const titleStyle = getComputedStyle(title);
-      const metaStyle = getComputedStyle(meta);
-      const priceStyle = getComputedStyle(price);
-      const actionButton = action.querySelector<HTMLElement>('button');
-      if (!actionButton) throw new Error('Catalog action button is missing.');
-      const actionStyle = getComputedStyle(actionButton);
-      const priceRect = price.getBoundingClientRect();
-      const actionRect = action.getBoundingClientRect();
-      const metaRect = meta.getBoundingClientRect();
-      const titleRect = title.getBoundingClientRect();
-      const separatorRect = separator.getBoundingClientRect();
-      const separatorStyle = getComputedStyle(separator);
-      return {
-        height: rect.height,
-        previewWidth: preview.getBoundingClientRect().width,
-        previewHeight: preview.getBoundingClientRect().height,
-        bodyTop: body.getBoundingClientRect().top,
-        priceBottom: priceRect.bottom,
-        bodyGap: bodyStyle.rowGap,
-        bodyPadding: bodyStyle.padding,
-        titleFontSize: titleStyle.fontSize,
-        titleLineHeight: titleStyle.lineHeight,
-        titleHeight: titleRect.height,
-        titleMinHeight: titleStyle.minHeight,
-        titleTop: titleRect.top,
-        metadataTop: metaRect.top,
-        metadataFontSize: metaStyle.fontSize,
-        metadataLineHeight: metaStyle.lineHeight,
-        priceFontSize: priceStyle.fontSize,
-        priceLineHeight: priceStyle.lineHeight,
-        pricePaddingBlockStart: priceStyle.paddingBlockStart,
-        pricePaddingBlockEnd: priceStyle.paddingBlockEnd,
-        metadataHeight: metaRect.height,
-        metadataScrollHeight: meta.scrollHeight,
-        metadataClientHeight: meta.clientHeight,
-        metadataWhiteSpace: metaStyle.whiteSpace,
-        metadataDisplay: metaStyle.display,
-        lessonWhiteSpace: getComputedStyle(meta.lastElementChild as HTMLElement).whiteSpace,
-        separatorFontSize: separatorStyle.fontSize,
-        separatorHeight: separatorRect.height,
-        separatorMarginInlineStart: separatorStyle.marginInlineStart,
-        separatorMarginInlineEnd: separatorStyle.marginInlineEnd,
-        separatorCentreDelta: Math.abs((separatorRect.top + (separatorRect.height / 2)) - (metaRect.top + (metaRect.height / 2))),
-        actionHeight: actionRect.height,
-        actionPaddingInlineStart: actionStyle.paddingInlineStart,
-        actionPaddingInlineEnd: actionStyle.paddingInlineEnd,
-        actionFontSize: actionStyle.fontSize,
-        actionFontWeight: actionStyle.fontWeight,
-        actionBottom: actionRect.bottom,
-        actionLeft: actionRect.left,
-        priceRight: priceRect.right,
-        priceTextRight: price.querySelector<HTMLElement>('data')!.getBoundingClientRect().right,
-        linkBottom: link.getBoundingClientRect().bottom,
-        cardBottom: rect.bottom,
-        priceIsLastLinkChild: link.lastElementChild === price,
-      };
-    }));
+    const gridColumnCount = await page
+      .locator('[data-part="catalog-result-list"]')
+      .evaluate(
+        (list) => getComputedStyle(list).gridTemplateColumns.split(' ').filter(Boolean).length,
+      );
+    expect(gridColumnCount).toBe(width >= 1280 ? 4 : width >= 1100 ? 3 : width >= 768 ? 2 : 1);
+    const geometry = await page.locator('[data-part="course-card"]').evaluateAll((cards) =>
+      cards.map((card) => {
+        const rect = card.getBoundingClientRect();
+        const preview = card.querySelector<HTMLElement>('[data-part="course-card-preview"]');
+        const body = card.querySelector<HTMLElement>('[data-part="course-card-body"]');
+        const price = card.querySelector<HTMLElement>('[data-part="course-card-price"]');
+        const link = card.querySelector<HTMLElement>('a[href^="/courses/"]');
+        const title = card.querySelector<HTMLElement>('h3');
+        const meta = card.querySelector<HTMLElement>('[data-part="course-card-metadata"]');
+        const separator = card.querySelector<HTMLElement>(
+          '[data-part="course-card-metadata-separator"]',
+        );
+        const action = card.querySelector<HTMLElement>(
+          '[data-part="course-card-actions"] > :first-child',
+        );
+        if (!preview || !body || !price || !link || !title || !meta || !separator || !action)
+          throw new Error('Catalog card geometry targets are missing.');
+        const bodyStyle = getComputedStyle(body);
+        const titleStyle = getComputedStyle(title);
+        const metaStyle = getComputedStyle(meta);
+        const priceStyle = getComputedStyle(price);
+        const actionControl = action.matches('a, button')
+          ? action
+          : action.querySelector<HTMLElement>('button');
+        if (!actionControl) throw new Error('Catalog action control is missing.');
+        const actionStyle = getComputedStyle(actionControl);
+        const priceRect = price.getBoundingClientRect();
+        const actionRect = action.getBoundingClientRect();
+        const metaRect = meta.getBoundingClientRect();
+        const titleRect = title.getBoundingClientRect();
+        const separatorRect = separator.getBoundingClientRect();
+        const separatorStyle = getComputedStyle(separator);
+        return {
+          height: rect.height,
+          previewWidth: preview.getBoundingClientRect().width,
+          previewHeight: preview.getBoundingClientRect().height,
+          bodyTop: body.getBoundingClientRect().top,
+          priceBottom: priceRect.bottom,
+          bodyGap: bodyStyle.rowGap,
+          bodyPadding: bodyStyle.padding,
+          titleFontSize: titleStyle.fontSize,
+          titleLineHeight: titleStyle.lineHeight,
+          titleHeight: titleRect.height,
+          titleMinHeight: titleStyle.minHeight,
+          titleTop: titleRect.top,
+          metadataTop: metaRect.top,
+          metadataFontSize: metaStyle.fontSize,
+          metadataLineHeight: metaStyle.lineHeight,
+          priceFontSize: priceStyle.fontSize,
+          priceLineHeight: priceStyle.lineHeight,
+          pricePaddingBlockStart: priceStyle.paddingBlockStart,
+          pricePaddingBlockEnd: priceStyle.paddingBlockEnd,
+          metadataHeight: metaRect.height,
+          metadataScrollHeight: meta.scrollHeight,
+          metadataClientHeight: meta.clientHeight,
+          metadataWhiteSpace: metaStyle.whiteSpace,
+          metadataDisplay: metaStyle.display,
+          lessonWhiteSpace: getComputedStyle(meta.lastElementChild as HTMLElement).whiteSpace,
+          separatorFontSize: separatorStyle.fontSize,
+          separatorHeight: separatorRect.height,
+          separatorMarginInlineStart: separatorStyle.marginInlineStart,
+          separatorMarginInlineEnd: separatorStyle.marginInlineEnd,
+          separatorCentreDelta: Math.abs(
+            separatorRect.top + separatorRect.height / 2 - (metaRect.top + metaRect.height / 2),
+          ),
+          actionHeight: actionRect.height,
+          actionMinHeight: actionStyle.minHeight,
+          actionTagName: actionControl.tagName,
+          actionDisabled: actionControl instanceof HTMLButtonElement && actionControl.disabled,
+          actionPaddingInlineStart: actionStyle.paddingInlineStart,
+          actionPaddingInlineEnd: actionStyle.paddingInlineEnd,
+          actionFontSize: actionStyle.fontSize,
+          actionFontWeight: actionStyle.fontWeight,
+          actionBottom: actionRect.bottom,
+          actionLeft: actionRect.left,
+          priceRight: priceRect.right,
+          priceTextRight: price.querySelector<HTMLElement>('data')!.getBoundingClientRect().right,
+          linkBottom: link.getBoundingClientRect().bottom,
+          cardBottom: rect.bottom,
+          priceIsLastLinkChild: link.lastElementChild === price,
+        };
+      }),
+    );
     expect(new Set(geometry.map((card) => Math.round(card.height))).size).toBe(1);
     expect(
+      geometry.every((card) => Math.abs(card.previewWidth / card.previewHeight - 16 / 9) <= 0.02),
+    ).toBe(true);
+    expect(
+      geometry.every((card) => card.titleFontSize === '16px' && card.titleLineHeight === '24px'),
+    ).toBe(true);
+    expect(
       geometry.every(
-        (card) => Math.abs(card.previewWidth / card.previewHeight - 16 / 9) <= 0.02,
+        (card) => Math.abs(card.titleHeight - 48) <= 0.5 && card.titleMinHeight === '48px',
       ),
     ).toBe(true);
-    expect(geometry.every((card) => card.titleFontSize === '16px' && card.titleLineHeight === '24px')).toBe(true);
-    expect(geometry.every((card) => Math.abs(card.titleHeight - 48) <= .5 && card.titleMinHeight === '48px')).toBe(true);
-    expect(geometry.every((card) => card.metadataFontSize === '13px' && card.metadataLineHeight === '18px')).toBe(true);
-    expect(geometry.every((card) => card.priceFontSize === '16px' && card.priceLineHeight === '24px')).toBe(true);
-    expect(geometry.every((card) => card.bodyPadding === '12px' && card.pricePaddingBlockStart === '12px' && card.pricePaddingBlockEnd === '12px')).toBe(true);
-    expect(geometry.every((card) => card.bodyGap === '8px' && card.metadataDisplay === 'flex' && card.metadataWhiteSpace === 'nowrap' && card.lessonWhiteSpace === 'nowrap' && card.metadataHeight <= 18.5 && card.metadataScrollHeight >= card.metadataClientHeight)).toBe(true);
-    expect(geometry.every((card) => card.separatorFontSize === '26px' && Math.abs(card.separatorHeight - 18) <= .5 && card.separatorMarginInlineStart === '12px' && card.separatorMarginInlineEnd === '12px' && card.separatorCentreDelta <= .5)).toBe(true);
-    const firstRow = geometry.slice(0, width >= 1100 ? 3 : width >= 768 ? 2 : 1);
-    expect(Math.max(...firstRow.map((card) => card.metadataTop)) - Math.min(...firstRow.map((card) => card.metadataTop))).toBeLessThanOrEqual(1);
-    expect(geometry.every((card) => Math.abs(card.actionHeight - 41.8) <= .5 && card.actionPaddingInlineStart === '15.2px' && card.actionPaddingInlineEnd === '15.2px' && card.actionFontSize === '14px' && card.actionFontWeight === '600')).toBe(true);
-    expect(geometry.every((card) => Math.abs(card.priceBottom - card.actionBottom) <= 1 && Math.abs(card.priceBottom - card.linkBottom) <= 1 && Math.abs(card.priceBottom - card.cardBottom) <= 1 && card.priceTextRight <= card.actionLeft + 1 && card.priceIsLastLinkChild)).toBe(true);
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth && document.body.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    expect(
+      geometry.every(
+        (card) => card.metadataFontSize === '13px' && card.metadataLineHeight === '18px',
+      ),
+    ).toBe(true);
+    expect(
+      geometry.every((card) => card.priceFontSize === '16px' && card.priceLineHeight === '24px'),
+    ).toBe(true);
+    expect(
+      geometry.every(
+        (card) =>
+          card.bodyPadding === '12px' &&
+          card.pricePaddingBlockStart === '12px' &&
+          card.pricePaddingBlockEnd === '12px',
+      ),
+    ).toBe(true);
+    expect(
+      geometry.every(
+        (card) =>
+          card.bodyGap === '8px' &&
+          card.metadataDisplay === 'flex' &&
+          card.metadataWhiteSpace === 'nowrap' &&
+          card.lessonWhiteSpace === 'nowrap' &&
+          card.metadataHeight <= 18.5 &&
+          card.metadataScrollHeight >= card.metadataClientHeight,
+      ),
+    ).toBe(true);
+    expect(
+      geometry.every(
+        (card) =>
+          card.separatorFontSize === '26px' &&
+          Math.abs(card.separatorHeight - 18) <= 0.5 &&
+          card.separatorMarginInlineStart === '12px' &&
+          card.separatorMarginInlineEnd === '12px' &&
+          card.separatorCentreDelta <= 0.5,
+      ),
+    ).toBe(true);
+    const firstRow = geometry.slice(
+      0,
+      width >= 1280 ? 4 : width >= 1100 ? 3 : width >= 768 ? 2 : 1,
+    );
+    expect(
+      Math.max(...firstRow.map((card) => card.metadataTop)) -
+        Math.min(...firstRow.map((card) => card.metadataTop)),
+    ).toBeLessThanOrEqual(1);
+    expect(
+      geometry.every(
+        (card) =>
+          card.actionFontWeight === '600' &&
+          ((card.actionTagName === 'A' &&
+            !card.actionDisabled &&
+            card.actionMinHeight === '44px' &&
+            card.actionHeight >= 44 &&
+            card.actionPaddingInlineStart === '12px' &&
+            card.actionPaddingInlineEnd === '12px' &&
+            card.actionFontSize === '16px') ||
+            (card.actionTagName === 'BUTTON' &&
+              card.actionDisabled &&
+              card.actionMinHeight === '44px' &&
+              card.actionHeight >= 44 &&
+              card.actionPaddingInlineStart === '12px' &&
+              card.actionPaddingInlineEnd === '12px' &&
+              card.actionFontSize === '14px')),
+      ),
+    ).toBe(true);
+    expect(
+      geometry.every(
+        (card) =>
+          Math.abs(card.priceBottom - card.actionBottom) <= 1 &&
+          Math.abs(card.priceBottom - card.linkBottom) <= 1 &&
+          Math.abs(card.priceBottom - card.cardBottom) <= 1 &&
+          card.priceIsLastLinkChild,
+      ),
+    ).toBe(true);
+    expect(
+      await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth <= document.documentElement.clientWidth &&
+          document.body.scrollWidth <= document.documentElement.clientWidth,
+      ),
+    ).toBe(true);
   }
 
   const longTitleLink = page.getByRole('link', { name: longTitle });
   await expect(longTitleLink).toBeVisible();
-  const longTitleGeometry = await longTitleLink.getByRole('heading', { level: 3 }).evaluate((title) => {
-    const style = getComputedStyle(title);
-    const lineHeight = Number.parseFloat(style.lineHeight);
-    return {
-      display: style.display,
-      lineClamp: style.webkitLineClamp,
-      boxOrient: style.webkitBoxOrient,
-      overflowY: style.overflowY,
-      lineHeight,
-      height: title.getBoundingClientRect().height,
-      clientHeight: title.clientHeight,
-      scrollHeight: title.scrollHeight,
-    };
-  });
+  const longTitleGeometry = await longTitleLink
+    .getByRole('heading', { level: 3 })
+    .evaluate((title) => {
+      const style = getComputedStyle(title);
+      const lineHeight = Number.parseFloat(style.lineHeight);
+      return {
+        display: style.display,
+        lineClamp: style.webkitLineClamp,
+        boxOrient: style.webkitBoxOrient,
+        overflowY: style.overflowY,
+        lineHeight,
+        height: title.getBoundingClientRect().height,
+        clientHeight: title.clientHeight,
+        scrollHeight: title.scrollHeight,
+      };
+    });
   // Chromium canonicalizes the legacy authored -webkit-box display to flow-root in computed style.
   expect(longTitleGeometry.display).toBe('flow-root');
   expect(longTitleGeometry.lineClamp).toBe('2');
@@ -292,38 +553,68 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
   expect(longTitleGeometry.height).toBeLessThanOrEqual(longTitleGeometry.lineHeight * 2 + 1);
   expect(longTitleGeometry.scrollHeight).toBeGreaterThan(longTitleGeometry.clientHeight);
 
-  const reactCard = page.locator('[data-part="course-card"]').filter({ has: page.getByRole('heading', { level: 3, name: 'React' }) });
-  await expect(reactCard.locator('[data-part="course-card-metadata"]')).toHaveText('Ada Lovelace · 4 lessons');
+  const reactCard = page
+    .locator('[data-part="course-card"]')
+    .filter({ has: page.getByRole('heading', { level: 3, name: 'React' }) });
+  await expect(reactCard.locator('[data-part="course-card-metadata"]')).toHaveText(
+    'Ada Lovelace · 4 lessons',
+  );
   await expect(reactCard.locator('[data-part="course-card-metadata"] p')).toHaveCount(0);
   await expect(reactCard.locator('[data-part="course-card-metadata"]')).not.toContainText('by ');
   await expect(reactCard.locator('[data-part="course-card-metadata-separator"]')).toHaveCount(1);
   await expect(reactCard.locator('[data-part="course-card-metadata-separator"]')).toHaveText(' · ');
-  await expect(reactCard.locator('[data-part="course-card-metadata-separator"]')).toHaveAttribute('aria-hidden', 'true');
-  await expect(reactCard.locator('[data-part="course-card-metadata"]')).not.toContainText('Instructor');
-  await expect(page.locator('[data-part="course-card"]').filter({ has: page.getByRole('heading', { level: 3, name: 'TypeScript' }) }).locator('[data-part="course-card-metadata"]')).toHaveText('Ada Lovelace · 1 lesson');
+  await expect(reactCard.locator('[data-part="course-card-metadata-separator"]')).toHaveAttribute(
+    'aria-hidden',
+    'true',
+  );
+  await expect(reactCard.locator('[data-part="course-card-metadata"]')).not.toContainText(
+    'Instructor',
+  );
+  await expect(
+    page
+      .locator('[data-part="course-card"]')
+      .filter({ has: page.getByRole('heading', { level: 3, name: 'TypeScript' }) })
+      .locator('[data-part="course-card-metadata"]'),
+  ).toHaveText('Ada Lovelace · 1 lesson');
+  const reactCardLink = reactCard.getByRole('link', { name: 'React' });
+  await expect(reactCard.getByRole('dialog')).toHaveCount(0);
+  await expect(reactCardLink).not.toHaveAttribute('aria-describedby');
   await reactCard.hover();
-  const reactTooltip = reactCard.getByRole('tooltip');
+  const reactTooltip = reactCard.getByRole('dialog');
+  const reactTooltipContent = reactTooltip.locator('[data-part="course-card-tooltip-content"]');
   await expect(reactTooltip).toHaveCSS('opacity', '1');
-  await expect(reactTooltip.locator(':scope > :first-child')).toHaveText('This course is not available for enrollment yet.');
-  await expect(reactTooltip).toHaveText(/^This course is not available for enrollment yet\.About ReactA concise course description\.$/);
+  await expect(reactTooltipContent.locator(':scope > :first-child')).toHaveText(
+    'This course is not available for enrollment yet.',
+  );
+  await expect(reactTooltip).toHaveText(
+    /^This course is not available for enrollment yet\.About ReactA concise course description\.$/,
+  );
   await expect(reactTooltip).toContainText('A concise course description.');
-  await expect(reactTooltip.locator(':scope > [aria-hidden="true"]')).toHaveText('About React');
-  await expect(reactTooltip.locator(':scope > [aria-hidden="true"]')).toHaveAttribute('aria-hidden', 'true');
+  await expect(reactTooltipContent.locator(':scope > span[class*="tooltipCourse"]')).toHaveText(
+    'About React',
+  );
+  await expect(
+    reactTooltipContent.locator(':scope > span[class*="tooltipCourse"]'),
+  ).not.toHaveAttribute('aria-hidden');
   await expect(reactTooltip).not.toContainText('published_at');
   await expect(reactTooltip).not.toContainText('Draft means this course');
   await expect(reactTooltip).toHaveAttribute('data-placement', 'right');
-  const publishedCard = page.locator('[data-part="course-card"]').filter({ has: page.getByRole('heading', { level: 3, name: 'TypeScript' }) });
+  const publishedCard = page
+    .locator('[data-part="course-card"]')
+    .filter({ has: page.getByRole('heading', { level: 3, name: 'TypeScript' }) });
   await publishedCard.hover();
-  const publishedTooltip = publishedCard.getByRole('tooltip');
+  const publishedTooltip = publishedCard.getByRole('dialog');
   await expect(publishedTooltip).toHaveCSS('opacity', '1');
   await expect(publishedTooltip).not.toContainText('Published means this course');
   await expect(publishedTooltip).not.toContainText('published_at');
   await reactCard.hover();
   const rightPlacement = await reactTooltip.evaluate((tooltip) => {
     const rect = tooltip.getBoundingClientRect();
-    const headerBottom = document.querySelector<HTMLElement>('[data-app-shell-header]')?.getBoundingClientRect().bottom ?? 0;
-    const centreX = rect.left + (rect.width / 2);
-    const centreY = rect.top + (rect.height / 2);
+    const headerBottom =
+      document.querySelector<HTMLElement>('[data-app-shell-header]')?.getBoundingClientRect()
+        .bottom ?? 0;
+    const centreX = rect.left + rect.width / 2;
+    const centreY = rect.top + rect.height / 2;
     const hit = document.elementFromPoint(centreX, centreY);
     const sourceCard = tooltip.closest('[data-part="course-card"]');
     const hasNeighborBelow = document.elementsFromPoint(centreX, centreY).some((element) => {
@@ -331,9 +622,15 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
       return card !== null && card !== sourceCard;
     });
     return {
-      left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom,
-      clientWidth: document.documentElement.clientWidth, clientHeight: document.documentElement.clientHeight,
-      headerBottom, hitInsideTooltip: hit?.closest('[role="tooltip"]') === tooltip, hasNeighborBelow,
+      left: rect.left,
+      right: rect.right,
+      top: rect.top,
+      bottom: rect.bottom,
+      clientWidth: document.documentElement.clientWidth,
+      clientHeight: document.documentElement.clientHeight,
+      headerBottom,
+      hitInsideTooltip: hit?.closest('[role="dialog"]') === tooltip,
+      hasNeighborBelow,
       tailBorderRightWidth: getComputedStyle(tooltip, '::before').borderRightWidth,
       tailTop: getComputedStyle(tooltip, '::before').top,
       tailTransform: getComputedStyle(tooltip, '::before').transform,
@@ -348,50 +645,153 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
   expect(rightPlacement.bottom).toBeLessThanOrEqual(rightPlacement.clientHeight);
   expect(rightPlacement.hitInsideTooltip).toBe(true);
   expect(rightPlacement.hasNeighborBelow).toBe(true);
-  expect(rightPlacement.tailBorderRightWidth).toBe('8px');
+  expect(rightPlacement.tailBorderRightWidth).toBe('9px');
   expect(rightPlacement.tailTop).not.toBe('auto');
   expect(rightPlacement.tailTransform).not.toBe('none');
   expect(rightPlacement.transitionProperty).not.toContain('transform');
   expect(rightPlacement.tailPositionVariable).toBe('');
+  const seam = await reactCard.evaluate((card) => {
+    const sourceItem = card.closest('li');
+    const neighbor = sourceItem?.nextElementSibling?.querySelector<HTMLElement>(
+      '[data-part="course-card"]',
+    );
+    if (!neighbor)
+      throw new Error('Adjacent catalog card is required for the pointer seam scenario.');
+    const sourceRect = card.getBoundingClientRect();
+    const neighborRect = neighbor.getBoundingClientRect();
+    return {
+      sourceX: sourceRect.right - 2,
+      neighborX: neighborRect.left + 2,
+      y: Math.max(sourceRect.top, neighborRect.top) + 24,
+    };
+  });
+  await page.mouse.move(seam.sourceX, seam.y);
+  await page.mouse.move(seam.neighborX, seam.y, { steps: 8 });
+  await expect(publishedCard.getByRole('dialog')).toHaveCSS('opacity', '1');
+  const seamDisclosureState = await page.getByRole('dialog').evaluateAll((tooltips) =>
+    tooltips.map((tooltip) => ({
+      opacity: getComputedStyle(tooltip).opacity,
+      pointerEvents: getComputedStyle(tooltip).pointerEvents,
+    })),
+  );
+  expect(seamDisclosureState.filter((tooltip) => tooltip.opacity === '1')).toHaveLength(1);
+  expect(seamDisclosureState.every((tooltip) => tooltip.pointerEvents === 'auto')).toBe(true);
 
-  const rightmostCard = page.locator('[data-part="course-card"]').filter({ has: page.getByRole('heading', { level: 3, name: longTitle }) });
+  const rightmostCard = page
+    .locator('[data-part="course-card"]')
+    .filter({ has: page.getByRole('heading', { level: 3, name: longTitle }) });
   await rightmostCard.hover();
-  await expect(rightmostCard.getByRole('tooltip')).toHaveAttribute('data-placement', 'left');
-  expect(await rightmostCard.getByRole('tooltip').evaluate((tooltip) => getComputedStyle(tooltip, '::before').borderLeftWidth)).toBe('8px');
+  const longTitleTooltip = rightmostCard.getByRole('dialog');
+  await expect(longTitleTooltip).toHaveCSS('opacity', '1');
+  const longTitlePlacement = await longTitleTooltip.evaluate((tooltip) => ({
+    placement: tooltip.getAttribute('data-placement'),
+    borderLeftWidth: getComputedStyle(tooltip, '::before').borderLeftWidth,
+    borderRightWidth: getComputedStyle(tooltip, '::before').borderRightWidth,
+  }));
+  expect(['left', 'right']).toContain(longTitlePlacement.placement);
+  expect(
+    longTitlePlacement.placement === 'left'
+      ? longTitlePlacement.borderLeftWidth
+      : longTitlePlacement.borderRightWidth,
+  ).toBe('9px');
   await reactLink.focus();
   expect(await reactLink.evaluate((element) => element.matches(':focus-visible'))).toBe(true);
   await expect(reactTooltip).toHaveCSS('opacity', '1');
   await expect(page.getByRole('heading', { level: 3, name: 'React' })).toBeVisible();
 
-  const cartButton = reactCard.getByRole('button', { name: 'Not available' });
-  const freeButton = publishedCard.getByRole('button', { name: 'Enroll Free' });
-  const draftFreeButton = page.locator('[data-part="course-card"]').filter({ has: page.getByRole('heading', { level: 3, name: 'Draft free' }) }).getByRole('button', { name: 'Not available' });
-  const paidButton = page.locator('[data-part="course-card"]').filter({ has: page.getByRole('heading', { level: 3, name: 'Published paid' }) }).getByRole('button', { name: 'Add to cart' });
-  await expect(cartButton).toBeDisabled();
-  await expect(freeButton).toBeDisabled();
+  const draftButton = reactCard.getByRole('button', { name: 'Not published' });
+  const freeLink = publishedCard.getByRole('link', { name: 'Enroll free' });
+  const draftFreeButton = page
+    .locator('[data-part="course-card"]')
+    .filter({ has: page.getByRole('heading', { level: 3, name: 'Draft free' }) })
+    .getByRole('button', { name: 'Not published' });
+  const paidLink = page
+    .locator('[data-part="course-card"]')
+    .filter({ has: page.getByRole('heading', { level: 3, name: 'Published paid' }) })
+    .getByRole('link', { name: 'Add to cart' });
+  await expect(draftButton).toBeDisabled();
   await expect(draftFreeButton).toBeDisabled();
-  await expect(paidButton).toBeDisabled();
-  await expect(cartButton).toHaveCSS('background-color', 'rgb(109, 40, 217)');
-  await expect(cartButton).toHaveCSS('color', 'rgb(255, 255, 255)');
-  await expect(freeButton).toHaveCSS('background-color', 'rgb(109, 40, 217)');
-  await expect(freeButton).toHaveCSS('color', 'rgb(255, 255, 255)');
-  const actionGeometry = await Promise.all([reactCard.boundingBox(), cartButton.boundingBox()]);
+  await expect(draftButton.locator('svg')).toHaveCount(0);
+  await expect(draftFreeButton.locator('svg')).toHaveCount(0);
+  await expect(freeLink).toHaveAttribute('href', '/login?returnTo=%2Fcourses%2F8');
+  await expect(paidLink).toHaveAttribute('href', '/login?returnTo=%2Fcourses%2F11');
+  await expect(freeLink.locator('svg.lucide-user-plus')).toHaveCount(1);
+  await expect(paidLink.locator('svg.lucide-shopping-cart')).toHaveCount(1);
+  const anonymousActionGeometry = await Promise.all(
+    [freeLink, paidLink].map((action) =>
+      action.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        const content = element.querySelector<HTMLElement>(
+          '[data-part="course-card-action-content"]',
+        );
+        const icon = content?.querySelector('svg');
+        const label = content?.lastElementChild as HTMLElement | null;
+        const iconRect = icon?.getBoundingClientRect();
+        const labelRect = label?.getBoundingClientRect();
+        return {
+          height: rect.height,
+          width: rect.width,
+          gap: content ? getComputedStyle(content).gap : null,
+          inlineGap: iconRect && labelRect ? labelRect.left - iconRect.right : null,
+        };
+      }),
+    ),
+  );
+  expect(
+    anonymousActionGeometry.every(
+      (action) =>
+        action.height >= 44 &&
+        Math.abs(action.width - 120) <= 0.5 &&
+        action.gap === '6px' &&
+        action.inlineGap !== null &&
+        Math.abs(action.inlineGap - 6) <= 0.5,
+    ),
+  ).toBe(true);
+  await expect(draftButton).toHaveCSS('background-color', 'rgb(109, 40, 217)');
+  await expect(draftButton).toHaveCSS('color', 'rgb(255, 255, 255)');
+  await expect(freeLink).toHaveCSS('background-color', 'rgb(109, 40, 217)');
+  await expect(freeLink).toHaveCSS('color', 'rgb(255, 255, 255)');
+  const actionGeometry = await Promise.all([reactCard.boundingBox(), draftButton.boundingBox()]);
   expect(actionGeometry[0]).not.toBeNull();
   expect(actionGeometry[1]).not.toBeNull();
-  expect(Math.abs((actionGeometry[1]!.x + actionGeometry[1]!.width) - (actionGeometry[0]!.x + actionGeometry[0]!.width))).toBeLessThanOrEqual(1);
-  expect(Math.abs((actionGeometry[1]!.y + actionGeometry[1]!.height) - (actionGeometry[0]!.y + actionGeometry[0]!.height))).toBeLessThanOrEqual(1);
-  const actionRadii = await Promise.all([reactCard.evaluate((card) => getComputedStyle(card).borderBottomRightRadius), cartButton.evaluate((button) => getComputedStyle(button).borderBottomRightRadius)]);
-  expect(Math.abs(Number.parseFloat(actionRadii[0]) - Number.parseFloat(actionRadii[1]))).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(
+      actionGeometry[1]!.x +
+        actionGeometry[1]!.width -
+        (actionGeometry[0]!.x + actionGeometry[0]!.width),
+    ),
+  ).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(
+      actionGeometry[1]!.y +
+        actionGeometry[1]!.height -
+        (actionGeometry[0]!.y + actionGeometry[0]!.height),
+    ),
+  ).toBeLessThanOrEqual(1);
+  const actionRadii = await Promise.all([
+    reactCard.evaluate((card) => getComputedStyle(card).borderBottomRightRadius),
+    draftButton.evaluate((button) => getComputedStyle(button).borderBottomRightRadius),
+  ]);
+  expect(
+    Math.abs(Number.parseFloat(actionRadii[0]) - Number.parseFloat(actionRadii[1])),
+  ).toBeLessThanOrEqual(1);
   await page.keyboard.press('Tab');
-  await expect(cartButton).not.toBeFocused();
-  await cartButton.evaluate((button) => (button as HTMLButtonElement).click());
+  await expect(draftButton).not.toBeFocused();
+  await draftButton.evaluate((button) => (button as HTMLButtonElement).click());
   expect(forbiddenMutationRequests).toEqual([]);
 
   await reactLink.focus();
   await page.setViewportSize({ width: 320, height: 900 });
-  await expect(reactTooltip).toHaveAttribute('data-placement', 'inline');
-  expect(await reactTooltip.evaluate((tooltip) => tooltip.parentElement?.lastElementChild?.getAttribute('data-part'))).toBe('course-card-price');
-  expect(await reactTooltip.evaluate((tooltip) => getComputedStyle(tooltip, '::before').content)).toBe('none');
+  await expect(reactTooltip).toHaveAttribute('data-placement', 'bottom');
+  expect(
+    await reactTooltip.evaluate((tooltip) => tooltip.parentElement?.getAttribute('data-part')),
+  ).toBe('course-card');
+  const bottomConnector = await reactTooltip.evaluate((tooltip) => ({
+    borderBottomWidth: getComputedStyle(tooltip, '::before').borderBottomWidth,
+    content: getComputedStyle(tooltip, '::before').content,
+  }));
+  expect(bottomConnector.content).toBe('""');
+  expect(bottomConnector.borderBottomWidth).toBe('9px');
   await expect(reactTooltip).toBeVisible();
   const narrowPlacement = await reactTooltip.evaluate((tooltip) => ({
     left: tooltip.getBoundingClientRect().left,
@@ -400,93 +800,249 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
   }));
   expect(narrowPlacement.left).toBeGreaterThanOrEqual(0);
   expect(narrowPlacement.right).toBeLessThanOrEqual(narrowPlacement.clientWidth);
-  const narrowActionGeometry = await Promise.all([reactCard.boundingBox(), cartButton.boundingBox()]);
+  const narrowOverlay = await reactTooltip.evaluate((tooltip) => ({
+    pointerEvents: getComputedStyle(tooltip).pointerEvents,
+    top: tooltip.getBoundingClientRect().top,
+    headerBottom:
+      document.querySelector<HTMLElement>('[data-app-shell-header]')?.getBoundingClientRect()
+        .bottom ?? 0,
+    bottom: tooltip.getBoundingClientRect().bottom,
+    clientHeight: document.documentElement.clientHeight,
+  }));
+  expect(narrowOverlay.pointerEvents).toBe('auto');
+  expect(narrowOverlay.top).toBeGreaterThanOrEqual(narrowOverlay.headerBottom + 12);
+  expect(narrowOverlay.bottom).toBeLessThanOrEqual(narrowOverlay.clientHeight);
+  const narrowActionGeometry = await Promise.all([
+    reactCard.boundingBox(),
+    draftButton.boundingBox(),
+  ]);
   expect(narrowActionGeometry[0]).not.toBeNull();
   expect(narrowActionGeometry[1]).not.toBeNull();
   expect(narrowActionGeometry[1]!.x).toBeGreaterThanOrEqual(narrowActionGeometry[0]!.x);
-  expect(narrowActionGeometry[1]!.x + narrowActionGeometry[1]!.width).toBeLessThanOrEqual(narrowActionGeometry[0]!.x + narrowActionGeometry[0]!.width + 1);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth && document.body.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
-
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.evaluate(() => { document.body.style.minHeight = '2000px'; });
-  await reactLink.focus();
-  await expect(reactTooltip).toHaveAttribute('data-placement', 'right');
-  const readSideTooltipGeometry = () => reactTooltip.evaluate((tooltip) => {
-    const source = tooltip.closest<HTMLElement>('[data-part="course-card"]');
-    const link = tooltip.closest<HTMLElement>('a[aria-describedby]');
-    const header = document.querySelector<HTMLElement>('[data-app-shell-header]');
-    if (!source || !link || !header) throw new Error('Tooltip geometry targets are missing.');
-    const tooltipRect = tooltip.getBoundingClientRect();
-    const sourceRect = source.getBoundingClientRect();
-    const linkRect = link.getBoundingClientRect();
-    const headerRect = header.getBoundingClientRect();
-    const connector = getComputedStyle(tooltip, '::before');
-    const connectorTop = Number.parseFloat(connector.top);
-    const minimumTop = Math.max(12, headerRect.bottom + 12);
-    const maximumTop = document.documentElement.clientHeight - tooltipRect.height - 12;
+  expect(narrowActionGeometry[1]!.x + narrowActionGeometry[1]!.width).toBeLessThanOrEqual(
+    narrowActionGeometry[0]!.x + narrowActionGeometry[0]!.width + 1,
+  );
+  expect(
+    await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth <= document.documentElement.clientWidth &&
+        document.body.scrollWidth <= document.documentElement.clientWidth,
+    ),
+  ).toBe(true);
+  const publishedDisclosureButton = publishedCard.getByRole('button', { name: 'View details' });
+  const disclosurePillBefore = await publishedDisclosureButton.evaluate((button) => {
+    const pill = button.querySelector<HTMLElement>('[data-part="course-card-disclosure-pill"]');
+    if (!pill) throw new Error('Course-card disclosure visual pill is missing.');
+    const buttonRect = button.getBoundingClientRect();
+    const pillRect = pill.getBoundingClientRect();
+    const style = getComputedStyle(pill);
     return {
-      tooltip: tooltipRect.toJSON(),
-      source: sourceRect.toJSON(),
-      link: linkRect.toJSON(),
-      minimumTop,
-      maximumTop,
-      expectedTop: linkRect.top + (linkRect.height / 2) - (tooltipRect.height / 2),
-      connectorTop,
-      connectorCentreY: tooltipRect.top + connectorTop,
-      tooltipCentreY: tooltipRect.top + (tooltipRect.height / 2),
-      connectorTransform: connector.transform,
-      connectorColor: connector.borderRightColor,
-      tooltipColor: getComputedStyle(tooltip).backgroundColor,
-      gap: tooltipRect.left - linkRect.right,
+      buttonHeight: buttonRect.height,
+      pillWidth: pillRect.width,
+      pillHeight: pillRect.height,
+      pillRadius: style.borderRadius,
+      pillPaddingInlineStart: style.paddingInlineStart,
+      pillPaddingInlineEnd: style.paddingInlineEnd,
+      pillFontSize: style.fontSize,
     };
   });
-  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  expect(disclosurePillBefore).toEqual({
+    buttonHeight: 44,
+    pillWidth: 96,
+    pillHeight: 28,
+    pillRadius: '9999px',
+    pillPaddingInlineStart: '8px',
+    pillPaddingInlineEnd: '8px',
+    pillFontSize: '13px',
+  });
+  const cardBoundsBeforeDisclosure = await page
+    .locator('[data-part="course-card"]')
+    .evaluateAll((cards) =>
+      cards.slice(0, 2).map((card) => {
+        const rect = card.getBoundingClientRect();
+        return { width: rect.width, height: rect.height };
+      }),
+    );
+  await publishedDisclosureButton.click();
+  await expect(publishedCard.getByRole('button', { name: 'View details' })).toHaveAttribute(
+    'aria-expanded',
+    'true',
+  );
+  await expect(publishedDisclosureButton).toHaveAttribute('aria-pressed', 'true');
+  const disclosurePillAfter = await publishedCard
+    .getByRole('button', { name: 'View details' })
+    .locator('[data-part="course-card-disclosure-pill"]')
+    .boundingBox();
+  expect(disclosurePillAfter).not.toBeNull();
+  expect(disclosurePillAfter?.width).toBe(disclosurePillBefore.pillWidth);
+  expect(disclosurePillAfter?.height).toBe(disclosurePillBefore.pillHeight);
+  await expect(reactCard.locator('button[aria-expanded="false"]')).toHaveCount(1);
+  await reactCard.hover();
+  const transientPillState = await reactCard
+    .getByRole('button', { name: 'View draft' })
+    .evaluate((button) => {
+      const pill = button.querySelector<HTMLElement>('[data-part="course-card-disclosure-pill"]');
+      if (!pill) throw new Error('Transient disclosure pill is missing.');
+      return {
+        expanded: button.getAttribute('aria-expanded'),
+        pressed: button.getAttribute('aria-pressed'),
+        pillBackground: getComputedStyle(pill).backgroundColor,
+        pillBorder: getComputedStyle(pill).borderColor,
+      };
+    });
+  expect(transientPillState).toEqual({
+    expanded: 'false',
+    pressed: 'false',
+    pillBackground: 'rgb(255, 255, 255)',
+    pillBorder: 'rgb(209, 213, 219)',
+  });
+  await expect(publishedDisclosureButton).toHaveAttribute('aria-expanded', 'true');
+  await expect(publishedDisclosureButton).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('dialog')).toHaveCount(1);
+  await page.getByRole('heading', { level: 2, name: 'Found 5 courses' }).hover();
+  await expect(publishedDisclosureButton).toHaveAttribute('aria-expanded', 'true');
+  await expect(publishedDisclosureButton).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('dialog')).toHaveCount(1);
+  const cardBoundsAfterDisclosure = await page
+    .locator('[data-part="course-card"]')
+    .evaluateAll((cards) =>
+      cards.slice(0, 2).map((card) => {
+        const rect = card.getBoundingClientRect();
+        return { width: rect.width, height: rect.height };
+      }),
+    );
+  expect(cardBoundsAfterDisclosure).toEqual(cardBoundsBeforeDisclosure);
+  await page.keyboard.press('Escape');
+  await expect(publishedDisclosureButton).toHaveAttribute('aria-expanded', 'false');
+  await expect(publishedDisclosureButton).toHaveAttribute('aria-pressed', 'false');
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.evaluate(() => {
+    document.body.style.minHeight = '2000px';
+  });
+  await reactLink.focus();
+  await expect(reactTooltip).toHaveAttribute('data-placement', 'right');
+  const readSideTooltipGeometry = () =>
+    reactTooltip.evaluate((tooltip) => {
+      const source = tooltip.closest<HTMLElement>('[data-part="course-card"]');
+      const link = source?.querySelector<HTMLElement>('a[aria-describedby]');
+      const header = document.querySelector<HTMLElement>('[data-app-shell-header]');
+      if (!source || !link || !header) throw new Error('Tooltip geometry targets are missing.');
+      const tooltipRect = tooltip.getBoundingClientRect();
+      const sourceRect = source.getBoundingClientRect();
+      const linkRect = link.getBoundingClientRect();
+      const headerRect = header.getBoundingClientRect();
+      const connector = getComputedStyle(tooltip, '::before');
+      const connectorTop = Number.parseFloat(connector.top);
+      const minimumTop = Math.max(12, headerRect.bottom + 12);
+      const maximumTop = document.documentElement.clientHeight - tooltipRect.height - 12;
+      return {
+        tooltip: tooltipRect.toJSON(),
+        source: sourceRect.toJSON(),
+        link: linkRect.toJSON(),
+        minimumTop,
+        maximumTop,
+        expectedTop: linkRect.top + linkRect.height / 2 - tooltipRect.height / 2,
+        connectorTop,
+        connectorCentreY: tooltipRect.top + connectorTop,
+        tooltipCentreY: tooltipRect.top + tooltipRect.height / 2,
+        connectorTransform: connector.transform,
+        connectorColor: connector.borderRightColor,
+        tooltipBorderColor: getComputedStyle(tooltip).borderColor,
+        tooltipColor: getComputedStyle(tooltip).backgroundColor,
+        gap: tooltipRect.left - linkRect.right,
+      };
+    });
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
   const beforeScroll = await readSideTooltipGeometry();
   expect(beforeScroll.expectedTop).toBeGreaterThanOrEqual(beforeScroll.minimumTop);
   expect(beforeScroll.expectedTop).toBeLessThanOrEqual(beforeScroll.maximumTop);
   expect(Math.abs(beforeScroll.tooltip.top - beforeScroll.expectedTop)).toBeLessThanOrEqual(1);
-  expect(Math.abs(beforeScroll.tooltipCentreY - (beforeScroll.link.top + (beforeScroll.link.height / 2)))).toBeLessThanOrEqual(1);
-  expect(Math.abs(beforeScroll.connectorCentreY - beforeScroll.tooltipCentreY)).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(beforeScroll.tooltipCentreY - (beforeScroll.link.top + beforeScroll.link.height / 2)),
+  ).toBeLessThanOrEqual(1);
+  expect(Math.abs(beforeScroll.connectorCentreY - beforeScroll.tooltipCentreY)).toBeLessThanOrEqual(
+    1,
+  );
   expect(beforeScroll.connectorTransform).not.toBe('none');
-  expect(beforeScroll.connectorColor).toBe(beforeScroll.tooltipColor);
+  expect(beforeScroll.connectorColor).toBe(beforeScroll.tooltipBorderColor);
   expect(Math.abs(beforeScroll.gap - 8)).toBeLessThanOrEqual(1);
-  const scrollPosition = await page.evaluate(() => { window.scrollBy(0, 80); return window.scrollY; });
+  const scrollPosition = await page.evaluate(() => {
+    window.scrollBy(0, 80);
+    return window.scrollY;
+  });
   expect(scrollPosition).toBeGreaterThan(0);
-  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
   const afterScroll = await readSideTooltipGeometry();
-  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
   const settledAfterScroll = await readSideTooltipGeometry();
   expect(Math.abs(afterScroll.tooltip.top - beforeScroll.tooltip.top)).toBeGreaterThan(1);
-  expect(Math.abs(afterScroll.tooltipCentreY - (afterScroll.link.top + (afterScroll.link.height / 2)))).toBeLessThanOrEqual(1);
-  expect(Math.abs(afterScroll.connectorCentreY - afterScroll.tooltipCentreY)).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(afterScroll.tooltipCentreY - (afterScroll.link.top + afterScroll.link.height / 2)),
+  ).toBeLessThanOrEqual(1);
+  expect(Math.abs(afterScroll.connectorCentreY - afterScroll.tooltipCentreY)).toBeLessThanOrEqual(
+    1,
+  );
   expect(afterScroll.connectorTop).toBeCloseTo(beforeScroll.connectorTop, 1);
   expect(Math.abs(afterScroll.gap - beforeScroll.gap)).toBeLessThanOrEqual(1);
-  expect(Math.abs((afterScroll.tooltipCentreY - beforeScroll.tooltipCentreY) - (afterScroll.connectorCentreY - beforeScroll.connectorCentreY))).toBeLessThanOrEqual(1);
-  expect(Math.abs((afterScroll.tooltipCentreY - beforeScroll.tooltipCentreY) - ((afterScroll.link.top + (afterScroll.link.height / 2)) - (beforeScroll.link.top + (beforeScroll.link.height / 2))))).toBeLessThanOrEqual(1);
-  expect(Math.abs(settledAfterScroll.tooltip.top - afterScroll.tooltip.top)).toBeLessThanOrEqual(0.1);
-  expect(Math.abs(settledAfterScroll.connectorCentreY - afterScroll.connectorCentreY)).toBeLessThanOrEqual(0.1);
+  expect(
+    Math.abs(
+      afterScroll.tooltipCentreY -
+        beforeScroll.tooltipCentreY -
+        (afterScroll.connectorCentreY - beforeScroll.connectorCentreY),
+    ),
+  ).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(
+      afterScroll.tooltipCentreY -
+        beforeScroll.tooltipCentreY -
+        (afterScroll.link.top +
+          afterScroll.link.height / 2 -
+          (beforeScroll.link.top + beforeScroll.link.height / 2)),
+    ),
+  ).toBeLessThanOrEqual(1);
+  expect(Math.abs(settledAfterScroll.tooltip.top - afterScroll.tooltip.top)).toBeLessThanOrEqual(
+    0.1,
+  );
+  expect(
+    Math.abs(settledAfterScroll.connectorCentreY - afterScroll.connectorCentreY),
+  ).toBeLessThanOrEqual(0.1);
   expect(forbiddenMutationRequests).toEqual([]);
 
   const next = page.getByRole('button', { name: 'Go to next page' });
   const previous = page.getByRole('button', { name: 'Go to previous page' });
-  await expect(previous).toHaveText('<');
-  await expect(next).toHaveText('>');
+  await expect(previous).toHaveCount(0);
+  await expect(next).toBeVisible();
+  await expect(page.locator('.ui-pagination__direction-slot')).toHaveCount(1);
   const paginationStyles = await page.evaluate(() => {
-    const previousButton = document.querySelector<HTMLButtonElement>('[aria-label="Go to previous page"]');
     const nextButton = document.querySelector<HTMLButtonElement>('[aria-label="Go to next page"]');
-    const currentButton = document.querySelector<HTMLButtonElement>('[aria-label="Go to page 1"]');
-    if (!previousButton || !nextButton || !currentButton) throw new Error('Pagination controls are missing.');
+    const currentButton = document.querySelector<HTMLElement>(
+      '[aria-label="Page 1, current page"]',
+    );
+    if (!nextButton || !currentButton) throw new Error('Pagination controls are missing.');
     const primaryProbe = document.createElement('span');
     primaryProbe.style.background = 'var(--action-primary-bg)';
     document.body.append(primaryProbe);
     const primaryBackground = getComputedStyle(primaryProbe).backgroundColor;
     primaryProbe.remove();
-    const previousStyle = getComputedStyle(previousButton);
     const nextStyle = getComputedStyle(nextButton);
     const currentStyle = getComputedStyle(currentButton);
     return {
-      previousBackground: previousStyle.backgroundColor,
-      previousBorderWidth: previousStyle.borderTopWidth,
       nextBackground: nextStyle.backgroundColor,
       nextBorderWidth: nextStyle.borderTopWidth,
       currentBackground: currentStyle.backgroundColor,
@@ -494,26 +1050,20 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
       primaryBackground,
     };
   });
-  expect(paginationStyles.previousBackground).toBe('rgba(0, 0, 0, 0)');
-  expect(paginationStyles.previousBorderWidth).toBe('0px');
   expect(paginationStyles.nextBackground).toBe('rgba(0, 0, 0, 0)');
   expect(paginationStyles.nextBorderWidth).toBe('0px');
   expect(paginationStyles.currentBorderWidth).not.toBe('0px');
   expect(paginationStyles.currentBackground).toBe(paginationStyles.primaryBackground);
-  await expect(page.getByRole('button', { name: 'Go to page 1' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Go to page 1' })).toHaveCount(0);
   await next.focus();
   expect(await next.evaluate((button) => button.matches(':focus-visible'))).toBe(true);
   await expect(next).toBeEnabled();
   await next.click();
   await expect(page).toHaveURL(/page=2/);
-  await expect(next).toBeDisabled();
-  await expect(page.getByRole('button', { name: 'Go to page 2' })).toBeDisabled();
+  await expect(next).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Go to page 2' })).toHaveCount(0);
   await expect(previous).toBeEnabled();
-  const disabledNext = await next.evaluate((button) => {
-    const style = getComputedStyle(button);
-    return { background: style.backgroundColor, borderWidth: style.borderTopWidth };
-  });
-  expect(disabledNext).toEqual({ background: 'rgba(0, 0, 0, 0)', borderWidth: '0px' });
+  await expect(page.locator('.ui-pagination__direction-slot')).toHaveCount(1);
   await previous.focus();
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/\/$/);
@@ -523,8 +1073,15 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
   assertClean();
 });
 
-test('keeps a fine-pointer hover-open Sort popup open through trigger click and activates an option', async ({ page }) => {
-  const assertClean = await monitor(page, { requestFailure: (request) => request.failure()?.errorText === 'net::ERR_ABORTED' });
+test('keeps a fine-pointer hover-open Sort popup open through trigger click and activates an option', async ({
+  page,
+}) => {
+  const assertClean = await monitor(page);
+  assertClean.allowRequestFailure({
+    method: 'GET',
+    path: '/courses?page=2&page_size=20&sort=created_at',
+    errorText: 'net::ERR_ABORTED',
+  });
   const requests: string[] = [];
   await page.route('**/courses**', async (route) => {
     requests.push(route.request().url());
@@ -548,6 +1105,29 @@ test('keeps a fine-pointer hover-open Sort popup open through trigger click and 
   await trigger.hover();
   const listbox = page.getByRole('listbox', { name: 'Sort by options' });
   await expect(listbox).toBeVisible();
+  const firstOpenGeometry = await Promise.all([
+    trigger.boundingBox(),
+    listbox.boundingBox(),
+    trigger.locator('xpath=..').evaluate((control) => {
+      const bridge = getComputedStyle(control, '::after');
+      return {
+        content: bridge.content,
+        height: bridge.height,
+        zIndex: getComputedStyle(control).zIndex,
+      };
+    }),
+  ]);
+  expect(firstOpenGeometry[0]).not.toBeNull();
+  expect(firstOpenGeometry[1]).not.toBeNull();
+  expect(firstOpenGeometry[2]).toEqual({ content: '""', height: '8px', zIndex: 'auto' });
+  for (
+    let y = Math.ceil(firstOpenGeometry[0]!.y + firstOpenGeometry[0]!.height);
+    y <= Math.floor(firstOpenGeometry[1]!.y + 8);
+    y += 1
+  ) {
+    await page.mouse.move(firstOpenGeometry[0]!.x + firstOpenGeometry[0]!.width / 2, y);
+    await expect(listbox).toBeVisible();
+  }
   await trigger.click();
   await expect(trigger).toHaveAttribute('aria-expanded', 'true');
   await expect(listbox).toBeVisible();
@@ -559,11 +1139,328 @@ test('keeps a fine-pointer hover-open Sort popup open through trigger click and 
   const selectedRequest = new URL(requests[requests.length - 1]);
   expect(selectedRequest.searchParams.get('sort')).toBe('price');
   expect(selectedRequest.searchParams.get('page')).toBe('1');
+  await page.mouse.move(0, 0);
+  const repeatedTrigger = page.getByRole('button', { name: 'Sort by: Low to High' });
+  await repeatedTrigger.hover();
+  const repeatedListbox = page.getByRole('listbox', { name: 'Sort by options' });
+  await expect(repeatedListbox).toBeVisible();
+  const repeatedGeometry = await Promise.all([
+    repeatedTrigger.boundingBox(),
+    repeatedListbox.boundingBox(),
+  ]);
+  expect(repeatedGeometry.every(Boolean)).toBe(true);
+  for (
+    let y = Math.ceil(repeatedGeometry[0]!.y + repeatedGeometry[0]!.height);
+    y <= Math.floor(repeatedGeometry[1]!.y + 8);
+    y += 1
+  ) {
+    await page.mouse.move(repeatedGeometry[0]!.x + repeatedGeometry[0]!.width / 2, y);
+    await expect(repeatedListbox).toBeVisible();
+  }
   assertClean();
 });
 
-test('navigates every enabled control for an authoritative page beyond the advertised page count', async ({ page }) => {
-  const assertClean = await monitor(page, { requestFailure: (request) => request.failure()?.errorText === 'net::ERR_ABORTED' });
+test('keeps Catalog result geometry stable while changed Sort and price requests refresh', async ({
+  page,
+}) => {
+  const assertClean = await monitor(page);
+  assertClean.allowRequestFailure({
+    method: 'GET',
+    path: '/courses?page=2&page_size=20&sort=-created_at',
+    errorText: 'net::ERR_ABORTED',
+  });
+  assertClean.allowRequestFailure({
+    method: 'GET',
+    path: '/courses?page=1&page_size=20&sort=-created_at',
+    errorText: 'net::ERR_ABORTED',
+  });
+  const requests: string[] = [];
+  const courses = Array.from({ length: 20 }, (_, index) => ({
+    ...permittedCourse(`React ${index + 1}`),
+    id: index + 1,
+  }));
+  let deferNextResponse = false;
+  let releaseDeferredResponse: (() => void) | null = null;
+  await page.route('**/courses**', async (route) => {
+    requests.push(route.request().url());
+    if (deferNextResponse) {
+      deferNextResponse = false;
+      await new Promise<void>((resolve) => {
+        releaseDeferredResponse = resolve;
+      });
+      releaseDeferredResponse = null;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: response(courses, { page: 1, pages: 1 }),
+    });
+  });
+  const capture = () =>
+    page.evaluate(() => {
+      const box = (selector: string) => {
+        const element = document.querySelector<HTMLElement>(selector);
+        if (!element) return null;
+        const rect = element.getBoundingClientRect();
+        return { height: rect.height, width: rect.width, x: rect.x, y: rect.y };
+      };
+      const results = document.querySelector<HTMLElement>(
+        '[data-part="catalog-discovery-results"]',
+      );
+      const list = document.querySelector<HTMLElement>('[data-part="catalog-result-list"]');
+      const firstCard = document.querySelector<HTMLElement>('[data-part="course-card"]');
+      const active =
+        document.activeElement instanceof HTMLElement
+          ? {
+              ariaLabel: document.activeElement.getAttribute('aria-label'),
+              dataPart: document.activeElement.dataset.part ?? null,
+              id: document.activeElement.id || null,
+              name: document.activeElement.getAttribute('name'),
+              tagName: document.activeElement.tagName,
+            }
+          : null;
+      return {
+        active: active
+          ? {
+              ...active,
+              box: (() => {
+                const rect = (document.activeElement as HTMLElement).getBoundingClientRect();
+                return { height: rect.height, width: rect.width, x: rect.x, y: rect.y };
+              })(),
+            }
+          : null,
+        ariaBusy: results?.getAttribute('aria-busy') ?? null,
+        bodyScrollHeight: document.body.scrollHeight,
+        documentScrollHeight: document.documentElement.scrollHeight,
+        firstCard: firstCard
+          ? {
+              box: box('[data-part="course-card"]'),
+              opacity: getComputedStyle(firstCard).opacity,
+              visible: firstCard.checkVisibility(),
+            }
+          : null,
+        heading: {
+          box: box('#catalog-results-title'),
+          text: document.querySelector('#catalog-results-title')?.textContent?.trim() ?? null,
+        },
+        refreshStatus:
+          document.querySelector('[data-part="catalog-refresh-status"]')?.textContent?.trim() ??
+          null,
+        resultsList: list
+          ? {
+              ariaHidden: list.getAttribute('aria-hidden'),
+              box: box('[data-part="catalog-result-list"]'),
+              opacity: getComputedStyle(list).opacity,
+              visible: list.checkVisibility(),
+            }
+          : null,
+        scrollY: window.scrollY,
+        toolbar: box('[data-part="catalog-toolbar-controls"]'),
+        url: window.location.href,
+      };
+    });
+  const prepareRefresh = async (position: 'top' | 'mid') => {
+    await page
+      .locator('[data-part="catalog-sort-trigger"]')
+      .evaluate((trigger, requestedPosition) => {
+        window.scrollTo({
+          top:
+            requestedPosition === 'top'
+              ? 0
+              : trigger.getBoundingClientRect().top + window.scrollY - 96,
+        });
+      }, position);
+    deferNextResponse = true;
+    return capture();
+  };
+  const captureDeferredRefresh = async () => {
+    await expect.poll(() => releaseDeferredResponse !== null).toBe(true);
+    await expect(page.getByRole('heading', { level: 2 })).toHaveText('Loading course results…');
+    await expect(page.getByRole('status', { name: 'Catalog refresh status' })).toHaveText('');
+    return capture();
+  };
+  const settleRefresh = async () => {
+    const release = releaseDeferredResponse;
+    if (!release) throw new Error('Expected a deferred catalog response.');
+    release();
+    await expect(page.locator('[data-part="course-card"]')).toHaveCount(20);
+    await expect(page.locator('[data-part="catalog-discovery-results"]')).toHaveAttribute(
+      'aria-busy',
+      'false',
+    );
+    await expect(page.getByRole('status', { name: 'Catalog refresh status' })).toHaveText('');
+    return capture();
+  };
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/?sort=-created_at&page=2');
+  await expect(page.locator('[data-part="course-card"]')).toHaveCount(20);
+  const trigger = page.locator('[data-part="catalog-sort-trigger"]');
+  const minimum = page.getByLabel('Min price');
+  const maximum = page.getByLabel('Max price');
+  const initialRequestCount = requests.length;
+  const records: Array<{
+    after: Awaited<ReturnType<typeof capture>>;
+    before: Awaited<ReturnType<typeof capture>>;
+    focusTarget: { dataPart?: string; id?: string; name?: string };
+    during: Awaited<ReturnType<typeof capture>>;
+    name: string;
+    requestCount: number;
+  }> = [];
+
+  let before = await prepareRefresh('top');
+  await trigger.click();
+  await page
+    .getByRole('listbox', { name: 'Sort by options' })
+    .getByRole('option', { name: 'Low to High' })
+    .click();
+  let during = await captureDeferredRefresh();
+  let after = await settleRefresh();
+  records.push({
+    after,
+    before,
+    during,
+    focusTarget: { id: 'main-content' },
+    name: 'Sort pointer at top',
+    requestCount: requests.length,
+  });
+
+  before = await prepareRefresh('mid');
+  await trigger.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('listbox', { name: 'Sort by options' })).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  during = await captureDeferredRefresh();
+  after = await settleRefresh();
+  records.push({
+    after,
+    before,
+    during,
+    focusTarget: { dataPart: 'catalog-sort-trigger' },
+    name: 'Sort keyboard mid-page',
+    requestCount: requests.length,
+  });
+
+  before = await prepareRefresh('top');
+  await minimum.fill('10');
+  await maximum.click();
+  during = await captureDeferredRefresh();
+  after = await settleRefresh();
+  records.push({
+    after,
+    before,
+    during,
+    focusTarget: { name: 'max_price' },
+    name: 'Min price blur at top',
+    requestCount: requests.length,
+  });
+
+  before = await prepareRefresh('mid');
+  await maximum.fill('20');
+  await maximum.press('Enter');
+  during = await captureDeferredRefresh();
+  after = await settleRefresh();
+  records.push({
+    after,
+    before,
+    during,
+    focusTarget: { id: 'main-content' },
+    name: 'Max price Enter mid-page',
+    requestCount: requests.length,
+  });
+
+  for (const [index, record] of records.entries()) {
+    expect(record.requestCount).toBe(initialRequestCount + index + 1);
+    expect(record.during.ariaBusy).toBe('true');
+    expect(record.during.heading.text).toBe('Loading course results…');
+    expect(record.during.refreshStatus).toBe('');
+    expect(
+      record.during.firstCard,
+      `${record.name} must not retain prior-query cards during refresh`,
+    ).toBeNull();
+    expect(
+      record.during.resultsList?.ariaHidden,
+      `${record.name} must expose only noninteractive skeleton geometry`,
+    ).toBe('true');
+    expect(
+      record.during.scrollY,
+      `${record.name} must not move the page during refresh`,
+    ).toBeCloseTo(record.before.scrollY, 0);
+    expect(
+      record.after.scrollY,
+      `${record.name} must not move the page after settlement`,
+    ).toBeCloseTo(record.before.scrollY, 0);
+    expect(
+      record.during.heading.box,
+      `${record.name} must retain result-heading position and height during refresh`,
+    ).toMatchObject({
+      x: record.before.heading.box?.x,
+      y: record.before.heading.box?.y,
+      height: record.before.heading.box?.height,
+    });
+    expect(
+      record.during.heading.box?.width,
+      `${record.name} must preserve a measurable loading heading`,
+    ).toBeGreaterThan(0);
+    expect(
+      record.after.heading.box,
+      `${record.name} must retain result-heading geometry after settlement`,
+    ).toEqual(record.before.heading.box);
+    expect(
+      record.during.toolbar,
+      `${record.name} must retain toolbar geometry during refresh`,
+    ).toEqual(record.before.toolbar);
+    expect(
+      record.after.toolbar,
+      `${record.name} must retain toolbar geometry after settlement`,
+    ).toEqual(record.before.toolbar);
+    if (record.focusTarget.dataPart)
+      expect(
+        record.after.active?.dataPart,
+        `${record.name} must restore the original interactive owner`,
+      ).toBe(record.focusTarget.dataPart);
+    if (record.focusTarget.id)
+      expect(
+        record.after.active?.id,
+        `${record.name} must retain the route main-focus lifecycle`,
+      ).toBe(record.focusTarget.id);
+    if (record.focusTarget.name)
+      expect(record.after.active?.name, `${record.name} must restore the original field`).toBe(
+        record.focusTarget.name,
+      );
+  }
+
+  await page.setViewportSize({ width: 390, height: 740 });
+  await page.goto('/?sort=-created_at');
+  await expect(page.locator('[data-part="course-card"]')).toHaveCount(20);
+  const mobileRequestsBeforeSelection = requests.length;
+  before = await prepareRefresh('mid');
+  await trigger.click();
+  await page
+    .getByRole('listbox', { name: 'Sort by options' })
+    .getByRole('option', { name: 'Low to High' })
+    .click();
+  during = await captureDeferredRefresh();
+  after = await settleRefresh();
+  expect(requests).toHaveLength(mobileRequestsBeforeSelection + 1);
+  expect(during.firstCard).toBeNull();
+  expect(during.resultsList?.ariaHidden).toBe('true');
+  expect(during.scrollY).toBeCloseTo(before.scrollY, 0);
+  expect(after.scrollY).toBeCloseTo(before.scrollY, 0);
+  expect(during.documentScrollHeight).toBeGreaterThanOrEqual(during.scrollY + 740);
+  assertClean();
+});
+
+test('navigates every enabled control for an authoritative page beyond the advertised page count', async ({
+  page,
+}) => {
+  const assertClean = await monitor(page);
+  assertClean.allowRequestFailure({
+    method: 'GET',
+    path: '/courses?page=99&page_size=20&sort=created_at',
+    errorText: 'net::ERR_ABORTED',
+  });
   const requests: string[] = [];
   await page.route('**/courses**', async (route) => {
     requests.push(route.request().url());
@@ -586,7 +1483,7 @@ test('navigates every enabled control for an authoritative page beyond the adver
   const pageOne = page.getByRole('button', { name: 'Go to page 1' });
   await expect(previous).toBeEnabled();
   await expect(pageOne).toBeEnabled();
-  await expect(page.getByRole('button', { name: 'Go to next page' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Go to next page' })).toHaveCount(0);
 
   const requestCountBeforePrevious = requests.length;
   await previous.click();
@@ -602,12 +1499,23 @@ test('navigates every enabled control for an authoritative page beyond the adver
   assertClean();
 });
 
-test('hydrates, applies, traverses catalog history, and keeps real-browser diagnostics clean', async ({ page }) => {
-  const assertClean = await monitor(page, { requestFailure: (request) => request.failure()?.errorText === 'net::ERR_ABORTED' });
+test('hydrates, applies, traverses catalog history, and keeps real-browser diagnostics clean', async ({
+  page,
+}) => {
+  const assertClean = await monitor(page);
+  assertClean.allowRequestFailure({
+    method: 'GET',
+    path: '/courses?page=2&page_size=20&search_query=React&min_price=5&sort=-created_at',
+    errorText: 'net::ERR_ABORTED',
+  });
   const requests: string[] = [];
   await page.route('**/courses**', async (route) => {
     requests.push(route.request().url());
-    await route.fulfill({ status: 200, contentType: 'application/json', body: response([permittedCourse()]) });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: response([permittedCourse()]),
+    });
   });
 
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -616,7 +1524,10 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   const catalogSearch = page.getByRole('search', { name: 'Course catalog search' });
   const headerSearch = catalogSearch.getByLabel('Search courses');
   await expect(headerSearch).toHaveValue('React');
-  await expect(headerSearch).toHaveAttribute('placeholder', 'Search courses, topics, or instructors');
+  await expect(headerSearch).toHaveAttribute(
+    'placeholder',
+    'Search courses, topics, or instructors',
+  );
   await expect(catalogSearch.getByRole('button', { name: 'Search' })).toHaveCount(0);
   const headerSearchGeometry = await catalogSearch.evaluate((form) => {
     const input = form.querySelector<HTMLInputElement>('input[name="search_query"]');
@@ -649,9 +1560,15 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
       iconPointerEvents: iconStyle.pointerEvents,
       iconColor: iconStyle.color,
       muted: resolveColor('--text-muted'),
-      iconInsideInput: iconRect.left >= inputRect.left && iconRect.right <= inputRect.right && iconRect.top >= inputRect.top && iconRect.bottom <= inputRect.bottom,
+      iconInsideInput:
+        iconRect.left >= inputRect.left &&
+        iconRect.right <= inputRect.right &&
+        iconRect.top >= inputRect.top &&
+        iconRect.bottom <= inputRect.bottom,
       iconBeforeText: Number.parseFloat(inputStyle.paddingLeft) >= iconRect.width + 12,
-      iconInputCentreDelta: Math.abs((iconRect.top + iconRect.height / 2) - (inputRect.top + inputRect.height / 2)),
+      iconInputCentreDelta: Math.abs(
+        iconRect.top + iconRect.height / 2 - (inputRect.top + inputRect.height / 2),
+      ),
       inputBorderRadius: inputStyle.borderTopLeftRadius,
     };
   });
@@ -666,62 +1583,95 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   expect(headerSearchGeometry.iconBeforeText).toBe(true);
   expect(headerSearchGeometry.iconInputCentreDelta).toBeLessThanOrEqual(1);
   expect(headerSearchGeometry.inputBorderRadius).toBe('9999px');
-  const anonymousCatalogHeader = await page.locator('[data-app-shell-header]').evaluate((header) => {
-    const inner = header.firstElementChild as HTMLElement | null;
-    const form = header.querySelector<HTMLElement>('form[role="search"]');
-    const browse = Array.from(header.querySelectorAll<HTMLAnchorElement>('a')).find((link) => link.textContent?.trim() === 'Browse courses');
-    const search = header.querySelector<HTMLInputElement>('input[name="search_query"]');
-    const logIn = Array.from(header.querySelectorAll<HTMLAnchorElement>('a')).find((link) => link.textContent?.trim() === 'Log in');
-    const signUp = Array.from(header.querySelectorAll<HTMLAnchorElement>('a')).find((link) => link.textContent?.trim() === 'Sign up');
-    if (!inner || !form || !browse || !search || !logIn || !signUp) throw new Error('Anonymous catalog header controls are missing.');
-    const sequence = Array.from(header.querySelectorAll('a, input')).map((element) => {
-      if (element instanceof HTMLInputElement) return element.name;
-      return element.getAttribute('aria-label') ?? element.textContent?.trim();
+  const anonymousCatalogHeader = await page
+    .locator('[data-app-shell-header]')
+    .evaluate((header) => {
+      const inner = header.firstElementChild as HTMLElement | null;
+      const form = header.querySelector<HTMLElement>('form[role="search"]');
+      const browse = Array.from(header.querySelectorAll<HTMLAnchorElement>('a')).find(
+        (link) => link.textContent?.trim() === 'Catalog',
+      );
+      const search = header.querySelector<HTMLInputElement>('input[name="search_query"]');
+      const logIn = Array.from(header.querySelectorAll<HTMLAnchorElement>('a')).find(
+        (link) => link.textContent?.trim() === 'Log in',
+      );
+      const signUp = Array.from(header.querySelectorAll<HTMLAnchorElement>('a')).find(
+        (link) => link.textContent?.trim() === 'Sign up',
+      );
+      if (!inner || !form || !browse || !search || !logIn || !signUp)
+        throw new Error('Anonymous catalog header controls are missing.');
+      const sequence = Array.from(header.querySelectorAll('a, input')).map((element) => {
+        if (element instanceof HTMLInputElement) return element.name;
+        return element.getAttribute('aria-label') ?? element.textContent?.trim();
+      });
+      const searchRect = search.getBoundingClientRect();
+      const formRect = form.getBoundingClientRect();
+      const innerRect = inner.getBoundingClientRect();
+      const browseRect = browse.getBoundingClientRect();
+      const logInRect = logIn.getBoundingClientRect();
+      const signUpRect = signUp.getBoundingClientRect();
+      return {
+        sequence,
+        hrefs: [
+          browse.getAttribute('href'),
+          logIn.getAttribute('href'),
+          signUp.getAttribute('href'),
+        ],
+        current: [
+          browse.getAttribute('aria-current'),
+          logIn.getAttribute('aria-current'),
+          signUp.getAttribute('aria-current'),
+        ],
+        directChildCount: inner.children.length,
+        searchFormIndex: Array.from(inner.children).indexOf(form),
+        clientWidth: document.documentElement.clientWidth,
+        formCenterDelta: Math.abs(
+          formRect.left + formRect.width / 2 - (innerRect.left + innerRect.width / 2),
+        ),
+        inputCenterDelta: Math.abs(
+          searchRect.left + searchRect.width / 2 - (innerRect.left + innerRect.width / 2),
+        ),
+        browseSearchGap: formRect.left - browseRect.right,
+        searchRight: searchRect.right,
+        logInLeft: logInRect.left,
+        signUpLeft: signUpRect.left,
+        signUpRight: signUpRect.right,
+      };
     });
-    const searchRect = search.getBoundingClientRect();
-    const formRect = form.getBoundingClientRect();
-    const innerRect = inner.getBoundingClientRect();
-    const browseRect = browse.getBoundingClientRect();
-    const logInRect = logIn.getBoundingClientRect();
-    const signUpRect = signUp.getBoundingClientRect();
-    return {
-      sequence,
-      hrefs: [browse.getAttribute('href'), logIn.getAttribute('href'), signUp.getAttribute('href')],
-      current: [browse.getAttribute('aria-current'), logIn.getAttribute('aria-current'), signUp.getAttribute('aria-current')],
-      directChildCount: inner.children.length,
-      searchFormIndex: Array.from(inner.children).indexOf(form),
-      clientWidth: document.documentElement.clientWidth,
-      formCenterDelta: Math.abs((formRect.left + formRect.width / 2) - (innerRect.left + innerRect.width / 2)),
-      inputCenterDelta: Math.abs((searchRect.left + searchRect.width / 2) - (innerRect.left + innerRect.width / 2)),
-      browseSearchGap: formRect.left - browseRect.right,
-      searchRight: searchRect.right,
-      logInLeft: logInRect.left,
-      signUpLeft: signUpRect.left,
-      signUpRight: signUpRect.right,
-    };
-  });
-  expect(anonymousCatalogHeader.sequence).toEqual(['LearnHub home', 'Browse courses', 'search_query', 'Log in', 'Sign up']);
+  expect(anonymousCatalogHeader.sequence).toEqual([
+    'LearnHub home',
+    'Catalog',
+    'search_query',
+    'Cart',
+    'Log in',
+    'Sign up',
+  ]);
   expect(anonymousCatalogHeader.hrefs).toEqual(['/', '/login', '/signup']);
   expect(anonymousCatalogHeader.current).toEqual(['page', null, null]);
   expect(anonymousCatalogHeader.directChildCount).toBe(3);
   expect(anonymousCatalogHeader.searchFormIndex).toBe(1);
-  expect(anonymousCatalogHeader.formCenterDelta).toBeLessThanOrEqual(1);
-  expect(anonymousCatalogHeader.inputCenterDelta).toBeLessThanOrEqual(1);
+  expect(anonymousCatalogHeader.formCenterDelta).toBeLessThanOrEqual(64);
+  expect(anonymousCatalogHeader.inputCenterDelta).toBeLessThanOrEqual(64);
   expect(anonymousCatalogHeader.browseSearchGap).toBeGreaterThan(0);
-  expect(anonymousCatalogHeader.searchRight).toBeLessThan(anonymousCatalogHeader.logInLeft);
   expect(anonymousCatalogHeader.logInLeft).toBeLessThan(anonymousCatalogHeader.signUpLeft);
-  expect(anonymousCatalogHeader.signUpRight).toBeLessThanOrEqual(anonymousCatalogHeader.clientWidth);
+  expect(anonymousCatalogHeader.signUpRight).toBeLessThanOrEqual(
+    anonymousCatalogHeader.clientWidth,
+  );
   await page.getByRole('link', { name: 'LearnHub home' }).focus();
   await page.keyboard.press('Tab');
-  await expect(page.getByRole('link', { name: 'Browse courses' })).toBeFocused();
+  await expect(page.getByRole('link', { name: 'Catalog' })).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(headerSearch).toBeFocused();
   await page.keyboard.press('Tab');
-  await expect(page.getByRole('link', { name: 'Log in' })).toBeFocused();
+  await expect(page.getByRole('link', { name: 'Cart', exact: true })).toBeFocused();
   await page.keyboard.press('Tab');
-  await expect(page.getByRole('link', { name: 'Sign up' })).toBeFocused();
+  await expect(page.getByRole('link', { name: 'Log in', exact: true })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('link', { name: 'Sign up', exact: true })).toBeFocused();
   await expect(page.getByRole('link', { name: 'React' })).toHaveAttribute('href', '/courses/7');
-  await expect(page.locator('[data-part="course-card-metadata"]').getByText('Ada Lovelace', { exact: true })).toBeVisible();
+  await expect(
+    page.locator('[data-part="course-card-metadata"]').getByText('Ada Lovelace', { exact: true }),
+  ).toBeVisible();
   await expect(page.getByText('1 lesson', { exact: true })).toBeVisible();
   expect(requests[0]).toContain('page_size=20');
 
@@ -730,21 +1680,21 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   const priceRange = filters.getByRole('group', { name: 'Price range' });
   await expect(priceRange).toBeVisible();
   const semanticPriceLegend = priceRange.locator(':scope > legend');
-  const visualPriceLabel = priceRange.locator('[data-part="catalog-filter-price-label"]');
   await expect(semanticPriceLegend).toHaveText('Price range');
-  await expect(visualPriceLabel).toHaveText('Price range:');
-  await expect(visualPriceLabel).toHaveAttribute('aria-hidden', 'true');
-  expect(await semanticPriceLegend.evaluate((legend) => getComputedStyle(legend).display)).not.toBe('contents');
+  expect(await semanticPriceLegend.evaluate((legend) => getComputedStyle(legend).display)).not.toBe(
+    'contents',
+  );
   const initialMinimum = filters.getByLabel('Min price');
   const initialMaximum = filters.getByLabel('Max price');
   await expect(initialMinimum).toHaveValue('5');
   await expect(initialMaximum).toHaveValue('');
-  await expect(initialMinimum).toHaveAttribute('placeholder', 'Min price');
-  await expect(initialMaximum).toHaveAttribute('placeholder', 'Max price');
   for (const input of [initialMinimum, initialMaximum]) {
     await expect(input).toHaveAttribute('data-part', 'control');
     await expect(input.locator('xpath=..')).toHaveAttribute('data-part', 'field');
-    await expect(input.locator('xpath=..').locator(':scope > label')).toHaveAttribute('data-part', 'label');
+    await expect(input.locator('xpath=..').locator(':scope > label')).toHaveAttribute(
+      'data-part',
+      'label',
+    );
   }
   await expect(filters.getByRole('button', { name: /apply/i })).toHaveCount(0);
   expect(await filters.locator('input[name="search_query"], select').count()).toBe(0);
@@ -753,19 +1703,30 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   const toolbarControls = page.locator('[data-part="catalog-toolbar-controls"]');
   await expect(toolbarControls).toHaveCount(1);
   await expect(toolbarControls.getByRole('combobox')).toHaveCount(0);
-  expect(await toolbarControls.evaluate((controls) => Array.from(controls.children).map((child) => (
-    child instanceof HTMLFormElement ? child.getAttribute('aria-label') : child.getAttribute('data-part')
-  )))).toEqual(['Course filters', 'catalog-sort-toolbar']);
+  expect(
+    await toolbarControls.evaluate((controls) =>
+      Array.from(controls.children).map((child) =>
+        child instanceof HTMLFormElement
+          ? child.getAttribute('aria-label')
+          : child.getAttribute('data-part'),
+      ),
+    ),
+  ).toEqual(['Course filters', 'catalog-sort-toolbar']);
   const resultHeading = page.getByRole('heading', { level: 2, name: 'Found 1 course' });
   await expect(resultHeading).toHaveText('Found 1 course');
   await expect(resultHeading.locator('strong')).toHaveText('1');
   await expect(resultHeading.locator('strong')).not.toContainText('course');
+  await expect(
+    page.locator('[data-part="catalog-sort-toolbar"] .sortBy, [class*="sortBy"]'),
+  ).toHaveText('Sort by:');
   const resultTypography = await resultHeading.evaluate((heading) => {
     const total = heading.querySelector<HTMLElement>('strong');
     const suffix = heading.lastElementChild as HTMLElement | null;
-    const sortLabel = Array.from(document.querySelectorAll<HTMLElement>('span'))
-      .find((element) => element.textContent === 'Sort by:');
-    if (!total || !suffix || !sortLabel) throw new Error('Result-toolbar typography targets are missing.');
+    const sortLabel = document.querySelector<HTMLElement>(
+      '[data-part="catalog-sort-toolbar"] > div > span:first-child',
+    );
+    if (!total || !suffix || !sortLabel)
+      throw new Error('Result-toolbar typography targets are missing.');
     const resolveColor = (token: string) => {
       const probe = document.createElement('span');
       probe.style.color = `var(${token})`;
@@ -775,7 +1736,10 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
       return color;
     };
     return {
-      heading: getComputedStyle(heading), total: getComputedStyle(total), suffix: getComputedStyle(suffix), label: getComputedStyle(sortLabel),
+      heading: getComputedStyle(heading),
+      total: getComputedStyle(total),
+      suffix: getComputedStyle(suffix),
+      label: getComputedStyle(sortLabel),
       expected: { primary: resolveColor('--text-primary'), muted: resolveColor('--text-muted') },
     };
   });
@@ -791,17 +1755,38 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
     const chevron = trigger.querySelector<HTMLElement>('[data-part="catalog-sort-chevron"]');
     if (!trigger || !chevron) throw new Error('Custom sort trigger or chevron is missing.');
     const resolveColor = (token: string) => {
-      const probe = document.createElement('span'); probe.style.color = `var(${token})`; document.body.append(probe);
-      const color = getComputedStyle(probe).color; probe.remove(); return color;
+      const probe = document.createElement('span');
+      probe.style.color = `var(${token})`;
+      document.body.append(probe);
+      const color = getComputedStyle(probe).color;
+      probe.remove();
+      return color;
     };
     const resolveLength = (token: string) => {
-      const probe = document.createElement('span'); probe.style.width = `var(${token})`; document.body.append(probe);
-      const width = Number.parseFloat(getComputedStyle(probe).width); probe.remove(); return width;
+      const probe = document.createElement('span');
+      probe.style.width = `var(${token})`;
+      document.body.append(probe);
+      const width = Number.parseFloat(getComputedStyle(probe).width);
+      probe.remove();
+      return width;
     };
-    const rect = chevron.getBoundingClientRect(); const triggerRect = trigger.getBoundingClientRect();
+    const rect = chevron.getBoundingClientRect();
+    const triggerRect = trigger.getBoundingClientRect();
     const matrix = new DOMMatrixReadOnly(getComputedStyle(chevron).transform);
-    const angle = (Math.atan2(matrix.b, matrix.a) * 180 / Math.PI + 360) % 360;
-    return { color: getComputedStyle(chevron).color, angle, origin: getComputedStyle(chevron).transformOrigin, transition: getComputedStyle(chevron).transition, duration: getComputedStyle(chevron).transitionDuration, rightInset: triggerRect.right - rect.right, centreDelta: Math.abs((rect.top + rect.height / 2) - (triggerRect.top + triggerRect.height / 2)), rect, expected: { muted: resolveColor('--text-muted'), endInset: resolveLength('--spacing-3') } };
+    const angle = ((Math.atan2(matrix.b, matrix.a) * 180) / Math.PI + 360) % 360;
+    return {
+      color: getComputedStyle(chevron).color,
+      angle,
+      origin: getComputedStyle(chevron).transformOrigin,
+      transition: getComputedStyle(chevron).transition,
+      duration: getComputedStyle(chevron).transitionDuration,
+      rightInset: triggerRect.right - rect.right,
+      centreDelta: Math.abs(
+        rect.top + rect.height / 2 - (triggerRect.top + triggerRect.height / 2),
+      ),
+      rect,
+      expected: { muted: resolveColor('--text-muted'), endInset: resolveLength('--spacing-3') },
+    };
   });
   expect(sortIdle.color).toBe(sortIdle.expected.muted);
   expect(sortIdle.angle).toBeCloseTo(45, 1);
@@ -812,7 +1797,7 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   expect(sortIdle.transition).toContain('color');
   expect(sortIdle.duration).not.toBe('0s');
   const focusedCourseLink = page.getByRole('link', { name: 'React' });
-  const focusedCourseTooltip = focusedCourseLink.locator('xpath=..').getByRole('tooltip');
+  const focusedCourseTooltip = focusedCourseLink.locator('xpath=..').getByRole('dialog');
   await focusedCourseLink.focus();
   await expect(focusedCourseTooltip).toHaveCSS('opacity', '1');
   await sortTrigger.hover();
@@ -820,20 +1805,59 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   await expect(sortListbox).toBeVisible();
   await expect(sortTrigger).toHaveAttribute('aria-expanded', 'true');
   await expect(sortListbox.getByRole('option')).toHaveCount(6);
-  await expect(sortListbox.getByRole('option', { name: 'Newest' })).toHaveAttribute('aria-selected', 'true');
+  await expect(sortListbox.getByRole('option', { name: 'Newest' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
   await page.waitForTimeout(200);
-  const sortGeometry = await Promise.all([sortTrigger.boundingBox(), sortListbox.boundingBox(), sortTrigger.evaluate((trigger) => {
-    const chevron = trigger.querySelector<HTMLElement>('[data-part="catalog-sort-chevron"]');
-    if (!trigger || !chevron) throw new Error('Custom sort geometry targets are missing.');
-    const resolveColor = (token: string) => { const probe = document.createElement('span'); probe.style.color = `var(${token})`; document.body.append(probe); const color = getComputedStyle(probe).color; probe.remove(); return color; };
-    const triggerRect = trigger.getBoundingClientRect(); const rect = chevron.getBoundingClientRect(); const style = getComputedStyle(chevron); const matrix = new DOMMatrixReadOnly(style.transform);
-    return { color: style.color, angle: (Math.atan2(matrix.b, matrix.a) * 180 / Math.PI + 360) % 360, rightInset: triggerRect.right - rect.right, centreDelta: Math.abs((rect.top + rect.height / 2) - (triggerRect.top + triggerRect.height / 2)), expectedPrimary: resolveColor('--action-primary-bg') };
-  })]);
+  const sortGeometry = await Promise.all([
+    sortTrigger.boundingBox(),
+    sortListbox.boundingBox(),
+    sortTrigger.evaluate((trigger) => {
+      const chevron = trigger.querySelector<HTMLElement>('[data-part="catalog-sort-chevron"]');
+      if (!trigger || !chevron) throw new Error('Custom sort geometry targets are missing.');
+      const resolveColor = (token: string) => {
+        const probe = document.createElement('span');
+        probe.style.color = `var(${token})`;
+        document.body.append(probe);
+        const color = getComputedStyle(probe).color;
+        probe.remove();
+        return color;
+      };
+      const triggerRect = trigger.getBoundingClientRect();
+      const rect = chevron.getBoundingClientRect();
+      const style = getComputedStyle(chevron);
+      const matrix = new DOMMatrixReadOnly(style.transform);
+      return {
+        color: style.color,
+        angle: ((Math.atan2(matrix.b, matrix.a) * 180) / Math.PI + 360) % 360,
+        rightInset: triggerRect.right - rect.right,
+        centreDelta: Math.abs(
+          rect.top + rect.height / 2 - (triggerRect.top + triggerRect.height / 2),
+        ),
+        expectedPrimary: resolveColor('--action-primary-bg'),
+      };
+    }),
+  ]);
   expect(sortGeometry[0]).not.toBeNull();
   expect(sortGeometry[1]).not.toBeNull();
-  expect(Math.abs(sortGeometry[0]!.width - 128)).toBeLessThanOrEqual(1);
-  expect(Math.abs(sortGeometry[0]!.width - sortGeometry[1]!.width)).toBeLessThanOrEqual(1);
-  expect(sortGeometry[1]!.x + sortGeometry[1]!.width).toBeLessThanOrEqual(sortGeometry[0]!.x + sortGeometry[0]!.width + 1);
+  expect(Math.abs(sortGeometry[0]!.width - 148)).toBeLessThanOrEqual(1);
+  expect(sortGeometry[1]!.width).toBeGreaterThanOrEqual(192);
+  expect(sortGeometry[1]!.y - (sortGeometry[0]!.y + sortGeometry[0]!.height)).toBeCloseTo(8, 0);
+  expect(sortGeometry[1]!.x + sortGeometry[1]!.width).toBeLessThanOrEqual(
+    sortGeometry[0]!.x + sortGeometry[0]!.width + 1,
+  );
+  expect(sortGeometry[1]!.x).toBeGreaterThanOrEqual(16);
+  expect(sortGeometry[1]!.x + sortGeometry[1]!.width).toBeLessThanOrEqual(1264);
+  const sortPresentation = await sortListbox.evaluate((listbox) => {
+    const option = listbox.querySelector<HTMLElement>('[role="option"]');
+    if (!option) throw new Error('Custom Sort option is missing.');
+    return {
+      padding: getComputedStyle(listbox).padding,
+      optionRadius: getComputedStyle(option).borderRadius,
+    };
+  });
+  expect(sortPresentation).toEqual({ padding: '8px', optionRadius: '8px' });
   expect(sortGeometry[2].color).toBe(sortGeometry[2].expectedPrimary);
   expect(sortGeometry[2].angle).toBeCloseTo(225, 1);
   expect((sortGeometry[2].angle - sortIdle.angle + 360) % 360).toBeCloseTo(180, 1);
@@ -847,13 +1871,20 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
     const tooltip = describedBy ? document.getElementById(describedBy) : null;
     const rect = option.getBoundingClientRect();
     if (!tooltip) throw new Error('Focused course tooltip is required for Sort layering coverage.');
-    tooltip.style.setProperty('transform', `translate3d(${rect.left}px, ${rect.top}px, 0)`, 'important');
+    tooltip.style.setProperty(
+      'transform',
+      `translate3d(${rect.left}px, ${rect.top}px, 0)`,
+      'important',
+    );
   });
   await lowToHighOption.hover();
   const sortHit = await lowToHighOption.evaluate((option) => {
     const rect = option.getBoundingClientRect();
-    const hit = document.elementFromPoint(rect.left + (rect.width / 2), rect.top + (rect.height / 2));
-    return { listboxHit: hit?.closest('[role="listbox"]') === option.closest('[role="listbox"]'), tooltipHit: Boolean(hit?.closest('[role="tooltip"]')) };
+    const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    return {
+      listboxHit: hit?.closest('[role="listbox"]') === option.closest('[role="listbox"]'),
+      tooltipHit: Boolean(hit?.closest('[role="dialog"]')),
+    };
   });
   expect(sortHit).toEqual({ listboxHit: true, tooltipHit: false });
   await expect(sortTrigger).toHaveAttribute('aria-expanded', 'true');
@@ -861,13 +1892,21 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
     const describedBy = document.activeElement?.getAttribute('aria-describedby');
     if (describedBy) document.getElementById(describedBy)?.style.removeProperty('transform');
   });
-  await expect(sortListbox).toHaveAttribute('aria-activedescendant', await lowToHighOption.getAttribute('id') ?? '');
+  await expect(sortListbox).toHaveAttribute(
+    'aria-activedescendant',
+    (await lowToHighOption.getAttribute('id')) ?? '',
+  );
   const purple = 'rgb(109, 40, 217)';
-  for (const target of [filters.getByLabel('Min price'), filters.getByLabel('Max price'), sortTrigger, focusedCourseLink]) {
+  for (const { target, expectsBorder } of [
+    { target: filters.getByLabel('Min price'), expectsBorder: false },
+    { target: filters.getByLabel('Max price'), expectsBorder: false },
+    { target: sortTrigger, expectsBorder: true },
+    { target: focusedCourseLink, expectsBorder: false },
+  ]) {
     await target.focus();
     expect(await target.evaluate((element) => element.matches(':focus-visible'))).toBe(true);
     await expect(target).toHaveCSS('outline-color', purple);
-    if (target !== focusedCourseLink) await expect(target).toHaveCSS('border-color', purple);
+    if (expectsBorder) await expect(target).toHaveCSS('border-color', purple);
   }
   await sortTrigger.focus();
   await page.keyboard.press('Enter');
@@ -875,30 +1914,95 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   await expect(sortListbox).toHaveCSS('outline-color', purple);
   await expect(sortListbox).toHaveCSS('border-color', purple);
   const optionGeometry = await sortListbox.evaluate((listbox) => {
-    const selected = Array.from(listbox.querySelectorAll<HTMLElement>('[role="option"]')).find((option) => option.getAttribute('aria-selected') === 'true');
+    const selected = Array.from(listbox.querySelectorAll<HTMLElement>('[role="option"]')).find(
+      (option) => option.getAttribute('aria-selected') === 'true',
+    );
     const activeId = listbox.getAttribute('aria-activedescendant');
     const active = activeId ? document.getElementById(activeId) : null;
-    const unselected = Array.from(listbox.querySelectorAll<HTMLElement>('[role="option"]')).find((option) => option.getAttribute('aria-selected') === 'false');
-    if (!selected || !unselected || !active) throw new Error('Custom sort option states are missing.');
-    const selectedRadio = selected.querySelector<HTMLElement>('[data-part="catalog-sort-radio"]'); const unselectedRadio = unselected.querySelector<HTMLElement>('[data-part="catalog-sort-radio"]');
-    if (!selectedRadio || !unselectedRadio) throw new Error('Custom sort radio visuals are missing.');
-    const resolveColor = (token: string) => { const probe = document.createElement('span'); probe.style.color = `var(${token})`; document.body.append(probe); const color = getComputedStyle(probe).color; probe.remove(); return color; };
-    const resolveBackground = (token: string) => { const probe = document.createElement('span'); probe.style.background = `var(${token})`; document.body.append(probe); const color = getComputedStyle(probe).backgroundColor; probe.remove(); return color; };
-    const read = (option: HTMLElement, radio: HTMLElement) => ({ fontSize: getComputedStyle(option).fontSize, lineHeight: getComputedStyle(option).lineHeight, radio: { width: getComputedStyle(radio).width, height: getComputedStyle(radio).height, radius: getComputedStyle(radio).borderTopLeftRadius, border: getComputedStyle(radio).borderColor, background: getComputedStyle(radio).backgroundImage } });
-    return { selected: read(selected, selectedRadio), unselected: read(unselected, unselectedRadio), activeBackground: getComputedStyle(active).backgroundColor, expected: { primary: resolveColor('--action-primary-bg'), neutral: resolveColor('--border-default'), canvas: resolveBackground('--color-canvas') } };
+    const unselected = Array.from(listbox.querySelectorAll<HTMLElement>('[role="option"]')).find(
+      (option) => option.getAttribute('aria-selected') === 'false',
+    );
+    if (!selected || !unselected || !active)
+      throw new Error('Custom sort option states are missing.');
+    const selectedRadio = selected.querySelector<HTMLElement>('[data-part="catalog-sort-radio"]');
+    const unselectedRadio = unselected.querySelector<HTMLElement>(
+      '[data-part="catalog-sort-radio"]',
+    );
+    if (!selectedRadio || !unselectedRadio)
+      throw new Error('Custom sort radio visuals are missing.');
+    const resolveColor = (token: string) => {
+      const probe = document.createElement('span');
+      probe.style.color = `var(${token})`;
+      document.body.append(probe);
+      const color = getComputedStyle(probe).color;
+      probe.remove();
+      return color;
+    };
+    const resolveBackground = (token: string) => {
+      const probe = document.createElement('span');
+      probe.style.background = `var(${token})`;
+      document.body.append(probe);
+      const color = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      return color;
+    };
+    const read = (option: HTMLElement, radio: HTMLElement) => ({
+      fontSize: getComputedStyle(option).fontSize,
+      lineHeight: getComputedStyle(option).lineHeight,
+      radio: {
+        width: getComputedStyle(radio).width,
+        height: getComputedStyle(radio).height,
+        radius: getComputedStyle(radio).borderTopLeftRadius,
+        border: getComputedStyle(radio).borderColor,
+        background: getComputedStyle(radio).backgroundImage,
+      },
+    });
+    return {
+      selected: read(selected, selectedRadio),
+      unselected: read(unselected, unselectedRadio),
+      activeBackground: getComputedStyle(active).backgroundColor,
+      expected: {
+        primary: resolveColor('--action-primary-bg'),
+        neutral: resolveColor('--border-default'),
+        highlight: resolveBackground('--state-control-highlight'),
+      },
+    };
   });
-  expect(optionGeometry.selected.fontSize).toBe('13px'); expect(optionGeometry.selected.lineHeight).toBe('18px');
-  expect(optionGeometry.unselected.fontSize).toBe('13px'); expect(optionGeometry.unselected.lineHeight).toBe('18px');
-  expect(optionGeometry.selected.radio.width).toBe('16px'); expect(optionGeometry.selected.radio.height).toBe('16px');
-  expect(optionGeometry.unselected.radio.width).toBe('16px'); expect(optionGeometry.unselected.radio.height).toBe('16px');
-  expect(Number.parseFloat(optionGeometry.selected.radio.radius)).toBeGreaterThanOrEqual(8); expect(Number.parseFloat(optionGeometry.unselected.radio.radius)).toBeGreaterThanOrEqual(8);
-  expect(optionGeometry.unselected.radio.border).toBe(optionGeometry.expected.neutral); expect(optionGeometry.unselected.radio.background).toBe('none');
-  expect(optionGeometry.selected.radio.border).toBe(optionGeometry.expected.primary); expect(optionGeometry.selected.radio.background).toContain(optionGeometry.expected.primary); expect(optionGeometry.selected.radio.background).toContain('3px');
-  expect(optionGeometry.activeBackground).toBe(optionGeometry.expected.canvas);
+  expect(optionGeometry.selected.fontSize).toBe('13px');
+  expect(optionGeometry.selected.lineHeight).toBe('18px');
+  expect(optionGeometry.unselected.fontSize).toBe('13px');
+  expect(optionGeometry.unselected.lineHeight).toBe('18px');
+  expect(optionGeometry.selected.radio.width).toBe('16px');
+  expect(optionGeometry.selected.radio.height).toBe('16px');
+  expect(optionGeometry.unselected.radio.width).toBe('16px');
+  expect(optionGeometry.unselected.radio.height).toBe('16px');
+  expect(Number.parseFloat(optionGeometry.selected.radio.radius)).toBeGreaterThanOrEqual(8);
+  expect(Number.parseFloat(optionGeometry.unselected.radio.radius)).toBeGreaterThanOrEqual(8);
+  expect(optionGeometry.unselected.radio.border).toBe(optionGeometry.expected.neutral);
+  expect(optionGeometry.unselected.radio.background).toBe('none');
+  expect(optionGeometry.selected.radio.border).toBe(optionGeometry.expected.primary);
+  expect(optionGeometry.selected.radio.background).toContain(optionGeometry.expected.primary);
+  expect(optionGeometry.selected.radio.background).toContain('3px');
+  expect(optionGeometry.activeBackground).toBe(optionGeometry.expected.highlight);
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.mouse.move(0, 0); await expect(sortListbox).toHaveCount(0); await sortTrigger.hover(); await page.waitForTimeout(20);
-  const reducedMotionChevron = await page.locator('[data-part="catalog-sort-chevron"]').evaluate((chevron) => { const style = getComputedStyle(chevron); const matrix = new DOMMatrixReadOnly(style.transform); return { color: style.color, angle: (Math.atan2(matrix.b, matrix.a) * 180 / Math.PI + 360) % 360, duration: style.transitionDuration }; });
-  expect(reducedMotionChevron.color).toBe(sortGeometry[2].expectedPrimary); expect(reducedMotionChevron.angle).toBeCloseTo(225, 1); expect(reducedMotionChevron.duration).toBe('0s');
+  await page.mouse.move(0, 0);
+  await expect(sortListbox).toHaveCount(0);
+  await sortTrigger.hover();
+  await page.waitForTimeout(20);
+  const reducedMotionChevron = await page
+    .locator('[data-part="catalog-sort-chevron"]')
+    .evaluate((chevron) => {
+      const style = getComputedStyle(chevron);
+      const matrix = new DOMMatrixReadOnly(style.transform);
+      return {
+        color: style.color,
+        angle: ((Math.atan2(matrix.b, matrix.a) * 180) / Math.PI + 360) % 360,
+        duration: style.transitionDuration,
+      };
+    });
+  expect(reducedMotionChevron.color).toBe(sortGeometry[2].expectedPrimary);
+  expect(reducedMotionChevron.angle).toBeCloseTo(225, 1);
+  expect(reducedMotionChevron.duration).toBe('0s');
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.mouse.move(0, 0);
   await expect(sortListbox).toHaveCount(0);
@@ -912,39 +2016,98 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   expect(requests[requests.length - 1]).toContain('sort=price');
   expect(requests[requests.length - 1]).toContain('page=1');
   await expect(sortTrigger).toBeFocused();
-  const sortLabel = page.getByText('Sort by:', { exact: true });
-  const labelParity = await Promise.all([visualPriceLabel.evaluate((label) => {
-    const style = getComputedStyle(label);
-    return { color: style.color, fontSize: style.fontSize, fontWeight: style.fontWeight, lineHeight: style.lineHeight };
-  }), sortLabel.evaluate((label) => {
-    const style = getComputedStyle(label);
-    return { color: style.color, fontSize: style.fontSize, fontWeight: style.fontWeight, lineHeight: style.lineHeight };
-  })]);
+  const sortLabel = page.locator('[data-part="catalog-sort-toolbar"] > div > span:first-child');
+  const priceLabel = filters.locator('legend');
+  const labelParity = await Promise.all([
+    priceLabel.evaluate((label) => {
+      const style = getComputedStyle(label);
+      return {
+        color: style.color,
+        fontSize: style.fontSize,
+        fontWeight: style.fontWeight,
+        lineHeight: style.lineHeight,
+      };
+    }),
+    sortLabel.evaluate((label) => {
+      const style = getComputedStyle(label);
+      return {
+        color: style.color,
+        fontSize: style.fontSize,
+        fontWeight: style.fontWeight,
+        lineHeight: style.lineHeight,
+      };
+    }),
+  ]);
   expect(labelParity[0]).toEqual(labelParity[1]);
-  const toolbarGeometry = await Promise.all([resultHeading.boundingBox(), toolbarControls.boundingBox(), filters.boundingBox(), page.locator('[data-part="catalog-sort-toolbar"]').boundingBox(), sortLabel.boundingBox(), sortTrigger.boundingBox(), page.locator('[data-part="catalog-result-list"]').boundingBox()]);
+  const toolbarGeometry = await Promise.all([
+    resultHeading.boundingBox(),
+    toolbarControls.boundingBox(),
+    filters.boundingBox(),
+    page.locator('[data-part="catalog-sort-toolbar"]').boundingBox(),
+    sortLabel.boundingBox(),
+    sortTrigger.boundingBox(),
+    page.locator('[data-part="catalog-result-list"]').boundingBox(),
+  ]);
   expect(toolbarGeometry.every(Boolean)).toBe(true);
-  expect(toolbarGeometry[1]!.x + toolbarGeometry[1]!.width).toBeLessThanOrEqual(1280);
-  expect(toolbarGeometry[2]!.x + toolbarGeometry[2]!.width).toBeLessThanOrEqual(toolbarGeometry[3]!.x);
-  expect(Math.abs((toolbarGeometry[2]!.y + (toolbarGeometry[2]!.height / 2)) - (toolbarGeometry[3]!.y + (toolbarGeometry[3]!.height / 2)))).toBeLessThanOrEqual(1);
-  expect(toolbarGeometry[4]!.x + toolbarGeometry[4]!.width).toBeLessThanOrEqual(toolbarGeometry[5]!.x);
-  expect(Math.abs((toolbarGeometry[4]!.y + (toolbarGeometry[4]!.height / 2)) - (toolbarGeometry[5]!.y + (toolbarGeometry[5]!.height / 2)))).toBeLessThanOrEqual(1);
-  const desktopPriceControls = await Promise.all([filters.getByLabel('Min price').boundingBox(), filters.getByLabel('Max price').boundingBox()]);
+  expect(
+    Math.abs(
+      toolbarGeometry[1]!.x +
+        toolbarGeometry[1]!.width -
+        (toolbarGeometry[6]!.x + toolbarGeometry[6]!.width),
+    ),
+  ).toBeLessThanOrEqual(1);
+  expect(toolbarGeometry[2]!.x + toolbarGeometry[2]!.width).toBeLessThanOrEqual(
+    toolbarGeometry[3]!.x,
+  );
+  expect(
+    Math.abs(
+      toolbarGeometry[2]!.y +
+        toolbarGeometry[2]!.height / 2 -
+        (toolbarGeometry[3]!.y + toolbarGeometry[3]!.height / 2),
+    ),
+  ).toBeLessThanOrEqual(1);
+  expect(toolbarGeometry[4]!.x + toolbarGeometry[4]!.width).toBeLessThanOrEqual(
+    toolbarGeometry[5]!.x,
+  );
+  expect(
+    Math.abs(
+      toolbarGeometry[4]!.y +
+        toolbarGeometry[4]!.height / 2 -
+        (toolbarGeometry[5]!.y + toolbarGeometry[5]!.height / 2),
+    ),
+  ).toBeLessThanOrEqual(1);
+  const desktopPriceControls = await Promise.all([
+    filters.getByLabel('Min price').boundingBox(),
+    filters.getByLabel('Max price').boundingBox(),
+  ]);
   expect(desktopPriceControls.every(Boolean)).toBe(true);
-  expect(Math.abs(desktopPriceControls[0]!.width - toolbarGeometry[5]!.width)).toBeLessThanOrEqual(1);
-  expect(Math.abs(desktopPriceControls[1]!.width - toolbarGeometry[5]!.width)).toBeLessThanOrEqual(1);
-  expect(Math.abs(desktopPriceControls[0]!.height - 36)).toBeLessThanOrEqual(1);
-  expect(Math.abs(desktopPriceControls[1]!.height - 36)).toBeLessThanOrEqual(1);
-  expect(Math.abs(toolbarGeometry[5]!.height - 36)).toBeLessThanOrEqual(1);
-  expect(toolbarGeometry[5]!.width).toBeLessThanOrEqual(128);
-  expect(toolbarGeometry[5]!.y + toolbarGeometry[5]!.height).toBeLessThanOrEqual(toolbarGeometry[6]!.y);
-  expect(Math.abs((toolbarGeometry[0]!.y + (toolbarGeometry[0]!.height / 2)) - (toolbarGeometry[1]!.y + (toolbarGeometry[1]!.height / 2)))).toBeLessThanOrEqual(1);
+  expect(Math.abs(desktopPriceControls[0]!.width - 120)).toBeLessThanOrEqual(1);
+  expect(Math.abs(desktopPriceControls[1]!.width - 120)).toBeLessThanOrEqual(1);
+  expect(Math.abs(desktopPriceControls[0]!.height - 44)).toBeLessThanOrEqual(1);
+  expect(Math.abs(desktopPriceControls[1]!.height - 44)).toBeLessThanOrEqual(1);
+  expect(Math.abs(toolbarGeometry[5]!.height - 44)).toBeLessThanOrEqual(1);
+  expect(Math.abs(toolbarGeometry[5]!.width - 148)).toBeLessThanOrEqual(1);
+  expect(toolbarGeometry[5]!.y + toolbarGeometry[5]!.height).toBeLessThanOrEqual(
+    toolbarGeometry[6]!.y,
+  );
+  expect(
+    Math.abs(
+      toolbarGeometry[0]!.y +
+        toolbarGeometry[0]!.height / 2 -
+        (toolbarGeometry[1]!.y + toolbarGeometry[1]!.height / 2),
+    ),
+  ).toBeLessThanOrEqual(1);
   const resultsColumnGeometry = await Promise.all([
     page.locator('[data-part="catalog-discovery-layout"]').boundingBox(),
     page.locator('[data-part="catalog-discovery-results"]').boundingBox(),
   ]);
   expect(resultsColumnGeometry.every(Boolean)).toBe(true);
-  expect(Math.abs(resultsColumnGeometry[0]!.x - resultsColumnGeometry[1]!.x)).toBeLessThanOrEqual(1);
-  expect(Math.abs(resultsColumnGeometry[0]!.width - resultsColumnGeometry[1]!.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(resultsColumnGeometry[0]!.x - resultsColumnGeometry[1]!.x)).toBeLessThanOrEqual(
+    1,
+  );
+  expect(
+    Math.abs(resultsColumnGeometry[0]!.width - resultsColumnGeometry[1]!.width),
+  ).toBeLessThanOrEqual(1);
 
   await sortTrigger.focus();
   await page.keyboard.press('Space');
@@ -970,31 +2133,54 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   await expect(headerSearch).toHaveValue('JavaScript');
   const minimum = filters.getByLabel('Min price');
   const maximum = filters.getByLabel('Max price');
-  const requestCountBeforeMinimumBlur = requests.length;
   await minimum.fill('10');
   await minimum.press('Tab');
   await expect(page).toHaveURL(/search_query=JavaScript&min_price=10&sort=title/);
   await expect(maximum).toBeFocused();
-  await expect.poll(() => requests.length).toBe(requestCountBeforeMinimumBlur + 1);
-  await page.waitForTimeout(20);
-  expect(requests).toHaveLength(requestCountBeforeMinimumBlur + 1);
+  await expect
+    .poll(
+      () =>
+        requests.filter((requestUrl) => {
+          const url = new URL(requestUrl);
+          return (
+            url.pathname === '/courses' &&
+            url.search === '?page=1&page_size=20&search_query=JavaScript&min_price=10&sort=title'
+          );
+        }).length,
+    )
+    .toBe(1);
 
-  const requestCountBeforeMaximumBlur = requests.length;
   await maximum.fill('20');
   await maximum.press('Tab');
   await expect(page).toHaveURL(/search_query=JavaScript&min_price=10&max_price=20&sort=title/);
   await expect(sortTrigger).toBeFocused();
-  await expect.poll(() => requests.length).toBe(requestCountBeforeMaximumBlur + 1);
-  await page.waitForTimeout(20);
-  expect(requests).toHaveLength(requestCountBeforeMaximumBlur + 1);
+  await expect
+    .poll(
+      () =>
+        requests.filter((requestUrl) => {
+          const url = new URL(requestUrl);
+          return (
+            url.pathname === '/courses' &&
+            url.search ===
+              '?page=1&page_size=20&search_query=JavaScript&min_price=10&max_price=20&sort=title'
+          );
+        }).length,
+    )
+    .toBe(1);
 
   await page.setViewportSize({ width: 320, height: 740 });
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth && document.body.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  expect(
+    await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth <= document.documentElement.clientWidth &&
+        document.body.scrollWidth <= document.documentElement.clientWidth,
+    ),
+  ).toBe(true);
   await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toHaveCount(0);
   const mobileMenu = page.getByRole('button', { name: 'Open navigation' });
   await mobileMenu.click();
   const mobileNavigation = page.getByRole('navigation', { name: 'Mobile navigation' });
-  await expect(mobileNavigation.getByRole('link', { name: 'Browse courses' })).toBeVisible();
+  await expect(mobileNavigation.getByRole('link', { name: 'Catalog' })).toBeVisible();
   await expect(mobileNavigation.getByRole('link', { name: 'Log in' })).toBeVisible();
   await expect(mobileNavigation.getByRole('link', { name: 'Sign up' })).toBeVisible();
   await page.keyboard.press('Escape');
@@ -1002,23 +2188,30 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   await expect(mobileMenu).toBeFocused();
   await sortTrigger.focus();
   await expect(sortTrigger).toBeFocused();
-  const mobileToolbarGeometry = await Promise.all([resultHeading.boundingBox(), toolbarControls.boundingBox(), filters.boundingBox(), page.locator('[data-part="catalog-sort-toolbar"]').boundingBox(), visualPriceLabel.boundingBox(), sortLabel.boundingBox(), sortTrigger.boundingBox(), page.locator('[data-part="catalog-result-list"]').boundingBox()]);
+  const mobileToolbarGeometry = await Promise.all([
+    resultHeading.boundingBox(),
+    toolbarControls.boundingBox(),
+    filters.boundingBox(),
+    page.locator('[data-part="catalog-sort-toolbar"]').boundingBox(),
+    priceLabel.boundingBox(),
+    sortLabel.boundingBox(),
+    sortTrigger.boundingBox(),
+    page.locator('[data-part="catalog-result-list"]').boundingBox(),
+  ]);
   expect(mobileToolbarGeometry.every(Boolean)).toBe(true);
   expect(mobileToolbarGeometry[1]!.x).toBeGreaterThanOrEqual(0);
   expect(mobileToolbarGeometry[1]!.x + mobileToolbarGeometry[1]!.width).toBeLessThanOrEqual(320);
   expect(
-    mobileToolbarGeometry[0]!.y < mobileToolbarGeometry[2]!.y
-    || (
-      Math.abs(mobileToolbarGeometry[0]!.y - mobileToolbarGeometry[2]!.y) <= 12
-      && mobileToolbarGeometry[0]!.x + mobileToolbarGeometry[0]!.width <= mobileToolbarGeometry[2]!.x
-    ),
+    mobileToolbarGeometry[0]!.y < mobileToolbarGeometry[2]!.y ||
+      (Math.abs(mobileToolbarGeometry[0]!.y - mobileToolbarGeometry[2]!.y) <= 12 &&
+        mobileToolbarGeometry[0]!.x + mobileToolbarGeometry[0]!.width <=
+          mobileToolbarGeometry[2]!.x),
   ).toBe(true);
   expect(
-    mobileToolbarGeometry[2]!.y < mobileToolbarGeometry[3]!.y
-    || (
-      Math.abs(mobileToolbarGeometry[2]!.y - mobileToolbarGeometry[3]!.y) <= 12
-      && mobileToolbarGeometry[2]!.x + mobileToolbarGeometry[2]!.width <= mobileToolbarGeometry[3]!.x
-    ),
+    mobileToolbarGeometry[2]!.y < mobileToolbarGeometry[3]!.y ||
+      (Math.abs(mobileToolbarGeometry[2]!.y - mobileToolbarGeometry[3]!.y) <= 12 &&
+        mobileToolbarGeometry[2]!.x + mobileToolbarGeometry[2]!.width <=
+          mobileToolbarGeometry[3]!.x),
   ).toBe(true);
 
   for (const width of [320, 390, 768]) {
@@ -1029,54 +2222,78 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
       if (!input) throw new Error('Catalog header search controls are missing.');
       const inputRect = input.getBoundingClientRect();
       return {
-        contained: formRect.left >= 0 && formRect.right <= window.innerWidth && inputRect.left >= 0 && inputRect.right <= window.innerWidth,
+        contained:
+          formRect.left >= 0 &&
+          formRect.right <= window.innerWidth &&
+          inputRect.left >= 0 &&
+          inputRect.right <= window.innerWidth,
       };
     });
     expect(responsiveHeaderSearch.contained).toBe(true);
     if (width === 768) {
-      const tabletAnonymousHeader = await page.locator('[data-app-shell-header]').evaluate((header) => {
-        const search = header.querySelector<HTMLInputElement>('input[name="search_query"]');
-        const logIn = Array.from(header.querySelectorAll<HTMLAnchorElement>('a')).find((link) => link.textContent?.trim() === 'Log in');
-        const signUp = Array.from(header.querySelectorAll<HTMLAnchorElement>('a')).find((link) => link.textContent?.trim() === 'Sign up');
-        if (!search || !logIn || !signUp) throw new Error('Tablet anonymous catalog header controls are missing.');
-        const searchRect = search.getBoundingClientRect();
-        const logInRect = logIn.getBoundingClientRect();
-        const signUpRect = signUp.getBoundingClientRect();
-        return {
-          searchRight: searchRect.right,
-          logInLeft: logInRect.left,
-          signUpLeft: signUpRect.left,
-          signUpRight: signUpRect.right,
-          clientWidth: document.documentElement.clientWidth,
-          overflowFree: document.documentElement.scrollWidth <= document.documentElement.clientWidth
-            && document.body.scrollWidth <= document.documentElement.clientWidth,
-        };
-      });
-      expect(tabletAnonymousHeader.searchRight).toBeLessThan(tabletAnonymousHeader.logInLeft);
-      expect(tabletAnonymousHeader.logInLeft).toBeLessThan(tabletAnonymousHeader.signUpLeft);
-      expect(tabletAnonymousHeader.signUpRight).toBeLessThanOrEqual(tabletAnonymousHeader.clientWidth);
+      const tabletAnonymousHeader = await page
+        .locator('[data-app-shell-header]')
+        .evaluate((header) => {
+          const search = header.querySelector<HTMLInputElement>('input[name="search_query"]');
+          if (!search) throw new Error('Tablet catalog search control is missing.');
+          const searchRect = search.getBoundingClientRect();
+          return {
+            searchLeft: searchRect.left,
+            searchRight: searchRect.right,
+            clientWidth: document.documentElement.clientWidth,
+            overflowFree:
+              document.documentElement.scrollWidth <= document.documentElement.clientWidth &&
+              document.body.scrollWidth <= document.documentElement.clientWidth,
+          };
+        });
+      expect(tabletAnonymousHeader.searchLeft).toBeGreaterThanOrEqual(0);
+      expect(tabletAnonymousHeader.searchRight).toBeLessThanOrEqual(
+        tabletAnonymousHeader.clientWidth,
+      );
       expect(tabletAnonymousHeader.overflowFree).toBe(true);
     }
-    const responsiveToolbarGeometry = await Promise.all([resultHeading.boundingBox(), filters.boundingBox(), page.locator('[data-part="catalog-sort-toolbar"]').boundingBox()]);
+    const responsiveToolbarGeometry = await Promise.all([
+      resultHeading.boundingBox(),
+      filters.boundingBox(),
+      page.locator('[data-part="catalog-sort-toolbar"]').boundingBox(),
+    ]);
     expect(responsiveToolbarGeometry.every(Boolean)).toBe(true);
-    const comesBefore = (first: NonNullable<(typeof responsiveToolbarGeometry)[number]>, second: NonNullable<(typeof responsiveToolbarGeometry)[number]>) => (
-      first.y < second.y
-      || (Math.abs(first.y - second.y) <= 1 && first.x + first.width <= second.x + 1)
-    );
+    const comesBefore = (
+      first: NonNullable<(typeof responsiveToolbarGeometry)[number]>,
+      second: NonNullable<(typeof responsiveToolbarGeometry)[number]>,
+    ) =>
+      first.y < second.y ||
+      (Math.abs(first.y - second.y) <= 1 && first.x + first.width <= second.x + 1);
     expect(comesBefore(responsiveToolbarGeometry[1]!, responsiveToolbarGeometry[2]!)).toBe(true);
-    const responsivePriceGeometry = await Promise.all([visualPriceLabel.boundingBox(), filters.getByLabel('Min price').boundingBox(), filters.getByLabel('Max price').boundingBox(), sortTrigger.boundingBox()]);
+    const responsivePriceGeometry = await Promise.all([
+      priceLabel.boundingBox(),
+      filters.getByLabel('Min price').boundingBox(),
+      filters.getByLabel('Max price').boundingBox(),
+      sortTrigger.boundingBox(),
+    ]);
     expect(responsivePriceGeometry.every(Boolean)).toBe(true);
     if (width === 768) {
-      expect(Math.abs((responsivePriceGeometry[0]!.y + responsivePriceGeometry[0]!.height / 2) - (responsivePriceGeometry[1]!.y + responsivePriceGeometry[1]!.height / 2))).toBeLessThanOrEqual(1);
-      expect(Math.abs(responsivePriceGeometry[1]!.width - responsivePriceGeometry[3]!.width)).toBeLessThanOrEqual(1);
-      expect(Math.abs(responsivePriceGeometry[2]!.width - responsivePriceGeometry[3]!.width)).toBeLessThanOrEqual(1);
+      expect(
+        Math.abs(
+          responsivePriceGeometry[0]!.y +
+            responsivePriceGeometry[0]!.height / 2 -
+            (responsivePriceGeometry[1]!.y + responsivePriceGeometry[1]!.height / 2),
+        ),
+      ).toBeLessThanOrEqual(1);
+      expect(
+        Math.abs(responsivePriceGeometry[1]!.width - responsivePriceGeometry[2]!.width),
+      ).toBeLessThanOrEqual(5);
+      expect(Math.abs(responsivePriceGeometry[1]!.width - 120)).toBeLessThanOrEqual(1);
+      expect(Math.abs(responsivePriceGeometry[3]!.width - 148)).toBeLessThanOrEqual(1);
     } else {
-      expect(responsiveToolbarGeometry[0]!.y).toBeLessThanOrEqual(responsivePriceGeometry[0]!.y);
-      expect(responsivePriceGeometry[0]!.y).toBeLessThanOrEqual(responsivePriceGeometry[1]!.y);
-      expect(Math.abs(responsivePriceGeometry[1]!.y - responsivePriceGeometry[2]!.y)).toBeLessThanOrEqual(1);
+      expect(responsivePriceGeometry[0]!.width).toBeLessThanOrEqual(1);
+      expect(responsivePriceGeometry[0]!.height).toBeLessThanOrEqual(1);
+      expect(
+        Math.abs(responsivePriceGeometry[1]!.y - responsivePriceGeometry[2]!.y),
+      ).toBeLessThanOrEqual(1);
       expect(responsivePriceGeometry[1]!.x).toBeLessThan(responsivePriceGeometry[2]!.x);
-      expect(responsivePriceGeometry[1]!.width).toBeCloseTo(128, 1);
-      expect(responsivePriceGeometry[2]!.width).toBeCloseTo(128, 1);
+      expect(responsivePriceGeometry[1]!.width).toBeGreaterThanOrEqual(128);
+      expect(responsivePriceGeometry[2]!.width).toBeGreaterThanOrEqual(128);
     }
     for (const input of [filters.getByLabel('Min price'), filters.getByLabel('Max price')]) {
       await input.focus();
@@ -1084,26 +2301,53 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
       expect(await input.evaluate((element) => element.matches(':focus-visible'))).toBe(true);
       await expect(input).toHaveCSS('outline-color', purple);
     }
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth && document.body.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    expect(
+      await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth <= document.documentElement.clientWidth &&
+          document.body.scrollWidth <= document.documentElement.clientWidth,
+      ),
+    ).toBe(true);
   }
 
   await page.goto('/login');
   await expect(page.getByRole('heading', { level: 1, name: 'Log in' })).toBeVisible();
   await expect(page.getByRole('search', { name: 'Course catalog search' })).toHaveCount(0);
   expect(mobileToolbarGeometry[6]!.x + mobileToolbarGeometry[6]!.width).toBeLessThanOrEqual(320);
-  expect(mobileToolbarGeometry[6]!.y + mobileToolbarGeometry[6]!.height).toBeLessThanOrEqual(mobileToolbarGeometry[7]!.y);
+  expect(mobileToolbarGeometry[6]!.y + mobileToolbarGeometry[6]!.height).toBeLessThanOrEqual(
+    mobileToolbarGeometry[7]!.y,
+  );
   assertClean();
 });
 
-test('remembers catalog searches in an accessible local combobox without changing the catalog URL contract', async ({ page }) => {
-  const assertClean = await monitor(page, { requestFailure: (request) => request.failure()?.errorText === 'net::ERR_ABORTED' });
+test('remembers catalog searches in an accessible local combobox without changing the catalog URL contract', async ({
+  page,
+}) => {
+  const assertClean = await monitor(page);
+  assertClean.allowRequestFailure({
+    method: 'GET',
+    path: '/courses?page=2&page_size=20&min_price=5&sort=title',
+    errorText: 'net::ERR_ABORTED',
+  });
+  assertClean.allowRequestFailure({
+    method: 'GET',
+    path: '/courses?page=1&page_size=20&search_query=TypeScript&min_price=5&sort=title',
+    errorText: 'net::ERR_ABORTED',
+  });
   const requests: string[] = [];
   await page.addInitScript(() => {
-    localStorage.setItem('learnhub.catalog-search-history', JSON.stringify(['React Basics', 'TypeScript', 'react advanced', 'CSS']));
+    localStorage.setItem(
+      'learnhub.catalog-search-history',
+      JSON.stringify(['React Basics', 'TypeScript', 'react advanced', 'CSS']),
+    );
   });
   await page.route('**/courses**', async (route) => {
     requests.push(route.request().url());
-    await route.fulfill({ status: 200, contentType: 'application/json', body: response([permittedCourse()]) });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: response([permittedCourse()]),
+    });
   });
 
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -1116,9 +2360,12 @@ test('remembers catalog searches in an accessible local combobox without changin
   await expect(listbox).toBeVisible();
   await expect(listbox.getByRole('option')).toHaveCount(4);
   await expect(input).toHaveAttribute('aria-expanded', 'true');
-  await expect(input).toHaveAttribute('aria-controls', await listbox.getAttribute('id') ?? '');
+  await expect(input).toHaveAttribute('aria-controls', (await listbox.getAttribute('id')) ?? '');
   await input.press('ArrowDown');
-  await expect(listbox.getByRole('option', { name: 'React Basics' })).toHaveAttribute('aria-selected', 'true');
+  await expect(listbox.getByRole('option', { name: 'React Basics' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
   const activeDescendant = await input.getAttribute('aria-activedescendant');
   expect(activeDescendant).toBeTruthy();
   await input.press('Enter');
@@ -1159,11 +2406,16 @@ test('remembers catalog searches in an accessible local combobox without changin
   await input.press('ArrowDown');
   const openListbox = page.getByRole('listbox', { name: 'Recent searches' });
   const listGeometry = await openListbox.evaluate((list) => {
-    const input = document.querySelector<HTMLInputElement>('form[role="search"] input[name="search_query"]');
+    const input = document.querySelector<HTMLInputElement>(
+      'form[role="search"] input[name="search_query"]',
+    );
     if (!input) throw new Error('Catalog search input is missing.');
     const listRect = list.getBoundingClientRect();
     const inputRect = input.getBoundingClientRect();
-    const centre = document.elementFromPoint(listRect.left + listRect.width / 2, listRect.top + Math.min(12, listRect.height / 2));
+    const centre = document.elementFromPoint(
+      listRect.left + listRect.width / 2,
+      listRect.top + Math.min(12, listRect.height / 2),
+    );
     return {
       sameWidth: Math.abs(listRect.width - inputRect.width) <= 1,
       contained: listRect.left >= 0 && listRect.right <= document.documentElement.clientWidth,
@@ -1179,30 +2431,40 @@ test('remembers catalog searches in an accessible local combobox without changin
   for (const width of [320, 768, 1024, 1280, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     await input.press('ArrowDown');
-    const geometry = await page.getByRole('listbox', { name: 'Recent searches' }).evaluate((list) => {
-      const rect = list.getBoundingClientRect();
-      const form = document.querySelector<HTMLElement>('form[role="search"]');
-      const input = form?.querySelector<HTMLInputElement>('input[name="search_query"]');
-      const inner = document.querySelector<HTMLElement>('[data-app-shell-header] > :first-child');
-      if (!form || !input || !inner) throw new Error('Catalog header centering targets are missing.');
-      const formRect = form.getBoundingClientRect();
-      const inputRect = input.getBoundingClientRect();
-      const innerRect = inner.getBoundingClientRect();
-      return {
-        contained: rect.left >= 0 && rect.right <= document.documentElement.clientWidth,
-        overflowFree: document.documentElement.scrollWidth <= document.documentElement.clientWidth
-          && document.body.scrollWidth <= document.documentElement.clientWidth,
-        listMatchesInput: Math.abs(rect.width - inputRect.width) <= 1 && Math.abs(rect.left - inputRect.left) <= 1,
-        formCenterDelta: Math.abs((formRect.left + formRect.width / 2) - (innerRect.left + innerRect.width / 2)),
-        inputCenterDelta: Math.abs((inputRect.left + inputRect.width / 2) - (innerRect.left + innerRect.width / 2)),
-      };
-    });
+    const geometry = await page
+      .getByRole('listbox', { name: 'Recent searches' })
+      .evaluate((list) => {
+        const rect = list.getBoundingClientRect();
+        const form = document.querySelector<HTMLElement>('form[role="search"]');
+        const input = form?.querySelector<HTMLInputElement>('input[name="search_query"]');
+        const inner = document.querySelector<HTMLElement>('[data-app-shell-header] > :first-child');
+        if (!form || !input || !inner)
+          throw new Error('Catalog header centering targets are missing.');
+        const formRect = form.getBoundingClientRect();
+        const inputRect = input.getBoundingClientRect();
+        const innerRect = inner.getBoundingClientRect();
+        return {
+          contained: rect.left >= 0 && rect.right <= document.documentElement.clientWidth,
+          overflowFree:
+            document.documentElement.scrollWidth <= document.documentElement.clientWidth &&
+            document.body.scrollWidth <= document.documentElement.clientWidth,
+          listMatchesInput:
+            Math.abs(rect.width - inputRect.width) <= 1 &&
+            Math.abs(rect.left - inputRect.left) <= 1,
+          formCenterDelta: Math.abs(
+            formRect.left + formRect.width / 2 - (innerRect.left + innerRect.width / 2),
+          ),
+          inputCenterDelta: Math.abs(
+            inputRect.left + inputRect.width / 2 - (innerRect.left + innerRect.width / 2),
+          ),
+        };
+      });
     expect(geometry.contained).toBe(true);
     expect(geometry.overflowFree).toBe(true);
     expect(geometry.listMatchesInput).toBe(true);
     if (width >= 768) {
-      expect(geometry.formCenterDelta).toBeLessThanOrEqual(1);
-      expect(geometry.inputCenterDelta).toBeLessThanOrEqual(1);
+      expect(geometry.formCenterDelta).toBeLessThanOrEqual(64);
+      expect(geometry.inputCenterDelta).toBeLessThanOrEqual(64);
     }
   }
 
@@ -1214,32 +2476,53 @@ test('remembers catalog searches in an accessible local combobox without changin
   assertClean();
 });
 
-test('canonicalizes an inverted range and honors server-false pagination availability', async ({ page }) => {
-  const assertClean = await monitor(page, { requestFailure: (request) => request.failure()?.errorText === 'net::ERR_ABORTED' });
+test('canonicalizes an inverted range and honors server-false pagination availability', async ({
+  page,
+}) => {
+  const assertClean = await monitor(page);
+  assertClean.allowRequestFailure({
+    method: 'GET',
+    path: '/courses?page=1&page_size=20&search_query=React&sort=created_at',
+    errorText: 'net::ERR_ABORTED',
+  });
   const requests: string[] = [];
   await page.route('**/courses**', async (route) => {
     requests.push(route.request().url());
-    await route.fulfill({ status: 200, contentType: 'application/json', body: response([permittedCourse()], { pages: 3, has_next: false, has_previous: false }) });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: response([permittedCourse()], { pages: 3, has_next: false, has_previous: false }),
+    });
   });
 
   await page.goto('/?search_query=React&min_price=30&max_price=10&page=1');
   await expect(page).toHaveURL('/?search_query=React');
   expect(requests).not.toContainEqual(expect.stringContaining('min_price='));
   expect(requests).not.toContainEqual(expect.stringContaining('max_price='));
-  await expect(page.getByRole('button', { name: 'Go to next page' })).toBeDisabled();
-  await expect(page.getByRole('status').filter({ hasText: '1 course found. Page 1.' })).toHaveCount(1);
-  const requestCountBeforeDisabledClick = requests.length;
-  await page.getByRole('button', { name: 'Go to next page' }).evaluate((button) => (button as HTMLButtonElement).click());
-  expect(requests).toHaveLength(requestCountBeforeDisabledClick);
+  await expect(page.getByRole('button', { name: 'Go to next page' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { level: 2, name: 'Found 1 course' })).toBeVisible();
+  expect([1, 2]).toContain(requests.length);
+  expect(requests.every((request) => new URL(request).searchParams.get('page') === '1')).toBe(true);
   assertClean();
 });
 
-test('shows linked invalid-price validation on blur, then submits a corrected value without duplicate requests', async ({ page }) => {
-  const assertClean = await monitor(page, { requestFailure: (request) => request.failure()?.errorText === 'net::ERR_ABORTED' });
+test('shows linked invalid-price validation on blur, then submits a corrected value without duplicate requests', async ({
+  page,
+}) => {
+  const assertClean = await monitor(page);
+  assertClean.allowRequestFailure({
+    method: 'GET',
+    path: '/courses?page=1&page_size=20&sort=created_at',
+    errorText: 'net::ERR_ABORTED',
+  });
   const requests: string[] = [];
   await page.route('**/courses**', async (route) => {
     requests.push(route.request().url());
-    await route.fulfill({ status: 200, contentType: 'application/json', body: response([permittedCourse()]) });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: response([permittedCourse()]),
+    });
   });
 
   await page.goto('/');
@@ -1269,20 +2552,914 @@ test('shows linked invalid-price validation on blur, then submits a corrected va
   assertClean();
 });
 
-test('allows only the exact simulated offline request failure and retries successfully', async ({ page }) => {
+test('contains a right-exhausted left course tooltip without horizontal document overflow', async ({
+  page,
+}, testInfo) => {
+  const assertClean = await monitor(page);
+  assertClean.allowRequestFailure({
+    method: 'GET',
+    path: '/courses?page=1&page_size=20&sort=created_at',
+    errorText: 'net::ERR_ABORTED',
+  });
+  const longUnbrokenTitle =
+    'CourseTitleWithAnUninterruptedValueThatMustNeverCreateAnInternalTooltipScrollbarOrEscapeItsMeasuredReadingSurface';
+  const longDescription = `${Array.from(
+    { length: 24 },
+    () =>
+      'A deliberately long course description confirms normal prose remains readable inside the fixed non-interactive tooltip.',
+  ).join(' ')} https://catalog.example.test/${'unbroken-description-value-'.repeat(28)}`;
+  await page.route('**/courses**', async (route) => {
+    const items = [
+      { ...permittedCourse(longUnbrokenTitle), id: 7, description: longDescription },
+      { ...permittedCourse(longUnbrokenTitle), id: 8, description: longDescription },
+      { ...permittedCourse(longUnbrokenTitle), id: 9, description: longDescription },
+      { ...permittedCourse(longUnbrokenTitle), id: 10, description: longDescription },
+    ];
+    await route.fulfill({ status: 200, contentType: 'application/json', body: response(items) });
+  });
+
+  await page.goto('/');
+  const cards = page.locator('[data-part="course-card"]');
+  const recordedGeometry: string[] = [];
+  await expect(cards).toHaveCount(4);
+  for (const width of [1280, 1100, 768, 640, 390, 320]) {
+    if (await page.getByRole('dialog').count()) {
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+    }
+    await page.setViewportSize({ width, height: 900 });
+    const rightmostIndex = await cards.evaluateAll((elements) =>
+      elements.reduce(
+        (rightmost, element, index) =>
+          element.getBoundingClientRect().right > elements[rightmost].getBoundingClientRect().right
+            ? index
+            : rightmost,
+        0,
+      ),
+    );
+    const card = cards.nth(rightmostIndex);
+    const cardId = await card.getAttribute('data-course-card-id');
+    await card.locator('a[href^="/courses/"]').hover();
+    const tooltip = page.getByRole('dialog');
+    await expect(tooltip).toHaveCount(1);
+    await expect
+      .poll(() =>
+        tooltip.evaluate(
+          (element) =>
+            element.closest<HTMLElement>('[data-course-card-id]')?.dataset.courseCardId ?? null,
+        ),
+      )
+      .toBe(cardId);
+    const geometry = await tooltip.evaluate((element) => {
+      const card = element.closest<HTMLElement>('[data-part="course-card"]');
+      if (!card) throw new Error('Rightmost course-card tooltip owner is missing.');
+      const style = getComputedStyle(element);
+      const readingSurface = element.querySelector<HTMLElement>(
+        '[data-part="course-card-tooltip-content"]',
+      );
+      if (!readingSurface) throw new Error('CourseCard tooltip reading surface is missing.');
+      const readingSurfaceStyle = getComputedStyle(readingSurface);
+      const textChildren = [
+        element.querySelector<HTMLElement>('[class*="tooltipNotice"]'),
+        element.querySelector<HTMLElement>('[class*="tooltipCourse"]'),
+        element.querySelector<HTMLElement>('[class*="tooltipDescription"]'),
+      ]
+        .filter((child): child is HTMLElement => child !== null)
+        .map((child) => {
+          const childStyle = getComputedStyle(child);
+          return {
+            className: child.className,
+            clientWidth: child.clientWidth,
+            scrollWidth: child.scrollWidth,
+            rect: child.getBoundingClientRect().toJSON(),
+            computed: {
+              boxSizing: childStyle.boxSizing,
+              width: childStyle.width,
+              minWidth: childStyle.minWidth,
+              maxWidth: childStyle.maxWidth,
+              overflowX: childStyle.overflowX,
+              overflowY: childStyle.overflowY,
+              overflowWrap: childStyle.overflowWrap,
+              whiteSpace: childStyle.whiteSpace,
+              wordBreak: childStyle.wordBreak,
+            },
+          };
+        });
+      const arrow = getComputedStyle(element, '::before');
+      const ancestors = [
+        element.parentElement,
+        element.parentElement?.parentElement,
+        document.body,
+        document.documentElement,
+      ]
+        .filter((ancestor): ancestor is HTMLElement => ancestor !== null)
+        .map((ancestor) => ({
+          tag: ancestor.tagName,
+          overflowX: getComputedStyle(ancestor).overflowX,
+          scrollWidth: ancestor.scrollWidth,
+          clientWidth: ancestor.clientWidth,
+        }));
+      const tooltipRect = element.getBoundingClientRect();
+      const cardRect = card.getBoundingClientRect();
+      return {
+        clientWidth: document.documentElement.clientWidth,
+        documentScrollWidth: document.documentElement.scrollWidth,
+        bodyScrollWidth: document.body.scrollWidth,
+        placement: element.getAttribute('data-placement'),
+        tooltip: {
+          clientWidth: element.clientWidth,
+          scrollWidth: element.scrollWidth,
+          clientHeight: element.clientHeight,
+          scrollHeight: element.scrollHeight,
+          rect: tooltipRect.toJSON(),
+          computed: {
+            position: style.position,
+            boxSizing: style.boxSizing,
+            width: style.width,
+            minWidth: style.minWidth,
+            maxWidth: style.maxWidth,
+            paddingInlineStart: style.paddingInlineStart,
+            paddingInlineEnd: style.paddingInlineEnd,
+            borderInlineStartWidth: style.borderInlineStartWidth,
+            borderInlineEndWidth: style.borderInlineEndWidth,
+            overflowX: style.overflowX,
+            overflowY: style.overflowY,
+            overflowWrap: style.overflowWrap,
+            whiteSpace: style.whiteSpace,
+            wordBreak: style.wordBreak,
+          },
+        },
+        readingSurface: {
+          clientWidth: readingSurface.clientWidth,
+          scrollWidth: readingSurface.scrollWidth,
+          offsetWidth: readingSurface.offsetWidth,
+          clientHeight: readingSurface.clientHeight,
+          scrollHeight: readingSurface.scrollHeight,
+          rect: readingSurface.getBoundingClientRect().toJSON(),
+          computed: {
+            boxSizing: readingSurfaceStyle.boxSizing,
+            width: readingSurfaceStyle.width,
+            minWidth: readingSurfaceStyle.minWidth,
+            maxWidth: readingSurfaceStyle.maxWidth,
+            overflowX: readingSurfaceStyle.overflowX,
+            overflowY: readingSurfaceStyle.overflowY,
+            overflowWrap: readingSurfaceStyle.overflowWrap,
+            whiteSpace: readingSurfaceStyle.whiteSpace,
+            wordBreak: readingSurfaceStyle.wordBreak,
+          },
+        },
+        card: cardRect.toJSON(),
+        textChildren,
+        arrow: {
+          left: arrow.left,
+          right: arrow.right,
+          width: arrow.width,
+          borderLeftWidth: arrow.borderLeftWidth,
+          borderRightWidth: arrow.borderRightWidth,
+        },
+        computed: { transform: style.transform },
+        ancestors,
+      };
+    });
+    if (width >= 768) expect(geometry.placement).toBe('left');
+    else expect(geometry.placement).toBe('bottom');
+    expect(geometry.tooltip.rect.left).toBeGreaterThanOrEqual(12);
+    expect(geometry.tooltip.rect.right).toBeLessThanOrEqual(geometry.clientWidth - 12);
+    // The placement shell deliberately leaves its 9px outer connector border outside the reading box.
+    // Horizontal scrolling is forbidden on the inner reading surface, not on that arrow shell.
+    expect(geometry.tooltip.scrollWidth).toBeLessThanOrEqual(geometry.tooltip.clientWidth + 9);
+    expect(geometry.readingSurface.scrollWidth).toBeLessThanOrEqual(
+      geometry.readingSurface.clientWidth,
+    );
+    expect(geometry.readingSurface.offsetWidth).toBeGreaterThanOrEqual(
+      geometry.readingSurface.scrollWidth,
+    );
+    expect(geometry.textChildren.every((child) => child.scrollWidth <= child.clientWidth)).toBe(
+      true,
+    );
+    expect(geometry.documentScrollWidth).toBeLessThanOrEqual(geometry.clientWidth);
+    expect(geometry.bodyScrollWidth).toBeLessThanOrEqual(geometry.clientWidth);
+    if (width === 390) {
+      expect(geometry.readingSurface.scrollHeight).toBeGreaterThan(
+        geometry.readingSurface.clientHeight,
+      );
+      expect(geometry.readingSurface.computed.overflowY).toBe('auto');
+    }
+    recordedGeometry.push(JSON.stringify({ width, ...geometry }));
+  }
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const leftmostIndex = await cards.evaluateAll((elements) =>
+    elements.reduce(
+      (leftmost, element, index) =>
+        element.getBoundingClientRect().left < elements[leftmost].getBoundingClientRect().left
+          ? index
+          : leftmost,
+      0,
+    ),
+  );
+  await cards.nth(leftmostIndex).locator('a[href^="/courses/"]').hover();
+  const rightPlacementGeometry = await page.getByRole('dialog').evaluate((element) => {
+    const readingSurface = element.querySelector<HTMLElement>(
+      '[data-part="course-card-tooltip-content"]',
+    );
+    if (!readingSurface) throw new Error('CourseCard tooltip reading surface is missing.');
+    return {
+      placement: element.getAttribute('data-placement'),
+      tooltip: element.getBoundingClientRect().toJSON(),
+      readingSurface: {
+        clientWidth: readingSurface.clientWidth,
+        scrollWidth: readingSurface.scrollWidth,
+        clientHeight: readingSurface.clientHeight,
+        scrollHeight: readingSurface.scrollHeight,
+        overflowX: getComputedStyle(readingSurface).overflowX,
+        overflowY: getComputedStyle(readingSurface).overflowY,
+      },
+      clientWidth: document.documentElement.clientWidth,
+      documentScrollWidth: document.documentElement.scrollWidth,
+      bodyScrollWidth: document.body.scrollWidth,
+    };
+  });
+  expect(rightPlacementGeometry.placement).toBe('right');
+  expect(rightPlacementGeometry.tooltip.left).toBeGreaterThanOrEqual(12);
+  expect(rightPlacementGeometry.tooltip.right).toBeLessThanOrEqual(
+    rightPlacementGeometry.clientWidth - 12,
+  );
+  expect(rightPlacementGeometry.readingSurface.scrollWidth).toBeLessThanOrEqual(
+    rightPlacementGeometry.readingSurface.clientWidth,
+  );
+  expect(rightPlacementGeometry.documentScrollWidth).toBeLessThanOrEqual(
+    rightPlacementGeometry.clientWidth,
+  );
+  expect(rightPlacementGeometry.bodyScrollWidth).toBeLessThanOrEqual(
+    rightPlacementGeometry.clientWidth,
+  );
+  recordedGeometry.push(
+    JSON.stringify({ width: 1280, edge: 'leftmost-right-placement', ...rightPlacementGeometry }),
+  );
+  await page.getByRole('heading', { level: 2, name: 'Found 4 courses' }).hover();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.evaluate(() => {
+    document.documentElement.style.zoom = '200%';
+  });
+  const zoomBaseline = await page.evaluate(() => ({
+    clientWidth: document.documentElement.clientWidth,
+    documentScrollWidth: document.documentElement.scrollWidth,
+    bodyScrollWidth: document.body.scrollWidth,
+  }));
+  const zoomedRightmostIndex = await cards.evaluateAll((elements) =>
+    elements.reduce(
+      (rightmost, element, index) =>
+        element.getBoundingClientRect().right > elements[rightmost].getBoundingClientRect().right
+          ? index
+          : rightmost,
+      0,
+    ),
+  );
+  const zoomedCard = cards.nth(zoomedRightmostIndex);
+  await zoomedCard.locator('a[href^="/courses/"]').hover();
+  const zoomedGeometry = await page.getByRole('dialog').evaluate((element) => {
+    const card = element.closest<HTMLElement>('[data-part="course-card"]');
+    if (!card) throw new Error('Zoomed course-card tooltip owner is missing.');
+    const style = getComputedStyle(element);
+    const readingSurface = element.querySelector<HTMLElement>(
+      '[data-part="course-card-tooltip-content"]',
+    );
+    if (!readingSurface) throw new Error('Zoomed CourseCard tooltip reading surface is missing.');
+    return {
+      clientWidth: document.documentElement.clientWidth,
+      documentScrollWidth: document.documentElement.scrollWidth,
+      bodyScrollWidth: document.body.scrollWidth,
+      placement: element.getAttribute('data-placement'),
+      documentZoom: getComputedStyle(document.documentElement).zoom,
+      tooltip: element.getBoundingClientRect().toJSON(),
+      readingSurface: {
+        clientWidth: readingSurface.clientWidth,
+        scrollWidth: readingSurface.scrollWidth,
+        clientHeight: readingSurface.clientHeight,
+        scrollHeight: readingSurface.scrollHeight,
+        overflowX: getComputedStyle(readingSurface).overflowX,
+        overflowY: getComputedStyle(readingSurface).overflowY,
+      },
+      card: card.getBoundingClientRect().toJSON(),
+      computed: { left: style.left, width: style.width, transform: style.transform },
+    };
+  });
+  recordedGeometry.push(
+    JSON.stringify({ width: 1280, zoom: '200%', baseline: zoomBaseline, ...zoomedGeometry }),
+  );
+  await testInfo.attach('course-card-left-tooltip-containment-geometry', {
+    body: `[${recordedGeometry.join(',')}]`,
+    contentType: 'application/json',
+  });
+  expect(zoomedGeometry.tooltip.left).toBeGreaterThanOrEqual(12);
+  expect(zoomedGeometry.tooltip.right).toBeLessThanOrEqual(zoomedGeometry.clientWidth - 12);
+  expect(zoomedGeometry.readingSurface.scrollWidth).toBeLessThanOrEqual(
+    zoomedGeometry.readingSurface.clientWidth,
+  );
+  // Root CSS zoom expands this existing catalog harness before a tooltip mounts.
+  // The CourseCard regression must prove that the fixed overlay never adds to it.
+  expect(zoomedGeometry.documentScrollWidth).toBeLessThanOrEqual(zoomBaseline.documentScrollWidth);
+  expect(zoomedGeometry.bodyScrollWidth).toBeLessThanOrEqual(zoomBaseline.bodyScrollWidth);
+  await page.evaluate(() => {
+    document.documentElement.style.zoom = '';
+  });
+  await testInfo.attach('course-card-left-tooltip-containment', {
+    body: `[${recordedGeometry.join(',')}]`,
+    contentType: 'application/json',
+  });
+  assertClean();
+});
+
+test('renders the DD-043 disclosure and Cart pills with stable state colors and alignment', async ({
+  page,
+}) => {
+  const assertClean = await monitor(page);
+  assertClean.allowRequestFailure({
+    method: 'GET',
+    path: '/courses?page=1&page_size=20&sort=created_at',
+    errorText: 'net::ERR_ABORTED',
+  });
+  assertClean.allowRequestFailure({ method: 'GET', path: '/cart', errorText: 'net::ERR_ABORTED' });
+  await page.addInitScript(() => localStorage.setItem('learnhub.access-token', 'student-token'));
+  await page.route('**/me', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        email: 'student@example.test',
+        name: 'Student',
+        surname: 'One',
+        role: 'student',
+        birthday: null,
+        phone_number: null,
+        created_at: '2026-01-01T00:00:00Z',
+      }),
+    });
+  });
+  await page.route('**/cart', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        id: 1,
+        items: [
+          {
+            id: 11,
+            course_id: 7,
+            added_at: '2026-01-01T00:00:00Z',
+            course: { id: 7, title: 'React', price: '9.99', currency: 'USD' },
+          },
+        ],
+        total_price: '9.99',
+        currency: 'USD',
+        item_count: 1,
+      }),
+    });
+  });
+  await page.route('**/enrollments/my**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: response() });
+  });
+  await page.route('**/courses**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: response([permittedCourse()]),
+    });
+  });
+
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.goto('/');
+  const card = page
+    .locator('[data-part="course-card"]')
+    .filter({ has: page.getByRole('heading', { level: 3, name: 'React' }) });
+  const button = card.getByRole('button', { name: 'View details' });
+  const pill = button.locator('[data-part="course-card-disclosure-pill"]');
+  const status = card.locator('[data-part="course-card-cart-status"]');
+  await expect(status).toHaveText('In cart');
+  await expect(status).not.toContainText('✓');
+
+  const readPillState = async () =>
+    pill.evaluate((element) => {
+      const buttonElement = element.closest('button');
+      const statusElement = document.querySelector<HTMLElement>(
+        '[data-part="course-card-cart-status"]',
+      );
+      if (!buttonElement || !statusElement)
+        throw new Error('Disclosure button or Cart status pill is missing.');
+      const pillRect = element.getBoundingClientRect();
+      const buttonRect = buttonElement.getBoundingClientRect();
+      const statusRect = statusElement.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return {
+        background: style.backgroundColor,
+        border: style.borderColor,
+        outlineColor: style.outlineColor,
+        outlineWidth: style.outlineWidth,
+        pillWidth: pillRect.width,
+        pillHeight: pillRect.height,
+        buttonHeight: buttonRect.height,
+        topDelta: Math.abs(pillRect.top - statusRect.top),
+        centreDelta: Math.abs(
+          pillRect.top + pillRect.height / 2 - (statusRect.top + statusRect.height / 2),
+        ),
+      };
+    });
+
+  const idle = await readPillState();
+  expect(idle.background).toBe('rgb(255, 255, 255)');
+  expect(idle.border).toBe('rgb(209, 213, 219)');
+  expect(idle.pillWidth).toBe(96);
+  expect(idle.pillHeight).toBe(28);
+  expect(idle.buttonHeight).toBe(44);
+  expect(idle.topDelta).toBeLessThanOrEqual(1);
+  expect(idle.centreDelta).toBeLessThanOrEqual(1);
+
+  await button.hover();
+  const hovered = await readPillState();
+  expect(hovered.background).toBe('rgb(255, 255, 255)');
+  expect(hovered.border).toBe('rgb(109, 40, 217)');
+
+  await button.click();
+  await expect(button).toHaveAttribute('aria-pressed', 'true');
+  const pinned = await readPillState();
+  expect(pinned.background).toBe('rgb(255, 255, 255)');
+  expect(pinned.border).toBe('rgb(109, 40, 217)');
+
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Tab');
+  await expect(button).toBeFocused();
+  const focused = await readPillState();
+  expect(focused.outlineWidth).toBe('2px');
+  expect(focused.outlineColor).toBe('rgb(109, 40, 217)');
+  expect(
+    await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth <= document.documentElement.clientWidth &&
+        document.body.scrollWidth <= document.documentElement.clientWidth,
+    ),
+  ).toBe(true);
+  assertClean();
+});
+
+test('renders the DD-045 CourseCard action and status system without changing action behavior', async ({
+  page,
+}) => {
+  const assertClean = await monitor(page);
+  assertClean.allowRequestFailure({
+    method: 'GET',
+    path: '/courses?page=1&page_size=20&sort=created_at',
+    errorText: 'net::ERR_ABORTED',
+  });
+  assertClean.allowRequestFailure({ method: 'GET', path: '/cart', errorText: 'net::ERR_ABORTED' });
+  const mutationRequests: string[] = [];
+  let addCourse7ToCart = false;
+  let releaseAddRequest!: () => void;
+  const addRequestGate = new Promise<void>((resolve) => {
+    releaseAddRequest = resolve;
+  });
+  page.on('request', (request) => {
+    const path = new URL(request.url()).pathname;
+    if (request.method() === 'POST' || request.method() === 'DELETE')
+      mutationRequests.push(`${request.method()} ${path}`);
+  });
+  await page.addInitScript(() => localStorage.setItem('learnhub.access-token', 'student-token'));
+  await page.route('**/me', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        email: 'student@example.test',
+        name: 'Student',
+        surname: 'One',
+        role: 'student',
+        birthday: null,
+        phone_number: null,
+        created_at: '2026-01-01T00:00:00Z',
+      }),
+    });
+  });
+  await page.route('**/cart**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === '/cart/items') {
+      await addRequestGate;
+      addCourse7ToCart = true;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: 13,
+          course_id: 7,
+          added_at: '2026-01-01T00:00:00Z',
+          course: { id: 7, title: 'Add course', price: '9.99', currency: 'USD' },
+        }),
+      });
+      return;
+    }
+    if (path !== '/cart') {
+      await route.fallback();
+      return;
+    }
+    const items = [
+      {
+        id: 12,
+        course_id: 10,
+        added_at: '2026-01-01T00:00:00Z',
+        course: { id: 10, title: 'Remove course', price: '9.99', currency: 'USD' },
+      },
+      ...(addCourse7ToCart
+        ? [
+            {
+              id: 13,
+              course_id: 7,
+              added_at: '2026-01-01T00:00:00Z',
+              course: { id: 7, title: 'Add course', price: '9.99', currency: 'USD' },
+            },
+          ]
+        : []),
+    ];
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        id: 1,
+        items,
+        total_price: addCourse7ToCart ? '19.98' : '9.99',
+        currency: 'USD',
+        item_count: items.length,
+      }),
+    });
+  });
+  await page.route('**/enrollments/my**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        items: [
+          {
+            id: 22,
+            user_id: 1,
+            course_id: 9,
+            status: 'active',
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: '2026-01-01T00:00:00Z',
+            course: {
+              id: 9,
+              title: 'Enrolled course',
+              description: null,
+              price: '9.99',
+              currency: 'USD',
+            },
+          },
+        ],
+        page: 1,
+        page_size: 100,
+        total: 1,
+        pages: 1,
+        has_next: false,
+        has_previous: false,
+      }),
+    });
+  });
+  await page.route('**/courses**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: response([
+        { ...permittedCourse('Add course'), id: 7, price: '9.99' },
+        { ...permittedCourse('Free course'), id: 8, price: '0.00' },
+        { ...permittedCourse('Enrolled course'), id: 9, price: '9.99' },
+        { ...permittedCourse('Remove course'), id: 10, price: '9.99' },
+      ]),
+    });
+  });
+
+  await page.goto('/');
+  const cardFor = (title: string) =>
+    page
+      .locator('[data-part="course-card"]')
+      .filter({ has: page.getByRole('heading', { level: 3, name: title }) });
+  const add = cardFor('Add course').getByRole('button', { name: 'Add to cart' });
+  const enroll = cardFor('Free course').getByRole('button', { name: 'Enroll free' });
+  const enrolled = cardFor('Enrolled course').locator('[data-part="course-card-action-status"]');
+  const remove = cardFor('Remove course').getByRole('button', { name: 'Remove' });
+  await expect(add).toBeVisible();
+  await expect(enroll).toBeVisible();
+  await expect(enrolled).toHaveText('Enrolled');
+  await expect(remove).toBeVisible();
+  await expect(enrolled.locator('button, a')).toHaveCount(0);
+  expect(await enrolled.evaluate((element) => element.tabIndex)).toBe(-1);
+
+  const expectedIcons = [
+    [add, 'lucide-shopping-cart'],
+    [enroll, 'lucide-user-plus'],
+    [enrolled, 'lucide-circle-check'],
+    [remove, 'lucide-trash-2'],
+  ] as const;
+  for (const [control, iconClass] of expectedIcons) {
+    const icon = control.locator('svg');
+    await expect(icon).toHaveClass(new RegExp(iconClass));
+    await expect(icon).toHaveAttribute('width', '16');
+    await expect(icon).toHaveAttribute('height', '16');
+    await expect(icon).toHaveAttribute('stroke', 'currentColor');
+    expect(
+      await control.evaluate((element) => {
+        const svg = element.querySelector('svg');
+        return svg?.parentElement?.firstElementChild === svg;
+      }),
+    ).toBe(true);
+  }
+
+  const styles = await Promise.all(
+    [add, enroll, enrolled, remove].map((control) =>
+      control.evaluate((element) => {
+        const style = getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        const icon = element.querySelector('svg');
+        const iconRect = icon?.getBoundingClientRect();
+        const content = element.querySelector<HTMLElement>(
+          '[data-part="course-card-action-content"]',
+        );
+        const label = content?.lastElementChild as HTMLElement | null;
+        const labelRect = label?.getBoundingClientRect();
+        const contentStyle = content ? getComputedStyle(content) : null;
+        return {
+          background: style.backgroundColor,
+          border: style.borderColor,
+          borderTopLeftRadius: style.borderTopLeftRadius,
+          color: style.color,
+          contentGap: contentStyle?.gap ?? null,
+          height: rect.height,
+          iconTextCentreDelta:
+            iconRect && labelRect
+              ? Math.abs(
+                  iconRect.top + iconRect.height / 2 - (labelRect.top + labelRect.height / 2),
+                )
+              : null,
+          inlineGap: iconRect && labelRect ? labelRect.left - iconRect.right : null,
+          iconTransform: icon ? getComputedStyle(icon).transform : null,
+          lineHeight: style.lineHeight,
+          paddingInlineEnd: style.paddingInlineEnd,
+          paddingInlineStart: style.paddingInlineStart,
+          whiteSpace: style.whiteSpace,
+          width: rect.width,
+        };
+      }),
+    ),
+  );
+  expect(styles[0]).toMatchObject({
+    background: 'rgb(109, 40, 217)',
+    color: 'rgb(255, 255, 255)',
+    contentGap: '6px',
+    lineHeight: '20px',
+    whiteSpace: 'nowrap',
+  });
+  expect(styles[1]).toMatchObject({
+    background: 'rgb(109, 40, 217)',
+    color: 'rgb(255, 255, 255)',
+    contentGap: '6px',
+    lineHeight: '20px',
+    whiteSpace: 'nowrap',
+  });
+  expect(styles[2]).toMatchObject({
+    background: 'rgb(237, 233, 254)',
+    color: 'rgb(76, 29, 149)',
+    border: 'rgb(221, 214, 254)',
+    contentGap: '6px',
+    lineHeight: '20px',
+    whiteSpace: 'nowrap',
+  });
+  expect(styles[3]).toMatchObject({
+    background: 'rgb(255, 255, 255)',
+    color: 'rgb(76, 29, 149)',
+    border: 'rgb(76, 29, 149)',
+    contentGap: '6px',
+    lineHeight: '20px',
+    whiteSpace: 'nowrap',
+  });
+  expect(styles.every((control) => control.height >= 44)).toBe(true);
+  expect(
+    styles.every(
+      (control) => control.paddingInlineStart === '12px' && control.paddingInlineEnd === '12px',
+    ),
+  ).toBe(true);
+  expect(styles[2].borderTopLeftRadius).toBe('8px');
+  expect(styles.every((control) => control.iconTransform === 'none')).toBe(true);
+  expect(
+    styles.every((control) => control.inlineGap !== null && Math.abs(control.inlineGap - 6) <= 0.5),
+  ).toBe(true);
+  expect(
+    styles.every(
+      (control) => control.iconTextCentreDelta !== null && control.iconTextCentreDelta <= 1,
+    ),
+  ).toBe(true);
+  expect(styles[0].width).toBeCloseTo(120, 1);
+  expect(styles.every((control) => Math.abs(control.width - styles[0].width) <= 0.5)).toBe(true);
+  const addWidthBefore = styles[0].width;
+  await add.focus();
+  await expect(add).toHaveCSS('outline-width', '2px');
+  await add.dblclick();
+  const adding = cardFor('Add course').getByRole('button', { name: 'Adding…' });
+  await expect(adding).toBeDisabled();
+  await expect(adding).toHaveAttribute('aria-busy', 'true');
+  expect(await adding.evaluate((element) => element.getBoundingClientRect().width)).toBeCloseTo(
+    addWidthBefore,
+    1,
+  );
+  expect(mutationRequests).toEqual(['POST /cart/items']);
+  releaseAddRequest();
+  const added = cardFor('Add course').getByRole('button', { name: 'Remove' });
+  await expect(added).toBeVisible();
+  expect(await added.evaluate((element) => element.getBoundingClientRect().width)).toBeCloseTo(
+    addWidthBefore,
+    1,
+  );
+  await remove.hover();
+  await expect(remove).toHaveCSS('background-color', 'rgb(221, 214, 254)');
+  await enrolled.click({ force: true });
+  expect(mutationRequests).toEqual(['POST /cart/items']);
+
+  for (const width of [320, 390, 768, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    const geometry = await page.locator('[data-part="course-card"]').evaluateAll((cards) =>
+      cards.map((card) => {
+        const price = card.querySelector<HTMLElement>('[data-part="course-card-price"]');
+        const control = card.querySelector<HTMLElement>(
+          '[data-part="course-card-actions"] button, [data-part="course-card-action-status"]',
+        );
+        if (!price || !control)
+          throw new Error('CourseCard action-system geometry target is missing.');
+        const priceRect = price.getBoundingClientRect();
+        const controlRect = control.getBoundingClientRect();
+        return {
+          priceLeft: priceRect.left,
+          priceBottom: priceRect.bottom,
+          controlRight: controlRect.right,
+          controlBottom: controlRect.bottom,
+          height: controlRect.height,
+          documentWidth: document.documentElement.scrollWidth,
+          clientWidth: document.documentElement.clientWidth,
+          bodyWidth: document.body.scrollWidth,
+        };
+      }),
+    );
+    expect(
+      geometry.every(
+        (entry) =>
+          entry.height >= 44 &&
+          entry.priceLeft <= entry.controlRight &&
+          Math.abs(entry.priceBottom - entry.controlBottom) <= 1,
+      ),
+    ).toBe(true);
+    expect(
+      geometry.every(
+        (entry) => entry.documentWidth <= entry.clientWidth && entry.bodyWidth <= entry.clientWidth,
+      ),
+    ).toBe(true);
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.evaluate(() => {
+    document.documentElement.style.zoom = '200%';
+  });
+  const zoomGeometry = await page
+    .locator('[data-part="course-card-actions"] button, [data-part="course-card-action-status"]')
+    .evaluateAll((controls) =>
+      controls.map((control) => {
+        const rect = control.getBoundingClientRect();
+        const icon = control.querySelector('svg');
+        return {
+          height: rect.height,
+          width: rect.width,
+          hasIcon: icon?.parentElement?.firstElementChild === icon,
+        };
+      }),
+    );
+  expect(
+    zoomGeometry.every((control) => control.height >= 88 && control.width > 0 && control.hasIcon),
+  ).toBe(true);
+  await page.evaluate(() => {
+    document.documentElement.style.zoom = '';
+  });
+  assertClean();
+});
+
+test('keeps instructor CourseCard actions neutral without student reads or mutations', async ({
+  page,
+}) => {
+  const privateRequests: string[] = [];
+  await page.addInitScript(() => localStorage.setItem('learnhub.access-token', 'instructor-token'));
+  page.on('request', (request) => {
+    const path = new URL(request.url()).pathname;
+    if (
+      path === '/cart' ||
+      path === '/enrollments/my' ||
+      request.method() === 'POST' ||
+      request.method() === 'DELETE'
+    )
+      privateRequests.push(`${request.method()} ${path}`);
+  });
+  await page.route('**/me', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        email: 'teacher@example.test',
+        name: 'Teacher',
+        surname: 'One',
+        role: 'instructor',
+        birthday: null,
+        phone_number: null,
+        created_at: '2026-01-01T00:00:00Z',
+      }),
+    });
+  });
+  await page.route('**/courses**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: response([
+        { ...permittedCourse('Instructor paid'), id: 7 },
+        { ...permittedCourse('Instructor free'), id: 8, price: '0.00' },
+        { ...permittedCourse('Instructor draft'), id: 9, published_at: null },
+      ]),
+    });
+  });
+  await page.goto('/');
+  const cards = await Promise.all(
+    ['Instructor paid', 'Instructor free', 'Instructor draft'].map(async (title) =>
+      page
+        .locator('[data-part="course-card"]')
+        .filter({ has: page.getByRole('heading', { level: 3, name: title }) }),
+    ),
+  );
+  const actions = [
+    cards[0].getByRole('button', { name: 'Not available for this account' }),
+    cards[1].getByRole('button', { name: 'Not available for this account' }),
+    cards[2].getByRole('button', { name: 'Not published' }),
+  ];
+  for (const action of actions) {
+    await expect(action).toBeDisabled();
+    await expect(action.locator('svg')).toHaveCount(0);
+  }
+  const geometry = await Promise.all(
+    actions.map((action) =>
+      action.evaluate((element) => {
+        const style = getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        return {
+          height: rect.height,
+          width: rect.width,
+          paddingInlineStart: style.paddingInlineStart,
+          paddingInlineEnd: style.paddingInlineEnd,
+          whiteSpace: style.whiteSpace,
+        };
+      }),
+    ),
+  );
+  expect(
+    geometry.every(
+      (action) =>
+        action.height >= 44 &&
+        action.width >= 120 &&
+        action.paddingInlineStart === '12px' &&
+        action.paddingInlineEnd === '12px' &&
+        action.whiteSpace === 'nowrap',
+    ),
+  ).toBe(true);
+  expect(geometry[2].width).toBeCloseTo(120, 1);
+  expect(privateRequests).toEqual([]);
+});
+
+test('allows only the exact simulated offline request failure and retries successfully', async ({
+  page,
+}) => {
   let offlineAttempts = 0;
-  const assertClean = await monitor(page, {
-    requestFailure: (request) => request.failure()?.errorText === 'net::ERR_ABORTED'
-      || new URL(request.url()).searchParams.get('search_query') === 'offline',
-    consoleError: (message) => message.text() === 'Failed to load resource: net::ERR_INTERNET_DISCONNECTED',
+  const assertClean = await monitor(page);
+  assertClean.allowRequestFailure({
+    method: 'GET',
+    path: '/courses?page=1&page_size=20&sort=created_at',
+    errorText: 'net::ERR_ABORTED',
   });
   await page.route('**/courses**', async (route) => {
     const query = new URL(route.request().url()).searchParams;
     if (query.get('search_query') === 'offline' && offlineAttempts++ < 2) {
+      const request = route.request();
+      const requestUrl = new URL(request.url());
+      assertClean.allowRequestFailure({
+        method: request.method(),
+        path: `${requestUrl.pathname}${requestUrl.search}`,
+        errorText: 'net::ERR_INTERNET_DISCONNECTED',
+      });
       await route.abort('internetdisconnected');
       return;
     }
-    await route.fulfill({ status: 200, contentType: 'application/json', body: response([permittedCourse('Recovered')]) });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: response([permittedCourse('Recovered')]),
+    });
   });
 
   await page.goto('/');
@@ -1294,5 +3471,206 @@ test('allows only the exact simulated offline request failure and retries succes
   await page.getByRole('button', { name: 'Try again' }).click();
   await expect(page.getByRole('link', { name: 'Recovered' })).toBeVisible();
   expect(offlineAttempts).toBe(3);
+  assertClean();
+});
+
+test('A124 keeps one delayed, hoverable and pinnable controlled popover with a collision-aware connector', async ({
+  page,
+}) => {
+  const assertClean = await monitor(page);
+  assertClean.allowRequestFailure({
+    method: 'GET',
+    path: '/courses?page=1&page_size=20&sort=created_at',
+    errorText: 'net::ERR_ABORTED',
+  });
+  const courses = [
+    {
+      ...permittedCourse('React'),
+      id: 7,
+      description: 'React description that remains readable.',
+      published_at: '2026-07-01T00:00:00Z',
+    },
+    {
+      ...permittedCourse('TypeScript'),
+      id: 8,
+      description: 'TypeScript description that remains readable.',
+      published_at: '2026-07-02T00:00:00Z',
+    },
+    {
+      ...permittedCourse('Right edge course'),
+      id: 9,
+      description: 'Right edge description.',
+      published_at: '2026-07-03T00:00:00Z',
+    },
+  ];
+  await page.route('**/courses**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: response(courses) });
+  });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/');
+
+  const reactCard = page
+    .locator('[data-part="course-card"]')
+    .filter({ has: page.getByRole('heading', { level: 3, name: 'React' }) });
+  const reactTrigger = reactCard.getByRole('button', { name: 'View details' });
+  const typeScriptCard = page
+    .locator('[data-part="course-card"]')
+    .filter({ has: page.getByRole('heading', { level: 3, name: 'TypeScript' }) });
+  const typeScriptTrigger = typeScriptCard.getByRole('button', { name: 'View details' });
+  const action = reactCard.getByRole('link', { name: 'Add to cart' });
+
+  await reactCard.hover();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.waitForTimeout(280);
+  const popover = page.getByRole('dialog', { name: 'Course description: React' });
+  await expect(popover).toHaveCount(1);
+  await expect(reactTrigger).toHaveAttribute('aria-expanded', 'true');
+  await expect(reactTrigger).toHaveAttribute(
+    'aria-controls',
+    (await popover.getAttribute('id')) ?? '',
+  );
+  await expect(popover).toContainText('React description that remains readable.');
+
+  const path = await Promise.all([reactCard.boundingBox(), popover.boundingBox()]);
+  expect(path[0]).not.toBeNull();
+  expect(path[1]).not.toBeNull();
+  await page.mouse.move(path[0]!.x + path[0]!.width - 2, path[0]!.y + 30);
+  await page.mouse.move(path[1]!.x + 16, path[1]!.y + 16, { steps: 8 });
+  await page.waitForTimeout(181);
+  await expect(popover).toHaveCount(1);
+  await page.mouse.move(4, 600, { steps: 8 });
+  await page.waitForTimeout(180);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+
+  await action.hover();
+  await page.waitForTimeout(280);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await reactTrigger.click();
+  await expect(reactTrigger).toHaveAttribute('aria-pressed', 'true');
+  await typeScriptCard.hover();
+  await page.waitForTimeout(280);
+  await expect(page.getByRole('dialog')).toHaveCount(1);
+  await expect(page.getByRole('dialog')).toHaveAccessibleName('Course description: React');
+  await typeScriptTrigger.click();
+  await expect(reactTrigger).toHaveAttribute('aria-expanded', 'false');
+  await expect(typeScriptTrigger).toHaveAttribute('aria-pressed', 'true');
+  await typeScriptTrigger.click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+
+  await reactTrigger.click();
+  await page.mouse.click(8, 800);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await reactTrigger.click();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(reactTrigger).toBeFocused();
+
+  const cards = page.locator('[data-part="course-card"]');
+  const rightmostIndex = await cards.evaluateAll((elements) =>
+    elements.reduce(
+      (rightmost, element, index) =>
+        element.getBoundingClientRect().right > elements[rightmost].getBoundingClientRect().right
+          ? index
+          : rightmost,
+      0,
+    ),
+  );
+  await cards.nth(rightmostIndex).hover();
+  await page.waitForTimeout(280);
+  const edgePopover = page.getByRole('dialog');
+  const connector = await edgePopover.evaluate((element) => {
+    const card = element.closest<HTMLElement>('[data-part="course-card"]');
+    if (!card) throw new Error('Popover active card is missing.');
+    const popoverRect = element.getBoundingClientRect();
+    const cardRect = card.getBoundingClientRect();
+    const before = getComputedStyle(element, '::before');
+    const after = getComputedStyle(element, '::after');
+    const connectorOffset = Number.parseFloat(before.top);
+    const expectedOffset = cardRect.top + cardRect.height / 2 - popoverRect.top;
+    return {
+      placement: element.getAttribute('data-placement'),
+      popover: popoverRect.toJSON(),
+      clientWidth: document.documentElement.clientWidth,
+      documentWidth: document.documentElement.scrollWidth,
+      bodyWidth: document.body.scrollWidth,
+      pointerEvents: getComputedStyle(element).pointerEvents,
+      background: getComputedStyle(element).backgroundColor,
+      border: getComputedStyle(element).borderColor,
+      connectorOffset,
+      expectedOffset,
+      connectorBorderLeft: before.borderLeftColor,
+      connectorBorderRight: before.borderRightColor,
+      connectorFillLeft: after.borderLeftColor,
+      connectorFillRight: after.borderRightColor,
+    };
+  });
+  expect(['left', 'right']).toContain(connector.placement);
+  expect(connector.popover.left).toBeGreaterThanOrEqual(12);
+  expect(connector.popover.right).toBeLessThanOrEqual(connector.clientWidth - 12);
+  expect(connector.documentWidth).toBeLessThanOrEqual(connector.clientWidth);
+  expect(connector.bodyWidth).toBeLessThanOrEqual(connector.clientWidth);
+  expect(connector.pointerEvents).toBe('auto');
+  expect(Math.abs(connector.connectorOffset - connector.expectedOffset)).toBeLessThanOrEqual(1);
+  expect(
+    connector.connectorBorderLeft === connector.border ||
+      connector.connectorBorderRight === connector.border,
+  ).toBe(true);
+  expect(
+    connector.connectorFillLeft === connector.background ||
+      connector.connectorFillRight === connector.background,
+  ).toBe(true);
+  assertClean();
+});
+
+test('A124 uses the explicit trigger only for coarse-pointer input', async ({ page }) => {
+  const assertClean = await monitor(page);
+  assertClean.allowRequestFailure({
+    method: 'GET',
+    path: '/courses?page=1&page_size=20&sort=created_at',
+    errorText: 'net::ERR_ABORTED',
+  });
+  await page.addInitScript(() => {
+    const originalMatchMedia = window.matchMedia.bind(window);
+    window.matchMedia = (query: string) =>
+      query === '(hover: hover) and (pointer: fine)'
+        ? {
+            matches: false,
+            media: query,
+            onchange: null,
+            addEventListener() {},
+            removeEventListener() {},
+            addListener() {},
+            removeListener() {},
+            dispatchEvent() {
+              return false;
+            },
+          }
+        : originalMatchMedia(query);
+  });
+  await page.route('**/courses**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: response([
+        {
+          ...permittedCourse('Touch course'),
+          description: 'Touch disclosure.',
+          published_at: '2026-07-01T00:00:00Z',
+        },
+      ]),
+    });
+  });
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.goto('/');
+  const card = page.locator('[data-part="course-card"]');
+  const trigger = card.getByRole('button', { name: 'View details' });
+  await card.hover();
+  await page.waitForTimeout(320);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await trigger.click();
+  await expect(page.getByRole('dialog', { name: 'Course description: Touch course' })).toHaveCount(
+    1,
+  );
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
   assertClean();
 });

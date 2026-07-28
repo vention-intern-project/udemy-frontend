@@ -1,11 +1,19 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { RouteErrorBoundary } from '../../src/app/router';
+import { ApplicationTitleBoundary, RouteErrorBoundary } from '../../src/app/router';
+import { SessionProvider, type AccessTokenStore } from '../../src/features/auth-session';
+import type { ApiClient } from '../../src/shared/api';
+
+function anonymousTokenStore(): AccessTokenStore {
+  return { get: () => null, set: () => undefined, clear: () => undefined };
+}
+
+const unusedClient: ApiClient = { request: async () => undefined as never };
 
 afterEach(() => {
   cleanup();
@@ -13,6 +21,32 @@ afterEach(() => {
 });
 
 describe('RouteErrorBoundary', () => {
+  it('updates the application title for a render failure and restores route metadata on retry', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    let shouldThrow = true;
+
+    function RenderTarget() {
+      if (shouldThrow) throw new Error('private render diagnostic');
+      return <h1>Recovered page</h1>;
+    }
+
+    render(
+      <SessionProvider client={unusedClient} tokenStore={anonymousTokenStore()}>
+        <MemoryRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+          <ApplicationTitleBoundary>
+            <RenderTarget />
+          </ApplicationTitleBoundary>
+        </MemoryRouter>
+      </SessionProvider>,
+    );
+
+    await waitFor(() => expect(document.title).toBe('Something went wrong | LearnHub'));
+    shouldThrow = false;
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Try again' }));
+    await screen.findByRole('heading', { level: 1, name: 'Recovered page' });
+    await waitFor(() => expect(document.title).toBe('Course catalog | LearnHub'));
+  });
+
   it('contains render failures behind an accessible public-safe recovery state', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     let shouldThrow = true;
@@ -60,7 +94,9 @@ describe('RouteErrorBoundary', () => {
       </MemoryRouter>,
     );
 
-    await userEvent.setup().click(screen.getByRole('link', { name: 'Back to catalog' }));
+    const catalogLink = screen.getByRole('link', { name: 'Back to catalog' });
+    expect(catalogLink.getAttribute('href')).toBe('/');
+    await userEvent.setup().click(catalogLink);
     expect(await screen.findByRole('heading', { level: 1, name: 'Course catalog' })).toBeTruthy();
   });
 });

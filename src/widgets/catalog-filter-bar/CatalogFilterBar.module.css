@@ -1,67 +1,91 @@
 .root {
   display: flex;
-  flex: 0 1 auto;
-  flex-wrap: wrap;
+  flex: 1 1 auto;
   align-items: center;
-  gap: var(--spacing-2);
   min-width: 0;
 }
 
 .priceRange {
   display: grid;
-  grid-template-columns: max-content repeat(2, 8rem);
+  grid-template-columns: auto repeat(2, minmax(8rem, 1fr));
   align-items: center;
   gap: var(--spacing-2);
+  inline-size: 100%;
   min-width: 0;
   margin: 0;
   padding: 0;
   border: 0;
 }
 
+.field {
+  display: block;
+  min-width: 0;
+}
+
 .legend {
+  padding: 0;
   color: var(--text-muted);
   font-size: var(--type-label-size);
   font-weight: var(--type-label-weight);
   line-height: var(--type-label-lh);
   white-space: nowrap;
 }
-
-.field {
-  display: block;
-  flex: 0 0 8rem;
-  inline-size: 8rem;
-  min-width: 0;
+.legend::after {
+  content: ':';
 }
 
 .field [data-part='label'] {
   position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 .field [data-part='control'] {
   width: 100%;
-  min-width: 0;
-  height: 36px;
-  min-height: 36px;
 }
 
-.field [data-part='control']:focus-visible {
-  border-color: var(--action-primary-bg);
-  outline-color: var(--action-primary-bg);
-}
-
-@media (max-width: 479px) {
-  .root {
-    flex-basis: 100vw;
-    margin-inline: calc(-1 * var(--gutter-mobile));
-  }
-
+@media (max-width: 767px) {
   .priceRange {
-    flex-basis: 100%;
-    grid-template-columns: repeat(2, 8rem);
-    justify-content: start;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-
   .legend {
-    grid-column: 1 / -1;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .field [data-part='label'] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}
+
+@media (min-width: 768px) {
+  .root {
+    flex: 0 0 auto;
+  }
+  .priceRange {
+    position: relative;
+    grid-template-columns: repeat(2, 7.5rem);
+    inline-size: auto;
+    padding-inline-start: 5.25rem;
+  }
+  .legend {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    transform: translateY(-50%);
+  }
+  .field {
+    inline-size: 7.5rem;
   }
 }

@@ -20,19 +20,19 @@ function isUnavailableByTree(element: HTMLElement): boolean {
 
   while (current) {
     if (
-      current.hidden
-      || current.getAttribute('aria-hidden')?.toLowerCase() === 'true'
-      || current.hasAttribute('inert')
+      current.hidden ||
+      current.getAttribute('aria-hidden')?.toLowerCase() === 'true' ||
+      current.hasAttribute('inert')
     ) {
       return true;
     }
 
     const style = window.getComputedStyle(current);
     if (
-      style.display === 'none'
-      || style.visibility === 'hidden'
-      || style.visibility === 'collapse'
-      || style.getPropertyValue('content-visibility') === 'hidden'
+      style.display === 'none' ||
+      style.visibility === 'hidden' ||
+      style.visibility === 'collapse' ||
+      style.getPropertyValue('content-visibility') === 'hidden'
     ) {
       return true;
     }
@@ -48,14 +48,16 @@ function isTabbableRadio(element: HTMLElement): boolean {
     return true;
   }
 
-  const group = Array.from(document.querySelectorAll<HTMLInputElement>('input[type="radio"]'))
-    .filter((radio) => (
-      radio.name === element.name
-      && radio.form === element.form
-      && radio.getRootNode() === element.getRootNode()
-      && !radio.matches(':disabled')
-      && !isUnavailableByTree(radio)
-    ));
+  const group = Array.from(
+    document.querySelectorAll<HTMLInputElement>('input[type="radio"]'),
+  ).filter(
+    (radio) =>
+      radio.name === element.name &&
+      radio.form === element.form &&
+      radio.getRootNode() === element.getRootNode() &&
+      !radio.matches(':disabled') &&
+      !isUnavailableByTree(radio),
+  );
   const checked = group.find((radio) => radio.checked);
 
   return checked ? checked === element : group[0] === element;
@@ -66,11 +68,11 @@ export function isTabbableElement(
   layoutRoot: HTMLElement = document.documentElement,
 ): boolean {
   if (
-    !element.isConnected
-    || element.tabIndex < 0
-    || element.matches(':disabled')
-    || isUnavailableByTree(element)
-    || !isTabbableRadio(element)
+    !element.isConnected ||
+    element.tabIndex < 0 ||
+    element.matches(':disabled') ||
+    isUnavailableByTree(element) ||
+    !isTabbableRadio(element)
   ) {
     return false;
   }
@@ -85,13 +87,24 @@ export function isTabbableElement(
   return true;
 }
 
-export function getFocusableElements(container: HTMLElement): HTMLElement[] {
-  return Array.from(container.querySelectorAll<HTMLElement>(focusableSelector))
-    .filter((element) => isTabbableElement(element, container));
+export function getTabbableElements(container: HTMLElement): HTMLElement[] {
+  return Array.from(container.querySelectorAll<HTMLElement>(focusableSelector)).filter((element) =>
+    isTabbableElement(element, container),
+  );
 }
 
-export function focusFirst(container: HTMLElement): HTMLElement {
-  const target = getFocusableElements(container)[0] ?? container;
-  target.focus();
-  return target;
+export function isProgrammaticallyFocusable(element: HTMLElement): boolean {
+  return element.isConnected && !element.matches(':disabled') && !isUnavailableByTree(element);
+}
+
+export function focusElement(element: HTMLElement): boolean {
+  if (!isProgrammaticallyFocusable(element)) return false;
+
+  element.focus();
+  return document.activeElement === element;
+}
+
+export function focusFirst(container: HTMLElement): boolean {
+  const target = getTabbableElements(container)[0] ?? container;
+  return focusElement(target);
 }

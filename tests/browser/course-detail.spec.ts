@@ -1,11 +1,11 @@
-import {
-  expect, test, type Page, type Response, type Route,
-} from '@playwright/test';
+import { expect, test, type Page, type Response, type Route } from '@playwright/test';
 
 const detail = {
   id: 7,
-  title: 'A complete and deliberately long React foundations course title that must wrap without clipping',
-  description: 'Build reliable interfaces with a long course description that remains readable at every supported width and effective zoom.',
+  title:
+    'A complete and deliberately long React foundations course title that must wrap without clipping',
+  description:
+    'Build reliable interfaces with a long course description that remains readable at every supported width and effective zoom.',
   price: '19.9900',
   currency: 'USD',
   published_at: '2026-07-01T00:00:00Z',
@@ -16,31 +16,69 @@ const detail = {
 };
 
 const studentProfile = {
-  email: 'student@example.test', name: 'Sam', surname: 'Student', role: 'student',
-  birthday: null, phone_number: null, created_at: '2026-01-01T00:00:00Z',
+  email: 'student@example.test',
+  name: 'Sam',
+  surname: 'Student',
+  role: 'student',
+  birthday: null,
+  phone_number: null,
+  created_at: '2026-01-01T00:00:00Z',
 };
 const emptyCart = { id: 1, items: [], total_price: '0.00', currency: 'USD', item_count: 0 };
 const emptyEnrollments = {
-  items: [], page: 1, page_size: 100, total: 0, pages: 0, has_next: false, has_previous: false,
+  items: [],
+  page: 1,
+  page_size: 100,
+  total: 0,
+  pages: 0,
+  has_next: false,
+  has_previous: false,
 };
 const enrollmentMutation = {
-  id: 4, user_id: 9, course_id: 7, status: 'active',
-  created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z',
-  course: { id: 7, title: detail.title, description: detail.description, price: '0.00', currency: detail.currency },
+  id: 4,
+  user_id: 9,
+  course_id: 7,
+  status: 'active',
+  created_at: '2026-07-01T00:00:00Z',
+  updated_at: '2026-07-01T00:00:00Z',
+  course: {
+    id: 7,
+    title: detail.title,
+    description: detail.description,
+    price: '0.00',
+    currency: detail.currency,
+  },
 };
 const cartItemMutation = {
-  id: 5, course_id: 7, added_at: '2026-07-01T00:00:00Z',
+  id: 5,
+  course_id: 7,
+  added_at: '2026-07-01T00:00:00Z',
   course: { id: 7, title: detail.title, price: '19.99', currency: detail.currency },
 };
 
 function outline(downloadUrl: string | null, items = 1) {
   return {
-    items: items === 0 ? [] : [{
-      id: 3, title: 'Welcome', lesson_type: 'video', download_url: downloadUrl,
-      description: 'Course orientation.', is_published: true,
-      created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z',
-    }],
-    page: 1, page_size: 100, total: items, pages: items, has_next: false, has_previous: false,
+    items:
+      items === 0
+        ? []
+        : [
+            {
+              id: 3,
+              title: 'Welcome',
+              lesson_type: 'video',
+              download_url: downloadUrl,
+              description: 'Course orientation.',
+              is_published: true,
+              created_at: '2026-07-01T00:00:00Z',
+              updated_at: '2026-07-01T00:00:00Z',
+            },
+          ],
+    page: 1,
+    page_size: 100,
+    total: items,
+    pages: items,
+    has_next: false,
+    has_previous: false,
   };
 }
 
@@ -80,8 +118,13 @@ interface DiagnosticAssertions {
   assertClean(): void;
 }
 
-function parseResourceStatusConsoleEntry(text: string, locationUrl: string): ResourceStatusConsoleEntry | undefined {
-  const statusMatch = /Failed to load resource: the server responded with a status of (\d+)/.exec(text);
+function parseResourceStatusConsoleEntry(
+  text: string,
+  locationUrl: string,
+): ResourceStatusConsoleEntry | undefined {
+  const statusMatch = /Failed to load resource: the server responded with a status of (\d+)/.exec(
+    text,
+  );
   if (!statusMatch || locationUrl.length === 0) return undefined;
   return { status: Number(statusMatch[1]), url: locationUrl };
 }
@@ -90,12 +133,13 @@ function findExpectedFailureForConsole(
   expectedFailures: readonly ObservedHttpFailure[],
   entry: ResourceStatusConsoleEntry,
 ): ObservedHttpFailure | undefined {
-  return expectedFailures.find((failure) => (
-    !failure.consoleObserved
-    && failure.observed
-    && failure.status === entry.status
-    && failure.observedResponseUrl === entry.url
-  ));
+  return expectedFailures.find(
+    (failure) =>
+      !failure.consoleObserved &&
+      failure.observed &&
+      failure.status === entry.status &&
+      failure.observedResponseUrl === entry.url,
+  );
 }
 
 async function installDiagnostics(page: Page) {
@@ -104,19 +148,25 @@ async function installDiagnostics(page: Page) {
   const unexpectedApiRequests: string[] = [];
   const expectedFailures: ObservedHttpFailure[] = [];
   await page.route(isRootApiPath, async (route) => {
-    if (isDocumentNavigation(route)) { await route.fallback(); return; }
-    unexpectedApiRequests.push(`${route.request().method()} ${new URL(route.request().url()).pathname}`);
+    if (isDocumentNavigation(route)) {
+      await route.fallback();
+      return;
+    }
+    unexpectedApiRequests.push(
+      `${route.request().method()} ${new URL(route.request().url()).pathname}`,
+    );
     await route.abort();
   });
   page.on('response', (response) => {
     const request = response.request();
     const pathname = new URL(response.url()).pathname;
-    const expected = expectedFailures.find((failure) => (
-      !failure.observed
-      && failure.method === request.method()
-      && failure.pathname === pathname
-      && failure.status === response.status()
-    ));
+    const expected = expectedFailures.find(
+      (failure) =>
+        !failure.observed &&
+        failure.method === request.method() &&
+        failure.pathname === pathname &&
+        failure.status === response.status(),
+    );
     if (expected) {
       expected.observed = true;
       expected.observedResponseUrl = response.url();
@@ -126,20 +176,35 @@ async function installDiagnostics(page: Page) {
     if (message.type() !== 'error') return;
     const entry = parseResourceStatusConsoleEntry(message.text(), message.location().url);
     const expected = entry ? findExpectedFailureForConsole(expectedFailures, entry) : undefined;
-    if (expected) { expected.consoleObserved = true; return; }
+    if (expected) {
+      expected.consoleObserved = true;
+      return;
+    }
     errors.push(message.text());
   });
   page.on('pageerror', (error) => errors.push(error.message));
   page.on('request', (request) => {
-    if (new URL(request.url()).pathname.startsWith('/media/lessons/')) mediaRequests.push(request.url());
+    if (new URL(request.url()).pathname.startsWith('/media/lessons/'))
+      mediaRequests.push(request.url());
   });
   const diagnostics: DiagnosticAssertions = {
     expectHttpFailure: (failure) => {
-      expectedFailures.push({ ...failure, observed: false, observedResponseUrl: null, consoleObserved: false });
+      expectedFailures.push({
+        ...failure,
+        observed: false,
+        observedResponseUrl: null,
+        consoleObserved: false,
+      });
     },
     assertClean: () => {
-      expect(expectedFailures.filter((failure) => !failure.observed), 'expected HTTP failures were not observed').toEqual([]);
-      expect(expectedFailures.filter((failure) => !failure.consoleObserved), 'expected resource-status console errors were not observed').toEqual([]);
+      expect(
+        expectedFailures.filter((failure) => !failure.observed),
+        'expected HTTP failures were not observed',
+      ).toEqual([]);
+      expect(
+        expectedFailures.filter((failure) => !failure.consoleObserved),
+        'expected resource-status console errors were not observed',
+      ).toEqual([]);
       expect(errors, 'unexpected console/page errors').toEqual([]);
       expect(mediaRequests, 'lesson-file requests are forbidden on course detail').toEqual([]);
       expect(unexpectedApiRequests, 'unexpected API requests').toEqual([]);
@@ -159,15 +224,19 @@ test('binds a resource-status console allowance to the exact observed response U
     consoleObserved: false,
   };
 
-  expect(findExpectedFailureForConsole([observedFailure], {
-    status: 500,
-    url: 'http://127.0.0.1:4176/unrelated-resource.js',
-  })).toBeUndefined();
+  expect(
+    findExpectedFailureForConsole([observedFailure], {
+      status: 500,
+      url: 'http://127.0.0.1:4176/unrelated-resource.js',
+    }),
+  ).toBeUndefined();
   expect(observedFailure.consoleObserved).toBe(false);
-  expect(findExpectedFailureForConsole([observedFailure], {
-    status: 500,
-    url: expectedResponseUrl,
-  })).toBe(observedFailure);
+  expect(
+    findExpectedFailureForConsole([observedFailure], {
+      status: 500,
+      url: expectedResponseUrl,
+    }),
+  ).toBe(observedFailure);
 });
 
 async function installStudentToken(page: Page, token = 'student-token') {
@@ -185,11 +254,16 @@ async function routeStudentReads(page: Page, price = '0.00') {
   await page.route('**/enrollments/my**', (route) => json(route, emptyEnrollments));
 }
 
-test('renders populated/redacted/null API-014 fixtures as metadata only with no media request', async ({ page }) => {
+test('renders populated/redacted/null API-014 fixtures as metadata only with no media request', async ({
+  page,
+}) => {
   const diagnostics = await installDiagnostics(page);
   let link: string | null = '/media/lessons/private.mp4';
   await page.route('**/courses/7**', async (route) => {
-    if (isDocumentNavigation(route)) { await route.fallback(); return; }
+    if (isDocumentNavigation(route)) {
+      await route.fallback();
+      return;
+    }
     const path = new URL(route.request().url()).pathname;
     await json(route, path.endsWith('/lessons') ? outline(link) : detail);
   });
@@ -210,7 +284,9 @@ test('renders populated/redacted/null API-014 fixtures as metadata only with no 
   diagnostics.assertClean();
 });
 
-test('clears a genuine invalid bearer after 401 and performs public metadata reads without authorization', async ({ page }) => {
+test('clears a genuine invalid bearer after 401 and performs public metadata reads without authorization', async ({
+  page,
+}) => {
   const diagnostics = await installDiagnostics(page);
   await installStudentToken(page, 'invalid-bearer');
   let bootstrap401 = 0;
@@ -222,7 +298,10 @@ test('clears a genuine invalid bearer after 401 and performs public metadata rea
     await json(route, { detail: 'Could not validate credentials' }, 401);
   });
   await page.route('**/courses/7**', async (route) => {
-    if (isDocumentNavigation(route)) { await route.fallback(); return; }
+    if (isDocumentNavigation(route)) {
+      await route.fallback();
+      return;
+    }
     expect(route.request().headers().authorization).toBeUndefined();
     const path = new URL(route.request().url()).pathname;
     publicCoursePaths.push(path);
@@ -237,7 +316,9 @@ test('clears a genuine invalid bearer after 401 and performs public metadata rea
   diagnostics.assertClean();
 });
 
-test('recovers detail and outline independently with keyboard focus and polite status', async ({ page }) => {
+test('recovers detail and outline independently with keyboard focus and polite status', async ({
+  page,
+}) => {
   const diagnostics = await installDiagnostics(page);
   let detailAvailable = false;
   let outlineAvailable = false;
@@ -246,12 +327,23 @@ test('recovers detail and outline independently with keyboard focus and polite s
   diagnostics.expectHttpFailure({ method: 'GET', pathname: '/courses/7/lessons', status: 500 });
   diagnostics.expectHttpFailure({ method: 'GET', pathname: '/courses/7/lessons', status: 500 });
   await page.route('**/courses/7**', async (route) => {
-    if (isDocumentNavigation(route)) { await route.fallback(); return; }
+    if (isDocumentNavigation(route)) {
+      await route.fallback();
+      return;
+    }
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith('/lessons')) {
-      await json(route, outlineAvailable ? outline(null, 0) : { detail: 'temporary outline failure' }, outlineAvailable ? 200 : 500);
+      await json(
+        route,
+        outlineAvailable ? outline(null, 0) : { detail: 'temporary outline failure' },
+        outlineAvailable ? 200 : 500,
+      );
     } else {
-      await json(route, detailAvailable ? detail : { detail: 'temporary detail failure' }, detailAvailable ? 200 : 500);
+      await json(
+        route,
+        detailAvailable ? detail : { detail: 'temporary detail failure' },
+        detailAvailable ? 200 : 500,
+      );
     }
   });
 
@@ -262,12 +354,15 @@ test('recovers detail and outline independently with keyboard focus and polite s
   detailAvailable = true;
   await detailRetry.press('Enter');
   await expect(page.getByRole('heading', { level: 1 })).toBeFocused();
-  await expect(page.getByRole('status').filter({ hasText: 'Course details recovered.' }))
-    .toHaveText('Course details recovered.');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Course details recovered.' }),
+  ).toHaveText('Course details recovered.');
 
   const outlineSection = page.locator('section[aria-labelledby="course-outline-heading"]');
   const outlineRecovery = outlineSection.getByRole('alert');
-  const outlineRecoveryMessage = outlineRecovery.locator('p').filter({ hasText: 'Please try again.' });
+  const outlineRecoveryMessage = outlineRecovery
+    .locator('p')
+    .filter({ hasText: 'Please try again.' });
   const outlineRetry = outlineRecovery.getByRole('button', { name: 'Try again' });
   await expect(outlineRecoveryMessage).toHaveText('Please try again.');
   await expect(outlineRetry).toBeVisible();
@@ -282,7 +377,12 @@ test('recovers detail and outline independently with keyboard focus and polite s
       const message = notice.querySelector('p');
       const action = notice.querySelector('button');
       const actionRow = message?.nextElementSibling;
-      if (!message || !action || !(actionRow instanceof HTMLElement) || !actionRow.contains(action)) {
+      if (
+        !message ||
+        !action ||
+        !(actionRow instanceof HTMLElement) ||
+        !actionRow.contains(action)
+      ) {
         throw new Error('Outline recovery structure is incomplete');
       }
       const noticeBox = notice.getBoundingClientRect();
@@ -314,19 +414,34 @@ test('recovers detail and outline independently with keyboard focus and polite s
   outlineAvailable = true;
   await outlineRetry.press('Enter');
   await expect(page.getByRole('heading', { level: 2, name: 'Course outline' })).toBeFocused();
-  await expect(page.getByRole('status').filter({ hasText: 'Course outline recovered.' }))
-    .toHaveText('Course outline recovered.');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Course outline recovered.' }),
+  ).toHaveText('Course outline recovered.');
   diagnostics.assertClean();
 });
 
-test('renders Draft as unavailable and sends no student mutation or preflight request', async ({ page }) => {
+test('renders Draft as unavailable and sends no student mutation or preflight request', async ({
+  page,
+}) => {
   const diagnostics = await installDiagnostics(page);
   await installStudentToken(page);
   await page.route('**/me', (route) => json(route, studentProfile));
+  await page.route(
+    (url) => url.pathname === '/cart' && url.search === '',
+    async (route) => {
+      const request = route.request();
+      expect(request.method()).toBe('GET');
+      expect(request.headers().authorization).toBe('Bearer student-token');
+      await json(route, emptyCart);
+    },
+  );
   await page.route('**/courses/7**', (route) => {
     if (isDocumentNavigation(route)) return route.fallback();
     const path = new URL(route.request().url()).pathname;
-    return json(route, path.endsWith('/lessons') ? outline(null) : { ...detail, published_at: null });
+    return json(
+      route,
+      path.endsWith('/lessons') ? outline(null) : { ...detail, published_at: null },
+    );
   });
   await page.goto('/courses/7');
   await expect(page.getByRole('button', { name: 'Course is not published' })).toBeDisabled();
@@ -334,7 +449,9 @@ test('renders Draft as unavailable and sends no student mutation or preflight re
   diagnostics.assertClean();
 });
 
-test('retries a failed student preflight and refetches its exact cart/enrollment owners', async ({ page }) => {
+test('retries a failed student preflight and refetches its exact cart/enrollment owners', async ({
+  page,
+}) => {
   const diagnostics = await installDiagnostics(page);
   await installStudentToken(page);
   let cartRequests = 0;
@@ -350,9 +467,16 @@ test('retries a failed student preflight and refetches its exact cart/enrollment
   });
   await page.route('**/cart', async (route) => {
     cartRequests += 1;
-    await json(route, preflightAvailable ? emptyCart : { detail: 'temporary preflight failure' }, preflightAvailable ? 200 : 500);
+    await json(
+      route,
+      preflightAvailable ? emptyCart : { detail: 'temporary preflight failure' },
+      preflightAvailable ? 200 : 500,
+    );
   });
-  await page.route('**/enrollments/my**', async (route) => { enrollmentRequests += 1; await json(route, emptyEnrollments); });
+  await page.route('**/enrollments/my**', async (route) => {
+    enrollmentRequests += 1;
+    await json(route, emptyEnrollments);
+  });
 
   await page.goto('/courses/7');
   const retry = page.getByRole('button', { name: 'Try again' });
@@ -366,7 +490,9 @@ test('retries a failed student preflight and refetches its exact cart/enrollment
   diagnostics.assertClean();
 });
 
-test('deduplicates pending free enrollment and reports enrollment-specific success', async ({ page }) => {
+test('deduplicates pending free enrollment and reports enrollment-specific success', async ({
+  page,
+}) => {
   const diagnostics = await installDiagnostics(page);
   await installStudentToken(page);
   await routeStudentReads(page);
@@ -407,8 +533,20 @@ test('sends the paid cart request once and reports cart-specific success', async
 });
 
 for (const scenario of [
-  { name: 'enrollment null', price: '0.00', action: 'Enroll free', path: '**/enrollments', payload: null },
-  { name: 'cart partial object', price: '19.99', action: 'Add to cart', path: '**/cart/items', payload: { id: 5 } },
+  {
+    name: 'enrollment null',
+    price: '0.00',
+    action: 'Enroll free',
+    path: '**/enrollments',
+    payload: null,
+  },
+  {
+    name: 'cart partial object',
+    price: '19.99',
+    action: 'Add to cart',
+    path: '**/cart/items',
+    payload: { id: 5 },
+  },
 ]) {
   test(`fails closed for malformed ${scenario.name} mutation success`, async ({ page }) => {
     const diagnostics = await installDiagnostics(page);
@@ -430,7 +568,9 @@ for (const scenario of [
   });
 }
 
-test('fails enrollment preflight closed for a mismatched response cursor without mutation', async ({ page }) => {
+test('fails enrollment preflight closed for a mismatched response cursor without mutation', async ({
+  page,
+}) => {
   const diagnostics = await installDiagnostics(page);
   await installStudentToken(page);
   let mutations = 0;
@@ -441,8 +581,13 @@ test('fails enrollment preflight closed for a mismatched response cursor without
     return json(route, path.endsWith('/lessons') ? outline(null) : { ...detail, price: '0.00' });
   });
   await page.route('**/cart', (route) => json(route, emptyCart));
-  await page.route('**/enrollments/my**', (route) => json(route, { ...emptyEnrollments, page: 2, has_previous: true }));
-  await page.route(/\/(?:cart\/items|enrollments)$/, async (route) => { mutations += 1; await route.abort(); });
+  await page.route('**/enrollments/my**', (route) =>
+    json(route, { ...emptyEnrollments, page: 2, has_previous: true }),
+  );
+  await page.route(/\/(?:cart\/items|enrollments)$/, async (route) => {
+    mutations += 1;
+    await route.abort();
+  });
 
   await page.goto('/courses/7');
   await expect(page.getByRole('button', { name: 'Action unavailable' })).toBeDisabled();
@@ -451,12 +596,18 @@ test('fails enrollment preflight closed for a mismatched response cursor without
   diagnostics.assertClean();
 });
 
-test('disables terminal forbidden, conflict, validation, and missing-course mutation outcomes', async ({ page }) => {
+test('keeps non-refresh terminal failures disabled while refreshed conflict truth can restore eligibility', async ({
+  page,
+}) => {
   const diagnostics = await installDiagnostics(page);
   const cases = [
     { status: 403, detail: 'private forbidden detail', expected: 'Action unavailable' },
-    { status: 409, detail: 'Already enrolled in this course', expected: 'Already enrolled' },
-    { status: 422, detail: [{ loc: ['body'], msg: 'private issue', type: 'value_error' }], expected: 'Action unavailable' },
+    { status: 409, detail: 'Already enrolled in this course', expected: 'Enroll free' },
+    {
+      status: 422,
+      detail: [{ loc: ['body'], msg: 'private issue', type: 'value_error' }],
+      expected: 'Action unavailable',
+    },
     { status: 404, detail: 'Course not found', expected: 'Action unavailable' },
   ];
   for (const [index, scenario] of cases.entries()) {
@@ -467,10 +618,10 @@ test('disables terminal forbidden, conflict, validation, and missing-course muta
     const completedDetailResponses: Response[] = [];
     const collectCompletedDetailResponse = (response: Response) => {
       if (
-        response.request().method() === 'GET'
-        && response.request().resourceType() !== 'document'
-        && new URL(response.url()).pathname === '/courses/7'
-        && response.status() === 200
+        response.request().method() === 'GET' &&
+        response.request().resourceType() !== 'document' &&
+        new URL(response.url()).pathname === '/courses/7' &&
+        response.status() === 200
       ) {
         completedDetailResponses.push(response);
       }
@@ -478,7 +629,10 @@ test('disables terminal forbidden, conflict, validation, and missing-course muta
     page.on('response', collectCompletedDetailResponse);
     await page.unroute('**/courses/7**');
     await page.route('**/courses/7**', async (route) => {
-      if (isDocumentNavigation(route)) { await route.fallback(); return; }
+      if (isDocumentNavigation(route)) {
+        await route.fallback();
+        return;
+      }
       const path = new URL(route.request().url()).pathname;
       await json(route, path.endsWith('/lessons') ? outline(null) : { ...detail, price: '0.00' });
     });
@@ -492,13 +646,22 @@ test('disables terminal forbidden, conflict, validation, and missing-course muta
       const enrollAction = page.getByRole('button', { name: 'Enroll free' });
       await expect(enrollAction).toBeEnabled();
       const detailResponsesBeforeMutation = completedDetailResponses.length;
-      diagnostics.expectHttpFailure({ method: 'POST', pathname: '/enrollments', status: scenario.status });
+      diagnostics.expectHttpFailure({
+        method: 'POST',
+        pathname: '/enrollments',
+        status: scenario.status,
+      });
       await enrollAction.click();
-      await expect(page.getByRole('button', { name: scenario.expected })).toBeDisabled();
-      await expect(page.locator('body')).not.toContainText(/private forbidden detail|private issue/);
+      const resultingAction = page.getByRole('button', { name: scenario.expected });
+      if (scenario.status !== 409) await expect(resultingAction).toBeDisabled();
+      else await expect(resultingAction).toBeEnabled();
+      await expect(page.locator('body')).not.toContainText(
+        /private forbidden detail|private issue/,
+      );
       expect(mutations).toBe(1);
-      expect(completedDetailResponses.length - detailResponsesBeforeMutation)
-        .toBe(scenario.status === 404 ? 1 : 0);
+      expect(completedDetailResponses.length - detailResponsesBeforeMutation).toBe(
+        scenario.status === 404 ? 1 : 0,
+      );
       diagnostics.assertClean();
     } finally {
       page.off('response', collectCompletedDetailResponse);
@@ -507,12 +670,46 @@ test('disables terminal forbidden, conflict, validation, and missing-course muta
 });
 
 for (const scenario of [
-  { name: 'mutation 401', status: 401, detail: 'Could not validate credentials', expected: 'Log in to enroll free', role: 'link', price: '0.00', mutationPath: '**/enrollments' },
-  { name: 'publication mutation failure', status: 400, detail: 'Course is not published', expected: 'Action unavailable', role: 'button', price: '0.00', mutationPath: '**/enrollments' },
-  { name: 'cart conflict', status: 409, detail: 'Course already in cart', expected: 'Already in cart', role: 'button', price: '19.99', mutationPath: '**/cart/items' },
-  { name: 'unexpected conflict', status: 409, detail: 'Unexpected conflict', expected: 'Action unavailable', role: 'button', price: '0.00', mutationPath: '**/enrollments' },
+  {
+    name: 'mutation 401',
+    status: 401,
+    detail: 'Could not validate credentials',
+    expected: 'Log in to enroll free',
+    role: 'link',
+    price: '0.00',
+    mutationPath: '**/enrollments',
+  },
+  {
+    name: 'publication mutation failure',
+    status: 400,
+    detail: 'Course is not published',
+    expected: 'Action unavailable',
+    role: 'button',
+    price: '0.00',
+    mutationPath: '**/enrollments',
+  },
+  {
+    name: 'cart conflict',
+    status: 409,
+    detail: 'Course already in cart',
+    expected: 'Add to cart',
+    role: 'button',
+    price: '19.99',
+    mutationPath: '**/cart/items',
+  },
+  {
+    name: 'unexpected conflict',
+    status: 409,
+    detail: 'Unexpected conflict',
+    expected: 'Enroll free',
+    role: 'button',
+    price: '0.00',
+    mutationPath: '**/enrollments',
+  },
 ]) {
-  test(`fails closed for ${scenario.name} with terminal diagnostics`, async ({ page }) => {
+  test(`uses authoritative refresh truth for ${scenario.name} with terminal diagnostics`, async ({
+    page,
+  }) => {
     const diagnostics = await installDiagnostics(page);
     await installStudentToken(page);
     await routeStudentReads(page, scenario.price);
@@ -528,22 +725,81 @@ for (const scenario of [
       pathname: scenario.price === '0.00' ? '/enrollments' : '/cart/items',
       status: scenario.status,
     });
-    await page.getByRole('button', { name: scenario.price === '0.00' ? 'Enroll free' : 'Add to cart' }).click();
-    const action = scenario.role === 'link'
-      ? page.getByRole('link', { name: scenario.expected })
-      : page.getByRole('button', { name: scenario.expected });
+    await page
+      .getByRole('button', { name: scenario.price === '0.00' ? 'Enroll free' : 'Add to cart' })
+      .click();
+    const action =
+      scenario.role === 'link'
+        ? page.getByRole('link', { name: scenario.expected })
+        : page.getByRole('button', { name: scenario.expected });
     await expect(action).toBeVisible();
-    if (scenario.role === 'button') await expect(action).toBeDisabled();
+    if (scenario.role === 'button' && scenario.status !== 409) await expect(action).toBeDisabled();
+    if (scenario.role === 'button' && scenario.status === 409) await expect(action).toBeEnabled();
     expect(mutations).toBe(1);
-    await expect(page.locator('body')).not.toContainText(/Could not validate credentials|Unexpected conflict/);
+    await expect(page.locator('body')).not.toContainText(
+      /Could not validate credentials|Unexpected conflict/,
+    );
     diagnostics.assertClean();
   });
 }
 
 for (const scenario of [
-  { name: 'instructor account', profile: { ...studentProfile, role: 'instructor' }, cart: emptyCart, enrollments: emptyEnrollments, expected: 'Not available for this account', price: '0.00' },
-  { name: 'already-enrolled preflight', profile: studentProfile, cart: emptyCart, enrollments: { ...emptyEnrollments, items: [{ id: 12, user_id: 9, course_id: 7, status: 'active', created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z', course: { id: 7, title: detail.title, description: detail.description, price: detail.price, currency: detail.currency } }], total: 1, pages: 1 }, expected: 'Already enrolled', price: '0.00' },
-  { name: 'already-in-cart preflight', profile: studentProfile, cart: { ...emptyCart, items: [{ id: 5, course_id: 7, added_at: '2026-07-01T00:00:00Z', course: { id: 7, title: detail.title, price: detail.price, currency: detail.currency } }], item_count: 1 }, enrollments: emptyEnrollments, expected: 'Already in cart', price: '19.99' },
+  {
+    name: 'instructor account',
+    profile: { ...studentProfile, role: 'instructor' },
+    cart: emptyCart,
+    enrollments: emptyEnrollments,
+    expected: 'Not available for this account',
+    price: '0.00',
+  },
+  {
+    name: 'already-enrolled preflight',
+    profile: studentProfile,
+    cart: emptyCart,
+    enrollments: {
+      ...emptyEnrollments,
+      items: [
+        {
+          id: 12,
+          user_id: 9,
+          course_id: 7,
+          status: 'active',
+          created_at: '2026-07-01T00:00:00Z',
+          updated_at: '2026-07-01T00:00:00Z',
+          course: {
+            id: 7,
+            title: detail.title,
+            description: detail.description,
+            price: detail.price,
+            currency: detail.currency,
+          },
+        },
+      ],
+      total: 1,
+      pages: 1,
+    },
+    expected: 'Already enrolled',
+    price: '0.00',
+  },
+  {
+    name: 'already-in-cart preflight',
+    profile: studentProfile,
+    cart: {
+      ...emptyCart,
+      items: [
+        {
+          id: 5,
+          course_id: 7,
+          added_at: '2026-07-01T00:00:00Z',
+          course: { id: 7, title: detail.title, price: detail.price, currency: detail.currency },
+        },
+      ],
+      item_count: 1,
+    },
+    enrollments: emptyEnrollments,
+    expected: 'Already in cart',
+    price: '19.99',
+  },
 ]) {
   test(`blocks ${scenario.name} before any mutation with diagnostics`, async ({ page }) => {
     const diagnostics = await installDiagnostics(page);
@@ -553,11 +809,17 @@ for (const scenario of [
     await page.route('**/courses/7**', (route) => {
       if (isDocumentNavigation(route)) return route.fallback();
       const path = new URL(route.request().url()).pathname;
-      return json(route, path.endsWith('/lessons') ? outline(null) : { ...detail, price: scenario.price });
+      return json(
+        route,
+        path.endsWith('/lessons') ? outline(null) : { ...detail, price: scenario.price },
+      );
     });
     await page.route('**/cart', (route) => json(route, scenario.cart));
     await page.route('**/enrollments/my**', (route) => json(route, scenario.enrollments));
-    await page.route(/\/(?:cart\/items|enrollments)$/, async (route) => { mutations += 1; await route.abort(); });
+    await page.route(/\/(?:cart\/items|enrollments)$/, async (route) => {
+      mutations += 1;
+      await route.abort();
+    });
 
     await page.goto('/courses/7');
     await expect(page.getByRole('button', { name: scenario.expected })).toBeDisabled();
@@ -573,13 +835,19 @@ test('keeps only offline/server mutation failure retryable', async ({ page }) =>
   let mutations = 0;
   await page.route('**/enrollments', async (route) => {
     mutations += 1;
-    await json(route, mutations === 1 ? { detail: 'temporary server failure' } : enrollmentMutation, mutations === 1 ? 500 : 201);
+    await json(
+      route,
+      mutations === 1 ? { detail: 'temporary server failure' } : enrollmentMutation,
+      mutations === 1 ? 500 : 201,
+    );
   });
 
   await page.goto('/courses/7');
   diagnostics.expectHttpFailure({ method: 'POST', pathname: '/enrollments', status: 500 });
   await page.getByRole('button', { name: 'Enroll free' }).click();
-  await expect(page.getByText('The action failed. Check your connection and try again.')).toBeVisible();
+  await expect(
+    page.getByText('The action failed. Check your connection and try again.'),
+  ).toBeVisible();
   await expect(page.getByRole('button', { name: 'Enroll free' })).toBeEnabled();
   await page.getByRole('button', { name: 'Enroll free' }).click();
   await expect(page.getByText('You are now enrolled in this course.')).toBeVisible();
@@ -587,10 +855,15 @@ test('keeps only offline/server mutation failure retryable', async ({ page }) =>
   diagnostics.assertClean();
 });
 
-test('preserves keyboard access and reflow without horizontal overflow', async ({ page }, testInfo) => {
+test('preserves keyboard access and reflow without horizontal overflow', async ({
+  page,
+}, testInfo) => {
   const diagnostics = await installDiagnostics(page);
   await page.route('**/courses/7**', async (route) => {
-    if (isDocumentNavigation(route)) { await route.fallback(); return; }
+    if (isDocumentNavigation(route)) {
+      await route.fallback();
+      return;
+    }
     const path = new URL(route.request().url()).pathname;
     await json(route, path.endsWith('/lessons') ? outline(null) : detail);
   });
@@ -606,7 +879,10 @@ test('preserves keyboard access and reflow without horizontal overflow', async (
     }));
     expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.clientWidth);
     expect(geometry.bodyWidth).toBeLessThanOrEqual(geometry.clientWidth);
-    await testInfo.attach(`course-detail-${width}`, { body: await page.screenshot(), contentType: 'image/png' });
+    await testInfo.attach(`course-detail-${width}`, {
+      body: await page.screenshot(),
+      contentType: 'image/png',
+    });
   }
 
   await page.keyboard.press('Tab');
@@ -614,6 +890,10 @@ test('preserves keyboard access and reflow without horizontal overflow', async (
   await page.keyboard.press('Tab');
   expect(await page.evaluate(() => document.activeElement?.matches(':focus-visible'))).toBe(true);
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--duration-base').trim())).toBe('0ms');
+  expect(
+    await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--duration-base').trim(),
+    ),
+  ).toBe('0ms');
   diagnostics.assertClean();
 });

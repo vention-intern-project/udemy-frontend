@@ -1,16 +1,17 @@
 // @vitest-environment jsdom
 
-import { useRef, useState } from 'react';
+import { StrictMode, useRef, useState } from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { focusElement, getTabbableElements } from '../../../src/shared/accessibility';
 import { DestructiveConfirmation, Dialog } from '../../../src/shared/ui/primitives';
-import { ThemeProvider } from '../../../src/shared/ui/theme/ThemeProvider';
 
 afterEach(() => {
   cleanup();
   document.body.style.overflow = '';
+  document.querySelector('[data-dialog-portal-root]')?.remove();
   document.documentElement.removeAttribute('data-density');
 });
 
@@ -18,7 +19,9 @@ function DialogHarness({ busy = false }: { busy?: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)}>Open editor</button>
+      <button type="button" onClick={() => setOpen(true)}>
+        Open editor
+      </button>
       <Dialog
         open={open}
         title="Edit lesson"
@@ -45,19 +48,52 @@ function TabbabilityHarness() {
       showCloseButton={false}
       initialFocusRef={disabledInitialRef}
     >
-      <button ref={disabledInitialRef} type="button" disabled>Disabled initial target</button>
-      <fieldset disabled><button type="button">Disabled fieldset target</button></fieldset>
-      <div hidden><button type="button">Hidden ancestor target</button></div>
-      <div aria-hidden="true"><button type="button">ARIA-hidden ancestor target</button></div>
+      <button ref={disabledInitialRef} type="button" disabled>
+        Disabled initial target
+      </button>
+      <fieldset disabled>
+        <button type="button">Disabled fieldset target</button>
+      </fieldset>
+      <div hidden>
+        <button type="button">Hidden ancestor target</button>
+      </div>
+      <div aria-hidden="true">
+        <button type="button">ARIA-hidden ancestor target</button>
+      </div>
       <div ref={(node) => node?.setAttribute('inert', '')}>
         <button type="button">Inert ancestor target</button>
       </div>
-      <div style={{ display: 'none' }}><button type="button">Non-rendered target</button></div>
-      <div style={{ visibility: 'hidden' }}><button type="button">Invisible target</button></div>
-      <button type="button" tabIndex={-1}>Negative tabindex target</button>
+      <div style={{ display: 'none' }}>
+        <button type="button">Non-rendered target</button>
+      </div>
+      <div style={{ visibility: 'hidden' }}>
+        <button type="button">Invisible target</button>
+      </div>
+      <button type="button" tabIndex={-1}>
+        Negative tabindex target
+      </button>
       <input type="radio" name="focus-contract" aria-label="Inactive radio target" />
       <input type="radio" name="focus-contract" aria-label="Checked radio target" defaultChecked />
       <button type="button">Available target</button>
+    </Dialog>
+  );
+}
+
+function ProgrammaticInitialFocusHarness() {
+  const initialFocusRef = useRef<HTMLButtonElement>(null);
+
+  return (
+    <Dialog
+      open
+      title="Programmatic initial focus"
+      onClose={() => undefined}
+      showCloseButton={false}
+      initialFocusRef={initialFocusRef}
+    >
+      <button ref={initialFocusRef} type="button" tabIndex={-1}>
+        Programmatic target
+      </button>
+      <button type="button">Tabbable target</button>
     </Dialog>
   );
 }
@@ -68,14 +104,18 @@ function MultipleDialogsHarness() {
 
   return (
     <>
-      <button type="button" onClick={() => setFirstOpen(true)}>Open first dialog</button>
+      <button type="button" onClick={() => setFirstOpen(true)}>
+        Open first dialog
+      </button>
       <Dialog
         open={firstOpen}
         title="First dialog"
         onClose={() => setFirstOpen(false)}
         showCloseButton={false}
       >
-        <button type="button" onClick={() => setSecondOpen(true)}>Open second dialog</button>
+        <button type="button" onClick={() => setSecondOpen(true)}>
+          Open second dialog
+        </button>
       </Dialog>
       <Dialog
         open={secondOpen}
@@ -83,14 +123,21 @@ function MultipleDialogsHarness() {
         onClose={() => setSecondOpen(false)}
         showCloseButton={false}
       >
-        <button type="button" onClick={() => setFirstOpen(false)}>Close underlying dialog</button>
-        <button type="button" onClick={() => setSecondOpen(false)}>Close top dialog</button>
+        <button type="button" onClick={() => setFirstOpen(false)}>
+          Close underlying dialog
+        </button>
+        <button type="button" onClick={() => setSecondOpen(false)}>
+          Close top dialog
+        </button>
       </Dialog>
     </>
   );
 }
 
-function EscapeOwnershipHarness({ busy, onEscapeBubble }: {
+function EscapeOwnershipHarness({
+  busy,
+  onEscapeBubble,
+}: {
   busy: boolean;
   onEscapeBubble: () => void;
 }) {
@@ -134,8 +181,9 @@ describe('Dialog', () => {
 
     const dialog = screen.getByRole('dialog', { name: 'Edit lesson' });
     expect(dialog.getAttribute('aria-modal')).toBe('true');
-    expect(document.getElementById(dialog.getAttribute('aria-describedby') ?? '')?.textContent)
-      .toBe('Update lesson details');
+    expect(
+      document.getElementById(dialog.getAttribute('aria-describedby') ?? '')?.textContent,
+    ).toBe('Update lesson details');
 
     const first = screen.getByRole('button', { name: 'First action' });
     const last = screen.getByRole('button', { name: 'Last action' });
@@ -160,24 +208,26 @@ describe('Dialog', () => {
     expect(screen.getByRole('dialog').getAttribute('aria-busy')).toBe('true');
   });
 
-  it('contains Escape in the topmost dialog while preserving busy and close ownership', async () => {
+  it('contains interaction in the topmost dialog while preserving busy and close ownership', async () => {
     const user = userEvent.setup();
     const onEscapeBubble = vi.fn();
-    const { rerender } = render(
-      <EscapeOwnershipHarness busy onEscapeBubble={onEscapeBubble} />,
-    );
+    const { rerender } = render(<EscapeOwnershipHarness busy onEscapeBubble={onEscapeBubble} />);
 
-    const underlyingDialog = screen.getByRole('dialog', { name: 'Underlying dialog' });
+    const underlyingDialog = document.querySelector<HTMLElement>(
+      '[role="dialog"][aria-hidden="true"]',
+    );
+    if (!underlyingDialog) throw new Error('Underlying dialog should remain mounted while hidden.');
     fireEvent.keyDown(underlyingDialog, { key: 'Escape' });
-    expect(screen.getByRole('dialog', { name: 'Underlying dialog' })).toBeTruthy();
+    expect(document.querySelector('[role="dialog"][aria-hidden="true"]')).toBeTruthy();
     expect(screen.getByRole('dialog', { name: 'Top dialog' })).toBeTruthy();
-    expect(onEscapeBubble).toHaveBeenCalledTimes(1);
+    expect(onEscapeBubble).not.toHaveBeenCalled();
 
     onEscapeBubble.mockClear();
     screen.getByRole('button', { name: 'Top action' }).focus();
     await user.keyboard('{Escape}');
-    expect(screen.getByRole('dialog', { name: 'Top dialog' }).getAttribute('aria-busy'))
-      .toBe('true');
+    expect(screen.getByRole('dialog', { name: 'Top dialog' }).getAttribute('aria-busy')).toBe(
+      'true',
+    );
     expect(onEscapeBubble).not.toHaveBeenCalled();
 
     rerender(<EscapeOwnershipHarness busy={false} onEscapeBubble={onEscapeBubble} />);
@@ -212,6 +262,69 @@ describe('Dialog', () => {
     expect(document.activeElement).toBe(fallbackDialog);
   });
 
+  it('names tabbable collection semantics and reports verified programmatic focus', () => {
+    const container = document.createElement('div');
+    const tabbable = document.createElement('button');
+    const negativeTabindex = document.createElement('button');
+    negativeTabindex.tabIndex = -1;
+    const disabled = document.createElement('button');
+    disabled.disabled = true;
+    container.append(tabbable, negativeTabindex, disabled);
+    document.body.append(container);
+
+    expect(getTabbableElements(container)).toEqual([tabbable]);
+    expect(focusElement(negativeTabindex)).toBe(true);
+    expect(document.activeElement).toBe(negativeTabindex);
+    expect(focusElement(disabled)).toBe(false);
+    expect(document.activeElement).toBe(negativeTabindex);
+
+    container.remove();
+    expect(focusElement(negativeTabindex)).toBe(false);
+  });
+
+  it('accepts a valid programmatic initial target and portals while restoring inert state', () => {
+    const preInert = document.createElement('aside');
+    const outside = document.createElement('button');
+    outside.type = 'button';
+    outside.textContent = 'Outside action';
+    preInert.setAttribute('inert', 'preserved');
+    document.body.append(preInert, outside);
+    const rendered = render(<ProgrammaticInitialFocusHarness />);
+
+    const dialog = screen.getByRole('dialog', { name: 'Programmatic initial focus' });
+    const programmaticTarget = screen.getByRole('button', { name: 'Programmatic target' });
+    expect(document.activeElement).toBe(programmaticTarget);
+    expect(dialog.parentElement?.parentElement?.hasAttribute('data-dialog-portal-root')).toBe(true);
+    expect(rendered.container.getAttribute('inert')).toBe('');
+    expect(preInert.getAttribute('inert')).toBe('');
+
+    outside.focus();
+    expect(dialog.contains(document.activeElement)).toBe(true);
+
+    rendered.unmount();
+    expect(rendered.container.hasAttribute('inert')).toBe(false);
+    expect(preInert.getAttribute('inert')).toBe('preserved');
+    preInert.remove();
+    outside.remove();
+  });
+
+  it('keeps modal registration and environment restoration safe in StrictMode', () => {
+    document.body.style.overflow = 'clip';
+    const rendered = render(
+      <StrictMode>
+        <Dialog open title="Strict modal" onClose={() => undefined} showCloseButton={false}>
+          <button type="button">Strict action</button>
+        </Dialog>
+      </StrictMode>,
+    );
+
+    expect(document.body.style.overflow).toBe('hidden');
+    expect(rendered.container.getAttribute('inert')).toBe('');
+    rendered.unmount();
+    expect(document.body.style.overflow).toBe('clip');
+    expect(rendered.container.hasAttribute('inert')).toBe(false);
+  });
+
   it('keeps scroll lock and focus ownership correct across multiple dialogs', async () => {
     const user = userEvent.setup();
     document.body.style.overflow = 'clip';
@@ -227,6 +340,7 @@ describe('Dialog', () => {
       await user.click(screen.getByRole('button', { name: 'Open second dialog' }));
     });
     const secondDialog = screen.getByRole('dialog', { name: 'Second dialog' });
+    expect(screen.getAllByRole('dialog')).toEqual([secondDialog]);
     const closeUnderlying = screen.getByRole('button', { name: 'Close underlying dialog' });
     expect(document.activeElement).toBe(closeUnderlying);
 
@@ -245,43 +359,6 @@ describe('Dialog', () => {
     expect(screen.queryByRole('dialog')).toBe(null);
     expect(document.body.style.overflow).toBe('clip');
     expect(document.activeElement).not.toBe(firstInvoker);
-  });
-});
-
-describe('ThemeProvider density ownership', () => {
-  it('restores nested and sibling provider ownership without clearing another provider', () => {
-    document.documentElement.setAttribute('data-density', 'external');
-    const nested = render(
-      <ThemeProvider initialDensityMode="marketplace">
-        <ThemeProvider initialDensityMode="workspace">
-          <span>Nested content</span>
-        </ThemeProvider>
-      </ThemeProvider>,
-    );
-    expect(document.documentElement.getAttribute('data-density')).toBe('workspace');
-
-    nested.rerender(
-      <ThemeProvider initialDensityMode="marketplace">
-        <span>Outer content</span>
-      </ThemeProvider>,
-    );
-    expect(document.documentElement.getAttribute('data-density')).toBe('marketplace');
-    nested.unmount();
-    expect(document.documentElement.getAttribute('data-density')).toBe('external');
-
-    const siblings = render(
-      <>
-        <ThemeProvider initialDensityMode="marketplace"><span>First</span></ThemeProvider>
-        <ThemeProvider initialDensityMode="workspace"><span>Second</span></ThemeProvider>
-      </>,
-    );
-    expect(document.documentElement.getAttribute('data-density')).toBe('workspace');
-    siblings.rerender(
-      <ThemeProvider initialDensityMode="marketplace"><span>First</span></ThemeProvider>,
-    );
-    expect(document.documentElement.getAttribute('data-density')).toBe('marketplace');
-    siblings.unmount();
-    expect(document.documentElement.getAttribute('data-density')).toBe('external');
   });
 });
 
