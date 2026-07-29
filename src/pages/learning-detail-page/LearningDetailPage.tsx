@@ -116,6 +116,15 @@ function PaymentFeedbackNotice({ feedback }: PaymentFeedbackNoticeProps) {
   return null;
 }
 
+function LearningReturnLink() {
+  return (
+    <ContextualNavigationLink className={styles.backLink} to="/learning">
+      <ChevronLeft size={18} aria-hidden="true" />
+      <span>My learning</span>
+    </ContextualNavigationLink>
+  );
+}
+
 export function LearningDetailPage() {
   const enrollmentId = parseEnrollmentId(useParams().enrollmentId);
   const feedbackMotion = useLearningFeedbackMotionPreferences();
@@ -145,15 +154,18 @@ export function LearningDetailPage() {
       <section className={styles.state}>
         <h1>Learning workspace unavailable</h1>
         <p>This learning workspace is unavailable.</p>
-        <ContextualNavigationLink to="/learning">Return to my learning</ContextualNavigationLink>
+        <LearningReturnLink />
       </section>
     );
   if (workspace.enrollment.isPending)
     return (
-      <SkeletonGroup className={styles.loading} label="Loading learning workspace">
-        <Skeleton height="40px" width="55%" />
-        <Skeleton height="240px" width="100%" shape="rect" />
-      </SkeletonGroup>
+      <section className={styles.loading}>
+        <LearningReturnLink />
+        <SkeletonGroup label="Loading learning workspace">
+          <Skeleton height="40px" width="55%" />
+          <Skeleton height="240px" width="100%" shape="rect" />
+        </SkeletonGroup>
+      </section>
     );
   if (
     workspace.enrollment.isError &&
@@ -168,7 +180,7 @@ export function LearningDetailPage() {
         <Notice tone="error" title={failure.title}>
           {failure.message}
         </Notice>
-        <ContextualNavigationLink to="/learning">Return to my learning</ContextualNavigationLink>
+        <LearningReturnLink />
         {!failure.unavailable ? (
           <Button
             onClick={() => {
@@ -194,7 +206,7 @@ export function LearningDetailPage() {
       <section className={styles.state}>
         <h1>Learning workspace unavailable</h1>
         <p>This learning workspace is unavailable.</p>
-        <ContextualNavigationLink to="/learning">Return to my learning</ContextualNavigationLink>
+        <LearningReturnLink />
       </section>
     );
   const available = enrollment.status === 'active';
@@ -210,16 +222,13 @@ export function LearningDetailPage() {
         <Notice tone="error" title="Learning workspace unavailable">
           This learning workspace is unavailable.
         </Notice>
-        <ContextualNavigationLink to="/learning">Return to my learning</ContextualNavigationLink>
+        <LearningReturnLink />
       </section>
     );
   return (
     <article className={styles.page} aria-busy={checkout.pending}>
       <div className={styles.readingContent}>
-        <ContextualNavigationLink className={styles.backLink} to="/learning">
-          <ChevronLeft size={20} aria-hidden="true" />
-          <span>My learning</span>
-        </ContextualNavigationLink>
+        <LearningReturnLink />
         <header className={styles.header}>
           <p className={`${styles.status} ${styles[`status${enrollment.status}`]}`}>
             {enrollment.status === 'active'

@@ -85,6 +85,7 @@ function decode<TResponse, TBody>(
 }
 
 interface DetailHarnessOptions {
+  readonly initialEntry?: string;
   readonly queryClient?: QueryClient;
   readonly sessionChange?: boolean;
   readonly routeChange?: boolean;
@@ -116,7 +117,7 @@ async function renderPage(request: ApiClient['request'], options: DetailHarnessO
     render(
       <QueryClientProvider client={queryClient}>
         <SessionProvider client={{ request }} tokenStore={options.store ?? tokenStore()}>
-          <MemoryRouter initialEntries={['/learning/enrollments/4']}>
+          <MemoryRouter initialEntries={[options.initialEntry ?? '/learning/enrollments/4']}>
             <DetailHarnessControls {...options} />
             <Routes>
               <Route path="/learning/enrollments/:enrollmentId" element={<LearningDetailPage />} />
@@ -211,6 +212,16 @@ async function capturePageEnrollmentRefresh(
 }
 
 describe('LearningDetailPage', () => {
+  function expectMyLearningReturn() {
+    const links = screen.getAllByRole('link', { name: 'My learning' });
+    expect(links).toHaveLength(1);
+    const link = links[0]!;
+    expect(link.getAttribute('href')).toBe('/learning');
+    expect(link.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
+    expect(link.querySelector('svg')?.getAttribute('width')).toBe('18');
+    expect(link.textContent).toBe('My learning');
+  }
+
   it('keeps the normal workspace back control as a decorative-icon contextual link', async () => {
     const request: ApiClient['request'] = async <TResponse, TBody>(
       options: ApiRequestOptions<TBody, TResponse>,
@@ -230,11 +241,26 @@ describe('LearningDetailPage', () => {
 
     await renderPage(request);
 
-    const link = await screen.findByRole('link', { name: 'My learning' });
-    expect(link.getAttribute('href')).toBe('/learning');
-    expect(link.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
-    expect(link.querySelector('svg')?.classList.contains('lucide-chevron-left')).toBe(true);
-    expect(link.textContent).toBe('My learning');
+    await screen.findByRole('link', { name: 'My learning' });
+    expectMyLearningReturn();
+  });
+
+  it('renders the same contextual return for invalid and loading learning-detail states', async () => {
+    const pendingEnrollment = new Promise<never>(() => {});
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/enrollments/4') return decode(options, await pendingEnrollment);
+      throw new Error(`Unexpected request ${options.path}`);
+    };
+
+    await renderPage(request, { initialEntry: '/learning/enrollments/not-an-id' });
+    expectMyLearningReturn();
+    cleanup();
+    await renderPage(request);
+    await screen.findByRole('status', { name: 'Loading learning workspace' });
+    expectMyLearningReturn();
   });
 
   it('uses singular lesson wording in the visible and accessible progress projections', async () => {
@@ -608,6 +634,7 @@ describe('LearningDetailPage', () => {
       ).toBeTruthy();
       expect(screen.queryByRole('button', { name: /mark|try again/i })).toBeNull();
       expect(screen.queryByText('private backend text')).toBeNull();
+      expectMyLearningReturn();
     },
   );
 
@@ -628,8 +655,40 @@ describe('LearningDetailPage', () => {
       ).toBeTruthy();
       expect(screen.queryByRole('button', { name: /mark|try again/i })).toBeNull();
       expect(screen.queryByText('private backend text')).toBeNull();
+      expectMyLearningReturn();
     },
   );
+
+  it('renders one contextual return when enrollment data is missing', async () => {
+    const originalUseLearningWorkspace = learningProgress.useLearningWorkspace;
+    vi.spyOn(learningProgress, 'useLearningWorkspace').mockImplementation(
+      (enrollmentId, preferences) => {
+        const workspace = originalUseLearningWorkspace(enrollmentId, preferences);
+        return {
+          ...workspace,
+          enrollment: {
+            ...workspace.enrollment,
+            data: undefined,
+            isError: false,
+            isPending: false,
+          } as unknown as LearningWorkspaceWorkflow['enrollment'],
+        };
+      },
+    );
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/enrollments/4') return decode(options, activeEnrollment);
+      throw new Error(`Unexpected request ${options.path}`);
+    };
+
+    await renderPage(request);
+    expect(
+      await screen.findByRole('heading', { name: 'Learning workspace unavailable' }),
+    ).toBeTruthy();
+    expectMyLearningReturn();
+  });
 
   it('prioritizes a progress failure over a pending lesson outline', async () => {
     let rejectProgress: ((reason?: unknown) => void) | undefined;
