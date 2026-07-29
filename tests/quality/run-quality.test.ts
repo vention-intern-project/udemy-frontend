@@ -112,6 +112,18 @@ const { ESLint } = createRequire(import.meta.url)('eslint') as {
 };
 
 describe('quality execution provenance', () => {
+  it('limits Vitest to one fork only for the embedded quality-report test command', async () => {
+    const qualityRunner = await readFile(resolve('scripts/quality/run-quality.mjs'), 'utf8');
+    const packageJson = JSON.parse(await readFile(resolve('package.json'), 'utf8')) as {
+      scripts: { test: string };
+    };
+
+    expect(qualityRunner).toContain(
+      "['tests', ['test', '--', '--pool=forks', '--poolOptions.forks.singleFork=true']],",
+    );
+    expect(packageJson.scripts.test).toBe('vitest run');
+  });
+
   it("captures output above Node's default and fails closed at an explicit bounded cap", () => {
     const megabyte = 1024 * 1024;
     const verbose = runCapturedCommand(

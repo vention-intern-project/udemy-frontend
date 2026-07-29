@@ -35,7 +35,7 @@ const qualityCommands = [
   ['quality-lint', ['run', 'lint:quality']],
   ['typecheck', ['run', 'typecheck']],
   ['static-rules', ['run', 'quality:rules']],
-  ['tests', ['test']],
+  ['tests', ['test', '--', '--pool=forks', '--poolOptions.forks.singleFork=true']],
   ['build', ['run', 'build']],
 ];
 if (stableCommandIds(qualityCommands) !== stableCommandIds(REQUIRED_QUALITY_COMMAND_IDS))
