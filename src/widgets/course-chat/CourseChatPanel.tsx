@@ -27,7 +27,7 @@ function errorCopy(error: ReturnType<typeof useCourseChat>['error']) {
       'Assistant temporarily unavailable',
       'The assistant is temporarily unavailable.',
     ] as const;
-  return ['Assistant unavailable', 'The assistant is unavailable for this course.'] as const;
+  return ['Assistant unavailable', 'The assistant is unavailable.'] as const;
 }
 
 interface CourseChatContentProps {

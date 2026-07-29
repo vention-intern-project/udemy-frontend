@@ -173,7 +173,7 @@ function AssistantPageLayout({ context, backTo }: AssistantPageLayoutProps) {
           <header className={styles.chatFrameHeader}>
             <div className={styles.chatFrameIdentity}>
               <span
-                className={`${styles.statusDot} ${isAvailable ? styles.statusAvailable : styles.statusUnknown}`}
+                className={`${styles.statusDot} ${isAvailable ? styles.statusAvailable : isUnavailable ? styles.statusUnavailable : styles.statusUnknown}`}
                 aria-label={availabilityLabel}
                 role="img"
               />

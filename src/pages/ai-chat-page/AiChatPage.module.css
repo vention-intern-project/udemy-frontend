@@ -239,6 +239,9 @@
 .statusAvailable {
   background: var(--feedback-success);
 }
+.statusUnavailable {
+  background: var(--feedback-error);
+}
 .statusUnknown {
   background: var(--border-strong);
 }

@@ -243,6 +243,27 @@ describe('course chat interaction lifecycle', () => {
     expect(screen.queryByText('private backend detail')).toBeNull();
   });
 
+  it('uses context-agnostic unavailable copy for the general assistant', async () => {
+    const request = deferred<{ thread_id: string; response: string }>();
+    requestCourseChatMock.mockReturnValueOnce(request.promise);
+    const user = userEvent.setup();
+    render(
+      <SessionProvider tokenStore={{ get: () => null, set: () => true, clear: () => {} }}>
+        <CourseChatPanel context={{ kind: 'general' }} />
+      </SessionProvider>,
+    );
+    await interact(() =>
+      user.type(screen.getByRole('textbox', { name: 'Message the course assistant' }), 'Question'),
+    );
+    await interact(() => user.click(screen.getByRole('button', { name: 'Send message' })));
+    await act(async () => {
+      request.reject(new ApiError({ kind: 'http', status: 403, message: 'private backend detail' }));
+      await request.promise.catch(() => undefined);
+    });
+    await screen.findByText('Assistant unavailable');
+    expect(screen.getByText('The assistant is unavailable.')).toBeTruthy();
+  });
+
   it('keeps the message list at its bottom when an assistant response arrives', async () => {
     const response = deferred<{ thread_id: string; response: string }>();
     requestCourseChatMock.mockReturnValueOnce(response.promise);
