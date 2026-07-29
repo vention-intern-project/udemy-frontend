@@ -8,13 +8,19 @@ import {
   type MouseEvent,
 } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ShoppingCart } from 'lucide-react';
+import {
+  GraduationCap,
+  LogOut,
+  ShieldCheck,
+  ShoppingCart,
+  UserRound,
+  type LucideIcon,
+} from 'lucide-react';
 import { Link, matchPath, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 import type { Cart } from '@entities/cart';
-import type { UserProfile } from '@entities/user';
+import type { UserProfile, UserRole } from '@entities/user';
 import { useSession, type SessionState } from '@features/auth-session';
-import { useCourseChatSessionControls } from '@features/course-chat';
 import { cartQueryKey, requestCart } from '@features/cart-workflow';
 import {
   addCatalogSearchHistory,
@@ -107,9 +113,19 @@ interface CartNavigationLinkProps {
   itemCount: number | undefined;
 }
 
-interface InitialsMarkerProps {
+interface AccountMenuProps {
   user: UserProfile;
 }
+
+interface AccountRolePresentation {
+  readonly Icon: LucideIcon;
+}
+
+const ACCOUNT_ROLE_PRESENTATION: Record<UserRole, AccountRolePresentation> = {
+  student: { Icon: GraduationCap },
+  instructor: { Icon: UserRound },
+  admin: { Icon: ShieldCheck },
+};
 
 function CartNavigationLink({ itemCount }: CartNavigationLinkProps) {
   const presentation = presentCart(itemCount);
@@ -129,7 +145,12 @@ function CartNavigationLink({ itemCount }: CartNavigationLinkProps) {
 }
 
 function AiAssistantNavigationLink() {
-  const { resetConversation } = useCourseChatSessionControls();
+  const location = useLocation();
+  const returnTo = `${location.pathname}${location.search}${location.hash}`;
+  const enrollmentMatch = matchPath('/learning/enrollments/:enrollmentId/*', location.pathname);
+  const assistantPath = enrollmentMatch?.params.enrollmentId
+    ? `/learning/enrollments/${enrollmentMatch.params.enrollmentId}/ai-chat`
+    : '/ai-chat';
   return (
     <NavLink
       aria-label="Open AI assistant"
@@ -138,30 +159,127 @@ function AiAssistantNavigationLink() {
           .filter(Boolean)
           .join(' ')
       }
-      to="/ai-chat"
-      onClick={(event) => {
-        if (isCurrentTabNavigation(event)) resetConversation({ kind: 'general' });
-      }}
+      state={location.pathname === assistantPath ? undefined : { returnTo }}
+      to={assistantPath}
     >
       <img src={assistantIcon} alt="" aria-hidden="true" />
     </NavLink>
   );
 }
 
-function InitialsMarker({ user }: InitialsMarkerProps) {
+function AccountMenu({ user }: AccountMenuProps) {
+  const { clearSession } = useSession();
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const [pinned, setPinned] = useState(false);
+  const accountMenuRef = useRef<HTMLDivElement>(null);
+  const accountTriggerRef = useRef<HTMLButtonElement>(null);
+  const suppressNextAccountFocusOpenRef = useRef(false);
+  const menuId = `account-menu-${useId()}`;
   const identity = `${user.name} ${user.surname}`;
   const initials =
     `${user.name.trim().charAt(0)}${user.surname.trim().charAt(0)}`.toLocaleUpperCase();
+  const RoleIcon = ACCOUNT_ROLE_PRESENTATION[user.role].Icon;
+
+  useEffect(() => {
+    if (!open) return;
+
+    const closeOnOutsidePointerDown = (event: PointerEvent) => {
+      if (!(event.target instanceof Node) || !accountMenuRef.current?.contains(event.target)) {
+        setOpen(false);
+        setPinned(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpen(false);
+        setPinned(false);
+        suppressNextAccountFocusOpenRef.current = true;
+        accountTriggerRef.current?.focus({ preventScroll: true });
+      }
+    };
+
+    document.addEventListener('pointerdown', closeOnOutsidePointerDown);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePointerDown);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [open]);
 
   return (
-    <span
-      aria-label={identity}
-      className={styles.accountInitials}
-      data-account-initials
-      title={identity}
+    <div
+      ref={accountMenuRef}
+      className={[styles.accountMenu, open ? styles.accountMenuOpen : null]
+        .filter(Boolean)
+        .join(' ')}
+      onFocus={() => {
+        if (suppressNextAccountFocusOpenRef.current) {
+          suppressNextAccountFocusOpenRef.current = false;
+          return;
+        }
+        setOpen(true);
+      }}
+      onBlur={(event) => {
+        if (!pinned && !event.currentTarget.contains(event.relatedTarget)) setOpen(false);
+      }}
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => {
+        if (!pinned) setOpen(false);
+      }}
     >
-      {initials}
-    </span>
+      <button
+        aria-controls={menuId}
+        aria-expanded={open}
+        aria-label={`Account menu for ${identity}`}
+        className={[styles.accountInitials, open ? styles.accountInitialsOpen : null]
+          .filter(Boolean)
+          .join(' ')}
+        data-account-initials
+        ref={accountTriggerRef}
+        type="button"
+        onClick={() => {
+          setPinned(true);
+          setOpen(true);
+        }}
+      >
+        {initials}
+      </button>
+      {open ? (
+        <div
+          aria-label={`Account details for ${identity}`}
+          className={styles.accountMenuList}
+          id={menuId}
+          role="group"
+        >
+          <div className={styles.accountMenuProfile} data-part="account-menu-profile">
+            <span className={styles.accountMenuAvatar} aria-hidden="true">
+              {initials}
+            </span>
+            <span className={styles.accountMenuDetails}>
+              <span className={styles.accountMenuName}>{identity}</span>
+              <span className={styles.accountMenuEmail}>{user.email}</span>
+            </span>
+            <span className={styles.accountMenuRole}>
+              <RoleIcon data-part="account-menu-role-icon" aria-hidden="true" size={16} />
+              <span>{user.role}</span>
+            </span>
+          </div>
+          <div className={styles.accountMenuDivider} role="separator" />
+          <button
+            className={styles.accountMenuLogout}
+            type="button"
+            onClick={() => {
+              clearSession();
+              navigate('/');
+            }}
+          >
+            <LogOut aria-hidden="true" size={16} />
+            Log out
+          </button>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -243,7 +361,6 @@ export function AppShell() {
   const previousLocationRef = useRef(currentLocation);
   const routeFocusIdentity = `${location.pathname}${location.search}`;
   const previousRouteFocusIdentityRef = useRef(routeFocusIdentity);
-  const previousPathnameRef = useRef(location.pathname);
   const courseRouteMatch = [APP_ROUTE_BY_ID['PAGE-011'].path, APP_ROUTE_BY_ID['PAGE-012'].path]
     .map((path) => matchPath({ path, end: true }, location.pathname))
     .find((match) => match?.params.courseId);
@@ -257,7 +374,6 @@ export function AppShell() {
   const isAnonymousCatalogRoute = isCatalogRoute && isAnonymous;
   const launcherRouteIds = new Set(['PAGE-001', 'PAGE-002', 'PAGE-007', 'PAGE-008']);
   const hasGlobalAssistant = route !== undefined && launcherRouteIds.has(route.id);
-  const isAssistantGuest = isAnonymous && (route?.id === 'PAGE-001' || route?.id === 'PAGE-002');
   const globalAssistant =
     state.status === 'authenticated' && state.user.role === 'student'
       ? { context: { kind: 'general' as const } }
@@ -324,18 +440,14 @@ export function AppShell() {
       setMobileOpen(false);
       const restoreCatalogSearchFocus = restoreCatalogSearchFocusRef.current;
       const routeChanged = previousRouteFocusIdentityRef.current !== routeFocusIdentity;
-      const pathnameChanged = previousPathnameRef.current !== location.pathname;
       restoreCatalogSearchFocusRef.current = false;
       if (restoreCatalogSearchFocus) {
         scheduleFocus(() => catalogSearchRef.current?.focus());
       } else if (routeChanged) {
-        scheduleFocus(() =>
-          mainRef.current?.focus(pathnameChanged ? undefined : { preventScroll: true }),
-        );
+        scheduleFocus(() => mainRef.current?.focus({ preventScroll: true }));
       }
       previousLocationRef.current = currentLocation;
       previousRouteFocusIdentityRef.current = routeFocusIdentity;
-      previousPathnameRef.current = location.pathname;
     }
   }, [currentLocation, location.pathname, routeFocusIdentity]);
 
@@ -592,9 +704,8 @@ export function AppShell() {
             {state.status === 'authenticated' && state.user.role === 'student' ? (
               <div className={styles.headerCartAccountGroup}>
                 <AiAssistantNavigationLink />
-                <CartNavigationLink itemCount={cart.data?.itemCount} />
                 <div className={styles.account}>
-                  <InitialsMarker user={state.user} />
+                  <AccountMenu user={state.user} />
                   <button
                     ref={menuButtonRef}
                     className={styles.menuButton}
@@ -615,6 +726,7 @@ export function AppShell() {
                     </VisuallyHidden>
                   </button>
                 </div>
+                <CartNavigationLink itemCount={cart.data?.itemCount} />
               </div>
             ) : (
               <>
@@ -636,7 +748,7 @@ export function AppShell() {
                       : [styles.account, styles.accountAnonymous].join(' ')
                   }
                 >
-                  {state.status === 'authenticated' ? <InitialsMarker user={state.user} /> : null}
+                  {state.status === 'authenticated' ? <AccountMenu user={state.user} /> : null}
                   <button
                     ref={menuButtonRef}
                     className={styles.menuButton}
@@ -699,8 +811,8 @@ export function AppShell() {
         <span>(c) 2026 LearnHub</span>
         <span>Accessible learning, built for every role.</span>
       </footer>
-      {hasGlobalAssistant && (globalAssistant !== null || isAssistantGuest) ? (
-        <CourseChatLauncher assistant={globalAssistant} guest={isAssistantGuest} />
+      {hasGlobalAssistant && globalAssistant !== null ? (
+        <CourseChatLauncher assistant={globalAssistant} />
       ) : null}
     </div>
   );

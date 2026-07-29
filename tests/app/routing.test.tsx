@@ -449,8 +449,8 @@ describe('application routing and guards', () => {
         'My learning',
         'Search courses',
         'Open AI assistant',
+        'Account menu for Sam User',
         'Cart',
-        'Sam User',
       ],
     ],
     [
@@ -458,10 +458,10 @@ describe('application routing and guards', () => {
       'instructor' as const,
       'My courses',
       'Indira User',
-      ['LearnHub home', 'Catalog', 'My courses', 'Search courses', 'Indira User'],
+      ['LearnHub home', 'Catalog', 'My courses', 'Search courses', 'Account menu for Indira User'],
     ],
   ])(
-    'uses the D04 desktop header order and static initials marker for %s',
+    'uses the D04 desktop header order and account-menu trigger for %s',
     async (path, role, workspaceLabel, identity, expectedOrder) => {
       renderApp(path, role);
       await screen.findByRole('link', { name: workspaceLabel });
@@ -471,10 +471,10 @@ describe('application routing and guards', () => {
       if (!header) throw new Error('Expected the application shell header.');
       const initialsMarker = header.querySelector('[data-account-initials]');
       expect(headerSemanticOrder(header)).toEqual(expectedOrder);
-      expect(initialsMarker?.getAttribute('aria-label')).toBe(identity);
-      expect(initialsMarker?.getAttribute('title')).toBe(identity);
+      expect(initialsMarker?.getAttribute('aria-label')).toBe(`Account menu for ${identity}`);
+      expect(initialsMarker?.getAttribute('title')).toBeNull();
       expect(initialsMarker?.textContent).toBe(role === 'student' ? 'SU' : 'IU');
-      expect(initialsMarker?.closest('a, button')).toBeNull();
+      expect(initialsMarker?.tagName).toBe('BUTTON');
     },
   );
 
@@ -734,7 +734,7 @@ describe('application routing and guards', () => {
     const main = screen.getByRole('main');
     expect(main).toBe(document.activeElement);
     expect(focusCalls.filter((call) => call.target === main).map((call) => call.options)).toEqual([
-      undefined,
+      { preventScroll: true },
     ]);
 
     await act(async () => {
@@ -747,7 +747,7 @@ describe('application routing and guards', () => {
     act(() => scheduledFrames.shift()?.(0));
     expect(main).toBe(document.activeElement);
     expect(focusCalls.filter((call) => call.target === main).map((call) => call.options)).toEqual([
-      undefined,
+      { preventScroll: true },
       { preventScroll: true },
     ]);
   });

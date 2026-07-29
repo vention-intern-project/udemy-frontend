@@ -57,6 +57,8 @@ export function EnrollmentProgressPanel({
   }
   if (!progress || !outline) return null;
   const lessonsLabel = lessonCountLabel(progress.totalLessons);
+  const availableLessonCount = outline.total;
+  const comingSoonLessonCount = Math.max(0, progress.totalLessons - availableLessonCount);
   return (
     <section className={styles.panel} aria-labelledby="learning-progress-heading">
       <div className={styles.summary}>
@@ -75,7 +77,13 @@ export function EnrollmentProgressPanel({
         aria-label={`${progress.completedLessons} of ${progress.totalLessons} ${lessonsLabel} completed, ${progress.progressPercentage}%`}
       />
       <section className={styles.lessons} aria-labelledby="learning-lessons-heading">
-        <h2 id="learning-lessons-heading">Lessons ({outline.total})</h2>
+        <div className={styles.lessonsHeading}>
+          <h2 id="learning-lessons-heading">Lessons ({outline.total})</h2>
+          <p className={styles.lessonAvailability}>
+            {availableLessonCount} available now · {comingSoonLessonCount}{' '}
+            {lessonCountLabel(comingSoonLessonCount)} coming soon
+          </p>
+        </div>
         {outline.items.length === 0 ? (
           <p>No lesson metadata is available for this course.</p>
         ) : (
@@ -103,10 +111,14 @@ export function EnrollmentProgressPanel({
                   </div>
                   <Button
                     variant={markComplete ? 'primary' : 'secondary'}
-                    state={pending ? 'loading' : 'idle'}
-                    loadingLabel="Updating…"
-                    className={markComplete ? styles.markComplete : undefined}
-                    onClick={() => onSetCompletion(lesson.id, markComplete)}
+                    aria-busy={pending || undefined}
+                    aria-disabled={pending || undefined}
+                    className={`${styles.lessonCompletionAction}${
+                      markComplete ? ` ${styles.markComplete}` : ''
+                    }`}
+                    onClick={() => {
+                      if (!pending) onSetCompletion(lesson.id, markComplete);
+                    }}
                   >
                     {markComplete ? 'Mark complete' : 'Mark incomplete'}
                   </Button>

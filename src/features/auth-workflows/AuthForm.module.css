@@ -98,6 +98,14 @@
   font-weight: var(--font-weight-semibold);
 }
 
+.linkPrimary {
+  color: var(--action-primary-bg);
+}
+
+.linkPrimary:hover {
+  color: var(--action-primary-bg-hover);
+}
+
 .footer {
   padding-top: var(--spacing-4);
   border-top: var(--border-width) solid var(--border-default);

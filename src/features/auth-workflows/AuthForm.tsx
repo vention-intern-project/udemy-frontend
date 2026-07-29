@@ -1,4 +1,12 @@
-import { forwardRef, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  forwardRef,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
@@ -31,14 +39,17 @@ interface PasswordFieldProps {
 interface AuthLinkProps {
   readonly to: string;
   readonly children: ReactNode;
+  readonly tone?: AuthLinkTone;
 }
 
-export function AuthFormShell({
-  title,
-  description,
-  children,
-  footer,
-}: AuthFormShellProps) {
+type AuthLinkTone = 'default' | 'primary';
+
+const AUTH_LINK_CLASS_BY_TONE: Record<AuthLinkTone, string> = {
+  default: styles.link,
+  primary: `${styles.link} ${styles.linkPrimary}`,
+};
+
+export function AuthFormShell({ title, description, children, footer }: AuthFormShellProps) {
   const headingId = useId();
   return (
     <section className={styles.root} aria-labelledby={headingId}>
@@ -52,13 +63,15 @@ export function AuthFormShell({
   );
 }
 
-export const FormErrorAlert = forwardRef<HTMLDivElement, FormErrorAlertProps>(function FormErrorAlert({ summary }, ref) {
-  return (
-    <div ref={ref} className={styles.errorAlert} role="alert" tabIndex={-1}>
-      {summary}
-    </div>
-  );
-});
+export const FormErrorAlert = forwardRef<HTMLDivElement, FormErrorAlertProps>(
+  function FormErrorAlert({ summary }, ref) {
+    return (
+      <div ref={ref} className={styles.errorAlert} role="alert" tabIndex={-1}>
+        {summary}
+      </div>
+    );
+  },
+);
 
 export function PasswordField({
   id,
@@ -87,7 +100,7 @@ export function PasswordField({
         error={error}
         disabled={disabled}
         onChange={(event) => onChange(event.currentTarget.value)}
-        trailingAction={(
+        trailingAction={
           <Button
             className={styles.reveal}
             variant="ghost"
@@ -105,14 +118,18 @@ export function PasswordField({
               <Eye aria-hidden="true" focusable="false" />
             )}
           </Button>
-        )}
+        }
       />
     </div>
   );
 }
 
-export function AuthLink({ to, children }: AuthLinkProps) {
-  return <Link className={styles.link} to={to}>{children}</Link>;
+export function AuthLink({ to, children, tone = 'default' }: AuthLinkProps) {
+  return (
+    <Link className={AUTH_LINK_CLASS_BY_TONE[tone]} to={to}>
+      {children}
+    </Link>
+  );
 }
 
 export function useAuthErrorFocus(
@@ -153,7 +170,11 @@ interface SubmissionAttemptLifecycleState {
 }
 
 export function useSubmissionAttemptLifecycle(ownerKey: string) {
-  const lifecycle = useRef<SubmissionAttemptLifecycleState>({ mounted: false, nextId: 0, current: null });
+  const lifecycle = useRef<SubmissionAttemptLifecycleState>({
+    mounted: false,
+    nextId: 0,
+    current: null,
+  });
 
   useLayoutEffect(() => {
     const state = lifecycle.current;
@@ -182,10 +203,12 @@ export function useSubmissionAttemptLifecycle(ownerKey: string) {
     },
     isCurrent(attempt: SubmissionAttempt): boolean {
       const state = lifecycle.current;
-      return state.mounted
-        && !attempt.signal.aborted
-        && state.current?.id === attempt.id
-        && state.current.signal === attempt.signal;
+      return (
+        state.mounted &&
+        !attempt.signal.aborted &&
+        state.current?.id === attempt.id &&
+        state.current.signal === attempt.signal
+      );
     },
     finish(attempt: SubmissionAttempt): boolean {
       const state = lifecycle.current;

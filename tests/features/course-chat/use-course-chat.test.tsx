@@ -3,7 +3,7 @@
 import { act, cleanup, render, renderHook, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { StrictMode, type ReactNode } from 'react';
-import { MemoryRouter, useLocation } from 'react-router-dom';
+import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { SessionProvider } from '../../../src/features/auth-session';
@@ -34,16 +34,6 @@ function launcher() {
         />
       </SessionProvider>
     </MemoryRouter>
-  );
-}
-
-function GuestLauncherLocation() {
-  const location = useLocation();
-  return (
-    <>
-      <CourseChatLauncher assistant={null} guest />
-      <output>{`${location.pathname}${location.search}`}</output>
-    </>
   );
 }
 
@@ -81,26 +71,7 @@ describe('course chat interaction lifecycle', () => {
     expect(document.activeElement).toBe(launcherButton);
   });
 
-  it('guides a guest to register or log in and preserves the current page as the return target', async () => {
-    const user = userEvent.setup();
-    render(
-      <MemoryRouter initialEntries={['/?search_query=typescript']}>
-        <GuestLauncherLocation />
-      </MemoryRouter>,
-    );
-
-    await interact(() => user.click(screen.getByRole('button', { name: 'Open AI assistant' })));
-
-    expect(screen.getByText('Create an account to use the AI learning assistant.')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Create an account' }).getAttribute('href')).toBe(
-      '/signup?returnTo=%2F%3Fsearch_query%3Dtypescript',
-    );
-    expect(screen.getByRole('link', { name: 'Log in' }).getAttribute('href')).toBe(
-      '/login?returnTo=%2F%3Fsearch_query%3Dtypescript',
-    );
-  });
-
-  it('prevents empty and duplicate submission, retains a thread across messages, and clears it after close', async () => {
+  it('prevents empty and duplicate submission, and retains a conversation after Close', async () => {
     const first = deferred<{ thread_id: string; response: string }>();
     const second = deferred<{ thread_id: string; response: string }>();
     const third = deferred<{ thread_id: string; response: string }>();
@@ -113,11 +84,12 @@ describe('course chat interaction lifecycle', () => {
 
     await interact(() => user.click(screen.getByRole('button', { name: 'Open AI assistant' })));
     const input = screen.getByRole('textbox', { name: 'Message the course assistant' });
-    await interact(() => user.click(screen.getByRole('button', { name: 'Send message' })));
+    expect(screen.queryByRole('button', { name: 'Send message' })).toBeNull();
+    await interact(() => user.type(input, '{Enter}'));
     expect(requestCourseChatMock).not.toHaveBeenCalled();
     await interact(() => user.type(input, 'First question'));
     await interact(() => user.click(screen.getByRole('button', { name: 'Send message' })));
-    expect(screen.getByRole('button', { name: 'Send message' })).toHaveProperty('disabled', true);
+    expect(screen.queryByRole('button', { name: 'Send message' })).toBeNull();
     expect(requestCourseChatMock).toHaveBeenCalledTimes(1);
     await act(async () => {
       first.resolve({ thread_id: 'backend-thread', response: 'First response' });
@@ -140,6 +112,13 @@ describe('course chat interaction lifecycle', () => {
     expect(requestCourseChatMock.mock.calls[1]?.[1]).toBe('backend-thread');
 
     await interact(() =>
+      user.type(
+        screen.getByRole('textbox', { name: 'Message the course assistant' }),
+        'Draft to keep',
+      ),
+    );
+
+    await interact(() =>
       user.click(screen.getByRole('button', { name: 'Close course assistant' })),
     );
     await waitFor(() =>
@@ -148,20 +127,60 @@ describe('course chat interaction lifecycle', () => {
       ),
     );
     await interact(() => user.click(screen.getByRole('button', { name: 'Open AI assistant' })));
-    expect(screen.queryByText('First response')).toBeNull();
+    expect(screen.getByText('First response')).toBeTruthy();
+    expect(
+      (screen.getByRole('textbox', { name: 'Message the course assistant' }) as HTMLTextAreaElement)
+        .value,
+    ).toBe('Draft to keep');
+    await interact(() =>
+      user.clear(screen.getByRole('textbox', { name: 'Message the course assistant' })),
+    );
     await interact(() =>
       user.type(
         screen.getByRole('textbox', { name: 'Message the course assistant' }),
-        'Fresh question',
+        'Third question',
       ),
     );
     await interact(() => user.click(screen.getByRole('button', { name: 'Send message' })));
     await act(async () => {
-      third.resolve({ thread_id: 'new-thread', response: 'Fresh response' });
+      third.resolve({ thread_id: 'backend-thread', response: 'Third response' });
       await third.promise;
     });
-    await screen.findByText('Fresh response');
-    expect(requestCourseChatMock.mock.calls[2]?.[1]).not.toBe('backend-thread');
+    await screen.findByText('Third response');
+    expect(requestCourseChatMock.mock.calls[2]?.[1]).toBe('backend-thread');
+  });
+
+  it('hides Send for whitespace and post-submit pending drafts in compact and full composers', async () => {
+    const compactRequest = deferred<{ thread_id: string; response: string }>();
+    const fullRequest = deferred<{ thread_id: string; response: string }>();
+    requestCourseChatMock
+      .mockReturnValueOnce(compactRequest.promise)
+      .mockReturnValueOnce(fullRequest.promise);
+    const user = userEvent.setup();
+
+    render(launcher());
+    await interact(() => user.click(screen.getByRole('button', { name: 'Open AI assistant' })));
+    const compactInput = screen.getByRole('textbox', { name: 'Message the course assistant' });
+    await interact(() => user.type(compactInput, '   '));
+    expect(screen.queryByRole('button', { name: 'Send message' })).toBeNull();
+    await interact(() => user.type(compactInput, 'Compact question'));
+    await interact(() => user.click(screen.getByRole('button', { name: 'Send message' })));
+    expect(screen.queryByRole('button', { name: 'Send message' })).toBeNull();
+    expect(requestCourseChatMock).toHaveBeenCalledTimes(1);
+
+    cleanup();
+    render(
+      <SessionProvider tokenStore={{ get: () => null, set: () => true, clear: () => {} }}>
+        <CourseChatPanel context={{ kind: 'course', courseId: 7 }} />
+      </SessionProvider>,
+    );
+    const fullInput = screen.getByRole('textbox', { name: 'Message the course assistant' });
+    await interact(() => user.type(fullInput, '   '));
+    expect(screen.queryByRole('button', { name: 'Send message' })).toBeNull();
+    await interact(() => user.type(fullInput, 'Full question'));
+    await interact(() => user.click(screen.getByRole('button', { name: 'Send message' })));
+    expect(screen.queryByRole('button', { name: 'Send message' })).toBeNull();
+    expect(requestCourseChatMock).toHaveBeenCalledTimes(2);
   });
 
   it('aborts its retained request controller when the mounted interaction unmounts', async () => {
@@ -257,7 +276,9 @@ describe('course chat interaction lifecycle', () => {
     );
     await interact(() => user.click(screen.getByRole('button', { name: 'Send message' })));
     await act(async () => {
-      request.reject(new ApiError({ kind: 'http', status: 403, message: 'private backend detail' }));
+      request.reject(
+        new ApiError({ kind: 'http', status: 403, message: 'private backend detail' }),
+      );
       await request.promise.catch(() => undefined);
     });
     await screen.findByText('Assistant unavailable');

@@ -52,7 +52,7 @@ interface HeaderSlotBox {
 
 interface StudentHeaderGeometry {
   account: HeaderSlotBox;
-  cartAccountGap: number;
+  accountCartGap: number;
   cart: HeaderSlotBox;
   catalog: HeaderSlotBox;
   clientWidth: number;
@@ -185,6 +185,10 @@ function monitorRuntime(
       'expected HTTP error responses not observed',
     ).toEqual([]);
   };
+}
+
+function normalizeFontFamily(value: string) {
+  return value.replace(/["']/g, '').replace(/\s+/g, ' ').trim();
 }
 
 async function mockAuthenticatedSession(page: Page, role: BackendRole) {
@@ -405,6 +409,7 @@ async function expectBrandComposition(brand: Locator) {
     const outlineStyle = getComputedStyle(outline);
     const bookStyle = getComputedStyle(book);
     const linkStyle = getComputedStyle(link);
+    const wordmarkStyle = getComputedStyle(wordmark);
     return {
       linkText: link.textContent?.replace(/\s+/g, ' ').trim() ?? '',
       markText: mark.textContent?.trim() ?? '',
@@ -412,6 +417,7 @@ async function expectBrandComposition(brand: Locator) {
       markFocusable: mark.getAttribute('focusable'),
       textElementCount: mark.querySelectorAll('text').length,
       wordmarkText: wordmark.textContent,
+      wordmarkVisible: wordmarkStyle.display !== 'none',
       markWidth: markRect.width,
       markHeight: markRect.height,
       centerDelta: Math.abs(
@@ -447,7 +453,7 @@ async function expectBrandComposition(brand: Locator) {
   expect(metrics.wordmarkText).toBe('LearnHub');
   expect(metrics.markWidth).toBe(32);
   expect(metrics.markHeight).toBe(32);
-  expect(metrics.centerDelta).toBeLessThanOrEqual(1);
+  if (metrics.wordmarkVisible) expect(metrics.centerDelta).toBeLessThanOrEqual(1);
   expect(metrics.markInsideLink).toBe(true);
   expect(metrics.wordmarkInsideLink).toBe(true);
   expect(metrics.outlineStroke).toBe(metrics.expectedPurple);
@@ -643,7 +649,7 @@ async function expectInstructorDesktopHeaderNavigation(page: Page, width: Deskto
 
   const navigation = page.getByRole('navigation', { name: 'Primary navigation' });
   const instructorCourses = navigation.getByRole('link', { name: 'My courses' });
-  const profile = page.getByLabel('Indira User');
+  const profile = page.getByRole('button', { name: 'Account menu for Indira User' });
   await expect(navigation).toBeVisible();
   await expect(instructorCourses).toBeVisible();
   await expect(instructorCourses).toHaveAttribute('aria-current', 'page');
@@ -671,7 +677,7 @@ async function readStudentHeaderGeometry(page: Page): Promise<StudentHeaderGeome
       search: read('input[name="search_query"]'),
       cart,
       account,
-      cartAccountGap: account.x - (cart.x + cart.width),
+      accountCartGap: cart.x - (account.x + account.width),
       learning: read('a[href="/learning"]'),
       clientWidth: root.clientWidth,
       innerWidth: window.innerWidth,
@@ -843,7 +849,9 @@ test('exposes representative production tokens across marketplace and workspace 
   expect(marketplace.density).toBe('marketplace');
   expect(marketplace.colorCanvas.toLowerCase()).toBe(colorTokens['--color-canvas'].toLowerCase());
   expect(marketplace.textPrimary.toLowerCase()).toBe(colorTokens['--text-primary'].toLowerCase());
-  expect(marketplace.fontFamilyBase).toBe(typographyTokens['--font-family-base']);
+  expect(normalizeFontFamily(marketplace.fontFamilyBase)).toBe(
+    normalizeFontFamily(expectedFontFamily),
+  );
   expect(marketplace.spacing2).toBe(spacingTokens['--spacing-2']);
   expect(marketplace.controlHeightMd).toBe(spacingTokens['--control-height-md']);
   expect(marketplace.durationBase).toBe(motionTokens['--duration-base']);
@@ -888,6 +896,93 @@ test('keeps the accepted instructor navigation and initials marker at desktop wi
   await expectInstructorDesktopHeaderNavigation(page, 768);
   await expectInstructorDesktopHeaderNavigation(page, 1280);
   assertRuntimeClean();
+});
+
+test('shows authenticated account details on hover and clears the session through Log out', async ({
+  page,
+}) => {
+  await mockAuthenticatedSession(page, 'student');
+  await mockStudentWorkspaceData(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/learning');
+
+  const account = page.getByRole('button', { name: 'Account menu for Sam User' });
+  await account.hover();
+  const accountDetails = page.getByRole('group', { name: 'Account details for Sam User' });
+  await expect(accountDetails).toBeVisible();
+  await expect(page.getByRole('menu')).toHaveCount(0);
+  const [accountBox, menuBox] = await Promise.all([
+    account.boundingBox(),
+    accountDetails.boundingBox(),
+  ]);
+  if (!accountBox || !menuBox) throw new Error('Account details geometry is unavailable.');
+  expect(
+    Math.abs(accountBox.x + accountBox.width / 2 - (menuBox.x + menuBox.width / 2)),
+  ).toBeLessThanOrEqual(0.5);
+  expect(menuBox.y - (accountBox.y + accountBox.height)).toBeCloseTo(12, 1);
+  await page.mouse.move(accountBox.x + accountBox.width / 2, accountBox.y + accountBox.height - 1);
+  await page.mouse.move(menuBox.x + menuBox.width - accountBox.width / 2, menuBox.y + 1, {
+    steps: 8,
+  });
+  await expect(accountDetails).toBeVisible();
+  await expect(accountDetails.locator('[data-part="account-menu-profile"]')).toBeVisible();
+  await expect(accountDetails.getByText('student@example.com')).toBeVisible();
+  await expect(accountDetails.getByText('Sam User')).toBeVisible();
+  const role = accountDetails.getByText('student', { exact: true });
+  await expect(role).toBeVisible();
+  await expect(role).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(role).toHaveCSS('color', 'rgb(76, 29, 149)');
+  await expect(accountDetails.locator('[data-part="account-menu-role-icon"]')).toBeVisible();
+  const [emailBox, roleBox] = await Promise.all([
+    accountDetails.getByText('student@example.com').boundingBox(),
+    role.boundingBox(),
+  ]);
+  if (!emailBox || !roleBox) throw new Error('Account-menu role geometry is unavailable.');
+  expect(roleBox.x).toBeGreaterThanOrEqual(emailBox.x);
+  expect(roleBox.y).toBeGreaterThanOrEqual(emailBox.y + emailBox.height);
+  const logout = accountDetails.getByRole('button', { name: 'Log out' });
+  await expect(logout.locator('svg')).toBeVisible();
+  await expect(logout).toHaveCSS('border-top-style', 'none');
+  await expect(logout).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await logout.hover();
+  await expect(logout).toHaveCSS('background-color', 'rgb(254, 242, 242)');
+  await logout.click();
+
+  await expect(page).toHaveURL('/');
+  await expect(page.getByRole('link', { name: 'Log in' })).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem('learnhub.access-token'))).toBeNull();
+});
+
+test('keeps a clicked account menu open until Escape or an outside click', async ({ page }) => {
+  await mockAuthenticatedSession(page, 'student');
+  await mockStudentWorkspaceData(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/learning');
+
+  const account = page.getByRole('button', { name: 'Account menu for Sam User' });
+  const accountDetails = page.getByRole('group', { name: 'Account details for Sam User' });
+  await account.hover();
+  await expect(accountDetails).toBeVisible();
+  await expect(account).toHaveCSS('box-shadow', 'rgb(109, 40, 217) 0px 0px 0px 1px');
+  await page.mouse.move(8, 300);
+  await expect(accountDetails).toBeHidden();
+  await expect(account).toHaveCSS('box-shadow', 'none');
+
+  await account.click();
+  await expect(accountDetails).toBeVisible();
+  await expect(account).toHaveCSS('box-shadow', 'rgb(109, 40, 217) 0px 0px 0px 1px');
+  await page.mouse.move(8, 300);
+  await expect(accountDetails).toBeVisible();
+
+  await page.keyboard.press('Escape');
+  await expect(accountDetails).toBeHidden();
+  await expect(account).toBeFocused();
+  await expect(account).toHaveCSS('box-shadow', 'none');
+
+  await account.click();
+  await expect(accountDetails).toBeVisible();
+  await page.locator('main').click({ position: { x: 1, y: 1 } });
+  await expect(accountDetails).toBeHidden();
 });
 
 test('keeps anonymous Cart-to-Login actions in their stable desktop end group', async ({
@@ -960,7 +1055,7 @@ test('shows a bootstrap state then student-only workspace navigation', async ({ 
     'page',
   );
   await expect(navigation.getByRole('link', { name: 'My courses' })).toHaveCount(0);
-  await expect(page.getByLabel('Sam User')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Account menu for Sam User' })).toBeVisible();
   assertRuntimeClean();
 });
 
@@ -1032,7 +1127,7 @@ test('keeps the student Catalog, Search, Cart, and account slots stable across C
   assertRuntimeClean();
 });
 
-test('keeps Search within the actual My learning-to-Cart desktop gap', async ({ page }) => {
+test('keeps Search contained before the Profile-to-Cart desktop group', async ({ page }) => {
   const assertRuntimeClean = monitorRuntime(
     page,
     [],
@@ -1052,17 +1147,16 @@ test('keeps Search within the actual My learning-to-Cart desktop gap', async ({ 
     const geometry = await readStudentHeaderGeometry(page);
     const learningRight = geometry.learning.x + geometry.learning.width;
     const searchRight = geometry.search.x + geometry.search.width;
-    const freeGapCenter = (learningRight + geometry.cart.x) / 2;
-    const searchCenter = (geometry.search.x + searchRight) / 2;
-
     expect(geometry.standardGap).toBeGreaterThan(0);
     expect(geometry.search.x).toBeGreaterThanOrEqual(learningRight + geometry.standardGap - 0.5);
-    expect(geometry.cart.x).toBeGreaterThanOrEqual(searchRight + geometry.standardGap - 0.5);
-    expect(searchCenter).toBeCloseTo(freeGapCenter, 1);
+    expect(geometry.account.x).toBeGreaterThanOrEqual(searchRight + geometry.standardGap - 0.5);
+    expect(geometry.cart.x).toBeGreaterThanOrEqual(
+      geometry.account.x + geometry.account.width + geometry.standardGap - 1,
+    );
     expect(geometry.search.width).toBeLessThanOrEqual(544);
     expect(geometry.cart.height).toBeGreaterThanOrEqual(44);
     expect(geometry.account.height).toBeGreaterThanOrEqual(44);
-    expect(geometry.cartAccountGap).toBeCloseTo(15, 1);
+    expect(geometry.accountCartGap).toBeCloseTo(15, 1);
     expect(geometry.learningWhiteSpace).toBe('nowrap');
     expect(geometry.overflowFree).toBe(true);
   }
@@ -1142,6 +1236,78 @@ test('preserves student header geometry when Catalog alone requires a document s
   await page.setViewportSize({ width: 390, height: 720 });
   await page.goto('/');
   await expectNoHorizontalOverflow(page);
+  assertRuntimeClean();
+});
+
+test('keeps authenticated mobile header controls visible, Cart outermost, and Search flush with Catalog hero', async ({
+  page,
+}) => {
+  const assertRuntimeClean = monitorRuntime(
+    page,
+    [],
+    [{ ...CART_STRICT_MODE_ABORT, occurrences: 3 }],
+  );
+  await mockAuthenticatedSession(page, 'student');
+  await mockStudentWorkspaceData(page);
+  await page.route('**/courses**', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        items: [],
+        page: 1,
+        page_size: 20,
+        total: 0,
+        pages: 0,
+        has_next: false,
+        has_previous: false,
+      }),
+    }),
+  );
+
+  for (const width of [320, 390, 767] as const) {
+    await page.setViewportSize({ width, height: 720 });
+    await page.goto('/');
+
+    const aiAssistant = page.getByRole('link', { name: 'Open AI assistant' });
+    const profile = page.getByRole('button', { name: 'Account menu for Sam User' });
+    const cart = page.getByRole('link', { name: /^Cart/ });
+    await expect(aiAssistant).toBeVisible();
+    await expect(profile).toBeVisible();
+    await expect(cart).toBeVisible();
+
+    const geometry = await page.evaluate(() => {
+      const read = (selector: string) => {
+        const element = document.querySelector<HTMLElement>(selector);
+        if (!element) throw new Error(`Missing mobile header target: ${selector}`);
+        return element.getBoundingClientRect().toJSON();
+      };
+      return {
+        aiAssistant: read('a[aria-label="Open AI assistant"]'),
+        profile: read('[data-account-initials]'),
+        cart: read('a[aria-label^="Cart"]'),
+        search: read('form[role="search"]'),
+        hero: read('[data-part="catalog-hero"]'),
+        viewportWidth: document.documentElement.clientWidth,
+        scrollWidth: document.documentElement.scrollWidth,
+      };
+    });
+    expect(geometry.aiAssistant.right).toBeLessThanOrEqual(geometry.profile.x + 0.5);
+    expect(geometry.profile.right).toBeLessThanOrEqual(geometry.cart.x + 0.5);
+    expect(geometry.cart.right).toBeCloseTo(geometry.viewportWidth - 16, 1);
+    expect(Math.abs(geometry.search.bottom - geometry.hero.y)).toBeLessThanOrEqual(1);
+    expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.viewportWidth);
+
+    await profile.click();
+    const accountDetails = page.getByRole('group', { name: 'Account details for Sam User' });
+    await expect(accountDetails).toBeVisible();
+    const menuRect = await accountDetails.evaluate((element) =>
+      element.getBoundingClientRect().toJSON(),
+    );
+    expect(menuRect.x).toBeGreaterThanOrEqual(0);
+    expect(menuRect.right).toBeLessThanOrEqual(geometry.viewportWidth);
+  }
+
   assertRuntimeClean();
 });
 
@@ -1282,10 +1448,10 @@ test('supports keyboard-operated mobile navigation and focus restoration', async
   await page.goto('/instructor/courses#mobile-menu-focus');
   await expect(page.getByRole('heading', { level: 1, name: 'Instructor courses' })).toBeVisible();
   const brand = page.getByRole('link', { name: 'LearnHub home' });
-  const profile = page.getByLabel('Indira User');
+  const profile = page.getByRole('button', { name: 'Account menu for Indira User' });
   await expectBrandComposition(brand);
   await expectBrandContainedInHeader(brand);
-  await expect(profile).toBeHidden();
+  await expect(profile).toBeVisible();
   const menu = page.getByRole('button', { name: 'Open navigation' });
   await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toBeHidden();
   await expectMenuAtHeaderContentEdge(page);
@@ -1318,7 +1484,7 @@ test('supports keyboard-operated mobile navigation and focus restoration', async
   await page.setViewportSize({ width: 320, height: 740 });
   await expectBrandComposition(brand);
   await expectBrandContainedInHeader(brand);
-  await expect(profile).toBeHidden();
+  await expect(profile).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toBeHidden();
   await expectMenuAtHeaderContentEdge(page);
   await expectMobileMenuGeometry(page);

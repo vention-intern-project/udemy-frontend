@@ -127,7 +127,7 @@
 .catalogSearchListbox {
   position: absolute;
   z-index: var(--z-dropdown);
-  top: calc(100% + var(--spacing-2));
+  top: calc(100% + var(--spacing-2) + 4px);
   right: 0;
   left: 0;
   display: grid;
@@ -175,8 +175,8 @@
   border-radius: var(--radius-md);
 }
 .aiAssistantLink img {
-  width: 41.4px;
-  height: 41.4px;
+  width: 44px;
+  height: 44px;
   object-fit: contain;
 }
 .aiAssistantLink:hover,
@@ -285,18 +285,154 @@
   display: contents;
 }
 
+.accountMenu {
+  display: inline-grid;
+  flex: 0 0 44px;
+  position: relative;
+}
+
 .accountInitials {
   display: none;
   width: 44px;
   height: 44px;
   flex: 0 0 44px;
   place-items: center;
+  padding: 0;
   border: var(--border-width) solid var(--border-default);
   border-radius: var(--radius-full);
   color: var(--action-primary-bg-pressed);
   background: var(--action-secondary-bg);
   font-size: var(--type-body-sm-size);
   font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+}
+
+.accountInitials:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.accountInitialsOpen {
+  box-shadow: 0 0 0 var(--border-width) var(--action-primary-bg);
+}
+
+.accountMenuOpen::after {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  width: min(15rem, calc(100vw - (var(--gutter-mobile) * 2)));
+  height: calc(var(--spacing-2) + 4px);
+  content: '';
+}
+
+.accountMenuList {
+  position: absolute;
+  z-index: var(--z-dropdown);
+  top: calc(100% + var(--spacing-2) + 4px);
+  right: 0;
+  display: grid;
+  width: min(15rem, calc(100vw - (var(--gutter-mobile) * 2)));
+  gap: var(--spacing-1);
+  padding: var(--spacing-3);
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-lg);
+  color: var(--text-primary);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-2);
+}
+
+.accountMenuProfile {
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  gap: var(--spacing-2);
+  align-items: center;
+  min-width: 0;
+}
+
+.accountMenuAvatar {
+  display: inline-grid;
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 2rem;
+  place-items: center;
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-full);
+  color: var(--action-primary-bg-pressed);
+  background: var(--action-secondary-bg);
+  font-size: var(--type-caption-size);
+  font-weight: var(--font-weight-semibold);
+  align-self: start;
+}
+
+.accountMenuDetails {
+  display: grid;
+  min-width: 0;
+  gap: var(--spacing-1);
+  padding-top: var(--spacing-1);
+}
+
+.accountMenuName,
+.accountMenuEmail {
+  overflow-wrap: anywhere;
+}
+
+.accountMenuName {
+  color: var(--text-primary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.accountMenuEmail {
+  color: var(--text-secondary);
+  font-size: var(--type-metadata-size);
+  line-height: var(--type-metadata-lh);
+}
+
+.accountMenuRole {
+  display: inline-flex;
+  grid-column: 2;
+  gap: var(--spacing-1);
+  align-items: center;
+  min-height: var(--control-height-sm);
+  color: var(--action-secondary-fg);
+  font-size: var(--type-metadata-size);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--type-metadata-lh);
+}
+
+.accountMenuRole svg {
+  flex: 0 0 auto;
+}
+
+.accountMenuDivider {
+  width: 100%;
+  border-top: var(--border-width) solid var(--border-default);
+}
+
+.accountMenuLogout {
+  display: flex;
+  width: 100%;
+  min-height: var(--control-height-md);
+  gap: var(--spacing-2);
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0 var(--spacing-3);
+  border: 0;
+  border-radius: var(--radius-md);
+  color: var(--feedback-error);
+  background: transparent;
+  font: inherit;
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+}
+
+.accountMenuLogout:hover,
+.accountMenuLogout:active {
+  background: var(--feedback-error-bg);
+}
+
+.accountMenuLogout:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .menuButton {
@@ -359,6 +495,55 @@
   color: var(--text-muted);
   background: var(--color-surface-inverted);
   font-size: var(--type-caption-size);
+}
+
+@media (max-width: 767px) {
+  .headerInner {
+    column-gap: var(--spacing-2);
+    row-gap: var(--spacing-2);
+  }
+
+  .headerCartAccountGroup {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+    margin-left: auto;
+  }
+
+  .headerCartAccountGroup .aiAssistantLink,
+  .accountInitials {
+    display: inline-grid;
+  }
+
+  .headerCartAccountGroup .aiAssistantLink {
+    order: 1;
+  }
+
+  .headerCartAccountGroup .account {
+    order: 2;
+    margin-left: 0;
+  }
+
+  .headerCartAccountGroup .cartLink {
+    order: 3;
+  }
+
+  .catalogSearch {
+    order: 4;
+  }
+
+  .menuButton {
+    min-width: 44px;
+    padding-inline: var(--spacing-2);
+  }
+
+  .headerCartAccountGroup .accountMenuList {
+    right: calc(-1 * (44px + var(--spacing-2) + var(--spacing-3) + 44px));
+  }
+
+  .headerCartAccountGroup .accountMenuOpen::after {
+    right: calc(-1 * (44px + var(--spacing-2) + var(--spacing-3) + 44px));
+  }
 }
 
 @media (min-width: 768px) {
@@ -472,6 +657,18 @@
     gap: calc(var(--spacing-3) + 3px);
   }
 
+  .headerCartAccountGroup .account {
+    order: 1;
+  }
+
+  .headerCartAccountGroup .aiAssistantLink {
+    margin-inline-end: 2px;
+  }
+
+  .headerCartAccountGroup .cartLink {
+    order: 2;
+  }
+
   .menuButton,
   .navMobile {
     display: none;
@@ -485,5 +682,19 @@
       color var(--duration-fast) var(--easing-standard),
       background-color var(--duration-fast) var(--easing-standard),
       transform var(--duration-fast) var(--easing-standard);
+  }
+}
+
+@media (min-width: 1280px) {
+  .headerCartAccountGroup .accountMenuList {
+    right: auto;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  .headerCartAccountGroup .accountMenuOpen::after {
+    right: auto;
+    left: 50%;
+    transform: translateX(-50%);
   }
 }

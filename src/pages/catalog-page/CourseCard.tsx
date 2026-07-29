@@ -152,7 +152,6 @@ export function CourseCard({
   action,
   onAction,
 }: CourseCardProps) {
-  const previewCue = course.isPublished ? 'View details' : 'View draft';
   const tooltipNotice = course.isPublished
     ? null
     : 'This course is not available for enrollment yet.';
@@ -420,7 +419,7 @@ export function CourseCard({
                 {' · '}
               </span>
               <span className={styles.lessonCount}>
-                {course.totalLessonCount} lesson{course.totalLessonCount === 1 ? '' : 's'}
+                {course.totalLessonCount} lesson{course.totalLessonCount === 1 ? '' : 's'} available
               </span>
             </div>
           </div>
@@ -453,6 +452,7 @@ export function CourseCard({
             type="button"
             variant="secondary"
             className={styles.disclosureButton}
+            aria-label="View course details"
             aria-controls={statusExplanationId}
             aria-expanded={isDisclosureVisible}
             aria-pressed={isDisclosurePinned}
@@ -460,15 +460,10 @@ export function CourseCard({
             aria-haspopup="dialog"
           >
             <span className={styles.disclosurePill} data-part="course-card-disclosure-pill">
-              {previewCue}
+              Details
             </span>
           </Button>
         </div>
-        {action.inCart ? (
-          <span className={styles.cartStatus} data-part="course-card-cart-status">
-            In cart
-          </span>
-        ) : null}
         <div className={styles.actions} data-part="course-card-actions">
           {action.kind === 'link' && action.to ? (
             <Link className={styles.actionLink} to={action.to}>

@@ -6,6 +6,7 @@ export { DestructiveConfirmation } from './DestructiveConfirmation';
 export type { DestructiveConfirmationProps } from './DestructiveConfirmation';
 export { Dialog } from './Dialog';
 export type { DialogProps } from './Dialog';
+export { FieldShell, useFieldA11y } from './Field';
 export { Input } from './Input';
 export type { InputProps } from './Input';
 export { Notice } from './Notice';

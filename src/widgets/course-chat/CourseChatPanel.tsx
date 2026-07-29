@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, type KeyboardEvent } from 'react';
 import { SendHorizontal, Sparkles } from 'lucide-react';
 
 import { Button, Notice, Textarea, VisuallyHidden } from '@shared/ui/primitives';
@@ -35,6 +35,7 @@ interface CourseChatContentProps {
   readonly context: CourseChatContext;
   readonly compact: boolean;
   readonly focusOnOpen: boolean;
+  readonly focusRequest?: number;
 }
 
 interface ChatMessageBubbleProps {
@@ -94,15 +95,44 @@ function AssistantResponseError() {
   );
 }
 
-export function CourseChatContent({ chat, context, compact, focusOnOpen }: CourseChatContentProps) {
+export function CourseChatContent({
+  chat,
+  context,
+  compact,
+  focusOnOpen,
+  focusRequest = 0,
+}: CourseChatContentProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   const shouldStickToBottomRef = useRef(true);
+  const focusComposerAtEnd = useCallback(() => {
+    const input = inputRef.current;
+    if (!input) return;
+    input.focus({ preventScroll: true });
+    const cursorPosition = input.value.length;
+    input.setSelectionRange(cursorPosition, cursorPosition);
+  }, []);
   useEffect(() => {
-    if (focusOnOpen) inputRef.current?.focus();
-  }, [focusOnOpen]);
+    if (!focusOnOpen) return undefined;
+
+    focusComposerAtEnd();
+    if (typeof globalThis.requestAnimationFrame !== 'function') return undefined;
+
+    let nestedFrame = 0;
+    const frame = globalThis.requestAnimationFrame(() => {
+      nestedFrame = globalThis.requestAnimationFrame(focusComposerAtEnd);
+    });
+    return () => {
+      globalThis.cancelAnimationFrame(frame);
+      if (nestedFrame !== 0) globalThis.cancelAnimationFrame(nestedFrame);
+    };
+  }, [focusComposerAtEnd, focusOnOpen]);
+  useLayoutEffect(() => {
+    if (focusRequest > 0) focusComposerAtEnd();
+  }, [focusComposerAtEnd, focusRequest]);
   const inlineResponseFailure = chat.error === 'response_failed';
   const feedback = chat.error === null || inlineResponseFailure ? null : errorCopy(chat.error);
+  const hasComposerAction = chat.draft.trim() !== '';
   useLayoutEffect(() => {
     const messages = messagesRef.current;
     if (messages !== null && shouldStickToBottomRef.current) {
@@ -156,7 +186,9 @@ export function CourseChatContent({ chat, context, compact, focusOnOpen }: Cours
             event.preventDefault();
             chat.submit();
           }}
-          className={styles.form}
+          className={[styles.form, hasComposerAction ? styles.formWithSend : null]
+            .filter(Boolean)
+            .join(' ')}
         >
           <Textarea
             ref={inputRef}
@@ -164,21 +196,24 @@ export function CourseChatContent({ chat, context, compact, focusOnOpen }: Cours
             value={chat.draft}
             onChange={(event) => chat.setDraft(event.target.value)}
             disabled={!compact && chat.pending}
-            placeholder="Ask a follow up question..."
+            placeholder="Ask about courses, lessons, or learning…"
             className={compact ? styles.compactInput : styles.fullInput}
             fieldClassName={compact ? styles.compactInputField : styles.fullInputField}
             rows={1}
+            wrap="off"
             onKeyDown={handleSubmitKeyDown}
           />
-          <Button
-            type="submit"
-            aria-label="Send message"
-            disabled={chat.pending || chat.draft.trim() === ''}
-            state={chat.pending ? 'loading' : 'idle'}
-            loadingLabel={<VisuallyHidden>Sending message</VisuallyHidden>}
-          >
-            <SendHorizontal aria-hidden="true" />
-          </Button>
+          {hasComposerAction ? (
+            <Button
+              type="submit"
+              aria-label="Send message"
+              disabled={chat.pending}
+              state={chat.pending ? 'loading' : 'idle'}
+              loadingLabel={<VisuallyHidden>Sending message</VisuallyHidden>}
+            >
+              <SendHorizontal aria-hidden="true" />
+            </Button>
+          ) : null}
         </form>
       </div>
     </section>

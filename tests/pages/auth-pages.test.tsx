@@ -337,23 +337,22 @@ describe('authentication pages', () => {
     expect(requestAnimationFrame).not.toHaveBeenCalled();
   });
 
-  it('keeps the signup Role control as a labelled native select with its fixed value contract', async () => {
+  it('keeps the signup Role listbox labelled with its fixed value contract', async () => {
     renderAuth('/signup', async () => ({}));
     const user = userEvent.setup();
-    const role = screen.getByRole('combobox', { name: 'Role' }) as HTMLSelectElement;
+    const role = screen.getByRole('button', { name: 'Role' });
 
-    expect(role).toBeInstanceOf(HTMLSelectElement);
-    expect(role.getAttribute('data-part')).toBe('control');
-    expect(role.required).toBe(true);
-    expect(role.value).toBe('student');
-    expect(Array.from(role.options, ({ value, text }) => ({ value, text }))).toEqual([
-      { value: 'student', text: 'Student' },
-      { value: 'instructor', text: 'Instructor' },
-      { value: 'admin', text: 'Admin' },
-    ]);
+    expect(role.getAttribute('aria-haspopup')).toBe('listbox');
+    expect(role.getAttribute('aria-expanded')).toBe('false');
+    expect(role.textContent).toContain('Student');
 
-    await interact(() => user.selectOptions(role, 'instructor'));
-    expect(role.value).toBe('instructor');
+    await interact(() => user.click(role));
+    expect(screen.getByRole('listbox', { name: 'Role options' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'Student' }).getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    await interact(() => user.click(screen.getByRole('option', { name: 'Instructor' })));
+    expect(role.textContent).toContain('Instructor');
   });
 
   it('maps hostile 422 issues to stable field copy without rendering backend messages', async () => {

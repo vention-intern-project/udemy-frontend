@@ -322,6 +322,22 @@ for (const width of [320, 390, 768, 1280]) {
   });
 }
 
+test('uses the primary violet treatment for Login and Create account navigation links', async ({
+  page,
+}) => {
+  await page.goto('/login');
+
+  for (const name of ['Forgot your password?', 'Create an account']) {
+    await expect(page.getByRole('link', { name })).toHaveCSS('color', 'rgb(109, 40, 217)');
+  }
+
+  await page.goto('/signup');
+  await expect(page.getByRole('main').getByRole('link', { name: 'Log in' })).toHaveCSS(
+    'color',
+    'rgb(109, 40, 217)',
+  );
+});
+
 test('keeps auth panels physically centered with RTL document direction', async ({ page }) => {
   await page.setViewportSize({ width: 768, height: 800 });
   await page.goto('/signup');
@@ -601,33 +617,13 @@ test('keeps a re-masked password private after a pending login re-enables the sa
   await expect(page.locator('body')).not.toContainText('HOSTILE_LOGIN_CREDENTIAL_DETAIL');
 });
 
-test('keeps the Role control native while progressively applying purple picker and reveal states', async ({
-  page,
-}) => {
+test('uses the Sort-pattern Role listbox and purple reveal states', async ({ page }) => {
   await page.goto('/signup');
-  const role = page.getByRole('combobox', { name: 'Role' });
+  const role = page.getByRole('button', { name: 'Role' });
   const reveal = page.getByRole('button', { name: 'Show password' }).first();
 
-  const roleContract = await role.evaluate((select) => {
-    if (!(select instanceof HTMLSelectElement))
-      throw new Error('Role control is not a native select');
-    return {
-      tagName: select.tagName,
-      native: true,
-      values: Array.from(select.options, (option) => option.value),
-      supportsCustomPicker:
-        CSS.supports('appearance', 'base-select') && CSS.supports('selector(::picker(select))'),
-      appearance: getComputedStyle(select).appearance,
-    };
-  });
-  expect(roleContract.tagName).toBe('SELECT');
-  expect(roleContract.native).toBe(true);
-  expect(roleContract.values).toEqual(['student', 'instructor', 'admin']);
-  expect(roleContract.supportsCustomPicker).toBe(true);
-  expect(roleContract.appearance).toBe('base-select');
-
   await role.focus();
-  const roleFocus = await role.evaluate((select) => {
+  const roleFocus = await role.evaluate((button) => {
     const resolveColor = (token: string) => {
       const probe = document.createElement('span');
       probe.style.color = `var(${token})`;
@@ -636,7 +632,7 @@ test('keeps the Role control native while progressively applying purple picker a
       probe.remove();
       return color;
     };
-    const style = getComputedStyle(select);
+    const style = getComputedStyle(button);
     return {
       outlineColor: style.outlineColor,
       outlineWidth: style.outlineWidth,
@@ -648,14 +644,36 @@ test('keeps the Role control native while progressively applying purple picker a
   expect(roleFocus.outlineWidth).toBe('2px');
   expect(roleFocus.outlineOffset).toBe('2px');
 
-  await page.keyboard.press('Enter');
+  const chevron = role.locator('[data-part="signup-role-chevron"]');
+  await role.hover();
+  await expect(chevron).toHaveCSS('color', 'rgb(107, 114, 128)');
+  await role.click();
+  const listbox = page.getByRole('listbox', { name: 'Role options' });
+  await expect(listbox).toBeVisible();
+  await expect(role).toHaveAttribute('aria-expanded', 'true');
+  await expect(chevron).toHaveCSS('color', 'rgb(109, 40, 217)');
+  const student = listbox.getByRole('option', { name: 'Student' });
+  const instructor = listbox.getByRole('option', { name: 'Instructor' });
+  await expect(student).toHaveAttribute('aria-selected', 'true');
+  await expect(student.locator('[data-part="signup-role-radio"]')).toHaveCSS(
+    'border-color',
+    'rgb(109, 40, 217)',
+  );
+  await instructor.hover();
+  await expect(instructor).toHaveCSS('background-color', 'rgb(238, 240, 244)');
+  await instructor.click();
+  await expect(role).toContainText('Instructor');
+
+  await role.focus();
   await page.keyboard.press('ArrowDown');
+  await expect(listbox).toBeFocused();
+  await page.keyboard.press('End');
   await page.keyboard.press('Enter');
-  await expect(role).toHaveValue('instructor');
+  await expect(role).toContainText('Admin');
   await page.keyboard.press('Enter');
   await page.keyboard.press('Escape');
   await expect(role).toBeFocused();
-  await expect(role).toHaveValue('instructor');
+  await expect(role).toContainText('Admin');
   await page.keyboard.press('Tab');
   await expect(page.getByLabel(/^Password/)).toBeFocused();
 

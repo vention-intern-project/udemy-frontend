@@ -140,6 +140,7 @@
   font-weight: var(--font-weight-semibold);
   text-decoration: none;
   background: var(--action-primary-bg);
+  border-top-left-radius: var(--radius-md);
   border-top-right-radius: 0;
   border-bottom-right-radius: calc(var(--radius-lg) - var(--border-width));
 }
@@ -176,12 +177,11 @@
 
 .disclosureButton {
   display: inline-grid;
-  align-content: start;
-  justify-items: center;
-  min-height: var(--control-height-md);
-  width: 6rem;
+  width: auto;
+  min-height: 0;
   padding: 0;
-  color: var(--text-primary);
+  place-items: center;
+  color: var(--action-primary-bg);
   background: transparent;
   border-color: transparent;
 }
@@ -192,25 +192,19 @@
   border-color: transparent;
 }
 
-.disclosurePill,
-.cartStatus {
+.disclosurePill {
   box-sizing: border-box;
-  width: 6rem;
+  display: inline-grid;
   min-height: 1.75rem;
-  padding-inline: var(--spacing-2);
-  border: var(--border-width) solid transparent;
+  padding-inline: 6px;
+  place-items: center;
+  color: var(--text-primary);
+  background: var(--color-surface);
+  border: var(--border-width) solid var(--border-default);
   border-radius: var(--radius-full);
   font-size: var(--type-metadata-size);
   font-weight: var(--font-weight-medium);
   line-height: var(--type-metadata-lh);
-}
-
-.disclosurePill {
-  display: inline-grid;
-  place-items: center;
-  color: var(--text-primary);
-  background: var(--color-surface);
-  border-color: var(--border-default);
 }
 
 .disclosureButton:hover:not(:disabled) .disclosurePill {
@@ -228,23 +222,6 @@
 
 .disclosureButton[aria-pressed='true'] .disclosurePill {
   border-color: var(--action-primary-bg);
-}
-
-.cartStatus {
-  width: auto;
-  min-width: 0;
-  padding-inline: 6px;
-  z-index: 1;
-  display: inline-grid;
-  grid-row: 1;
-  grid-column: 1;
-  align-self: start;
-  justify-self: end;
-  place-items: center;
-  margin: var(--spacing-3);
-  color: var(--action-primary-fg);
-  background: #2ebc95;
-  border-color: #2ebc95;
 }
 
 .actionButton {

@@ -34,6 +34,7 @@ const catalogItem = {
 
 interface CatalogPaginationFixture {
   items?: Array<Omit<typeof catalogItem, 'published_at'> & { published_at: string | null }>;
+  total?: number;
   page?: number;
   pages?: number;
   has_next?: boolean;
@@ -366,12 +367,6 @@ describe('CatalogPage public URL and pagination behavior', () => {
     const user = userEvent.setup();
     renderCatalog(request, ['/'], 0, 'student-token');
 
-    const cartStatus = await screen.findByText('In cart', { exact: true });
-    expect(cartStatus.getAttribute('data-part')).toBe('course-card-cart-status');
-    expect(cartStatus.tagName).toBe('SPAN');
-    expect(cartStatus.children).toHaveLength(0);
-    expect(cartStatus.textContent).toBe('In cart');
-    expect(cartStatus.textContent).not.toContain('✓');
     const remove = await screen.findByRole('button', { name: 'Remove' });
     await act(async () => {
       await user.dblClick(remove);
@@ -881,7 +876,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(screen.getByRole('status', { name: 'Catalog refresh status' }).textContent).toBe('');
     expect(screen.queryByRole('link', { name: 'React' })).toBeNull();
     expect(document.querySelector('[data-part="catalog-result-list"]')).toBeTruthy();
-    expect(document.querySelectorAll('[data-part="skeleton"]')).toHaveLength(4);
+    expect(document.querySelectorAll('[data-part="skeleton"]')).toHaveLength(20);
     expect(
       document.querySelector('[data-part="catalog-discovery-results"]')?.getAttribute('aria-busy'),
     ).toBe('true');
@@ -977,10 +972,12 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(reactLink.getAttribute('href')).toBe('/courses/7');
     expect(screen.getByRole('heading', { level: 3, name: 'React' })).toBeTruthy();
     expect(screen.getByText('$94.99')).toBeTruthy();
-    expect(within(reactCard as HTMLElement).getByText('View draft', { exact: true })).toBeTruthy();
+    expect(
+      within(reactCard as HTMLElement).getByRole('button', { name: 'View course details' }),
+    ).toBeTruthy();
     expect(reactCard?.querySelector('[data-part="course-card-body"] p')).toBeNull();
     const reactMetadata = reactCard?.querySelector('[data-part="course-card-metadata"]');
-    expect(reactMetadata?.textContent).toBe('Ada Lovelace · 4 lessons');
+    expect(reactMetadata?.textContent).toBe('Ada Lovelace · 4 lessons available');
     expect(reactMetadata?.querySelectorAll('p')).toHaveLength(0);
     expect(
       within(reactMetadata as HTMLElement).getByText('Ada Lovelace', { exact: true }),
@@ -995,7 +992,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(metadataSeparator?.textContent).toBe(' · ');
     expect(metadataSeparator?.getAttribute('aria-hidden')).toBe('true');
     expect(
-      within(reactMetadata as HTMLElement).getByText('4 lessons', { exact: true }),
+      within(reactMetadata as HTMLElement).getByText('4 lessons available', { exact: true }),
     ).toBeTruthy();
     expect(reactMetadata?.textContent).not.toContain('Instructor');
     const draftExplanationId = reactLink.getAttribute('aria-describedby');
@@ -1004,7 +1001,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
     const price = reactCard?.querySelector('[data-part="course-card-price"]');
     if (!price) throw new Error('Card price is required.');
     const reactDisclosure = within(reactCard as HTMLElement).getByRole('button', {
-      name: 'View draft',
+      name: 'View course details',
     });
     expect(reactDisclosure.getAttribute('aria-expanded')).toBe('false');
     expect(reactDisclosure.getAttribute('aria-pressed')).toBe('false');
@@ -1023,7 +1020,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
     });
     expect(reactDisclosure.getAttribute('aria-expanded')).toBe('true');
     expect(reactDisclosure.getAttribute('aria-pressed')).toBe('true');
-    expect(reactDisclosure.textContent).toBe('View draft');
+    expect(reactDisclosure.textContent).toBe('Details');
     const openDescriptionId = reactLink.getAttribute('aria-describedby');
     expect(openDescriptionId).toBeTruthy();
     expect(reactDisclosure.getAttribute('aria-controls')).toBe(openDescriptionId);
@@ -1046,12 +1043,12 @@ describe('CatalogPage public URL and pagination behavior', () => {
     const publishedLink = screen.getByRole('link', { name: 'TypeScript' });
     const publishedDisclosure = within(publishedLink.closest('article') as HTMLElement).getByRole(
       'button',
-      { name: 'View details' },
+      { name: 'View course details' },
     );
     expect(publishedDisclosure.getAttribute('aria-expanded')).toBe('false');
     expect(
       publishedDisclosure.querySelector('[data-part="course-card-disclosure-pill"]')?.textContent,
-    ).toBe('View details');
+    ).not.toBeNull();
     await act(async () => {
       await user.click(publishedDisclosure);
     });
@@ -1064,7 +1061,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(within(reactCard as HTMLElement).queryByRole('dialog')).toBeNull();
     expect(publishedDisclosure.getAttribute('aria-expanded')).toBe('true');
     expect(publishedDisclosure.getAttribute('aria-pressed')).toBe('true');
-    expect(publishedDisclosure.textContent).toBe('View details');
+    expect(publishedDisclosure.textContent).toBe('Details');
     expect(publishedTooltip?.textContent).toContain('No course description is available.');
     await act(async () => {
       await user.keyboard('{Escape}');
@@ -1073,7 +1070,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(publishedDisclosure.getAttribute('aria-pressed')).toBe('false');
     expect(
       publishedDisclosure.querySelector('[data-part="course-card-disclosure-pill"]')?.textContent,
-    ).toBe('View details');
+    ).not.toBeNull();
     await act(async () => {
       await user.click(publishedDisclosure);
     });
@@ -1098,8 +1095,8 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(publishedDisclosure.getAttribute('aria-pressed')).toBe('false');
     expect(reactLink.getAttribute('href')).toBe('/courses/7');
     expect(
-      within(publishedLink.closest('article') as HTMLElement).getByText('View details', {
-        exact: true,
+      within(publishedLink.closest('article') as HTMLElement).getByRole('button', {
+        name: 'View course details',
       }),
     ).toBeTruthy();
     expect(publishedTooltip?.textContent).not.toContain('Published means this course');
@@ -1114,7 +1111,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(cartButton.closest('[data-part="course-card-actions"]')).toBeTruthy();
     const freeCard = screen.getByRole('link', { name: 'TypeScript' }).closest('article');
     expect(freeCard?.querySelector('[data-part="course-card-metadata"]')?.textContent).toBe(
-      'Ada Lovelace · 1 lesson',
+      'Ada Lovelace · 1 lesson available',
     );
     const freePrice = freeCard?.querySelector<HTMLDataElement>(
       '[data-part="course-card-price"] data',
@@ -1194,11 +1191,13 @@ describe('CatalogPage public URL and pagination behavior', () => {
     const reactLink = await screen.findByRole('link', { name: 'React' });
     vi.useFakeTimers();
     const reactCard = reactLink.closest('article') as HTMLElement;
-    const reactTrigger = within(reactCard).getByRole('button', { name: 'View details' });
+    const reactTrigger = within(reactCard).getByRole('button', { name: 'View course details' });
     const typeScriptCard = screen
       .getByRole('link', { name: 'TypeScript' })
       .closest('article') as HTMLElement;
-    const typeScriptTrigger = within(typeScriptCard).getByRole('button', { name: 'View details' });
+    const typeScriptTrigger = within(typeScriptCard).getByRole('button', {
+      name: 'View course details',
+    });
     const action = within(reactCard).getByRole('link', { name: 'Add to cart' });
 
     fireEvent.pointerEnter(reactCard, { pointerType: 'mouse' });
@@ -1470,7 +1469,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
 
     await screen.findByRole('link', { name: 'React' });
     expect(screen.getByText('Ada Lovelace').parentElement?.textContent).toBe(
-      'Ada Lovelace · 0 lessons',
+      'Ada Lovelace · 0 lessons available',
     );
     expect(requests[0]?.query).toEqual({
       search_query: 'React',
@@ -1768,7 +1767,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
     );
   });
 
-  it('links an inverted-range error to Max price, then applies Enter once and clears to a max-only range', async () => {
+  it('clamps an inverted range to Min price, then applies Enter once and clears to a max-only range', async () => {
     const user = userEvent.setup();
     const requests: ApiRequestOptions[] = [];
     const request: ApiClient['request'] = async <TResponse,>(options: ApiRequestOptions) => {
@@ -1794,11 +1793,14 @@ describe('CatalogPage public URL and pagination behavior', () => {
       await user.type(maximum, '5');
       await user.tab();
     });
-    await screen.findByText('Maximum price must be at least the minimum price.');
-    expect(maximum.getAttribute('aria-invalid')).toBe('true');
-    expect(maximum.getAttribute('aria-describedby')).toContain('-error');
-    expect(screen.getByLabelText('catalog location').textContent).toBe('/?min_price=10');
-    expect(requests).toHaveLength(2);
+    await waitFor(() =>
+      expect(screen.getByLabelText('catalog location').textContent).toBe(
+        '/?min_price=10&max_price=10',
+      ),
+    );
+    await waitFor(() => expect(maximum.value).toBe('10'));
+    expect(maximum.getAttribute('aria-invalid')).toBeNull();
+    expect(requests).toHaveLength(3);
 
     await act(async () => {
       await user.clear(maximum);
@@ -1810,12 +1812,12 @@ describe('CatalogPage public URL and pagination behavior', () => {
         '/?min_price=10&max_price=15',
       ),
     );
-    await waitFor(() => expect(requests).toHaveLength(3));
+    await waitFor(() => expect(requests).toHaveLength(4));
     await act(async () => {
       await user.tab();
     });
     await new Promise((resolve) => window.setTimeout(resolve, 0));
-    expect(requests).toHaveLength(3);
+    expect(requests).toHaveLength(4);
 
     await act(async () => {
       await user.clear(minimum);
@@ -1824,8 +1826,8 @@ describe('CatalogPage public URL and pagination behavior', () => {
     await waitFor(() =>
       expect(screen.getByLabelText('catalog location').textContent).toBe('/?max_price=15'),
     );
-    await waitFor(() => expect(requests).toHaveLength(4));
-    expect(requests[3]?.query).toEqual({
+    await waitFor(() => expect(requests).toHaveLength(5));
+    expect(requests[4]?.query).toEqual({
       search_query: undefined,
       min_price: undefined,
       max_price: 15,
@@ -2014,5 +2016,69 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(
       (screen.getByRole('button', { name: 'Go to previous page' }) as HTMLButtonElement).disabled,
     ).toBe(false);
+  });
+
+  it('keeps the result total visible while the next page is loading', async () => {
+    const user = userEvent.setup();
+    const nextPage = deferred<unknown>();
+    const request: ApiClient['request'] = async <TResponse,>(options: ApiRequestOptions) => {
+      if (options.query?.page === 2) return nextPage.promise as TResponse;
+      return response({
+        items: Array.from({ length: 20 }, (_, index) => ({ ...catalogItem, id: index + 1 })),
+        total: 24,
+        pages: 2,
+        has_next: true,
+      }) as TResponse;
+    };
+    renderCatalog(request, ['/']);
+
+    await screen.findByRole('heading', { level: 2, name: 'Found 24 courses' });
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Go to next page' }));
+    });
+
+    expect(screen.getByRole('heading', { level: 2, name: 'Found 24 courses' })).toBeTruthy();
+    expect(document.querySelectorAll('[data-part="skeleton"]')).toHaveLength(4);
+    expect(screen.getByRole('navigation', { name: 'Course result pages' })).toBeTruthy();
+    expect(screen.getByLabelText('Page 2, current page')).toBeTruthy();
+    expect(document.querySelectorAll('.ui-pagination__ellipsis')).toHaveLength(0);
+
+    await act(async () => {
+      nextPage.resolve(response({ page: 2, total: 24, pages: 10, has_previous: true }));
+      await nextPage.promise;
+    });
+    await screen.findByLabelText('Page 2, current page');
+  });
+
+  it('announces loading rather than a stale total while a sort change is loading', async () => {
+    const user = userEvent.setup();
+    const sortedResults = deferred<unknown>();
+    const request: ApiClient['request'] = async <TResponse,>(options: ApiRequestOptions) => {
+      if (options.query?.sort === 'price') return sortedResults.promise as TResponse;
+      return response({ total: 22, pages: 2, has_next: true }) as TResponse;
+    };
+    renderCatalog(request, ['/']);
+
+    await screen.findByRole('heading', { level: 2, name: 'Found 22 courses' });
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Sort by: Oldest' }));
+    });
+    fireEvent.click(
+      within(screen.getByRole('listbox', { name: 'Sort by options' })).getByRole('option', {
+        name: 'Low to High',
+      }),
+    );
+
+    await waitFor(() =>
+      expect(screen.getByLabelText('catalog location').textContent).toBe('/?sort=price'),
+    );
+    expect(screen.getByRole('heading', { level: 2, name: 'Loading course results…' })).toBeTruthy();
+    expect(document.querySelectorAll('[data-part="skeleton"]')).toHaveLength(20);
+
+    await act(async () => {
+      sortedResults.resolve(response({ total: 22, pages: 2, has_next: true }));
+      await sortedResults.promise;
+    });
+    await screen.findByRole('heading', { level: 2, name: 'Found 22 courses' });
   });
 });

@@ -9,7 +9,12 @@ import {
   type CatalogFailure,
   type CatalogRequester,
 } from './api';
-import { parseCatalogQuery, type CatalogQuery } from './query';
+import {
+  CATALOG_PAGE_SIZE,
+  catalogResultSetKey,
+  parseCatalogQuery,
+  type CatalogQuery,
+} from './query';
 
 interface CatalogInitialLoadingState {
   readonly activeQueryKey: string;
@@ -69,6 +74,7 @@ export type CatalogDiscoveryState =
   | CatalogErrorWithResultsState;
 
 interface CatalogRequestStartedAction {
+  readonly query: CatalogQuery;
   readonly queryKey: string;
   readonly type: 'request-started';
 }
@@ -90,10 +96,21 @@ type CatalogDiscoveryAction =
   | CatalogRequestSucceededAction
   | CatalogRequestFailedAction;
 
-const DEFAULT_CATALOG_PLACEHOLDER_COUNT = 4;
+const DEFAULT_CATALOG_PLACEHOLDER_COUNT = CATALOG_PAGE_SIZE;
 
-function placeholderCountFor(previous: CatalogDiscoveryState) {
-  if (previous.data) return Math.max(DEFAULT_CATALOG_PLACEHOLDER_COUNT, previous.data.items.length);
+function hasSameCriteria(previousQueryKey: string, nextQuery: CatalogQuery) {
+  const previousQuery = parseCatalogQuery(new URLSearchParams(previousQueryKey));
+  return catalogResultSetKey(previousQuery) === catalogResultSetKey(nextQuery);
+}
+
+function placeholderCountFor(previous: CatalogDiscoveryState, nextQuery: CatalogQuery) {
+  if (previous.data && hasSameCriteria(previous.dataQueryKey, nextQuery)) {
+    const remainingItems = Math.max(
+      0,
+      previous.data.total - (nextQuery.page - 1) * previous.data.pageSize,
+    );
+    return Math.min(previous.data.pageSize, remainingItems);
+  }
   return previous.status === 'initial-loading'
     ? previous.placeholderCount
     : DEFAULT_CATALOG_PLACEHOLDER_COUNT;
@@ -114,7 +131,7 @@ function catalogDiscoveryReducer(
           }
         : {
             activeQueryKey: action.queryKey,
-            placeholderCount: placeholderCountFor(previous),
+            placeholderCount: placeholderCountFor(previous, action.query),
             status: 'initial-loading',
           };
     case 'request-succeeded':
@@ -159,7 +176,7 @@ export function useCatalogDiscovery(query: CatalogQuery, request: CatalogRequest
     const controller = new AbortController();
     const sequence = requestSequence.current + 1;
     requestSequence.current = sequence;
-    dispatch({ queryKey, type: 'request-started' });
+    dispatch({ query: normalizedQuery, queryKey, type: 'request-started' });
 
     void requestCatalog(request, normalizedQuery, controller.signal)
       .then((data) => {

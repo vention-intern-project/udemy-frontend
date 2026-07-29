@@ -1,7 +1,8 @@
 import { useId, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft, CircleHelp, Compass, Medal, MoreVertical, Trash2, X } from 'lucide-react';
 
+import { sanitizeInternalReturnTo } from '@features/auth-session';
 import {
   useCourseChat,
   type CourseChatContext,
@@ -81,6 +82,10 @@ interface AssistantPageLayoutProps {
   readonly backTo: string;
 }
 
+interface AiChatNavigationState {
+  readonly returnTo?: unknown;
+}
+
 interface SuggestedAction {
   readonly icon: typeof Compass;
   readonly label: string;
@@ -108,9 +113,10 @@ const SUGGESTED_ACTIONS: readonly SuggestedAction[] = [
 interface SuggestedActionsProps {
   readonly chat: CourseChatWorkflow;
   readonly backTo: string;
+  readonly onActionSelect: () => void;
 }
 
-function SuggestedActions({ chat, backTo }: SuggestedActionsProps) {
+function SuggestedActions({ chat, backTo, onActionSelect }: SuggestedActionsProps) {
   return (
     <div className={styles.sidebarColumn}>
       <ContextualNavigationLink className={styles.returnLink} to={backTo}>
@@ -121,17 +127,29 @@ function SuggestedActions({ chat, backTo }: SuggestedActionsProps) {
         <h2 id="suggested-actions-title">Suggested Actions</h2>
         <p>Quick prompts to jumpstart your session</p>
         <div className={styles.suggestedActions}>
-          {SUGGESTED_ACTIONS.map(({ icon: Icon, label, prompt }, index) => (
-            <button
-              key={label}
-              className={index === 0 ? styles.suggestedActionPrimary : styles.suggestedAction}
-              type="button"
-              onClick={() => chat.setDraft(prompt)}
-            >
-              <Icon aria-hidden="true" focusable="false" />
-              {label}
-            </button>
-          ))}
+          {SUGGESTED_ACTIONS.map(({ icon: Icon, label, prompt }) => {
+            const selected = chat.draft === prompt;
+            return (
+              <button
+                key={label}
+                className={[
+                  styles.suggestedAction,
+                  selected ? styles.suggestedActionSelected : null,
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                data-selected={selected ? 'true' : 'false'}
+                type="button"
+                onClick={() => {
+                  chat.setDraft(prompt);
+                  onActionSelect();
+                }}
+              >
+                <Icon aria-hidden="true" focusable="false" />
+                {label}
+              </button>
+            );
+          })}
         </div>
       </aside>
     </div>
@@ -140,14 +158,22 @@ function SuggestedActions({ chat, backTo }: SuggestedActionsProps) {
 
 function AssistantPageLayout({ context, backTo }: AssistantPageLayoutProps) {
   const chat = useCourseChat(context);
+  const location = useLocation();
   const navigate = useNavigate();
   const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
   const [isClearConfirmationOpen, setIsClearConfirmationOpen] = useState(false);
+  const [composerFocusRequest, setComposerFocusRequest] = useState(0);
   const actionTriggerId = useId();
   const isUnavailable = chat.error === 'temporarily_unavailable' || chat.error === 'unavailable';
   const isAvailable =
     !isUnavailable && chat.messages.some((message) => message.author === 'assistant');
   const chatTitle = context.kind === 'general' ? 'General Assistance Chat' : 'Course Assistant';
+  const state = location.state as AiChatNavigationState | null;
+  const returnTo =
+    typeof state?.returnTo === 'string'
+      ? sanitizeInternalReturnTo(state.returnTo, globalThis.location?.origin)
+      : null;
+  const closeDestination = returnTo && returnTo !== location.pathname ? returnTo : backTo;
   const availabilityLabel = isAvailable
     ? 'Assistant available'
     : isUnavailable
@@ -167,7 +193,11 @@ function AssistantPageLayout({ context, backTo }: AssistantPageLayoutProps) {
           </p>
         </div>
       </section>
-      <SuggestedActions chat={chat} backTo={backTo} />
+      <SuggestedActions
+        chat={chat}
+        backTo={backTo}
+        onActionSelect={() => setComposerFocusRequest((request) => request + 1)}
+      />
       <section className={styles.chatArea}>
         <section className={styles.chatFrame} aria-label="AI assistant chat">
           <header className={styles.chatFrameHeader}>
@@ -224,13 +254,19 @@ function AssistantPageLayout({ context, backTo }: AssistantPageLayoutProps) {
               <Button
                 variant="ghost"
                 aria-label="Close assistant chat"
-                onClick={() => navigate(backTo)}
+                onClick={() => navigate(closeDestination)}
               >
                 <X aria-hidden="true" />
               </Button>
             </div>
           </header>
-          <CourseChatContent chat={chat} context={context} compact={false} focusOnOpen={false} />
+          <CourseChatContent
+            chat={chat}
+            context={context}
+            compact={false}
+            focusOnOpen
+            focusRequest={composerFocusRequest}
+          />
         </section>
         <Notice tone="info">
           This conversation stays available while you continue using the assistant.

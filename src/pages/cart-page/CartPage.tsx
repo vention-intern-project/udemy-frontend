@@ -109,7 +109,12 @@ function CartRecoveryAction({
 }: CartRecoveryActionProps) {
   if (failure.action.kind === 'login')
     return <Link to={`/login?returnTo=${encodeURIComponent('/cart')}`}>Log in</Link>;
-  if (failure.action.kind === 'catalog') return <Link to="/">Browse courses</Link>;
+  if (failure.action.kind === 'catalog')
+    return (
+      <Link className={styles.catalogLink} to="/">
+        Browse courses
+      </Link>
+    );
   return (
     <Button
       variant="secondary"
