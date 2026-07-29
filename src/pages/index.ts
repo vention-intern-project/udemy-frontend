@@ -10,3 +10,4 @@ export { CourseDetailPage } from './course-detail-page';
 export { CartPage } from './cart-page';
 export { LearningListPage } from './learning-list-page';
 export { LearningDetailPage } from './learning-detail-page';
+export { AiChatPage } from './ai-chat-page';

@@ -1,5 +1,13 @@
 import type { ApiBinaryResponse, PageQueryDto } from '@shared/api';
-import type { CartDto, CartItemAddDto, CartItemDto, CheckoutDto, MockPaymentCompleteDto, MockPaymentCompletionRequestDto } from '../cart';
+import type { ChatRequestDto, ChatResponseDto } from './chat';
+import type {
+  CartDto,
+  CartItemAddDto,
+  CartItemDto,
+  CheckoutDto,
+  MockPaymentCompleteDto,
+  MockPaymentCompletionRequestDto,
+} from '../cart';
 import type {
   CourseDetailDto,
   CourseDto,
@@ -31,11 +39,19 @@ import type {
   UserRegisterDto,
 } from '../user';
 
-export interface PathCourse { courseId: number }
-export interface PathLesson { lessonId: number }
+export interface PathCourse {
+  courseId: number;
+}
+export interface PathLesson {
+  lessonId: number;
+}
 export interface PathCourseLesson extends PathCourse, PathLesson {}
-export interface PathEnrollment { enrollmentId: number }
-export interface PathFilename { filename: string }
+export interface PathEnrollment {
+  enrollmentId: number;
+}
+export interface PathFilename {
+  filename: string;
+}
 
 export interface SelectedApiContractMap {
   'API-002': { input: undefined; response: CartDto };
@@ -43,12 +59,16 @@ export interface SelectedApiContractMap {
   'API-004': { input: undefined; response: CheckoutDto };
   'API-005': { input: { body: CartItemAddDto }; response: CartItemDto };
   'API-006': { input: { path: PathCourse }; response: void };
+  'API-007': { input: { body: ChatRequestDto }; response: ChatResponseDto };
   'API-008': { input: { query: CourseListQueryDto }; response: CourseListDto };
   'API-009': { input: { body: CourseWriteDto }; response: CourseDto };
   'API-010': { input: { path: PathCourse }; response: CourseDetailDto };
   'API-011': { input: { path: PathCourse; body: CourseWriteDto }; response: CourseDto };
   'API-012': { input: { path: PathCourse }; response: DeleteMessageDto };
-  'API-013': { input: { path: PathCourse; query: PageQueryDto }; response: CourseEnrollmentListDto };
+  'API-013': {
+    input: { path: PathCourse; query: PageQueryDto };
+    response: CourseEnrollmentListDto;
+  };
   'API-014': { input: { path: PathCourse; query: LessonPageQueryDto }; response: LessonListDto };
   'API-015': { input: { path: PathCourse; body: LessonWriteDto }; response: LessonDto };
   'API-016': { input: { path: PathCourseLesson }; response: DeleteMessageDto };

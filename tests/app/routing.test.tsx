@@ -443,7 +443,15 @@ describe('application routing and guards', () => {
       'student' as const,
       'My learning',
       'Sam User',
-      ['LearnHub home', 'Catalog', 'My learning', 'Search courses', 'Cart', 'Sam User'],
+      [
+        'LearnHub home',
+        'Catalog',
+        'My learning',
+        'Search courses',
+        'Open AI assistant',
+        'Cart',
+        'Sam User',
+      ],
     ],
     [
       '/instructor/courses',

@@ -14,6 +14,7 @@ import {
   type EnrollmentStatusRefresh,
 } from '@features/checkout-cart';
 import { EnrollmentProgressPanel } from '@widgets/index';
+import { CourseChatLauncher } from '@widgets/course-chat';
 import {
   Button,
   ContextualNavigationLink,
@@ -267,6 +268,12 @@ export function LearningDetailPage() {
               onRetry={() => {
                 retryWorkspaceRef.current = true;
                 void workspace.retryWorkspace();
+              }}
+            />
+            <CourseChatLauncher
+              assistant={{
+                context: { kind: 'course', courseId: enrollment.courseId },
+                enrollmentId: enrollment.id,
               }}
             />
           </>
