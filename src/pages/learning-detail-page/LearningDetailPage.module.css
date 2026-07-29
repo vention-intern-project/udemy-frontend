@@ -14,23 +14,29 @@
 }
 .backLink {
   justify-self: start;
-  gap: var(--spacing-2);
-  color: var(--text-secondary);
+  gap: var(--spacing-1);
+  padding-inline: 0;
+  color: var(--action-primary-bg);
   background: transparent;
-  font-weight: var(--font-weight-bold);
+  font-weight: var(--font-weight-regular);
+  text-decoration: none;
 }
 
 .backLink:visited {
-  color: var(--text-secondary);
+  color: var(--action-primary-bg);
 }
 .backLink:hover,
 .backLink:active {
   color: var(--action-primary-bg);
   background: transparent;
+  text-decoration: underline;
+}
+.backLink:focus-visible {
+  text-decoration: underline;
 }
 
 @media (min-width: 1120px) {
-  .backLink {
+  .readingContent .backLink {
     margin-inline-start: calc(-1 * var(--spacing-12));
   }
 }
