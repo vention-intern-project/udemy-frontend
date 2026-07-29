@@ -48,7 +48,9 @@ describe('deterministic API mock harness', () => {
     ]);
     const client = createApiClient({ baseUrl: 'https://api.example.test', fetch: mockFetch });
 
-    await expect(client.request({ path: '/courses/7/enrollments', query: { page: 2 } })).resolves.toEqual({
+    await expect(
+      client.request({ path: '/courses/7/enrollments', query: { page: 2 } }),
+    ).resolves.toEqual({
       items: [],
       page: 2,
       page_size: 20,
@@ -84,56 +86,186 @@ describe('deterministic API mock harness', () => {
       { operationId: 'API-002', url: '/cart' },
       { operationId: 'API-003', url: '/cart', init: { method: 'DELETE' } },
       { operationId: 'API-004', url: '/cart/checkout', init: { method: 'POST' } },
-      { operationId: 'API-005', url: '/cart/items', init: jsonRequest('POST', { course_id: 7 }), jsonBody: { course_id: 7 } },
-      { operationId: 'API-006', url: '/cart/items/7', init: { method: 'DELETE' }, pathParams: { courseId: '7' } },
-      { operationId: 'API-008', url: '/courses?page=2&page_size=20&sort=-price', query: { page: '2', page_size: '20', sort: '-price' } },
-      { operationId: 'API-009', url: '/courses', init: jsonRequest('POST', { title: 'APIs', price: '19.99' }), jsonBody: { title: 'APIs', price: '19.99' } },
+      {
+        operationId: 'API-005',
+        url: '/cart/items',
+        init: jsonRequest('POST', { course_id: 7 }),
+        jsonBody: { course_id: 7 },
+      },
+      {
+        operationId: 'API-006',
+        url: '/cart/items/7',
+        init: { method: 'DELETE' },
+        pathParams: { courseId: '7' },
+      },
+      {
+        operationId: 'API-008',
+        url: '/courses?page=2&page_size=20&sort=-price',
+        query: { page: '2', page_size: '20', sort: '-price' },
+      },
+      {
+        operationId: 'API-009',
+        url: '/courses',
+        init: jsonRequest('POST', { title: 'APIs', price: '19.99' }),
+        jsonBody: { title: 'APIs', price: '19.99' },
+      },
       { operationId: 'API-010', url: '/courses/7', pathParams: { courseId: '7' } },
-      { operationId: 'API-011', url: '/courses/7', init: jsonRequest('PATCH', { title: 'Typed APIs' }), pathParams: { courseId: '7' }, jsonBody: { title: 'Typed APIs' } },
-      { operationId: 'API-012', url: '/courses/7', init: { method: 'DELETE' }, pathParams: { courseId: '7' } },
-      { operationId: 'API-013', url: '/courses/7/enrollments?page=2&page_size=20', pathParams: { courseId: '7' }, query: { page: '2', page_size: '20' } },
-      { operationId: 'API-014', url: '/courses/7/lessons?page=3&size=10', pathParams: { courseId: '7' }, query: { page: '3', size: '10' } },
-      { operationId: 'API-015', url: '/courses/7/lessons', init: jsonRequest('POST', { title: 'Intro', lesson_type: 'video' }), pathParams: { courseId: '7' }, jsonBody: { title: 'Intro', lesson_type: 'video' } },
-      { operationId: 'API-016', url: '/courses/7/lessons/8', init: { method: 'DELETE' }, pathParams: { courseId: '7', lessonId: '8' } },
-      { operationId: 'API-017', url: '/courses/7/lessons/8/complete', init: { method: 'POST' }, pathParams: { courseId: '7', lessonId: '8' } },
-      { operationId: 'API-018', url: '/courses/7/lessons/8/incomplete', init: { method: 'POST' }, pathParams: { courseId: '7', lessonId: '8' } },
+      {
+        operationId: 'API-011',
+        url: '/courses/7',
+        init: jsonRequest('PATCH', { title: 'Typed APIs' }),
+        pathParams: { courseId: '7' },
+        jsonBody: { title: 'Typed APIs' },
+      },
+      {
+        operationId: 'API-012',
+        url: '/courses/7',
+        init: { method: 'DELETE' },
+        pathParams: { courseId: '7' },
+      },
+      {
+        operationId: 'API-013',
+        url: '/courses/7/enrollments?page=2&page_size=20',
+        pathParams: { courseId: '7' },
+        query: { page: '2', page_size: '20' },
+      },
+      {
+        operationId: 'API-014',
+        url: '/courses/7/lessons?page=3&size=10',
+        pathParams: { courseId: '7' },
+        query: { page: '3', size: '10' },
+      },
+      {
+        operationId: 'API-015',
+        url: '/courses/7/lessons',
+        init: jsonRequest('POST', { title: 'Intro', lesson_type: 'video' }),
+        pathParams: { courseId: '7' },
+        jsonBody: { title: 'Intro', lesson_type: 'video' },
+      },
+      {
+        operationId: 'API-016',
+        url: '/courses/7/lessons/8',
+        init: { method: 'DELETE' },
+        pathParams: { courseId: '7', lessonId: '8' },
+      },
+      {
+        operationId: 'API-017',
+        url: '/courses/7/lessons/8/complete',
+        init: { method: 'POST' },
+        pathParams: { courseId: '7', lessonId: '8' },
+      },
+      {
+        operationId: 'API-018',
+        url: '/courses/7/lessons/8/incomplete',
+        init: { method: 'POST' },
+        pathParams: { courseId: '7', lessonId: '8' },
+      },
       { operationId: 'API-019', url: '/courses/7/progress', pathParams: { courseId: '7' } },
-      { operationId: 'API-020', url: '/enrollments', init: jsonRequest('POST', { course_id: 7 }), jsonBody: { course_id: 7 } },
-      { operationId: 'API-021', url: '/enrollments/my?page=2&page_size=20', query: { page: '2', page_size: '20' } },
+      {
+        operationId: 'API-020',
+        url: '/enrollments',
+        init: jsonRequest('POST', { course_id: 7 }),
+        jsonBody: { course_id: 7 },
+      },
+      {
+        operationId: 'API-021',
+        url: '/enrollments/my?page=2&page_size=20',
+        query: { page: '2', page_size: '20' },
+      },
       { operationId: 'API-022', url: '/enrollments/8', pathParams: { enrollmentId: '8' } },
-      { operationId: 'API-023', url: '/forgot-password', init: jsonRequest('POST', { email: 'student@example.test' }), jsonBody: { email: 'student@example.test' } },
-      { operationId: 'API-024', url: '/login', init: jsonRequest('POST', { email: 'student@example.test', password: 'secret' }), jsonBody: { email: 'student@example.test', password: 'secret' } },
-      { operationId: 'API-025', url: '/media/lessons/lesson%20one.pdf', pathParams: { filename: 'lesson one.pdf' } },
+      {
+        operationId: 'API-023',
+        url: '/forgot-password',
+        init: jsonRequest('POST', { email: 'student@example.test' }),
+        jsonBody: { email: 'student@example.test' },
+      },
+      {
+        operationId: 'API-024',
+        url: '/login',
+        init: jsonRequest('POST', { email: 'student@example.test', password: 'secret' }),
+        jsonBody: { email: 'student@example.test', password: 'secret' },
+      },
+      {
+        operationId: 'API-025',
+        url: '/media/lessons/lesson%20one.pdf',
+        pathParams: { filename: 'lesson one.pdf' },
+      },
       { operationId: 'API-026', url: '/me' },
-      { operationId: 'API-029', url: '/reset-password', init: jsonRequest('POST', { token: 'reset-token', new_password: 'new-secret' }), jsonBody: { token: 'reset-token', new_password: 'new-secret' } },
+      {
+        operationId: 'API-029',
+        url: '/reset-password',
+        init: jsonRequest('POST', { token: 'reset-token', new_password: 'new-secret' }),
+        jsonBody: { token: 'reset-token', new_password: 'new-secret' },
+      },
       { operationId: 'API-030', url: '/lessons/8', pathParams: { lessonId: '8' } },
-      { operationId: 'API-031', url: '/lessons/8', init: jsonRequest('PATCH', { title: 'Updated lesson' }), pathParams: { lessonId: '8' }, jsonBody: { title: 'Updated lesson' } },
-      { operationId: 'API-032', url: '/lessons/8/upload-file', init: { method: 'POST', body: upload }, pathParams: { lessonId: '8' }, multipartBody: { file: 'lesson.pdf' } },
-      { operationId: 'API-033', url: '/signup', init: jsonRequest('POST', { email: 'student@example.test', name: 'Ada', surname: 'Lovelace', password: 'secret', role: 'student' }), jsonBody: { email: 'student@example.test', name: 'Ada', surname: 'Lovelace', password: 'secret', role: 'student' } },
-      { operationId: 'API-034', url: '/payments/complete', init: jsonRequest('POST', { enrollment_id: 7, status: 'success' }), jsonBody: { enrollment_id: 7, status: 'success' } },
+      {
+        operationId: 'API-031',
+        url: '/lessons/8',
+        init: jsonRequest('PATCH', { title: 'Updated lesson' }),
+        pathParams: { lessonId: '8' },
+        jsonBody: { title: 'Updated lesson' },
+      },
+      {
+        operationId: 'API-032',
+        url: '/lessons/8/upload-file',
+        init: { method: 'POST', body: upload },
+        pathParams: { lessonId: '8' },
+        multipartBody: { file: 'lesson.pdf' },
+      },
+      {
+        operationId: 'API-033',
+        url: '/signup',
+        init: jsonRequest('POST', {
+          email: 'student@example.test',
+          name: 'Ada',
+          surname: 'Lovelace',
+          password: 'secret',
+          role: 'student',
+        }),
+        jsonBody: {
+          email: 'student@example.test',
+          name: 'Ada',
+          surname: 'Lovelace',
+          password: 'secret',
+          role: 'student',
+        },
+      },
+      {
+        operationId: 'API-034',
+        url: '/payments/complete',
+        init: jsonRequest('POST', { enrollment_id: 7, status: 'success' }),
+        jsonBody: { enrollment_id: 7, status: 'success' },
+      },
     ];
 
-    const routed = new Map<SelectedApiOperationId, {
-      pathParams: Readonly<Record<string, string>>;
-      query: Readonly<Record<string, string>>;
-      jsonBody?: unknown;
-      multipartBody?: Readonly<Record<string, string>>;
-    }>();
+    const routed = new Map<
+      SelectedApiOperationId,
+      {
+        pathParams: Readonly<Record<string, string>>;
+        query: Readonly<Record<string, string>>;
+        jsonBody?: unknown;
+        multipartBody?: Readonly<Record<string, string>>;
+      }
+    >();
     const handlers = API_OPERATIONS.map(({ id, requestMode, responseMode }) => ({
       operationId: id,
-      resolve: async ({ request, pathParams, query }: Parameters<
-        import('./mock-api').MockApiResolver
-      >[0]) => {
+      resolve: async ({
+        request,
+        pathParams,
+        query,
+      }: Parameters<import('./mock-api').MockApiResolver>[0]) => {
         let jsonBody: unknown;
         let multipartBody: Readonly<Record<string, string>> | undefined;
         if (requestMode === 'json') {
           jsonBody = await request.clone().json();
         } else if (requestMode === 'multipart') {
           const formData = await request.clone().formData();
-          multipartBody = Object.fromEntries(Array.from(formData.entries()).map(([key, value]) => [
-            key,
-            typeof value === 'string' ? value : value.name,
-          ]));
+          multipartBody = Object.fromEntries(
+            Array.from(formData.entries()).map(([key, value]) => [
+              key,
+              typeof value === 'string' ? value : value.name,
+            ]),
+          );
         }
         routed.set(id, {
           pathParams,
@@ -192,8 +324,8 @@ describe('deterministic API mock harness', () => {
       }
     }
 
-    expect(mockFetch.operationIds).toHaveLength(30);
-    expect(new Set(mockFetch.operationIds).size).toBe(30);
+    expect(mockFetch.operationIds).toHaveLength(31);
+    expect(new Set(mockFetch.operationIds).size).toBe(31);
     expect(mockFetch.assumptionTags).toEqual([
       CONTRACT_ASSUMPTIONS.GAP_007.code,
       CONTRACT_ASSUMPTIONS.GAP_003.code,
@@ -208,56 +340,90 @@ describe('deterministic API mock harness', () => {
     expect(known.status).toBe(501);
     await expect(known.json()).resolves.toEqual({ detail: 'No mock handler for API-008' });
     expect(unknown.status).toBe(404);
-    await expect(unknown.json()).resolves.toEqual({ detail: 'No selected API operation matched this request' });
+    await expect(unknown.json()).resolves.toEqual({
+      detail: 'No selected API operation matched this request',
+    });
   });
 
   it('rejects duplicate handlers to avoid order-dependent mock behavior', () => {
-    expect(() => createMockApiFetch([
-      { operationId: 'API-002', resolve: () => ({ body: {} }) },
-      { operationId: 'API-002', resolve: () => ({ body: {} }) },
-    ])).toThrow('Each mock operation must have exactly one handler');
+    expect(() =>
+      createMockApiFetch([
+        { operationId: 'API-002', resolve: () => ({ body: {} }) },
+        { operationId: 'API-002', resolve: () => ({ body: {} }) },
+      ]),
+    ).toThrow('Each mock operation must have exactly one handler');
   });
 
   it.each([
-    { outcome: 'success', payload: { enrollment_id: 7, status: 'active', message: 'Payment completed.' } },
-    { outcome: 'failed', payload: { enrollment_id: 7, status: 'cancelled', message: 'Payment cancelled.' } },
-  ] as const)('decodes a valid API-034 $payload.status response through its public request boundary', async ({ outcome, payload }) => {
-    const client = createApiClient({
-      baseUrl: 'https://api.example.test',
-      fetch: async () => new Response(JSON.stringify(payload), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      }),
-    });
+    {
+      outcome: 'success',
+      payload: { enrollment_id: 7, status: 'active', message: 'Payment completed.' },
+    },
+    {
+      outcome: 'failed',
+      payload: { enrollment_id: 7, status: 'cancelled', message: 'Payment cancelled.' },
+    },
+  ] as const)(
+    'decodes a valid API-034 $payload.status response through its public request boundary',
+    async ({ outcome, payload }) => {
+      const client = createApiClient({
+        baseUrl: 'https://api.example.test',
+        fetch: async () =>
+          new Response(JSON.stringify(payload), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+      });
 
-    await expect(requestMockPaymentCompletion(sessionWith(client.request), 7, outcome)).resolves.toEqual(payload);
-  });
+      await expect(
+        requestMockPaymentCompletion(sessionWith(client.request), 7, outcome),
+      ).resolves.toEqual(payload);
+    },
+  );
 
   const malformedMockPaymentResponses: readonly MockPaymentResponseCase[] = [
     { name: 'missing fields', payload: {} },
     { name: 'null response', payload: null },
     { name: 'null fields', payload: { enrollment_id: null, status: null, message: null } },
     { name: 'wrong field types', payload: { enrollment_id: '7', status: 7, message: true } },
-    { name: 'zero enrollment id', payload: { enrollment_id: 0, status: 'active', message: 'mock' } },
-    { name: 'negative enrollment id', payload: { enrollment_id: -1, status: 'active', message: 'mock' } },
-    { name: 'non-integer enrollment id', payload: { enrollment_id: 1.5, status: 'active', message: 'mock' } },
-    { name: 'pending payment status', payload: { enrollment_id: 7, status: 'pending_payment', message: 'mock' } },
+    {
+      name: 'zero enrollment id',
+      payload: { enrollment_id: 0, status: 'active', message: 'mock' },
+    },
+    {
+      name: 'negative enrollment id',
+      payload: { enrollment_id: -1, status: 'active', message: 'mock' },
+    },
+    {
+      name: 'non-integer enrollment id',
+      payload: { enrollment_id: 1.5, status: 'active', message: 'mock' },
+    },
+    {
+      name: 'pending payment status',
+      payload: { enrollment_id: 7, status: 'pending_payment', message: 'mock' },
+    },
     { name: 'unknown status', payload: { enrollment_id: 7, status: 'unknown', message: 'mock' } },
     { name: 'non-string message', payload: { enrollment_id: 7, status: 'active', message: 7 } },
   ];
 
-  it.each(malformedMockPaymentResponses)('normalizes API-034 $name as invalid_response', async ({ payload }) => {
-    const client = createApiClient({
-      baseUrl: 'https://api.example.test',
-      fetch: async () => new Response(JSON.stringify(payload), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      }),
-    });
+  it.each(malformedMockPaymentResponses)(
+    'normalizes API-034 $name as invalid_response',
+    async ({ payload }) => {
+      const client = createApiClient({
+        baseUrl: 'https://api.example.test',
+        fetch: async () =>
+          new Response(JSON.stringify(payload), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+      });
 
-    await expect(requestMockPaymentCompletion(sessionWith(client.request), 7, 'success')).rejects.toMatchObject({
-      kind: 'invalid_response',
-      status: 200,
-    } satisfies Partial<ApiError>);
-  });
+      await expect(
+        requestMockPaymentCompletion(sessionWith(client.request), 7, 'success'),
+      ).rejects.toMatchObject({
+        kind: 'invalid_response',
+        status: 200,
+      } satisfies Partial<ApiError>);
+    },
+  );
 });

@@ -166,6 +166,27 @@
   color: var(--text-secondary);
   text-decoration: none;
 }
+.aiAssistantLink {
+  display: none;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  place-items: center;
+  border-radius: var(--radius-md);
+}
+.aiAssistantLink img {
+  width: 41.4px;
+  height: 41.4px;
+  object-fit: contain;
+}
+.aiAssistantLink:hover,
+.aiAssistantLinkActive {
+  background: var(--action-secondary-bg);
+}
+.aiAssistantLink:focus-visible {
+  outline: 2px solid var(--action-primary-bg);
+  outline-offset: 2px;
+}
 
 .cartLink:hover,
 .cartLinkActive {
@@ -411,6 +432,10 @@
 
   .cartLink {
     order: initial;
+  }
+
+  .aiAssistantLink {
+    display: inline-grid;
   }
 
   .headerCatalog .account {

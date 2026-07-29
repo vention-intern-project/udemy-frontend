@@ -2,7 +2,16 @@ import { Route, Routes } from 'react-router-dom';
 
 import { useSession } from '../../features/auth-session';
 import {
-  CartPage, CatalogPage, CourseDetailPage, ForgotPasswordPage, LearningDetailPage, LearningListPage, LoginPage, ResetPasswordPage, SignupPage,
+  AiChatPage,
+  CartPage,
+  CatalogPage,
+  CourseDetailPage,
+  ForgotPasswordPage,
+  LearningDetailPage,
+  LearningListPage,
+  LoginPage,
+  ResetPasswordPage,
+  SignupPage,
 } from '@pages/index';
 import { AppShell } from '../layouts/AppShell';
 import { PlaceholderPage } from './PlaceholderPage';
@@ -20,6 +29,7 @@ function pageForRoute(route: AppRouteDefinition) {
   if (route.id === 'PAGE-007') return <CartPage />;
   if (route.id === 'PAGE-008') return <LearningListPage />;
   if (route.id === 'PAGE-009') return <LearningDetailPage />;
+  if (route.id === 'PAGE-014' || route.id === 'PAGE-015') return <AiChatPage />;
   return <PlaceholderPage route={route} />;
 }
 
@@ -38,11 +48,7 @@ export function AppRouter() {
           <Route
             key={route.id}
             path={route.path}
-            element={(
-              <RouteBoundary route={route}>
-                {pageForRoute(route)}
-              </RouteBoundary>
-            )}
+            element={<RouteBoundary route={route}>{pageForRoute(route)}</RouteBoundary>}
           />
         ))}
         <Route path="*" element={<NotFoundState />} />

@@ -130,6 +130,7 @@ describe('TanStack server-state boundary', () => {
       'API-004': 'required',
       'API-005': 'required',
       'API-006': 'required',
+      'API-007': 'required',
       'API-008': 'public',
       'API-009': 'required',
       'API-010': 'optional',

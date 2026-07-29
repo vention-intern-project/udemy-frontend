@@ -28,6 +28,7 @@ export const API_OPERATION_METADATA_BY_ID = {
   'API-004': { authPolicy: 'required', sensitiveVariables: false },
   'API-005': { authPolicy: 'required', sensitiveVariables: false },
   'API-006': { authPolicy: 'required', sensitiveVariables: false },
+  'API-007': { authPolicy: 'required', sensitiveVariables: false },
   'API-008': { authPolicy: 'public', sensitiveVariables: false },
   'API-009': { authPolicy: 'required', sensitiveVariables: false },
   'API-010': { authPolicy: 'optional', sensitiveVariables: false },

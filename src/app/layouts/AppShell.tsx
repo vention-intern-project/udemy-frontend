@@ -14,6 +14,7 @@ import { Link, matchPath, NavLink, Outlet, useLocation, useNavigate } from 'reac
 import type { Cart } from '@entities/cart';
 import type { UserProfile } from '@entities/user';
 import { useSession, type SessionState } from '@features/auth-session';
+import { useCourseChatSessionControls } from '@features/course-chat';
 import { cartQueryKey, requestCart } from '@features/cart-workflow';
 import {
   addCatalogSearchHistory,
@@ -24,6 +25,8 @@ import {
 } from '@features/catalog-discovery';
 import { Input, VisuallyHidden } from '@shared/ui/primitives';
 import { useDensityMode } from '@shared/ui/theme';
+import { CourseChatLauncher } from '@widgets/course-chat';
+import assistantIcon from './assets/ai-assistant-navigation-icon.png';
 import { APP_ROUTE_BY_ID, densityForPath, routeForPath } from '../router/route-registry';
 import styles from './AppShell.module.css';
 
@@ -121,6 +124,26 @@ function CartNavigationLink({ itemCount }: CartNavigationLinkProps) {
     >
       <ShoppingCart aria-hidden="true" focusable="false" size={24} strokeWidth={2} />
       {presentation.badge ? <span className={styles.cartBadge}>{presentation.badge}</span> : null}
+    </NavLink>
+  );
+}
+
+function AiAssistantNavigationLink() {
+  const { resetConversation } = useCourseChatSessionControls();
+  return (
+    <NavLink
+      aria-label="Open AI assistant"
+      className={({ isActive }) =>
+        [styles.aiAssistantLink, isActive ? styles.aiAssistantLinkActive : null]
+          .filter(Boolean)
+          .join(' ')
+      }
+      to="/ai-chat"
+      onClick={(event) => {
+        if (isCurrentTabNavigation(event)) resetConversation({ kind: 'general' });
+      }}
+    >
+      <img src={assistantIcon} alt="" aria-hidden="true" />
     </NavLink>
   );
 }
@@ -232,6 +255,13 @@ export function AppShell() {
   const hasCatalogSearch =
     isCatalogRoute || (state.status === 'authenticated' && layout === 'workspace');
   const isAnonymousCatalogRoute = isCatalogRoute && isAnonymous;
+  const launcherRouteIds = new Set(['PAGE-001', 'PAGE-002', 'PAGE-007', 'PAGE-008']);
+  const hasGlobalAssistant = route !== undefined && launcherRouteIds.has(route.id);
+  const isAssistantGuest = isAnonymous && (route?.id === 'PAGE-001' || route?.id === 'PAGE-002');
+  const globalAssistant =
+    state.status === 'authenticated' && state.user.role === 'student'
+      ? { context: { kind: 'general' as const } }
+      : null;
   const desktopPrimaryNavigation = navigation.filter(
     (item) => item.desktopGroup !== 'auth-actions',
   );
@@ -561,6 +591,7 @@ export function AppShell() {
           <div className={styles.headerCatalogEnd}>
             {state.status === 'authenticated' && state.user.role === 'student' ? (
               <div className={styles.headerCartAccountGroup}>
+                <AiAssistantNavigationLink />
                 <CartNavigationLink itemCount={cart.data?.itemCount} />
                 <div className={styles.account}>
                   <InitialsMarker user={state.user} />
@@ -668,6 +699,9 @@ export function AppShell() {
         <span>(c) 2026 LearnHub</span>
         <span>Accessible learning, built for every role.</span>
       </footer>
+      {hasGlobalAssistant && (globalAssistant !== null || isAssistantGuest) ? (
+        <CourseChatLauncher assistant={globalAssistant} guest={isAssistantGuest} />
+      ) : null}
     </div>
   );
 }
