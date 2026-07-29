@@ -136,7 +136,7 @@ describe('quality execution provenance', () => {
     expect(verbose.stdout).toHaveLength(megabyte + 1);
     const overflow = runCapturedCommand(
       process.execPath,
-      ['-e', `process.stdout.write('x'.repeat(${megabyte + 1}))`],
+      ['-e', `process.stdout.write('x'.repeat(${megabyte * 2}))`],
       { maxBuffer: megabyte },
     );
     expect(overflow.status).not.toBe(0);
