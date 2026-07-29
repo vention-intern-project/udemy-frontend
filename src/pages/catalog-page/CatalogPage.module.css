@@ -87,6 +87,7 @@
 .resultsHeading h2 {
   flex: none;
   margin: 0;
+  min-block-size: var(--type-card-h3-lh);
   color: var(--text-muted);
   font-size: var(--type-card-h3-size);
   font-weight: var(--font-weight-regular);
@@ -94,8 +95,12 @@
 }
 
 .resultsTotal {
+  display: inline-block;
+  min-inline-size: 2ch;
   color: var(--text-primary);
   font-weight: var(--font-weight-bold);
+  font-variant-numeric: tabular-nums;
+  text-align: end;
 }
 
 .resultsSuffix {

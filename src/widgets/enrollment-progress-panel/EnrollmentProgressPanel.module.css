@@ -34,6 +34,17 @@
   display: grid;
   gap: var(--space-3, 12px);
 }
+.lessonsHeading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+  align-items: baseline;
+}
+.lessonAvailability {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
 .list {
   display: grid;
   gap: var(--space-2, 8px);
@@ -70,10 +81,22 @@
   background: var(--action-primary-bg);
   border-color: transparent;
 }
+.lessonCompletionAction {
+  flex: 0 0 auto;
+  inline-size: 10rem;
+}
+.markComplete > span {
+  color: inherit;
+}
 @media (max-width: 480px) {
   .lesson,
   .summary {
     align-items: stretch;
+    flex-direction: column;
+  }
+
+  .lessonsHeading {
+    align-items: flex-start;
     flex-direction: column;
   }
 }

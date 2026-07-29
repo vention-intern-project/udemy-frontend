@@ -1,16 +1,15 @@
 import type { CourseListQueryDto } from '@entities/course';
 
 export const CATALOG_PAGE_SIZE = 20;
-export type CatalogSort =
-  | 'created_at'
-  | '-created_at'
-  | 'price'
-  | '-price'
-  | 'title'
-  | '-title';
+export type CatalogSort = 'created_at' | '-created_at' | 'price' | '-price' | 'title' | '-title';
 
 export const CATALOG_SORT_VALUES = [
-  'created_at', '-created_at', 'price', '-price', 'title', '-title',
+  'created_at',
+  '-created_at',
+  'price',
+  '-price',
+  'title',
+  '-title',
 ] as const satisfies readonly CatalogSort[];
 
 export type CatalogPriceField = 'min_price' | 'max_price';
@@ -94,6 +93,10 @@ export function serializeCatalogQuery(query: CatalogQuery): string {
   return params.toString();
 }
 
+export function catalogResultSetKey(query: CatalogQuery): string {
+  return serializeCatalogQuery({ ...query, page: 1, sort: 'created_at' });
+}
+
 export function toCourseListQuery(query: CatalogQuery): CourseListQueryDto {
   return {
     page: query.page,
@@ -126,16 +129,17 @@ export function validateCatalogDraft(draft: CatalogFilterDraft): CatalogFilterVa
   const errors: Partial<Record<CatalogPriceField, string>> = {};
   if (min === 'invalid') errors.min_price = 'Enter a non-negative price.';
   if (max === 'invalid') errors.max_price = 'Enter a non-negative price.';
-  if (min !== 'invalid' && max !== 'invalid' && min !== undefined && max !== undefined && min > max) {
-    errors.max_price = 'Maximum price must be at least the minimum price.';
-  }
   if (Object.keys(errors).length > 0) return { errors };
+  const validMin = min === 'invalid' ? undefined : min;
+  const validMax = max === 'invalid' ? undefined : max;
+  const normalizedMax =
+    validMin !== undefined && validMax !== undefined && validMax < validMin ? validMin : validMax;
   return {
     errors,
     value: {
       search_query: draft.search_query.trim() || undefined,
-      min_price: min === 'invalid' ? undefined : min,
-      max_price: max === 'invalid' ? undefined : max,
+      min_price: validMin,
+      max_price: normalizedMax,
       sort: draft.sort,
       page: 1,
     },

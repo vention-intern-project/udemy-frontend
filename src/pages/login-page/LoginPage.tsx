@@ -97,7 +97,9 @@ export function LoginPage() {
       footer={
         <>
           <span>New to LearnHub?</span>{' '}
-          <AuthLink to={signupDestination}>Create an account</AuthLink>
+          <AuthLink tone="primary" to={signupDestination}>
+            Create an account
+          </AuthLink>
         </>
       }
     >
@@ -127,7 +129,9 @@ export function LoginPage() {
           disabled={mutation.isPending}
           onChange={setPassword}
         />
-        <AuthLink to="/forgot-password">Forgot your password?</AuthLink>
+        <AuthLink tone="primary" to="/forgot-password">
+          Forgot your password?
+        </AuthLink>
         <Button
           type="submit"
           fullWidth

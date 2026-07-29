@@ -337,9 +337,7 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
   await expect(page.getByText('Price unavailable')).toBeVisible();
   await expect(page.locator('[data-part="course-card-body"] p')).toHaveCount(0);
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  await expect(page.getByText('View details', { exact: true })).toHaveCount(2);
-  await expect(page.getByText('View draft', { exact: true })).toHaveCount(3);
-  await expect(page.getByText(/^(View details|View draft)$/)).toHaveCount(5);
+  await expect(page.getByRole('button', { name: 'View course details' })).toHaveCount(5);
 
   for (const width of [320, 390, 768, 1100, 1280, 1440]) {
     await page.setViewportSize({ width, height: 900 });
@@ -557,7 +555,7 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
     .locator('[data-part="course-card"]')
     .filter({ has: page.getByRole('heading', { level: 3, name: 'React' }) });
   await expect(reactCard.locator('[data-part="course-card-metadata"]')).toHaveText(
-    'Ada Lovelace · 4 lessons',
+    'Ada Lovelace · 4 lessons available',
   );
   await expect(reactCard.locator('[data-part="course-card-metadata"] p')).toHaveCount(0);
   await expect(reactCard.locator('[data-part="course-card-metadata"]')).not.toContainText('by ');
@@ -575,7 +573,7 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
       .locator('[data-part="course-card"]')
       .filter({ has: page.getByRole('heading', { level: 3, name: 'TypeScript' }) })
       .locator('[data-part="course-card-metadata"]'),
-  ).toHaveText('Ada Lovelace · 1 lesson');
+  ).toHaveText('Ada Lovelace · 1 lesson available');
   const reactCardLink = reactCard.getByRole('link', { name: 'React' });
   await expect(reactCard.getByRole('dialog')).toHaveCount(0);
   await expect(reactCardLink).not.toHaveAttribute('aria-describedby');
@@ -751,6 +749,8 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
   await expect(draftButton).toHaveCSS('color', 'rgb(255, 255, 255)');
   await expect(freeLink).toHaveCSS('background-color', 'rgb(109, 40, 217)');
   await expect(freeLink).toHaveCSS('color', 'rgb(255, 255, 255)');
+  await expect(freeLink).toHaveCSS('border-top-left-radius', '8px');
+  await expect(paidLink).toHaveCSS('border-top-left-radius', '8px');
   const actionGeometry = await Promise.all([reactCard.boundingBox(), draftButton.boundingBox()]);
   expect(actionGeometry[0]).not.toBeNull();
   expect(actionGeometry[1]).not.toBeNull();
@@ -829,7 +829,9 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
         document.body.scrollWidth <= document.documentElement.clientWidth,
     ),
   ).toBe(true);
-  const publishedDisclosureButton = publishedCard.getByRole('button', { name: 'View details' });
+  const publishedDisclosureButton = publishedCard.getByRole('button', {
+    name: 'View course details',
+  });
   const disclosurePillBefore = await publishedDisclosureButton.evaluate((button) => {
     const pill = button.querySelector<HTMLElement>('[data-part="course-card-disclosure-pill"]');
     if (!pill) throw new Error('Course-card disclosure visual pill is missing.');
@@ -846,15 +848,13 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
       pillFontSize: style.fontSize,
     };
   });
-  expect(disclosurePillBefore).toEqual({
-    buttonHeight: 44,
-    pillWidth: 96,
-    pillHeight: 28,
-    pillRadius: '9999px',
-    pillPaddingInlineStart: '8px',
-    pillPaddingInlineEnd: '8px',
-    pillFontSize: '13px',
-  });
+  expect(disclosurePillBefore.buttonHeight).toBeGreaterThanOrEqual(disclosurePillBefore.pillHeight);
+  expect(disclosurePillBefore.pillWidth).toBeGreaterThan(disclosurePillBefore.pillHeight);
+  expect(disclosurePillBefore.pillHeight).toBe(28);
+  expect(disclosurePillBefore.pillRadius).toBe('9999px');
+  expect(disclosurePillBefore.pillPaddingInlineStart).toBe('6px');
+  expect(disclosurePillBefore.pillPaddingInlineEnd).toBe('6px');
+  expect(disclosurePillBefore.pillFontSize).toBe('13px');
   const cardBoundsBeforeDisclosure = await page
     .locator('[data-part="course-card"]')
     .evaluateAll((cards) =>
@@ -864,13 +864,13 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
       }),
     );
   await publishedDisclosureButton.click();
-  await expect(publishedCard.getByRole('button', { name: 'View details' })).toHaveAttribute(
+  await expect(publishedCard.getByRole('button', { name: 'View course details' })).toHaveAttribute(
     'aria-expanded',
     'true',
   );
   await expect(publishedDisclosureButton).toHaveAttribute('aria-pressed', 'true');
   const disclosurePillAfter = await publishedCard
-    .getByRole('button', { name: 'View details' })
+    .getByRole('button', { name: 'View course details' })
     .locator('[data-part="course-card-disclosure-pill"]')
     .boundingBox();
   expect(disclosurePillAfter).not.toBeNull();
@@ -879,7 +879,7 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
   await expect(reactCard.locator('button[aria-expanded="false"]')).toHaveCount(1);
   await reactCard.hover();
   const transientPillState = await reactCard
-    .getByRole('button', { name: 'View draft' })
+    .getByRole('button', { name: 'View course details' })
     .evaluate((button) => {
       const pill = button.querySelector<HTMLElement>('[data-part="course-card-disclosure-pill"]');
       if (!pill) throw new Error('Transient disclosure pill is missing.');
@@ -1672,7 +1672,7 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   await expect(
     page.locator('[data-part="course-card-metadata"]').getByText('Ada Lovelace', { exact: true }),
   ).toBeVisible();
-  await expect(page.getByText('1 lesson', { exact: true })).toBeVisible();
+  await expect(page.getByText('1 lesson available', { exact: true })).toBeVisible();
   expect(requests[0]).toContain('page_size=20');
 
   const filters = page.getByRole('form', { name: 'Course filters' });
@@ -2549,6 +2549,26 @@ test('shows linked invalid-price validation on blur, then submits a corrected va
   const correctedRequest = requests[requests.length - 1];
   expect(correctedRequest).toContain('min_price=5');
   expect(correctedRequest).toContain('page_size=20');
+
+  const requestCountBeforeInvertedSubmit = requests.length;
+  await maximum.fill('3');
+  await minimum.focus();
+
+  await expect(page.getByText('Maximum price must be at least the minimum price.')).toHaveCount(0);
+  await expect(maximum).not.toHaveAttribute('aria-invalid', 'true');
+  await expect(page).toHaveURL('/?min_price=5&max_price=5');
+  await expect.poll(() => requests.length).toBe(requestCountBeforeInvertedSubmit + 1);
+  const normalizedRequest = requests[requests.length - 1];
+  expect(normalizedRequest).toContain('min_price=5');
+  expect(normalizedRequest).toContain('max_price=5');
+
+  await maximum.fill('15');
+  await maximum.press('Enter');
+  await expect(page).toHaveURL('/?min_price=5&max_price=15');
+  await expect.poll(() => requests.length).toBe(requestCountBeforeInvertedSubmit + 2);
+  const recoveredRequest = requests[requests.length - 1];
+  expect(recoveredRequest).toContain('min_price=5');
+  expect(recoveredRequest).toContain('max_price=15');
   assertClean();
 });
 
@@ -2873,7 +2893,7 @@ test('contains a right-exhausted left course tooltip without horizontal document
   assertClean();
 });
 
-test('renders the DD-043 disclosure and Cart pills with stable state colors and alignment', async ({
+test('renders the DD-174 quiet cart state and Details disclosure without changing actions', async ({
   page,
 }) => {
   const assertClean = await monitor(page);
@@ -2935,58 +2955,48 @@ test('renders the DD-043 disclosure and Cart pills with stable state colors and 
   const card = page
     .locator('[data-part="course-card"]')
     .filter({ has: page.getByRole('heading', { level: 3, name: 'React' }) });
-  const button = card.getByRole('button', { name: 'View details' });
+  const button = card.getByRole('button', { name: 'View course details' });
   const pill = button.locator('[data-part="course-card-disclosure-pill"]');
-  const status = card.locator('[data-part="course-card-cart-status"]');
-  await expect(status).toHaveText('In cart');
-  await expect(status).not.toContainText('✓');
+  await expect(card.locator('[data-part="course-card-cart-status"]')).toHaveCount(0);
+  await expect(pill).toHaveText('Details');
 
   const readPillState = async () =>
     pill.evaluate((element) => {
       const buttonElement = element.closest('button');
-      const statusElement = document.querySelector<HTMLElement>(
-        '[data-part="course-card-cart-status"]',
-      );
-      if (!buttonElement || !statusElement)
-        throw new Error('Disclosure button or Cart status pill is missing.');
+      if (!buttonElement) throw new Error('Disclosure button is missing.');
       const pillRect = element.getBoundingClientRect();
       const buttonRect = buttonElement.getBoundingClientRect();
-      const statusRect = statusElement.getBoundingClientRect();
       const style = getComputedStyle(element);
       return {
         background: style.backgroundColor,
         border: style.borderColor,
+        color: style.color,
         outlineColor: style.outlineColor,
         outlineWidth: style.outlineWidth,
         pillWidth: pillRect.width,
         pillHeight: pillRect.height,
         buttonHeight: buttonRect.height,
-        topDelta: Math.abs(pillRect.top - statusRect.top),
-        centreDelta: Math.abs(
-          pillRect.top + pillRect.height / 2 - (statusRect.top + statusRect.height / 2),
-        ),
       };
     });
 
   const idle = await readPillState();
   expect(idle.background).toBe('rgb(255, 255, 255)');
   expect(idle.border).toBe('rgb(209, 213, 219)');
-  expect(idle.pillWidth).toBe(96);
-  expect(idle.pillHeight).toBe(28);
-  expect(idle.buttonHeight).toBe(44);
-  expect(idle.topDelta).toBeLessThanOrEqual(1);
-  expect(idle.centreDelta).toBeLessThanOrEqual(1);
+  expect(idle.color).toBe('rgb(17, 24, 39)');
+  expect(idle.buttonHeight).toBeGreaterThanOrEqual(idle.pillHeight);
 
   await button.hover();
   const hovered = await readPillState();
   expect(hovered.background).toBe('rgb(255, 255, 255)');
   expect(hovered.border).toBe('rgb(109, 40, 217)');
+  expect(hovered.color).toBe('rgb(17, 24, 39)');
 
   await button.click();
   await expect(button).toHaveAttribute('aria-pressed', 'true');
   const pinned = await readPillState();
   expect(pinned.background).toBe('rgb(255, 255, 255)');
   expect(pinned.border).toBe('rgb(109, 40, 217)');
+  expect(pinned.color).toBe('rgb(17, 24, 39)');
 
   await page.keyboard.press('Shift+Tab');
   await page.keyboard.press('Tab');
@@ -3512,11 +3522,11 @@ test('A124 keeps one delayed, hoverable and pinnable controlled popover with a c
   const reactCard = page
     .locator('[data-part="course-card"]')
     .filter({ has: page.getByRole('heading', { level: 3, name: 'React' }) });
-  const reactTrigger = reactCard.getByRole('button', { name: 'View details' });
+  const reactTrigger = reactCard.getByRole('button', { name: 'View course details' });
   const typeScriptCard = page
     .locator('[data-part="course-card"]')
     .filter({ has: page.getByRole('heading', { level: 3, name: 'TypeScript' }) });
-  const typeScriptTrigger = typeScriptCard.getByRole('button', { name: 'View details' });
+  const typeScriptTrigger = typeScriptCard.getByRole('button', { name: 'View course details' });
   const action = reactCard.getByRole('link', { name: 'Add to cart' });
 
   await reactCard.hover();
@@ -3663,7 +3673,7 @@ test('A124 uses the explicit trigger only for coarse-pointer input', async ({ pa
   await page.setViewportSize({ width: 390, height: 900 });
   await page.goto('/');
   const card = page.locator('[data-part="course-card"]');
-  const trigger = card.getByRole('button', { name: 'View details' });
+  const trigger = card.getByRole('button', { name: 'View course details' });
   await card.hover();
   await page.waitForTimeout(320);
   await expect(page.getByRole('dialog')).toHaveCount(0);

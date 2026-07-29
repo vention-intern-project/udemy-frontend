@@ -212,7 +212,13 @@ describe('LearningListPage', () => {
     await renderPage(request, '/learning');
 
     expect(await screen.findByText('1 enrollment · Page 1 of 1')).toBeTruthy();
-    expect(screen.getAllByRole('link', { name: 'Browse courses' })).toHaveLength(1);
+    const browseCourses = screen.getByRole('link', { name: 'Browse courses' });
+    expect(browseCourses.getAttribute('href')).toBe('/');
+    expect(browseCourses.querySelector('svg')).toBeTruthy();
+    expect(
+      browseCourses.compareDocumentPosition(screen.getByRole('heading', { name: 'My learning' })) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     const courseTitle = screen.getByRole('heading', { level: 2, name: 'Active course' });
     const enrollmentStatus = screen.getByText('Active');
     expect(

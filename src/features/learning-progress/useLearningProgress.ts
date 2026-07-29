@@ -173,6 +173,8 @@ export function useLearningWorkspace(
   const rowScopeRef = useRef(rowScope);
   rowScopeRef.current = rowScope;
   const [feedback, setFeedback] = useState<LessonProgressFeedback | null>(null);
+  const feedbackRef = useRef(feedback);
+  feedbackRef.current = feedback;
   const feedbackMotionRef = useRef(feedbackMotion);
   feedbackMotionRef.current = feedbackMotion;
   const feedbackVisibleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -191,33 +193,54 @@ export function useLearningWorkspace(
     feedbackExitTimerRef.current = null;
   }, []);
 
+  const replaceFeedback = useCallback((nextFeedback: LessonProgressFeedback | null) => {
+    feedbackRef.current = nextFeedback;
+    setFeedback(nextFeedback);
+  }, []);
+
   const setPersistentFeedback = useCallback(
     (nextFeedback: LessonProgressFeedback | null) => {
       clearFeedbackTimers();
-      setFeedback(nextFeedback);
+      replaceFeedback(nextFeedback);
     },
-    [clearFeedbackTimers],
+    [clearFeedbackTimers, replaceFeedback],
   );
 
-  const setTransientSuccessFeedback = useCallback(
-    (message: string, attempt: LessonProgressAttempt) => {
+  const clearPersistentErrorFeedback = useCallback(() => {
+    if (feedbackRef.current?.tone === 'error') replaceFeedback(null);
+  }, [replaceFeedback]);
+
+  const setTransientFeedback = useCallback(
+    (
+      tone: Extract<LessonProgressFeedback['tone'], 'info' | 'success'>,
+      message: string,
+      attempt: LessonProgressAttempt,
+    ) => {
       clearFeedbackTimers();
-      setFeedback({ tone: 'success', message, visibility: 'visible' });
+      const currentFeedback = feedbackRef.current;
+      if (
+        currentFeedback?.tone !== tone ||
+        currentFeedback.message !== message ||
+        currentFeedback.visibility !== 'visible'
+      ) {
+        replaceFeedback({ tone, message, visibility: 'visible' });
+      }
       feedbackVisibleTimerRef.current = setTimeout(() => {
         if (currentScopeRef.current !== attempt.workspaceIdentity) return;
-        setFeedback((current) =>
-          current?.tone === 'success' ? { ...current, visibility: 'exiting' } : current,
-        );
+        const currentFeedback = feedbackRef.current;
+        if (currentFeedback?.tone === tone) {
+          replaceFeedback({ ...currentFeedback, visibility: 'exiting' });
+        }
         if (feedbackMotionRef.current.reducedMotion) {
-          setFeedback(null);
+          replaceFeedback(null);
           return;
         }
         feedbackExitTimerRef.current = setTimeout(() => {
-          if (currentScopeRef.current === attempt.workspaceIdentity) setFeedback(null);
+          if (currentScopeRef.current === attempt.workspaceIdentity) replaceFeedback(null);
         }, SUCCESS_FEEDBACK_EXIT_MS);
       }, SUCCESS_FEEDBACK_VISIBLE_MS);
     },
-    [clearFeedbackTimers],
+    [clearFeedbackTimers, replaceFeedback],
   );
 
   useEffect(() => {
@@ -296,7 +319,7 @@ export function useLearningWorkspace(
       rowScopeRef.current = nextScope;
       setRowScope(nextScope);
       setPending((current) => new Map(current).set(attempt.identity, attempt));
-      setPersistentFeedback(null);
+      clearPersistentErrorFeedback();
       return { attempt, previous };
     },
     onSuccess: async (result, attempt) => {
@@ -313,7 +336,8 @@ export function useLearningWorkspace(
           rowScopeRef.current = nextScope;
           setRowScope(nextScope);
         }
-        setTransientSuccessFeedback(
+        setTransientFeedback(
+          result.completed ? 'success' : 'info',
           result.completed ? 'Lesson marked complete.' : 'Lesson marked incomplete.',
           attempt,
         );

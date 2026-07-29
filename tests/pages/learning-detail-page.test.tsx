@@ -304,6 +304,45 @@ describe('LearningDetailPage', () => {
     expect(screen.getByRole('progressbar', { name: '0 of 1 lesson completed, 0%' })).toBeTruthy();
   });
 
+  it('projects visible lessons as available and the progress remainder as coming soon', async () => {
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/enrollments/4') return decode(options, activeEnrollment);
+      if (options.path === '/courses/7/progress')
+        return decode(options, {
+          course_id: 7,
+          completed_lessons: 0,
+          total_lessons: 4,
+          progress_percentage: 0,
+        });
+      if (options.path === '/courses/7/lessons')
+        return decode(options, {
+          items: [
+            { ...oneLessonOutline.items[0]!, id: 12, is_published: true },
+            { ...oneLessonOutline.items[0]!, id: 13, is_published: true },
+            { ...oneLessonOutline.items[0]!, id: 14, is_published: true },
+          ],
+          page: 1,
+          page_size: 100,
+          total: 3,
+          pages: 1,
+          has_next: false,
+          has_previous: false,
+        });
+      throw new Error(`Unexpected request ${options.path}`);
+    };
+
+    await renderPage(request);
+
+    expect(await screen.findByText('3 available now · 1 lesson coming soon')).toBeTruthy();
+    expect(
+      screen.getByText('3 available now · 1 lesson coming soon').previousElementSibling
+        ?.textContent,
+    ).toBe('Lessons (3)');
+  });
+
   it('starts each active lesson as explicitly unknown despite nonzero aggregate progress', async () => {
     const request: ApiClient['request'] = async <TResponse, TBody>(
       options: ApiRequestOptions<TBody, TResponse>,
@@ -794,6 +833,12 @@ describe('LearningDetailPage', () => {
     const action = await screen.findByRole('button', { name: 'Mark complete' });
     await act(async () => {
       await user.click(action);
+    });
+    expect(action.getAttribute('aria-busy')).toBe('true');
+    expect(action.getAttribute('aria-disabled')).toBe('true');
+    expect(action.querySelector('[data-part="spinner"]')).toBeNull();
+    expect(action.textContent).toContain('Mark incomplete');
+    await act(async () => {
       await user.click(action);
     });
     expect(completeRequests).toBe(1);
@@ -899,6 +944,12 @@ describe('LearningDetailPage', () => {
       await Promise.resolve();
     });
     expect(screen.getByText('Lesson marked incomplete.')).toBeTruthy();
+    expect(
+      screen
+        .getByText('Lesson marked incomplete.')
+        .closest('[role="status"]')
+        ?.getAttribute('data-tone'),
+    ).toBe('info');
     await act(async () => {
       vi.advanceTimersByTime(120);
     });
@@ -912,6 +963,80 @@ describe('LearningDetailPage', () => {
       vi.advanceTimersByTime(10000);
     });
     expect(error).toBeTruthy();
+  });
+
+  it('extends the existing success notice without restarting its visible state', async () => {
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/enrollments/4') return decode(options, activeEnrollment);
+      if (options.path === '/courses/7/progress')
+        return decode(options, {
+          course_id: 7,
+          completed_lessons: 0,
+          total_lessons: 2,
+          progress_percentage: 0,
+        });
+      if (options.path === '/courses/7/lessons')
+        return decode(options, {
+          items: [
+            oneLessonOutline.items[0]!,
+            { ...oneLessonOutline.items[0]!, id: 13, title: 'Second lesson' },
+          ],
+          page: 1,
+          page_size: 100,
+          total: 2,
+          pages: 1,
+          has_next: false,
+          has_previous: false,
+        });
+      if (options.path.endsWith('/complete')) {
+        const pathSegments = options.path.split('/');
+        const lessonId = Number(pathSegments[pathSegments.length - 2]);
+        return decode(options, {
+          lesson_id: lessonId,
+          completed: true,
+          completed_at: '2026-07-27T00:00:00Z',
+        });
+      }
+      throw new Error(`Unexpected request ${options.path}`);
+    };
+
+    await renderPage(request);
+    const actions = await screen.findAllByRole('button', { name: 'Mark complete' });
+    vi.useFakeTimers();
+    await act(async () => {
+      fireEvent.click(actions[0]!);
+      await Promise.resolve();
+    });
+    const feedbackSlot =
+      screen.getByText('Lesson marked complete.').parentElement?.parentElement?.parentElement;
+    const feedbackNotice = screen.getByText('Lesson marked complete.').closest('[role="status"]');
+    expect(feedbackSlot?.getAttribute('data-feedback-state')).toBe('visible');
+    expect(feedbackNotice).toBeTruthy();
+
+    await act(async () => {
+      vi.advanceTimersByTime(3900);
+      fireEvent.click(actions[1]!);
+      await Promise.resolve();
+    });
+    expect(feedbackSlot?.getAttribute('data-feedback-state')).toBe('visible');
+    expect(screen.getByText('Lesson marked complete.')).toBeTruthy();
+    expect(screen.getByText('Lesson marked complete.').closest('[role="status"]')).toBe(
+      feedbackNotice,
+    );
+
+    await act(async () => {
+      vi.advanceTimersByTime(120);
+    });
+    expect(screen.getByText('Lesson marked complete.')).toBeTruthy();
+    expect(feedbackSlot?.getAttribute('data-feedback-state')).toBe('visible');
+
+    await act(async () => {
+      vi.advanceTimersByTime(3880);
+    });
+    expect(feedbackSlot?.getAttribute('data-feedback-state')).toBe('exiting');
   });
 
   it('removes the exiting success immediately when reduced motion is preferred', async () => {

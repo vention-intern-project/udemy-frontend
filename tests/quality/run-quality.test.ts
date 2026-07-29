@@ -112,6 +112,19 @@ const { ESLint } = createRequire(import.meta.url)('eslint') as {
 };
 
 describe('quality execution provenance', () => {
+  it('uses one isolated fork only for the embedded quality-report test command', async () => {
+    const qualityRunner = await readFile(resolve('scripts/quality/run-quality.mjs'), 'utf8');
+    const packageJson = JSON.parse(await readFile(resolve('package.json'), 'utf8')) as {
+      scripts: { test: string };
+    };
+
+    expect(qualityRunner).toContain(
+      "'--pool=forks',\n      '--poolOptions.forks.maxForks=1',\n      '--poolOptions.forks.minForks=1',\n      '--poolOptions.forks.isolate=true',",
+    );
+    expect(qualityRunner).not.toContain('--poolOptions.forks.singleFork=true');
+    expect(packageJson.scripts.test).toBe('vitest run');
+  });
+
   it("captures output above Node's default and fails closed at an explicit bounded cap", () => {
     const megabyte = 1024 * 1024;
     const verbose = runCapturedCommand(
@@ -123,7 +136,7 @@ describe('quality execution provenance', () => {
     expect(verbose.stdout).toHaveLength(megabyte + 1);
     const overflow = runCapturedCommand(
       process.execPath,
-      ['-e', `process.stdout.write('x'.repeat(${megabyte + 1}))`],
+      ['-e', `process.stdout.write('x'.repeat(${megabyte * 2}))`],
       { maxBuffer: megabyte },
     );
     expect(overflow.status).not.toBe(0);
@@ -1497,6 +1510,15 @@ describe('staged and CI decision simulations', () => {
     expect(workflow).toContain('frontend-quality-report-${{ env.QUALITY_TARGET_SHA }}');
     expect(workflow).toContain('--sha "$QUALITY_TARGET_SHA"');
     expect(workflow).toContain('QUALITY_TARGET_SHA: ${{ env.QUALITY_TARGET_SHA }}');
+    const qualityReport = workflow.slice(
+      workflow.indexOf('  quality-report:\n'),
+      workflow.indexOf('  frontend-quality-required:\n'),
+    );
+    expect(qualityReport).toContain('if: always()\n        uses: actions/upload-artifact@');
+    expect(qualityReport).toContain('name: frontend-quality-report-${{ env.QUALITY_TARGET_SHA }}');
+    expect(qualityReport).toContain('path: quality-reports/current.json');
+    expect(qualityReport).toContain('retention-days: 7');
+    expect(qualityReport).toContain('if-no-files-found: error');
   });
 
   it('orders aggregate guard, clean checkout, report download, and verification fail closed', async () => {

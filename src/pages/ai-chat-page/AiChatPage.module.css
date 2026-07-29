@@ -144,7 +144,7 @@
   border-block-end: var(--border-width) solid var(--border-default);
 }
 .suggestedAction,
-.suggestedActionPrimary {
+.suggestedActionSelected {
   display: inline-flex;
   align-items: center;
   justify-content: start;
@@ -162,22 +162,22 @@
   cursor: pointer;
 }
 .suggestedAction svg,
-.suggestedActionPrimary svg {
+.suggestedActionSelected svg {
   width: 16px;
   height: 16px;
   flex: 0 0 auto;
 }
-.suggestedActionPrimary {
+.suggestedActionSelected {
   color: var(--action-secondary-fg);
   background: var(--action-secondary-bg);
   border-color: var(--action-primary-bg);
 }
 .suggestedAction:hover,
-.suggestedActionPrimary:hover {
+.suggestedActionSelected:hover {
   border-color: var(--action-primary-bg);
 }
 .suggestedAction:focus-visible,
-.suggestedActionPrimary:focus-visible {
+.suggestedActionSelected:focus-visible {
   outline: 2px solid var(--action-primary-bg);
   outline-offset: 2px;
 }
@@ -258,13 +258,14 @@
   position: absolute;
   z-index: var(--z-dropdown);
   inset-block-start: calc(100% + var(--spacing-1));
-  inset-inline-end: 0;
+  inset-inline-start: 50%;
   min-inline-size: 8.5rem;
   padding: var(--spacing-1);
   background: var(--color-surface);
   border: var(--border-width) solid var(--border-default);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-2);
+  transform: translateX(-50%);
 }
 .actionMenuItem {
   display: inline-flex;
@@ -274,7 +275,7 @@
   width: 100%;
   min-height: var(--control-height-md);
   padding-inline: var(--spacing-3);
-  color: var(--feedback-error);
+  color: var(--text-primary);
   background: transparent;
   border: 0;
   border-radius: var(--radius-sm);
@@ -289,7 +290,7 @@
   height: 16px;
 }
 .actionMenuItem:hover {
-  background: var(--feedback-error-bg);
+  color: var(--feedback-error);
 }
 .actionMenuItem:focus-visible {
   outline: 2px solid var(--action-primary-bg);

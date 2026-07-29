@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import {
+  catalogResultSetKey,
   parseCatalogQuery,
   serializeCatalogQuery,
   type CatalogQuery,
@@ -23,6 +24,17 @@ type RefreshAnnouncement = 'Course results updated.' | 'Updating course results�
 type DisclosureDismissOptions = {
   returnFocus?: boolean;
 };
+
+interface CatalogResultTotal {
+  readonly criteriaKey: string;
+  readonly presentationKey: string;
+  readonly total: number;
+}
+
+interface CatalogPaginationSnapshot {
+  readonly criteriaKey: string;
+  readonly totalPages: number;
+}
 
 function resolveBrowserSelectedFocusTarget(target: HTMLElement) {
   if (target.isConnected) return target;
@@ -88,8 +100,15 @@ export function CatalogPage() {
   const activeDisclosureCourseIdRef = useRef<CourseDisclosureId | null>(null);
   const refreshWasPendingRef = useRef(false);
   const [refreshAnnouncement, setRefreshAnnouncement] = useState<RefreshAnnouncement>(null);
+  const [lastKnownResultTotal, setLastKnownResultTotal] = useState<CatalogResultTotal | null>(null);
+  const [lastKnownPagination, setLastKnownPagination] = useState<CatalogPaginationSnapshot | null>(
+    null,
+  );
   const search = searchParams.toString();
   const query = useMemo(() => parseCatalogQuery(new URLSearchParams(search)), [search]);
+  const queryKey = useMemo(() => serializeCatalogQuery(query), [query]);
+  const criteriaKey = useMemo(() => catalogResultSetKey(query), [query]);
+  const presentationKey = useMemo(() => serializeCatalogQuery({ ...query, page: 1 }), [query]);
   const { requestPublic } = useSession();
   const request = useCallback<CatalogRequester>(
     (options) => requestPublic(options),
@@ -219,7 +238,44 @@ export function CatalogPage() {
   const isInitialLoading = discovery.status === 'initial-loading';
   const isRefreshing = discovery.status === 'refreshing';
   const isUpdating = isInitialLoading || isRefreshing;
+  const retainedResultsTotal =
+    lastKnownResultTotal?.presentationKey === presentationKey ? lastKnownResultTotal.total : null;
+  const currentResults = discovery.dataQueryKey === queryKey ? results : undefined;
+  const isChangedCriteriaLoading =
+    isInitialLoading && lastKnownResultTotal?.presentationKey !== presentationKey;
+  const visibleResultsTotal = currentResults?.total ?? retainedResultsTotal;
+  const retainedPagination =
+    lastKnownPagination?.criteriaKey === criteriaKey ? lastKnownPagination : null;
+  const visiblePagination = currentResults
+    ? {
+        currentPage: currentResults.page,
+        hasNext: currentResults.hasNext,
+        hasPrevious: currentResults.hasPrevious,
+        totalPages: currentResults.pages,
+      }
+    : retainedPagination
+      ? {
+          currentPage: query.page,
+          hasNext: query.page < retainedPagination.totalPages,
+          hasPrevious: query.page > 1,
+          totalPages: retainedPagination.totalPages,
+        }
+      : null;
   const courseActions = useCatalogCourseActions(results?.items ?? []);
+
+  useLayoutEffect(() => {
+    if (!currentResults) return;
+    setLastKnownResultTotal((current) =>
+      current?.presentationKey === presentationKey && current.total === currentResults.total
+        ? current
+        : { criteriaKey, presentationKey, total: currentResults.total },
+    );
+    setLastKnownPagination((current) =>
+      current?.criteriaKey === criteriaKey && current.totalPages === currentResults.pages
+        ? current
+        : { criteriaKey, totalPages: currentResults.pages },
+    );
+  }, [criteriaKey, currentResults, presentationKey]);
 
   useEffect(() => {
     if (isRefreshing) {
@@ -290,17 +346,17 @@ export function CatalogPage() {
                   {refreshAnnouncement}
                 </VisuallyHidden>
                 <h2 id="catalog-results-title">
-                  {results ? (
+                  {isChangedCriteriaLoading ? (
+                    'Loading course results…'
+                  ) : visibleResultsTotal !== null ? (
                     <>
                       <span>Found </span>
-                      <strong className={styles.resultsTotal}>{results.total}</strong>
+                      <strong className={styles.resultsTotal}>{visibleResultsTotal}</strong>
                       <span className={styles.resultsSuffix}>
                         {' '}
-                        {results.total === 1 ? 'course' : 'courses'}
+                        {visibleResultsTotal === 1 ? 'course' : 'courses'}
                       </span>
                     </>
-                  ) : isInitialLoading ? (
-                    'Loading course results…'
                   ) : (
                     'Course results unavailable.'
                   )}
@@ -370,12 +426,12 @@ export function CatalogPage() {
                   ))}
                 </ul>
               ) : null}
-              {results && results.pages > 0 ? (
+              {visiblePagination && visiblePagination.totalPages > 0 ? (
                 <Pagination
-                  currentPage={results.page}
-                  totalPages={results.pages}
-                  hasNext={results.hasNext}
-                  hasPrevious={results.hasPrevious}
+                  currentPage={visiblePagination.currentPage}
+                  totalPages={visiblePagination.totalPages}
+                  hasNext={visiblePagination.hasNext}
+                  hasPrevious={visiblePagination.hasPrevious}
                   label="Course result pages"
                   directionDisplay="arrows"
                   onPageChange={(page) => navigate({ ...query, page })}

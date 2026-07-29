@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -22,7 +22,10 @@ function cartResponse(itemCount: number) {
   return { id: 1, items: [], total_price: '0.00', currency: 'USD', item_count: itemCount };
 }
 
-function authenticatedClient(role: 'student' | 'instructor', cart = cartResponse(0)): ApiClient {
+function authenticatedClient(
+  role: 'student' | 'instructor' | 'admin',
+  cart = cartResponse(0),
+): ApiClient {
   return {
     request: async <TResponse, TBody>(options: ApiRequestOptions<TBody, TResponse>) => {
       const value =
@@ -81,11 +84,12 @@ describe('AppShell student cart query and presentation', () => {
     },
   );
 
-  it('does not fetch API-002 for anonymous or instructor sessions', async () => {
+  it('does not fetch API-002 or render assistant controls for anonymous, instructor, or admin sessions', async () => {
     const anonymousRequest = vi.fn(authenticatedClient('student').request);
     renderShell({ request: anonymousRequest as ApiClient['request'] }, null);
     await waitFor(() => expect(screen.getByRole('link', { name: 'Catalog' })).toBeTruthy());
     expect(screen.getByRole('link', { name: 'Cart' }).getAttribute('href')).toBe('/cart');
+    expect(screen.queryByRole('button', { name: 'Open AI assistant' })).toBeNull();
     expect(anonymousRequest).not.toHaveBeenCalled();
     cleanup();
 
@@ -99,6 +103,15 @@ describe('AppShell student cart query and presentation', () => {
       expect(instructorRequest.mock.calls.map(([options]) => options.path)).toEqual(['/me']),
     );
     expect(screen.queryByRole('link', { name: /Cart/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open AI assistant' })).toBeNull();
+    cleanup();
+
+    const adminRequest = vi.fn(authenticatedClient('admin').request);
+    renderShell({ request: adminRequest as ApiClient['request'] }, 'admin-token');
+    await waitFor(() =>
+      expect(adminRequest.mock.calls.map(([options]) => options.path)).toEqual(['/me']),
+    );
+    expect(screen.queryByRole('button', { name: 'Open AI assistant' })).toBeNull();
   });
 
   it('uses the updated shared cache entry and marks the cart active beyond its count', async () => {
@@ -125,5 +138,39 @@ describe('AppShell student cart query and presentation', () => {
       itemCount: 9,
     });
     await waitFor(() => expect(screen.getByRole('link', { name: 'Cart (9)' })).toBeTruthy());
+  });
+
+  it('opens a labelled account-details popover and clears the session through Log out', async () => {
+    renderShell(authenticatedClient('student'), 'student-token');
+    const accountTrigger = await screen.findByRole('button', {
+      name: 'Account menu for student User',
+    });
+    expect(accountTrigger.getAttribute('title')).toBeNull();
+
+    fireEvent.mouseEnter(accountTrigger);
+    const accountDetails = screen.getByRole('group', {
+      name: 'Account details for student User',
+    });
+    expect(accountDetails).toBeTruthy();
+    expect(screen.getByText('student@example.test')).toBeTruthy();
+    expect(screen.getByText('student User')).toBeTruthy();
+    expect(screen.getByText('student', { exact: true })).toBeTruthy();
+    expect(
+      accountDetails.querySelector('[data-part="account-menu-profile"]')?.textContent,
+    ).toContain('student User');
+    expect(screen.getByRole('separator')).toBeTruthy();
+
+    fireEvent.click(accountTrigger);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('group', { name: 'Account details for student User' })).toBeNull();
+    expect(document.activeElement).toBe(accountTrigger);
+
+    fireEvent.click(accountTrigger);
+    const logout = screen.getByRole('button', { name: 'Log out' });
+    expect(logout.querySelector('svg')).toBeTruthy();
+
+    fireEvent.click(logout);
+    await waitFor(() => expect(screen.getByRole('link', { name: 'Log in' })).toBeTruthy());
+    expect(screen.queryByRole('button', { name: /Account menu/ })).toBeNull();
   });
 });

@@ -237,7 +237,7 @@
   width: fit-content;
   min-height: var(--control-height-md);
   align-items: center;
-  color: var(--action-link);
+  color: var(--action-primary-bg);
   font-weight: var(--font-weight-semibold);
 }
 .catalogLink:focus-visible {

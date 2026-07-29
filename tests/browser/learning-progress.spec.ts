@@ -511,15 +511,28 @@ test('keeps aggregate progress separate from fresh lesson state, dedupes action,
     'aria-label',
     '1 of 2 lessons completed, 50%',
   );
-  await page.getByRole('button', { name: 'Mark complete' }).dblclick();
+  await expect(page.getByText('1 available now · 1 lesson coming soon')).toBeVisible();
+  const markComplete = page.getByRole('button', { name: 'Mark complete' });
+  await expect(markComplete).toHaveCSS('color', 'rgb(255, 255, 255)');
+  const markCompleteBox = await markComplete.boundingBox();
+  expect(markCompleteBox).not.toBeNull();
+  await markComplete.dblclick();
   await expect.poll(() => requests).toEqual(['/courses/7/lessons/12/complete']);
+  await expect(page.locator('[data-feedback-state="visible"]')).toHaveCSS('min-height', '48px');
   const lessonRow = page
     .getByRole('listitem')
     .filter({ has: page.getByRole('heading', { name: 'First browser lesson' }) });
   await expect(lessonRow.getByText('Completed', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Mark incomplete' })).toBeVisible();
-  await page.getByRole('button', { name: 'Mark incomplete' }).click();
+  const markIncomplete = page.getByRole('button', { name: 'Mark incomplete' });
+  await expect(markIncomplete).toBeVisible();
+  const markIncompleteBox = await markIncomplete.boundingBox();
+  expect(markIncompleteBox).not.toBeNull();
+  expect(markIncompleteBox?.width).toBe(markCompleteBox?.width);
+  await markIncomplete.click();
   await expect(page.getByText('Not completed')).toBeVisible();
+  await expect(
+    page.getByText('Lesson marked incomplete.').locator('xpath=ancestor::*[@role="status"]'),
+  ).toHaveAttribute('data-tone', 'info');
   await page.getByRole('button', { name: 'Mark complete' }).click();
   await expect(page.getByText('Lesson progress could not be updated. Try again.')).toBeVisible();
   await expect(page.getByText('Not completed')).toBeVisible();
@@ -1523,6 +1536,23 @@ test('supports keyboard traversal and restores focus after list and workspace re
   const listHeading = page.getByRole('heading', { name: 'My learning' });
   await expect(page.getByText('1 enrollment · Page 1 of 1')).toBeVisible();
   await expect(listHeading).toBeFocused();
+  const browseCourses = page.getByRole('link', { name: 'Browse courses' });
+  await expect(browseCourses).toHaveAttribute('href', '/');
+  await browseCourses.hover();
+  await expect(browseCourses).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  const browseCoursesPosition = await browseCourses.evaluate((link) => {
+    const rect = link.getBoundingClientRect();
+    const label = link.querySelector('span')?.getBoundingClientRect();
+    const icon = link.querySelector('svg')?.getBoundingClientRect();
+    if (!label || !icon) throw new Error('Browse courses return-link content is missing.');
+    return {
+      left: rect.left,
+      top: rect.top,
+      height: rect.height,
+      labelTop: label.top,
+      iconTop: icon.top,
+    };
+  });
 
   await page.goto('/learning/enrollments/4');
   const workspaceRetry = page.getByRole('button', { name: 'Try again' });
@@ -1533,6 +1563,35 @@ test('supports keyboard traversal and restores focus after list and workspace re
   const detailHeading = page.getByRole('heading', { name: enrollment.course.title });
   await expect(page.getByRole('heading', { name: 'Learning progress' })).toBeVisible();
   await expect(detailHeading).toBeFocused();
+  const myLearningReturn = page.locator('main').getByRole('link', { name: 'My learning' });
+  const myLearningReturnPosition = await myLearningReturn.evaluate((link) => {
+    const rect = link.getBoundingClientRect();
+    const label = link.querySelector('span')?.getBoundingClientRect();
+    const icon = link.querySelector('svg')?.getBoundingClientRect();
+    if (!label || !icon) throw new Error('My learning return-link content is missing.');
+    return {
+      left: rect.left,
+      top: rect.top,
+      height: rect.height,
+      labelTop: label.top,
+      iconTop: icon.top,
+    };
+  });
+  expect(Math.abs(myLearningReturnPosition.left - browseCoursesPosition.left)).toBeLessThanOrEqual(
+    0.5,
+  );
+  expect(Math.abs(myLearningReturnPosition.top - browseCoursesPosition.top)).toBeLessThanOrEqual(
+    0.5,
+  );
+  expect(
+    Math.abs(myLearningReturnPosition.height - browseCoursesPosition.height),
+  ).toBeLessThanOrEqual(0.5);
+  expect(
+    Math.abs(myLearningReturnPosition.labelTop - browseCoursesPosition.labelTop),
+  ).toBeLessThanOrEqual(0.5);
+  expect(
+    Math.abs(myLearningReturnPosition.iconTop - browseCoursesPosition.iconTop),
+  ).toBeLessThanOrEqual(0.5);
   expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
   expect(diagnostics.httpFailures).toEqual([
     'GET /enrollments/my 500',

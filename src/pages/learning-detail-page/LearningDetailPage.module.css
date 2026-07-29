@@ -76,7 +76,7 @@
 .feedbackSlot {
   display: grid;
   align-content: start;
-  min-block-size: 64px;
+  min-block-size: var(--spacing-12);
 }
 .feedbackNotice,
 .feedbackNoticeExiting {

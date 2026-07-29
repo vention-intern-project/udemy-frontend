@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -33,6 +33,7 @@ function renderPage(path = '/learning/enrollments/4/ai-chat') {
       <MemoryRouter initialEntries={[path]}>
         <Routes>
           <Route path="/learning/enrollments/:enrollmentId/ai-chat" element={<AiChatPage />} />
+          <Route path="/ai-chat" element={<AiChatPage />} />
         </Routes>
       </MemoryRouter>
     </SessionProvider>,
@@ -80,13 +81,47 @@ describe('AiChatPage eligibility states', () => {
     expect(screen.getByRole('textbox', { name: 'Message the course assistant' })).toBeTruthy();
   });
 
-  it('does not autofocus the full-page chat composer', () => {
+  it('autofocuses the full-page chat composer', () => {
     useLearningWorkspaceMock.mockReturnValue(
       workspaceFor({ isPending: false, isError: false, data: activeEnrollment }),
     );
     renderPage();
-    expect(document.activeElement).not.toBe(
+    expect(document.activeElement).toBe(
       screen.getByRole('textbox', { name: 'Message the course assistant' }),
     );
+  });
+
+  it('focuses the general assistant composer after choosing any suggested action', () => {
+    useLearningWorkspaceMock.mockReturnValue(
+      workspaceFor({ isPending: false, isError: false, data: activeEnrollment }),
+    );
+    renderPage('/ai-chat');
+
+    const input = screen.getByRole('textbox', { name: 'Message the course assistant' });
+    const suggestedActions = [
+      ['Recommend a course', 'Recommend a course based on my learning goals.'],
+      ['Explain a concept', 'Explain a concept I am learning in simple terms.'],
+      ['Quiz me', 'Quiz me on the course material I am learning.'],
+    ] as const;
+
+    for (const [label, prompt] of suggestedActions) {
+      const action = screen.getByRole('button', { name: label });
+      fireEvent.click(action);
+      expect(document.activeElement).toBe(input);
+      expect((input as HTMLTextAreaElement).value).toBe(prompt);
+      expect(action.getAttribute('data-selected')).toBe('true');
+      for (const [otherLabel] of suggestedActions.filter(([otherLabel]) => otherLabel !== label)) {
+        expect(screen.getByRole('button', { name: otherLabel }).getAttribute('data-selected')).toBe(
+          'false',
+        );
+      }
+    }
+
+    fireEvent.change(input, { target: { value: 'A custom question' } });
+    for (const [label] of suggestedActions) {
+      expect(screen.getByRole('button', { name: label }).getAttribute('data-selected')).toBe(
+        'false',
+      );
+    }
   });
 });

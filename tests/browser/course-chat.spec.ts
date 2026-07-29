@@ -134,7 +134,7 @@ async function expectNoOverflow(page: Page) {
   expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.layoutWidth);
 }
 
-test('completes the mobile chat flow, restores focus, and starts fresh after navigation', async ({
+test('completes the mobile chat flow, restores focus, and preserves history after collapse', async ({
   page,
 }) => {
   const chatRequests: ChatRequestEvidence[] = [];
@@ -146,25 +146,135 @@ test('completes the mobile chat flow, restores focus, and starts fresh after nav
   await expect(launcher).toHaveCSS('width', '60px');
   await launcher.focus();
   await expect(page.getByRole('tooltip', { name: 'Open AI assistant' })).toBeVisible();
+  await launcher.blur();
+  await launcher.hover();
+  const launcherTooltip = page.getByRole('tooltip', { name: 'Open AI assistant' });
+  await expect(launcherTooltip).toBeHidden();
+  await page.waitForTimeout(400);
+  expect(await launcherTooltip.isVisible()).toBe(false);
+  await page.waitForTimeout(150);
+  await expect(launcherTooltip).toBeVisible();
   await launcher.click();
-  await expect(page.getByRole('tooltip', { name: 'Open AI assistant' })).toBeVisible();
+  await expect(page.getByRole('tooltip', { name: 'Open AI assistant' })).toBeHidden();
+  const headerTooltips = [
+    ['Expand course assistant', 'Expand chat'],
+    ['Conversation actions', 'Conversation actions'],
+    ['Close course assistant', 'Close chat'],
+  ] as const;
+  for (const [buttonName, tooltipName] of headerTooltips) {
+    const control = page.getByRole('button', { name: buttonName });
+    const tooltip = page.getByRole('tooltip', { name: tooltipName });
+    await control.hover();
+    await expect(tooltip).toBeHidden();
+    await page.waitForTimeout(2_000);
+    await expect(tooltip).toBeVisible();
+  }
   const input = page.getByLabel('Message the course assistant');
+  await expect(input).toHaveAttribute('placeholder', 'Ask about courses, lessons, or learning…');
+  await expect(input).toHaveAttribute('wrap', 'off');
   await expect(input).toBeFocused();
+  const sendButton = page.getByRole('button', { name: 'Send message' });
+  await expect(sendButton).toHaveCount(0);
+  await input.fill('Recommend a course based on my learning goals.');
+  await expect(sendButton).toBeVisible();
+  const sendIconGeometry = await sendButton.evaluate((button) => {
+    const icon = button.querySelector('svg');
+    if (!icon) throw new Error('Send icon is missing.');
+    const buttonRect = button.getBoundingClientRect();
+    const iconRect = icon.getBoundingClientRect();
+    return {
+      horizontalOffset:
+        iconRect.left + iconRect.width / 2 - (buttonRect.left + buttonRect.width / 2),
+      verticalOffset: iconRect.top + iconRect.height / 2 - (buttonRect.top + buttonRect.height / 2),
+    };
+  });
+  expect(Math.abs(sendIconGeometry.horizontalOffset)).toBeLessThanOrEqual(0.5);
+  expect(Math.abs(sendIconGeometry.verticalOffset)).toBeLessThanOrEqual(0.5);
+  expect(
+    await input.evaluate((textarea) => textarea.scrollHeight <= textarea.clientHeight + 1),
+  ).toBe(true);
+  await input.fill('');
   const miniActions = page.getByRole('button', { name: 'Conversation actions' });
   await miniActions.click();
   const miniClear = page.getByRole('button', { name: 'Clear chat' });
+  await expect(miniClear).toBeVisible();
+  const miniMenuGeometry = await page
+    .locator('[data-part="mini-chat-action-menu"]')
+    .evaluate((menu) => {
+      const widget = menu.closest('[aria-label="Course assistant chat"]');
+      if (!(widget instanceof HTMLElement)) throw new Error('Mini chat widget is missing.');
+      const trigger = menu.parentElement?.querySelector<HTMLElement>(
+        'button[aria-label="Conversation actions"]',
+      );
+      if (!trigger) throw new Error('Mini chat action trigger is missing.');
+      const menuRect = menu.getBoundingClientRect();
+      const widgetRect = widget.getBoundingClientRect();
+      const triggerRect = trigger.getBoundingClientRect();
+      return {
+        left: menuRect.left - widgetRect.left,
+        right: widgetRect.right - menuRect.right,
+        menuCenter: menuRect.left + menuRect.width / 2,
+        triggerCenter: triggerRect.left + triggerRect.width / 2,
+        textColor: getComputedStyle(menu.querySelector('button')!).color,
+        itemCenter:
+          menu.querySelector('button')!.getBoundingClientRect().left +
+          menu.querySelector('button')!.getBoundingClientRect().width / 2,
+        contentCenter: (() => {
+          const button = menu.querySelector('button');
+          const text = button?.querySelector('span');
+          const icon = button?.querySelector('svg');
+          if (!button || !text || !icon) throw new Error('Mini action menu content is missing.');
+          const textRect = text.getBoundingClientRect();
+          const iconRect = icon.getBoundingClientRect();
+          return (textRect.left + iconRect.right) / 2;
+        })(),
+      };
+    });
+  expect(miniMenuGeometry.left).toBeGreaterThanOrEqual(0);
+  expect(miniMenuGeometry.right).toBeGreaterThanOrEqual(0);
+  expect(
+    Math.abs(miniMenuGeometry.menuCenter - miniMenuGeometry.triggerCenter),
+  ).toBeLessThanOrEqual(0.5);
+  expect(miniMenuGeometry.textColor).toBe('rgb(17, 24, 39)');
+  expect(
+    Math.abs(miniMenuGeometry.contentCenter - miniMenuGeometry.itemCenter),
+  ).toBeLessThanOrEqual(0.5);
+  await miniClear.hover();
+  await expect(miniClear).toHaveCSS('color', 'rgb(185, 28, 28)');
+  await expect(miniClear.locator('svg')).toHaveCSS('width', '14px');
+  await expect(miniClear.locator('svg')).toHaveCSS('height', '14px');
   await miniClear.focus();
   await miniClear.press('Escape');
   await expect(miniClear).toHaveCount(0);
-  await expect(miniActions).toBeFocused();
+  await expect(input).toBeFocused();
+  await page.waitForTimeout(2_100);
+  await expect(page.getByRole('tooltip', { name: 'Conversation actions' })).toBeHidden();
+  await miniActions.click();
+  await expect(miniClear).toBeVisible();
+  await page.getByText('Course assistant', { exact: true }).click();
+  await expect(miniClear).toHaveCount(0);
+  await miniActions.click();
+  await expect(miniClear).toBeVisible();
+  await miniActions.click();
+  await expect(miniClear).toHaveCount(0);
+  await page.waitForTimeout(2_100);
+  await expect(page.getByRole('tooltip', { name: 'Conversation actions' })).toBeHidden();
   await miniActions.click();
   await page.getByRole('button', { name: 'Clear chat' }).click();
   await expect(page.getByRole('heading', { name: 'Clear this conversation?' })).toBeVisible();
   await page.getByRole('button', { name: 'Cancel' }).click();
   await expect(miniActions).toBeFocused();
+  await page.waitForTimeout(2_100);
+  await expect(page.getByRole('tooltip', { name: 'Conversation actions' })).toBeHidden();
   await input.fill('Explain this course');
   await page.getByRole('button', { name: 'Send message' }).click();
   await expect(page.getByText('One answer 1.')).toBeVisible();
+  await expect(page.getByText('Explain this course')).toHaveCSS(
+    'border-bottom-right-radius',
+    '0px',
+  );
+  await expect(page.getByText('One answer 1.')).toHaveCSS('border-bottom-left-radius', '0px');
+  await expect(page.getByText('One answer 1.')).toHaveCSS('background-color', 'rgb(238, 240, 244)');
   expect(chatRequests).toEqual([
     {
       method: 'POST',
@@ -172,10 +282,25 @@ test('completes the mobile chat flow, restores focus, and starts fresh after nav
       body: { thread_id: expect.any(String), message: 'Explain this course', course_id: 7 },
     },
   ]);
+  await input.fill('Keep this draft');
+  await miniActions.click();
+  await expect(page.getByRole('button', { name: 'Clear chat' })).toBeVisible();
+  await page.getByRole('button', { name: 'Close course assistant' }).click();
+  await expect(page.locator('[aria-label="Course assistant chat"]')).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Open AI assistant' })).toBeFocused();
+  await page.getByRole('button', { name: 'Open AI assistant' }).click();
+  await expect(page.getByText('One answer 1.')).toBeVisible();
+  await expect(input).toHaveValue('Keep this draft');
   await page.getByRole('button', { name: 'Expand course assistant' }).click();
   await expect(page).toHaveURL('/learning/enrollments/4/ai-chat');
   await expect(page.getByText('One answer 1.')).toBeVisible();
+  const expandedInput = page.getByLabel('Message the course assistant');
+  await expect(expandedInput).toBeFocused();
+  await expect(expandedInput).toHaveJSProperty('selectionStart', 'Keep this draft'.length);
+  await expect(expandedInput).toHaveJSProperty('selectionEnd', 'Keep this draft'.length);
   await expect(page.getByRole('button', { name: 'Open AI assistant' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Close assistant chat' }).click();
+  await expect(page).toHaveURL('/learning/enrollments/4');
   await expectNoOverflow(page);
   expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
   expect(diagnostics.httpFailures).toEqual([]);
@@ -249,7 +374,7 @@ test('keeps the workspace chat bounded at desktop and effective 200% scale with 
   expect(diagnostics.httpFailures).toEqual([]);
 });
 
-test('routes the authenticated header to the general full-page assistant without course context', async ({
+test('routes the authenticated workspace header to the course full-page assistant with its chat context', async ({
   page,
 }) => {
   const chatRequests: ChatRequestEvidence[] = [];
@@ -257,13 +382,59 @@ test('routes the authenticated header to the general full-page assistant without
   await installCourseChatFixture(page, chatRequests);
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/learning/enrollments/4');
+  await page.evaluate(() => window.scrollTo(0, 0));
+  const scrollBeforeNavigation = await page.evaluate(() => window.scrollY);
+
+  await page.getByRole('button', { name: 'Open AI assistant' }).click();
+  const miniInput = page.getByLabel('Message the course assistant');
+  await miniInput.fill('Carry this message to the full chat');
+  await page.getByRole('button', { name: 'Send message' }).click();
+  await expect(page.getByText('One answer 1.')).toBeVisible();
+  await miniInput.fill('Keep this general draft');
+  await page.getByRole('button', { name: 'Close course assistant' }).click();
 
   await page.getByRole('link', { name: 'Open AI assistant' }).click();
-  await expect(page).toHaveURL('/ai-chat');
+  await expect(page).toHaveURL('/learning/enrollments/4/ai-chat');
   await expect(page.getByRole('heading', { name: 'BETA AI Learning Assistant' })).toBeVisible();
+  await expect(page.getByText('Carry this message to the full chat')).toBeVisible();
+  await expect(page.getByText('One answer 1.')).toBeVisible();
+  const input = page.getByLabel('Message the course assistant');
+  await expect(input).toBeFocused();
+  await expect(input).toHaveJSProperty('selectionStart', 'Keep this general draft'.length);
+  await expect(input).toHaveJSProperty('selectionEnd', 'Keep this general draft'.length);
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
+  expect(await page.evaluate(() => window.scrollY)).toBe(scrollBeforeNavigation);
   const fullActions = page.getByRole('button', { name: 'Conversation actions' });
   await fullActions.click();
   const fullClear = page.getByRole('button', { name: 'Clear chat' });
+  const fullMenuGeometry = await fullClear.evaluate((button) => {
+    const menu = button.parentElement;
+    const trigger = menu?.parentElement?.querySelector<HTMLElement>(
+      'button[aria-label="Conversation actions"]',
+    );
+    if (!(menu instanceof HTMLElement) || !trigger) {
+      throw new Error('Full-page chat action-menu geometry is missing.');
+    }
+    const menuRect = menu.getBoundingClientRect();
+    const triggerRect = trigger.getBoundingClientRect();
+    return {
+      menuCenter: menuRect.left + menuRect.width / 2,
+      triggerCenter: triggerRect.left + triggerRect.width / 2,
+      textColor: getComputedStyle(button).color,
+    };
+  });
+  expect(
+    Math.abs(fullMenuGeometry.menuCenter - fullMenuGeometry.triggerCenter),
+  ).toBeLessThanOrEqual(0.5);
+  expect(fullMenuGeometry.textColor).toBe('rgb(17, 24, 39)');
+  await fullClear.hover();
+  await expect(fullClear).toHaveCSS('color', 'rgb(185, 28, 28)');
+  await expect(fullClear).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await fullClear.focus();
   await fullClear.press('Escape');
   await expect(fullClear).toHaveCount(0);
@@ -273,8 +444,10 @@ test('routes the authenticated header to the general full-page assistant without
   await expect(page.getByRole('heading', { name: 'Clear this conversation?' })).toBeVisible();
   await page.getByRole('button', { name: 'Cancel' }).click();
   await expect(fullActions).toBeFocused();
-  const input = page.getByLabel('Message the course assistant');
-  await expect(input).not.toBeFocused();
+  await expect(input).toHaveValue('Keep this general draft');
+  await page.getByRole('button', { name: 'Recommend a course' }).click();
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue('Recommend a course based on my learning goals.');
   await input.fill('Recommend a course');
   await page.getByRole('button', { name: 'Send message' }).click();
   await expect(page.getByText('One answer 1.')).toBeVisible();
@@ -282,17 +455,26 @@ test('routes the authenticated header to the general full-page assistant without
     {
       method: 'POST',
       path: '/chat/',
-      body: { thread_id: expect.any(String), message: 'Recommend a course' },
+      body: {
+        thread_id: expect.any(String),
+        message: 'Carry this message to the full chat',
+        course_id: 7,
+      },
+    },
+    {
+      method: 'POST',
+      path: '/chat/',
+      body: { thread_id: expect.any(String), message: 'Recommend a course', course_id: 7 },
     },
   ]);
+  await page.getByRole('button', { name: 'Close assistant chat' }).click();
+  await expect(page).toHaveURL('/learning/enrollments/4');
   await expectNoOverflow(page);
   expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
   expect(diagnostics.httpFailures).toEqual([]);
 });
 
-test('gives guests sign-up and login guidance without calling the assistant API', async ({
-  page,
-}) => {
+test('does not offer course assistant controls to guests', async ({ page }) => {
   const chatRequests: ChatRequestEvidence[] = [];
   const diagnostics = captureRuntimeDiagnostics(page);
   await page.setViewportSize({ width: 320, height: 720 });
@@ -321,14 +503,8 @@ test('gives guests sign-up and login guidance without calling the assistant API'
   });
   await page.goto('/');
 
-  await page.getByRole('button', { name: 'Open AI assistant' }).click();
-  await expect(page.getByRole('region', { name: 'AI assistant sign in guidance' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Create an account' })).toHaveAttribute(
-    'href',
-    '/signup?returnTo=%2F',
-  );
-  await page.getByRole('link', { name: 'Log in' }).click();
-  await expect(page).toHaveURL('/login?returnTo=%2F');
+  await expect(page.getByRole('button', { name: 'Open AI assistant' })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'AI assistant sign in guidance' })).toHaveCount(0);
   expect(chatRequests).toEqual([]);
   await expectNoOverflow(page);
   expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);

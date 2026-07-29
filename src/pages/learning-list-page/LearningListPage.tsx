@@ -1,9 +1,17 @@
 import { useEffect, useRef } from 'react';
+import { ChevronLeft } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 
 import type { EnrollmentStatus } from '@entities/enrollment';
 import { learningFailure, useLearningList } from '@features/learning-progress';
-import { Button, Notice, Pagination, Skeleton, SkeletonGroup } from '@shared/ui/primitives';
+import {
+  Button,
+  ContextualNavigationLink,
+  Notice,
+  Pagination,
+  Skeleton,
+  SkeletonGroup,
+} from '@shared/ui/primitives';
 
 import emptyStateIllustration from './assets/my-learning-empty-state.png';
 import styles from './LearningListPage.module.css';
@@ -123,6 +131,10 @@ export function LearningListPage() {
   return (
     <article className={styles.page}>
       <header className={styles.pageHeader}>
+        <ContextualNavigationLink className={styles.backLink} to="/">
+          <ChevronLeft size={18} aria-hidden="true" />
+          <span>Browse courses</span>
+        </ContextualNavigationLink>
         <div className={styles.headingContent}>
           <h1 tabIndex={-1} ref={headingRef}>
             My learning
@@ -132,9 +144,6 @@ export function LearningListPage() {
             {Math.max(1, result.pages)}
           </p>
         </div>
-        <Link className={styles.secondaryAction} to="/">
-          Browse courses
-        </Link>
       </header>
       <ol className={styles.list}>
         {result.items.map((enrollment) => (

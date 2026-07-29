@@ -1,24 +1,18 @@
 import { MessageCircleMore, MoreVertical, Square, Trash2, X } from 'lucide-react';
-import { useId, useLayoutEffect, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 
-import {
-  useCourseChat,
-  useCourseChatSessionControls,
-  type CourseAssistantContext,
-} from '@features/course-chat';
+import { useCourseChat, type CourseAssistantContext } from '@features/course-chat';
 import { Button, DestructiveConfirmation } from '@shared/ui/primitives';
 
 import { CourseChatContent } from './CourseChatPanel';
 import styles from './CourseChatLauncher.module.css';
 
 interface CourseChatLauncherProps {
-  readonly assistant: CourseAssistantContext | null;
-  readonly guest?: boolean;
+  readonly assistant: CourseAssistantContext;
 }
 
-export function CourseChatLauncher({ assistant, guest = false }: CourseChatLauncherProps) {
-  const { resetConversation } = useCourseChatSessionControls();
+export function CourseChatLauncher({ assistant }: CourseChatLauncherProps) {
   const location = useLocation();
   const launcherDescriptionId = useId();
   const [open, setOpen] = useState(false);
@@ -59,17 +53,16 @@ export function CourseChatLauncher({ assistant, guest = false }: CourseChatLaunc
     };
   }, []);
   const close = (restoreFocus = true) => {
-    if (assistant !== null) resetConversation(assistant.context);
     setOpen(false);
-    setInteractionMounted(false);
     if (restoreFocus) launcherRef.current?.focus();
   };
   return (
     <aside ref={rootRef} className={styles.root} aria-label="Course assistant">
       {interactionMounted ? (
         <CourseChatLauncherInteraction
-          assistant={assistant!}
+          assistant={assistant}
           open={open}
+          returnTo={`${location.pathname}${location.search}${location.hash}`}
           onClose={() => close()}
           onExpand={() => {
             setOpen(false);
@@ -77,7 +70,11 @@ export function CourseChatLauncher({ assistant, guest = false }: CourseChatLaunc
           }}
         />
       ) : null}
-      <span className={styles.launcherAnchor}>
+      <span
+        className={[styles.launcherAnchor, open ? styles.launcherAnchorOpen : null]
+          .filter(Boolean)
+          .join(' ')}
+      >
         <button
           ref={launcherRef}
           className={styles.launcher}
@@ -85,15 +82,11 @@ export function CourseChatLauncher({ assistant, guest = false }: CourseChatLaunc
           aria-describedby={launcherDescriptionId}
           aria-label="Open AI assistant"
           onClick={() => {
-            if (guest) {
-              setOpen(true);
-              return;
-            }
-            if (interactionMounted) {
+            if (interactionMounted && open) {
               close(false);
               return;
             }
-            setInteractionMounted(true);
+            if (!interactionMounted) setInteractionMounted(true);
             setOpen(true);
           }}
         >
@@ -103,11 +96,6 @@ export function CourseChatLauncher({ assistant, guest = false }: CourseChatLaunc
           Open AI assistant
         </span>
       </span>
-      {guest && open ? (
-        <GuestAssistantGuidance
-          returnTo={`${location.pathname}${location.search}${location.hash}`}
-        />
-      ) : null}
     </aside>
   );
 }
@@ -115,6 +103,7 @@ export function CourseChatLauncher({ assistant, guest = false }: CourseChatLaunc
 interface CourseChatLauncherInteractionProps {
   readonly assistant: CourseAssistantContext;
   readonly open: boolean;
+  readonly returnTo: string;
   onClose(): void;
   onExpand(): void;
 }
@@ -122,55 +111,116 @@ interface CourseChatLauncherInteractionProps {
 function CourseChatLauncherInteraction({
   assistant,
   open,
+  returnTo,
   onClose,
   onExpand,
 }: CourseChatLauncherInteractionProps) {
   const chat = useCourseChat(assistant.context);
   const navigate = useNavigate();
   const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
+  const [isActionTooltipSuppressed, setIsActionTooltipSuppressed] = useState(false);
   const [isClearConfirmationOpen, setIsClearConfirmationOpen] = useState(false);
   const actionTriggerId = useId();
+  const actionMenuRef = useRef<HTMLSpanElement>(null);
+  const widgetRef = useRef<HTMLElement>(null);
+
+  const dismissActionMenuToComposer = () => {
+    setIsActionMenuOpen(false);
+    queueMicrotask(() =>
+      widgetRef.current
+        ?.querySelector<HTMLTextAreaElement>('textarea')
+        ?.focus({ preventScroll: true }),
+    );
+  };
+
+  useEffect(() => {
+    if (!isActionMenuOpen || !open) return;
+
+    const dismissOnOutsidePointerDown = (event: PointerEvent) => {
+      if (actionMenuRef.current?.contains(event.target as Node)) return;
+      setIsActionMenuOpen(false);
+    };
+
+    document.addEventListener('pointerdown', dismissOnOutsidePointerDown);
+    return () => document.removeEventListener('pointerdown', dismissOnOutsidePointerDown);
+  }, [isActionMenuOpen, open]);
+
   return (
-    <section className={styles.widget} aria-label="Course assistant chat" hidden={!open}>
+    <section
+      ref={widgetRef}
+      className={styles.widget}
+      aria-label="Course assistant chat"
+      hidden={!open}
+    >
       <header className={styles.header}>
         <strong className={styles.headerTitle}>Course assistant</strong>
         <div className={styles.headerActions}>
-          <Button
-            variant="ghost"
-            aria-label="Expand course assistant"
-            onClick={() => {
-              onExpand();
-              navigate(
-                assistant.context.kind === 'course' && assistant.enrollmentId !== undefined
-                  ? `/learning/enrollments/${assistant.enrollmentId}/ai-chat`
-                  : '/ai-chat',
-              );
+          <span className={styles.headerControl}>
+            <Button
+              variant="ghost"
+              aria-label="Expand course assistant"
+              onClick={() => {
+                onExpand();
+                navigate(
+                  assistant.context.kind === 'course' && assistant.enrollmentId !== undefined
+                    ? `/learning/enrollments/${assistant.enrollmentId}/ai-chat`
+                    : '/ai-chat',
+                  { state: { returnTo } },
+                );
+              }}
+            >
+              <Square className={styles.expandIcon} aria-hidden="true" />
+            </Button>
+            <span className={styles.headerTooltip} role="tooltip">
+              Expand chat
+            </span>
+          </span>
+          <span
+            ref={actionMenuRef}
+            className={[
+              styles.headerControl,
+              styles.actionMenu,
+              isActionTooltipSuppressed ? styles.actionMenuTooltipSuppressed : null,
+            ]
+              .filter(Boolean)
+              .join(' ')}
+            onPointerEnter={() => {
+              if (!isActionMenuOpen) {
+                setIsActionTooltipSuppressed(false);
+              }
             }}
           >
-            <Square className={styles.expandIcon} aria-hidden="true" />
-          </Button>
-          <span className={styles.actionMenu}>
             <Button
               variant="ghost"
               id={actionTriggerId}
               aria-label="Conversation actions"
               aria-expanded={isActionMenuOpen}
-              onClick={() => setIsActionMenuOpen((isOpen) => !isOpen)}
+              onClick={() => {
+                setIsActionTooltipSuppressed(true);
+                setIsActionMenuOpen((isOpen) => !isOpen);
+              }}
               onKeyDown={(event) => {
-                if (event.key === 'Escape') setIsActionMenuOpen(false);
+                if (event.key !== 'Escape' || !isActionMenuOpen) return;
+                event.preventDefault();
+                dismissActionMenuToComposer();
               }}
             >
               <MoreVertical aria-hidden="true" />
             </Button>
+            {!isActionMenuOpen ? (
+              <span className={styles.headerTooltip} role="tooltip">
+                Conversation actions
+              </span>
+            ) : null}
             {isActionMenuOpen ? (
               <span
                 className={styles.actionMenuList}
                 aria-label="Conversation actions"
+                data-part="mini-chat-action-menu"
                 onKeyDown={(event) => {
                   if (event.key !== 'Escape') return;
                   event.preventDefault();
-                  setIsActionMenuOpen(false);
-                  document.getElementById(actionTriggerId)?.focus();
+                  dismissActionMenuToComposer();
                 }}
               >
                 <button
@@ -187,9 +237,21 @@ function CourseChatLauncherInteraction({
               </span>
             ) : null}
           </span>
-          <Button variant="ghost" aria-label="Close course assistant" onClick={onClose}>
-            <X aria-hidden="true" />
-          </Button>
+          <span className={styles.headerControl}>
+            <Button
+              variant="ghost"
+              aria-label="Close course assistant"
+              onClick={() => {
+                setIsActionMenuOpen(false);
+                onClose();
+              }}
+            >
+              <X aria-hidden="true" />
+            </Button>
+            <span className={styles.headerTooltip} role="tooltip">
+              Close chat
+            </span>
+          </span>
         </div>
       </header>
       <CourseChatContent chat={chat} context={assistant.context} compact focusOnOpen={open} />
@@ -207,33 +269,6 @@ function CourseChatLauncherInteraction({
           queueMicrotask(() => document.getElementById(actionTriggerId)?.focus());
         }}
       />
-    </section>
-  );
-}
-
-interface GuestAssistantGuidanceProps {
-  readonly returnTo: string;
-}
-
-function GuestAssistantGuidance({ returnTo }: GuestAssistantGuidanceProps) {
-  const encodedReturnTo = encodeURIComponent(returnTo);
-  return (
-    <section
-      className={`${styles.widget} ${styles.guestWidget}`}
-      aria-label="AI assistant sign in guidance"
-    >
-      <header className={styles.header}>
-        <strong className={styles.headerTitle}>Course assistant</strong>
-      </header>
-      <p className={styles.guestCopy}>Create an account to use the AI learning assistant.</p>
-      <div className={styles.guestActions}>
-        <Link className={styles.guestSignupLink} to={`/signup?returnTo=${encodedReturnTo}`}>
-          Create an account
-        </Link>
-        <Link className={styles.guestLoginLink} to={`/login?returnTo=${encodedReturnTo}`}>
-          Log in
-        </Link>
-      </div>
     </section>
   );
 }

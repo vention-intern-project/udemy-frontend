@@ -117,7 +117,7 @@ describe('catalog discovery lifecycle', () => {
     expect(pending.data).toBeUndefined();
     if (pending.status !== 'initial-loading')
       throw new Error('Expected changed-query placeholder state.');
-    expect(pending.placeholderCount).toBe(4);
+    expect(pending.placeholderCount).toBe(20);
 
     second.reject(new ApiError({ kind: 'server', status: 500, message: 'Unavailable' }));
     await waitFor(() => expect(hook.current.status).toBe('error-without-results'));

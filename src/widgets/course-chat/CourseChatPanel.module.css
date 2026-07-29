@@ -35,10 +35,12 @@
 .learner {
   background: var(--action-secondary-bg);
   border: 1px solid var(--action-primary-bg);
+  border-bottom-right-radius: 0;
 }
 .assistant {
-  background: var(--color-surface);
+  background: var(--state-control-highlight);
   border: 1px solid var(--border-default);
+  border-bottom-left-radius: 0;
 }
 .messageRow {
   display: flex;
@@ -76,7 +78,7 @@
 }
 .form {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--control-height-sm);
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   gap: 0;
   width: 100%;
@@ -84,6 +86,9 @@
   background: var(--color-surface);
   border: var(--border-width) solid var(--border-default);
   border-radius: var(--radius-md);
+}
+.formWithSend {
+  grid-template-columns: minmax(0, 1fr) var(--control-height-sm);
 }
 .fullComposerArea {
   margin-block: calc(-1 * var(--spacing-3)) calc(-1 * var(--spacing-4));
@@ -174,8 +179,14 @@
   background: var(--state-disabled-bg);
 }
 .form :global(.ui-button) svg {
+  display: block;
   width: 19px;
   height: 19px;
+}
+.form :global(.ui-button) > span:last-child {
+  display: inline-grid;
+  place-items: center;
+  line-height: 0;
 }
 .compact .messages {
   gap: 0;
@@ -233,10 +244,12 @@
 .compact .learner {
   color: var(--action-secondary-fg);
   background: var(--action-secondary-bg);
+  border-bottom-right-radius: 0;
 }
 .compact .assistant {
   color: var(--text-primary);
   background: var(--state-control-highlight);
+  border-bottom-left-radius: 0;
 }
 .compact .assistantRow {
   justify-content: start;

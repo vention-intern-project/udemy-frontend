@@ -11,7 +11,7 @@ export interface CourseProgress {
   progressPercentage: number;
 }
 
-export type LessonProgressFeedbackTone = 'success' | 'error';
+export type LessonProgressFeedbackTone = 'info' | 'success' | 'error';
 
 export type LessonProgressFeedbackVisibility = 'visible' | 'exiting';
 

@@ -2,7 +2,6 @@ import { useMutation } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { useLocation } from 'react-router-dom';
 
-import type { UserRoleDto } from '@entities/user';
 import {
   AuthFormShell,
   AuthLink,
@@ -19,7 +18,8 @@ import {
 } from '@features/auth-workflows';
 import { sanitizeInternalReturnTo, useSession } from '@features/auth-session';
 import { mutationKeys } from '@shared/api';
-import { Button, Input, Select } from '@shared/ui/primitives';
+import { Button, Input } from '@shared/ui/primitives';
+import { RolePicker } from './RolePicker';
 import styles from './SignupPage.module.css';
 
 const INITIAL: SignupInput = {
@@ -114,7 +114,10 @@ export function SignupPage() {
       description="Create a LearnHub account to start learning or teaching."
       footer={
         <>
-          <span>Already have an account?</span> <AuthLink to={loginDestination}>Log in</AuthLink>
+          <span>Already have an account?</span>{' '}
+          <AuthLink tone="primary" to={loginDestination}>
+            Log in
+          </AuthLink>
         </>
       }
     >
@@ -158,21 +161,12 @@ export function SignupPage() {
             onChange={(event) => update('surname', event.currentTarget.value)}
           />
         </div>
-        <Select
-          id="role"
-          name="role"
-          label="Role"
-          className={styles.rolePicker}
-          required
+        <RolePicker
           value={input.role}
           error={fieldErrors.role}
           disabled={mutation.isPending}
-          onChange={(event) => update('role', event.currentTarget.value as UserRoleDto)}
-        >
-          <option value="student">Student</option>
-          <option value="instructor">Instructor</option>
-          <option value="admin">Admin</option>
-        </Select>
+          onChange={(role) => update('role', role)}
+        />
         <PasswordField
           id="password"
           name="password"

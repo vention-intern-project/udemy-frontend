@@ -6,7 +6,7 @@ export default async function startAuthWorkflowsServer() {
     logLevel: 'warn',
     envFile: false,
     appType: 'spa',
-    optimizeDeps: { noDiscovery: true },
+    optimizeDeps: { noDiscovery: true, include: ['react', 'react-dom/client'] },
     server: { host: '127.0.0.1', port: 4175, strictPort: true },
   });
   try {
