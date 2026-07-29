@@ -134,7 +134,8 @@ jobs:
       - run: npm ci
       - run: npm run quality -- --scope ci --sha "$QUALITY_TARGET_SHA" --output quality-reports/current.json
       - run: npm run quality:verify-report -- --report quality-reports/current.json --sha "$QUALITY_TARGET_SHA" --scope ci
-      - uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08
+      - if: always()
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08
         with:
           name: frontend-quality-report-${{ env.QUALITY_TARGET_SHA }}
           path: quality-reports/current.json

@@ -1497,6 +1497,15 @@ describe('staged and CI decision simulations', () => {
     expect(workflow).toContain('frontend-quality-report-${{ env.QUALITY_TARGET_SHA }}');
     expect(workflow).toContain('--sha "$QUALITY_TARGET_SHA"');
     expect(workflow).toContain('QUALITY_TARGET_SHA: ${{ env.QUALITY_TARGET_SHA }}');
+    const qualityReport = workflow.slice(
+      workflow.indexOf('  quality-report:\n'),
+      workflow.indexOf('  frontend-quality-required:\n'),
+    );
+    expect(qualityReport).toContain('if: always()\n        uses: actions/upload-artifact@');
+    expect(qualityReport).toContain('name: frontend-quality-report-${{ env.QUALITY_TARGET_SHA }}');
+    expect(qualityReport).toContain('path: quality-reports/current.json');
+    expect(qualityReport).toContain('retention-days: 7');
+    expect(qualityReport).toContain('if-no-files-found: error');
   });
 
   it('orders aggregate guard, clean checkout, report download, and verification fail closed', async () => {
