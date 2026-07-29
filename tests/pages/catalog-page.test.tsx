@@ -856,7 +856,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
     ).toBe(false);
   });
 
-  it('replaces changed-query cards with stable skeleton geometry before showing its failure', async () => {
+  it('does not retain a prior criteria total when a changed-query request fails', async () => {
     const first = deferred<unknown>();
     const second = deferred<unknown>();
     const request: ApiClient['request'] = vi
@@ -888,6 +888,10 @@ describe('CatalogPage public URL and pagination behavior', () => {
       second.reject(new ApiError({ kind: 'server', status: 500, message: 'Unavailable' }));
     });
     expect(await screen.findByText('We could not load courses')).toBeTruthy();
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Course results unavailable.' }),
+    ).toBeTruthy();
+    expect(screen.queryByRole('heading', { level: 2, name: 'Found 1 course' })).toBeNull();
     expect(screen.queryByRole('link', { name: 'React' })).toBeNull();
     expect(document.querySelectorAll('[data-part="skeleton"]')).toHaveLength(0);
     expect(screen.getByRole('status', { name: 'Catalog refresh status' }).textContent).toBe('');

@@ -238,7 +238,8 @@ export function CatalogPage() {
   const isInitialLoading = discovery.status === 'initial-loading';
   const isRefreshing = discovery.status === 'refreshing';
   const isUpdating = isInitialLoading || isRefreshing;
-  const retainedResultsTotal = lastKnownResultTotal?.total ?? null;
+  const retainedResultsTotal =
+    lastKnownResultTotal?.presentationKey === presentationKey ? lastKnownResultTotal.total : null;
   const currentResults = discovery.dataQueryKey === queryKey ? results : undefined;
   const isChangedCriteriaLoading =
     isInitialLoading && lastKnownResultTotal?.presentationKey !== presentationKey;
