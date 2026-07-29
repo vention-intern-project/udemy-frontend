@@ -35,7 +35,17 @@ const qualityCommands = [
   ['quality-lint', ['run', 'lint:quality']],
   ['typecheck', ['run', 'typecheck']],
   ['static-rules', ['run', 'quality:rules']],
-  ['tests', ['test', '--', '--pool=forks', '--poolOptions.forks.singleFork=true']],
+  [
+    'tests',
+    [
+      'test',
+      '--',
+      '--pool=forks',
+      '--poolOptions.forks.maxForks=1',
+      '--poolOptions.forks.minForks=1',
+      '--poolOptions.forks.isolate=true',
+    ],
+  ],
   ['build', ['run', 'build']],
 ];
 if (stableCommandIds(qualityCommands) !== stableCommandIds(REQUIRED_QUALITY_COMMAND_IDS))
