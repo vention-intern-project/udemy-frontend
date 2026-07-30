@@ -344,11 +344,12 @@ describe('authentication pages', () => {
 
     expect(role.getAttribute('aria-haspopup')).toBe('listbox');
     expect(role.getAttribute('aria-expanded')).toBe('false');
-    expect(role.getAttribute('aria-required')).toBe('true');
+    expect(role.hasAttribute('aria-required')).toBe(false);
     expect(role.textContent).toContain('Student');
 
     await interact(() => user.click(role));
-    expect(screen.getByRole('listbox', { name: 'Role options' })).toBeTruthy();
+    const listbox = screen.getByRole('listbox', { name: 'Role options' });
+    expect(listbox.getAttribute('aria-required')).toBe('true');
     expect(screen.getByRole('option', { name: 'Student' }).getAttribute('aria-selected')).toBe(
       'true',
     );
