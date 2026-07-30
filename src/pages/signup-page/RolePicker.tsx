@@ -93,6 +93,7 @@ export function RolePicker({ value, disabled, error, onChange }: RolePickerProps
           aria-expanded={open}
           aria-haspopup="listbox"
           aria-invalid={error ? true : undefined}
+          aria-required="true"
           className={styles.trigger}
           disabled={disabled}
           id={ids.controlId}

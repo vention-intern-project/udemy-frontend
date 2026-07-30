@@ -31,9 +31,10 @@ interface ResetPasswordMutationVariables {
 interface ResetPasswordFormProps {
   readonly ownerKey: string;
   readonly token: string;
+  onSuccess(): void;
 }
 
-function ResetPasswordForm({ ownerKey, token }: ResetPasswordFormProps) {
+function ResetPasswordForm({ ownerKey, token, onSuccess }: ResetPasswordFormProps) {
   const session = useSession();
   const navigate = useNavigate();
   const [newPassword, setNewPassword] = useState('');
@@ -53,6 +54,13 @@ function ResetPasswordForm({ ownerKey, token }: ResetPasswordFormProps) {
     gcTime: 0,
     retry: false,
   });
+  const clearFieldError = (field: keyof AuthFieldErrors) => {
+    if (!fieldErrors[field]) return;
+    const remaining = { ...fieldErrors };
+    delete remaining[field];
+    setFieldErrors(remaining);
+    if (Object.keys(remaining).length === 0) setSummary(null);
+  };
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -72,7 +80,8 @@ function ResetPasswordForm({ ownerKey, token }: ResetPasswordFormProps) {
     try {
       await mutation.mutateAsync({ input, signal: attempt.signal });
       if (!attempts.isCurrent(attempt)) return;
-      navigate('/reset-password?status=success', { replace: true });
+      onSuccess();
+      navigate('/reset-password', { replace: true });
     } catch (error) {
       if (!attempts.isCurrent(attempt)) return;
       const failure = mapAuthFailure(error, 'reset');
@@ -105,7 +114,10 @@ function ResetPasswordForm({ ownerKey, token }: ResetPasswordFormProps) {
           value={newPassword}
           error={fieldErrors.password}
           disabled={mutation.isPending}
-          onChange={setNewPassword}
+          onChange={(value) => {
+            setNewPassword(value);
+            clearFieldError('password');
+          }}
         />
         <PasswordField
           id="passwordConfirmation"
@@ -115,7 +127,10 @@ function ResetPasswordForm({ ownerKey, token }: ResetPasswordFormProps) {
           value={passwordConfirmation}
           error={fieldErrors.passwordConfirmation}
           disabled={mutation.isPending}
-          onChange={setPasswordConfirmation}
+          onChange={(value) => {
+            setPasswordConfirmation(value);
+            clearFieldError('passwordConfirmation');
+          }}
         />
         <Button
           type="submit"
@@ -134,9 +149,8 @@ export function ResetPasswordPage() {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token')?.trim() ?? '';
-  const resetSucceeded = searchParams.get('status') === 'success';
+  const [resetSucceeded, setResetSucceeded] = useState(false);
 
-  if (resetSucceeded && token) return <Navigate replace to="/reset-password?status=success" />;
   if (resetSucceeded) {
     return (
       <AuthFormShell
@@ -151,7 +165,17 @@ export function ResetPasswordPage() {
       </AuthFormShell>
     );
   }
+  if (token && searchParams.has('status')) {
+    return <Navigate replace to={`/reset-password?token=${encodeURIComponent(token)}`} />;
+  }
   if (!token) return <Navigate replace to="/forgot-password?reason=missing-token" />;
 
-  return <ResetPasswordForm key={token} ownerKey={location.key} token={token} />;
+  return (
+    <ResetPasswordForm
+      key={token}
+      ownerKey={location.key}
+      token={token}
+      onSuccess={() => setResetSucceeded(true)}
+    />
+  );
 }

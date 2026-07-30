@@ -805,7 +805,7 @@ describe('application routing and guards', () => {
     expect(view.container.textContent).toContain('Access your learning or instructor workspace.');
   });
 
-  it('renders stable public-safe session failure copy without backend detail', async () => {
+  it('keeps protected-session recovery stable without backend detail', async () => {
     const client: ApiClient = {
       request: async () => {
         throw new Error('private upstream hostname and diagnostic details');
@@ -815,7 +815,10 @@ describe('application routing and guards', () => {
       <QueryClientProvider client={createAppQueryClient()}>
         <ThemeProvider initialDensityMode="marketplace">
           <SessionProvider client={client} tokenStore={store('token')}>
-            <MemoryRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+            <MemoryRouter
+              initialEntries={['/cart']}
+              future={{ v7_relativeSplatPath: true, v7_startTransition: true }}
+            >
               <ApplicationTitleBoundary>
                 <AppRouter />
               </ApplicationTitleBoundary>
@@ -830,6 +833,36 @@ describe('application routing and guards', () => {
     expect(screen.getByRole('alert').textContent).toContain(
       'We could not verify your session. Check your connection and try again.',
     );
+    expect(document.body.textContent).not.toContain('private upstream hostname');
+  });
+
+  it('keeps a guest recovery route usable after a retryable session bootstrap failure', async () => {
+    const tokenStore = store('retained-token');
+    const client: ApiClient = {
+      request: async () => {
+        throw new Error('private upstream hostname and diagnostic details');
+      },
+    };
+    render(
+      <QueryClientProvider client={createAppQueryClient()}>
+        <ThemeProvider initialDensityMode="marketplace">
+          <SessionProvider client={client} tokenStore={tokenStore}>
+            <MemoryRouter
+              initialEntries={['/forgot-password']}
+              future={{ v7_relativeSplatPath: true, v7_startTransition: true }}
+            >
+              <ApplicationTitleBoundary>
+                <AppRouter />
+              </ApplicationTitleBoundary>
+            </MemoryRouter>
+          </SessionProvider>
+        </ThemeProvider>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Forgot password' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Session check failed' })).toBeNull();
+    expect(tokenStore.get()).toBe('retained-token');
     expect(document.body.textContent).not.toContain('private upstream hostname');
   });
 });

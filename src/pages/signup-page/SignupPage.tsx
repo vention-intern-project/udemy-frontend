@@ -69,6 +69,11 @@ export function SignupPage() {
   });
   const update = <K extends keyof SignupInput>(key: K, value: SignupInput[K]) => {
     setInput((current) => ({ ...current, [key]: value }));
+    if (!fieldErrors[key]) return;
+    const remaining = { ...fieldErrors };
+    delete remaining[key];
+    setFieldErrors(remaining);
+    if (Object.keys(remaining).length === 0) setSummary(null);
   };
 
   async function submit(event: FormEvent) {

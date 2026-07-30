@@ -53,6 +53,13 @@ export function LoginPage() {
     gcTime: 0,
     retry: false,
   });
+  const clearFieldError = (field: keyof AuthFieldErrors) => {
+    if (!fieldErrors[field]) return;
+    const remaining = { ...fieldErrors };
+    delete remaining[field];
+    setFieldErrors(remaining);
+    if (Object.keys(remaining).length === 0) setSummary(null);
+  };
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -117,7 +124,10 @@ export function LoginPage() {
           value={email}
           error={fieldErrors.email}
           disabled={mutation.isPending}
-          onChange={(event) => setEmail(event.currentTarget.value)}
+          onChange={(event) => {
+            setEmail(event.currentTarget.value);
+            clearFieldError('email');
+          }}
         />
         <PasswordField
           id="password"
@@ -127,7 +137,10 @@ export function LoginPage() {
           value={password}
           error={fieldErrors.password}
           disabled={mutation.isPending}
-          onChange={setPassword}
+          onChange={(value) => {
+            setPassword(value);
+            clearFieldError('password');
+          }}
         />
         <AuthLink tone="primary" to="/forgot-password">
           Forgot your password?
