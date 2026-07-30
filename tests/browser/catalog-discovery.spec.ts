@@ -585,11 +585,11 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
     'This course is not available for enrollment yet.',
   );
   await expect(reactTooltip).toHaveText(
-    /^This course is not available for enrollment yet\.About ReactA concise course description\.$/,
+    /^This course is not available for enrollment yet\.Course description: ReactA concise course description\.$/,
   );
   await expect(reactTooltip).toContainText('A concise course description.');
   await expect(reactTooltipContent.locator(':scope > span[class*="tooltipCourse"]')).toHaveText(
-    'About React',
+    'Course description: React',
   );
   await expect(
     reactTooltipContent.locator(':scope > span[class*="tooltipCourse"]'),
@@ -1067,8 +1067,16 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
   await previous.focus();
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/\/$/);
+  const courseNavigationAbort = page.waitForEvent(
+    'requestfailed',
+    (request) =>
+      request.method() === 'GET' &&
+      new URL(request.url()).pathname === '/courses/7' &&
+      request.failure()?.errorText === 'net::ERR_ABORTED',
+  );
   await reactLink.press('Enter');
   await expect(page).toHaveURL(/\/courses\/7$/);
+  await courseNavigationAbort;
   expect(forbiddenMutationRequests).toEqual([]);
   assertClean();
 });
@@ -1867,8 +1875,9 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   expect(requests).toHaveLength(requestCountBeforeHover);
   const lowToHighOption = sortListbox.getByRole('option', { name: 'Low to High' });
   await lowToHighOption.evaluate((option) => {
-    const describedBy = document.activeElement?.getAttribute('aria-describedby');
-    const tooltip = describedBy ? document.getElementById(describedBy) : null;
+    const tooltip = document.activeElement
+      ?.closest<HTMLElement>('[data-part="course-card"]')
+      ?.querySelector<HTMLElement>('[role="tooltip"]');
     const rect = option.getBoundingClientRect();
     if (!tooltip) throw new Error('Focused course tooltip is required for Sort layering coverage.');
     tooltip.style.setProperty(
@@ -1889,8 +1898,10 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   expect(sortHit).toEqual({ listboxHit: true, tooltipHit: false });
   await expect(sortTrigger).toHaveAttribute('aria-expanded', 'true');
   await lowToHighOption.evaluate(() => {
-    const describedBy = document.activeElement?.getAttribute('aria-describedby');
-    if (describedBy) document.getElementById(describedBy)?.style.removeProperty('transform');
+    document.activeElement
+      ?.closest<HTMLElement>('[data-part="course-card"]')
+      ?.querySelector<HTMLElement>('[role="tooltip"]')
+      ?.style.removeProperty('transform');
   });
   await expect(sortListbox).toHaveAttribute(
     'aria-activedescendant',

@@ -1027,18 +1027,25 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(reactDisclosure.textContent).toBe('Details');
     const openDescriptionId = reactLink.getAttribute('aria-describedby');
     expect(openDescriptionId).toBeTruthy();
-    expect(reactDisclosure.getAttribute('aria-controls')).toBe(openDescriptionId);
-    const tooltip = document.getElementById(openDescriptionId ?? '');
+    expect(reactDisclosure.getAttribute('aria-describedby')).toBe(openDescriptionId);
+    const tooltipId = reactDisclosure.getAttribute('aria-controls');
+    expect(tooltipId).toBeTruthy();
+    const tooltip = document.getElementById(tooltipId ?? '');
     if (!tooltip) throw new Error('Open card popover is required.');
     const tooltipContent = tooltip.querySelector('[data-part="course-card-tooltip-content"]');
     if (!tooltipContent) throw new Error('Open card tooltip reading surface is required.');
     expect(price.compareDocumentPosition(tooltip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(tooltip?.getAttribute('role')).toBe('tooltip');
+    expect(tooltip.getAttribute('aria-label')).toBeNull();
+    expect(tooltip.getAttribute('aria-labelledby')).toBeTruthy();
+    expect(document.getElementById(openDescriptionId ?? '')?.textContent).toBe(
+      'A concise course description.',
+    );
     expect(reactDisclosure.getAttribute('aria-haspopup')).toBeNull();
     expect(tooltipContent.firstElementChild?.textContent).toBe(
       'This course is not available for enrollment yet.',
     );
-    expect(tooltipContent.children.item(1)?.textContent).toBe('About React');
+    expect(tooltipContent.children.item(1)?.textContent).toBe('Course description: React');
     expect(tooltip?.textContent).toContain('A concise course description.');
     expect(tooltip?.textContent).not.toContain('published_at');
     expect(tooltip?.textContent).not.toContain('Draft means this course');
@@ -1214,9 +1221,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
     await act(async () => {
       vi.advanceTimersByTime(1);
     });
-    expect(screen.getByRole('tooltip').getAttribute('aria-label')).toBe(
-      'Course description: TypeScript',
-    );
+    expect(screen.getByRole('tooltip', { name: 'Course description: TypeScript' })).toBeTruthy();
     fireEvent.click(typeScriptTrigger);
     await act(async () => {
       vi.advanceTimersByTime(280);
@@ -1277,9 +1282,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
     await act(async () => {
       vi.advanceTimersByTime(280);
     });
-    expect(screen.getByRole('tooltip').getAttribute('aria-label')).toBe(
-      'Course description: React',
-    );
+    expect(screen.getByRole('tooltip', { name: 'Course description: React' })).toBeTruthy();
     fireEvent.click(typeScriptTrigger);
     expect(reactTrigger.getAttribute('aria-expanded')).toBe('false');
     expect(typeScriptTrigger.getAttribute('aria-pressed')).toBe('true');

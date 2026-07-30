@@ -84,6 +84,9 @@ describe('AiChatPage eligibility states', () => {
   it.each([
     '/learning/enrollments/abc/ai-chat',
     '/learning/enrollments/0/ai-chat',
+    '/learning/enrollments/-1/ai-chat',
+    '/learning/enrollments/1.5/ai-chat',
+    '/learning/enrollments/9007199254740992/ai-chat',
     '/learning/enrollments/999999999999999999999999/ai-chat',
   ])('renders an invalid route state without mounting a course workspace for %s', (path) => {
     renderPage(path);
@@ -91,6 +94,24 @@ describe('AiChatPage eligibility states', () => {
     expect(screen.getByRole('heading', { name: 'Invalid course assistant address' })).toBeTruthy();
     expect(screen.queryByRole('textbox', { name: 'Message the course assistant' })).toBeNull();
     expect(useLearningWorkspaceMock).not.toHaveBeenCalled();
+  });
+
+  it('mounts the course workspace for the largest safe enrollment ID', () => {
+    const largestSafeEnrollmentId = 9007199254740991;
+    useLearningWorkspaceMock.mockReturnValue(
+      workspaceFor({
+        isPending: false,
+        isError: false,
+        data: { ...activeEnrollment, id: largestSafeEnrollmentId },
+      }),
+    );
+
+    renderPage(`/learning/enrollments/${largestSafeEnrollmentId}/ai-chat`);
+
+    expect(screen.getByText('Course Assistant')).toBeTruthy();
+    expect(useLearningWorkspaceMock).toHaveBeenCalledWith(largestSafeEnrollmentId, {
+      reducedMotion: false,
+    });
   });
 
   it('autofocuses the full-page chat composer', () => {
