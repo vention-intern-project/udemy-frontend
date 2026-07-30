@@ -1,4 +1,4 @@
-import { Route, Routes } from 'react-router-dom';
+import { Route, Routes, useLocation } from 'react-router-dom';
 
 import { useSession } from '../../features/auth-session';
 import {
@@ -18,7 +18,7 @@ import {
 import { AppShell } from '../layouts/AppShell';
 import { PlaceholderPage } from './PlaceholderPage';
 import { RouteBoundary } from './RouteBoundary';
-import { APP_ROUTES, type AppRouteDefinition } from './route-registry';
+import { APP_ROUTES, routeForPath, type AppRouteDefinition } from './route-registry';
 import { BootstrapState, NotFoundState, SessionErrorState } from './RouteStates';
 
 function pageForRoute(route: AppRouteDefinition) {
@@ -39,9 +39,13 @@ function pageForRoute(route: AppRouteDefinition) {
 
 export function AppRouter() {
   const { state, retryBootstrap } = useSession();
+  const location = useLocation();
+  const currentRoute = routeForPath(location.pathname);
+  const canRecoverWithoutSession =
+    currentRoute?.access === 'public' || currentRoute?.access === 'guest';
 
   if (state.status === 'bootstrapping') return <BootstrapState />;
-  if (state.status === 'error') {
+  if (state.status === 'error' && !canRecoverWithoutSession) {
     return <SessionErrorState onRetry={retryBootstrap} />;
   }
 

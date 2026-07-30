@@ -92,7 +92,8 @@ export function ApplicationTitleBoundary({ children }: ApplicationTitleBoundaryP
     ? { kind: 'render-error' }
     : sessionState.status === 'bootstrapping'
       ? { kind: 'bootstrapping' }
-      : sessionState.status === 'error'
+      : sessionState.status === 'error' &&
+          (!route || (route.access !== 'public' && route.access !== 'guest'))
         ? { kind: 'session-error' }
         : route
           ? { kind: 'registered-route', routeTitle: route.title }

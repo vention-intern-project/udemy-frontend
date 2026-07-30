@@ -122,6 +122,7 @@ export function RolePicker({ value, disabled, error, onChange }: RolePickerProps
             ref={listboxRef}
             aria-activedescendant={activeOptionId}
             aria-label="Role options"
+            aria-required="true"
             className={styles.listbox}
             id={listboxId}
             role="listbox"

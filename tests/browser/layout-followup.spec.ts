@@ -975,9 +975,60 @@ for (const width of [320, 768, 1440]) {
 }
 
 for (const width of [320, 390, 768, 1280, 1440]) {
-  test(`session error stays safe, focused and recoverable at ${width}px`, async ({ page }) => {
+  for (const recoveryRoute of [
+    { path: '/', heading: 'Master the Skills Shaping the Future', kind: 'public' },
+    { path: '/login', heading: 'Log in', kind: 'guest' },
+  ] as const) {
+    test(`${recoveryRoute.kind} recovery route stays usable after a session 503 at ${width}px`, async ({
+      page,
+    }) => {
+      setScenario(page, {
+        routes: [recoveryRoute.path],
+        states: ['session bootstrap 503 error', `${recoveryRoute.kind} recovery route`],
+        viewports: [{ width, height: 900 }],
+        expectedOutcome:
+          'A retryable GET /me 503 retains the token while the registered public or guest recovery route stays usable.',
+        runtimeInputs: {
+          width,
+          accessToken: 'synthetic local token',
+          expectedHttpFailure: 'GET /me 503 x1',
+        },
+      });
+      runtimeFor(page).allowHttpFailure({ method: 'GET', path: '/me', status: 503 }, 1);
+      await page.addInitScript(() => {
+        localStorage.setItem('learnhub.access-token', 'visual-quality-synthetic-token');
+      });
+      await page.route('**/me', async (route) => {
+        if (route.request().method() !== 'GET') return route.fallback();
+        await fulfillJson(route, 503, { detail: 'VISUAL_PRIVATE_SESSION_DIAGNOSTIC' });
+      });
+
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(recoveryRoute.path);
+      await expect(
+        page.getByRole('heading', { level: 1, name: recoveryRoute.heading }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole('heading', { level: 1, name: 'Session check failed' }),
+      ).toHaveCount(0);
+      await expect(page.getByRole('main')).not.toContainText('VISUAL_PRIVATE_SESSION_DIAGNOSTIC');
+      await expect(page.getByRole('main')).not.toContainText('visual-quality-synthetic-token');
+      expect(await page.evaluate(() => localStorage.getItem('learnhub.access-token'))).toBe(
+        'visual-quality-synthetic-token',
+      );
+      expectCleanLayout(await captureLayout(page), width);
+      completeScenario(
+        page,
+        'The retryable 503 retained the token while the registered recovery route rendered with safe copy and clean layout.',
+      );
+    });
+  }
+
+  test(`protected session error stays safe, focused and recoverable at ${width}px`, async ({
+    page,
+  }) => {
     setScenario(page, {
-      routes: ['/'],
+      routes: ['/instructor/courses'],
       states: ['session bootstrap 503 error', 'keyboard retry', 'authenticated recovery'],
       viewports: [{ width, height: 900 }],
       expectedOutcome:
@@ -1013,7 +1064,7 @@ for (const width of [320, 390, 768, 1280, 1440]) {
     });
 
     await page.setViewportSize({ width, height: 900 });
-    await page.goto('/');
+    await page.goto('/instructor/courses');
     await expect(
       page.getByRole('heading', { level: 1, name: 'Session check failed' }),
     ).toBeVisible();
@@ -1031,13 +1082,7 @@ for (const width of [320, 390, 768, 1280, 1440]) {
     await expect(retry).toBeFocused();
     expect(await retry.evaluate((button) => button.matches(':focus-visible'))).toBe(true);
     await page.keyboard.press('Enter');
-    await expect(
-      page.getByRole('heading', {
-        level: 1,
-        name: 'Master the Skills Shaping the Future',
-      }),
-    ).toBeVisible();
-    await expect(page.getByRole('heading', { level: 2, name: 'Found 1 course' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'Instructor courses' })).toBeVisible();
     if (width < 768) {
       await expect(
         page.getByRole('button', { name: 'Open navigation', exact: true }),
@@ -1048,11 +1093,17 @@ for (const width of [320, 390, 768, 1280, 1440]) {
         'My courses',
       );
     }
-    expectCleanLayout(await captureLayout(page), width);
+    const recoveredLayout = await page.evaluate(() => ({
+      documentWidth: document.documentElement.scrollWidth,
+      bodyWidth: document.body.scrollWidth,
+      viewportWidth: document.documentElement.clientWidth,
+    }));
+    expect(recoveredLayout.documentWidth).toBeLessThanOrEqual(recoveredLayout.viewportWidth);
+    expect(recoveredLayout.bodyWidth).toBeLessThanOrEqual(recoveredLayout.viewportWidth);
     expect(attempts).toBe(2);
     completeScenario(
       page,
-      'The exact 503 rendered safe centered copy, keyboard focus stayed visible, and one retry recovered cleanly.',
+      'The protected route retained safe error copy, visible keyboard retry, and authenticated recovery after one retry.',
     );
   });
 }

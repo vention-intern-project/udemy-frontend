@@ -344,10 +344,12 @@ describe('authentication pages', () => {
 
     expect(role.getAttribute('aria-haspopup')).toBe('listbox');
     expect(role.getAttribute('aria-expanded')).toBe('false');
+    expect(role.hasAttribute('aria-required')).toBe(false);
     expect(role.textContent).toContain('Student');
 
     await interact(() => user.click(role));
-    expect(screen.getByRole('listbox', { name: 'Role options' })).toBeTruthy();
+    const listbox = screen.getByRole('listbox', { name: 'Role options' });
+    expect(listbox.getAttribute('aria-required')).toBe('true');
     expect(screen.getByRole('option', { name: 'Student' }).getAttribute('aria-selected')).toBe(
       'true',
     );
@@ -401,6 +403,59 @@ describe('authentication pages', () => {
     );
     hostileMarkers.forEach((marker) => expect(document.body.textContent).not.toContain(marker));
   });
+
+  it('retires only the edited login field feedback', async () => {
+    renderAuth('/login', async () => {
+      throw new ApiError({
+        kind: 'validation',
+        status: 422,
+        message: 'private validation detail',
+        issues: [
+          { location: ['body', 'email'], message: 'private email detail', type: 'value_error' },
+          {
+            location: ['body', 'password'],
+            message: 'private password detail',
+            type: 'value_error',
+          },
+        ],
+      });
+    });
+    const user = userEvent.setup();
+    const email = await screen.findByLabelText(/^Email/);
+    const password = screen.getByLabelText(/^Password/);
+    await interact(() => user.type(email, 'learner@example.com'));
+    await interact(() => user.type(password, 'password'));
+    await interact(() => user.click(screen.getByRole('button', { name: 'Log in' })));
+
+    await waitFor(() => expect(email.getAttribute('aria-invalid')).toBe('true'));
+    expect(password.getAttribute('aria-invalid')).toBe('true');
+    await interact(() => user.type(email, 'a'));
+
+    expect(email).toBe(document.activeElement);
+    expect(email.getAttribute('aria-invalid')).not.toBe('true');
+    expect(document.getElementById('email-error')).toBe(null);
+    expect(password.getAttribute('aria-invalid')).toBe('true');
+    expect(document.getElementById('password-error')?.textContent).toBeTruthy();
+  });
+
+  it.each([
+    ['/login', 'Log in', /^Email/],
+    ['/signup', 'Create account', /^Email/],
+    ['/reset-password?token=focus-token', 'Reset password', /^New password/],
+  ] as const)(
+    'keeps focus in the edited field while retiring stale %s validation feedback',
+    async (path, submitName, fieldName) => {
+      renderAuth(path, async () => ({}));
+      const user = userEvent.setup();
+      const field = await screen.findByLabelText(fieldName);
+
+      await interact(() => user.click(screen.getByRole('button', { name: submitName })));
+      await waitFor(() => expect(field).toBe(document.activeElement));
+      await interact(() => user.type(field, 'a'));
+
+      expect(field).toBe(document.activeElement);
+    },
+  );
 
   it('focuses one compact alert only for a targetless auth failure', async () => {
     renderAuth('/forgot-password', async () => {
@@ -936,7 +991,7 @@ describe('authentication pages', () => {
     expect(request).toHaveBeenCalledTimes(2);
   });
 
-  it('replaces a consumed reset credential with a durable token-free confirmation', async () => {
+  it('replaces a consumed reset credential with an in-memory token-free confirmation', async () => {
     const { request } = renderAuth('/reset-password?token=private-reset-token', async () => ({
       message: 'ok',
     }));
@@ -946,15 +1001,26 @@ describe('authentication pages', () => {
     await interact(() => user.click(screen.getByRole('button', { name: 'Reset password' })));
 
     expect(await screen.findByText('Password reset complete')).toBeTruthy();
-    expect(screen.getByLabelText('location').textContent).toBe('/reset-password?status=success');
+    expect(screen.getByLabelText('location').textContent).toBe('/reset-password');
     expect(screen.queryByRole('button', { name: 'Reset password' })).toBe(null);
     expect(request).toHaveBeenCalledTimes(1);
 
     cleanup();
     renderAuth('/reset-password?token=stale-token&status=success', async () => ({}));
-    expect(await screen.findByText('Password reset complete')).toBeTruthy();
-    expect(screen.getByLabelText('location').textContent).toBe('/reset-password?status=success');
-    expect(screen.queryByRole('button', { name: 'Reset password' })).toBe(null);
+    expect(await screen.findByRole('button', { name: 'Reset password' })).toBeTruthy();
+    expect(screen.getByLabelText('location').textContent).toBe('/reset-password?token=stale-token');
+    expect(screen.queryByText('Password reset complete')).toBeNull();
+  });
+
+  it('rejects query-only reset confirmation and explains a missing reset credential', async () => {
+    renderAuth('/reset-password?status=success', async () => ({}));
+
+    expect(await screen.findByRole('heading', { name: 'Forgot password' })).toBeTruthy();
+    expect(screen.getByText('Use your reset link')).toBeTruthy();
+    expect(screen.queryByText('Password reset complete')).toBeNull();
+    expect(screen.getByLabelText('location').textContent).toBe(
+      '/forgot-password?reason=missing-token',
+    );
   });
 
   it('isolates reset fields, errors, and settlement by token identity', async () => {
@@ -983,6 +1049,27 @@ describe('authentication pages', () => {
     });
     expect(screen.queryByText('Password reset complete')).toBe(null);
     expect(screen.getByLabelText('location').textContent).toBe('/reset-password?token=token-b');
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows token B reset form after token A succeeds in the same mounted page', async () => {
+    const { request } = renderAuth(
+      '/reset-password?token=token-a',
+      async () => ({ message: 'ok' }),
+      { routerChild: <RouteNavigationControl destination="/reset-password?token=token-b" /> },
+    );
+    const user = userEvent.setup();
+    await screen.findByLabelText(/^New password/);
+    await fillAuthForm('reset', user);
+    await interact(() => user.click(screen.getByRole('button', { name: 'Reset password' })));
+
+    expect(await screen.findByText('Password reset complete')).toBeTruthy();
+    expect(screen.getByLabelText('location').textContent).toBe('/reset-password');
+    await interact(() => user.click(screen.getByRole('button', { name: 'Navigate test route' })));
+
+    expect(screen.getByLabelText('location').textContent).toBe('/reset-password?token=token-b');
+    expect(await screen.findByRole('button', { name: 'Reset password' })).toBeTruthy();
+    expect(screen.queryByText('Password reset complete')).toBeNull();
     expect(request).toHaveBeenCalledTimes(1);
   });
 
