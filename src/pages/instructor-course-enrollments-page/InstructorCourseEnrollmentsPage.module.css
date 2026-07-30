@@ -1,0 +1,29 @@
+.page,
+.page header,
+.list {
+  display: grid;
+  gap: var(--spacing-4);
+  min-width: 0;
+}
+.page h1,
+.page p {
+  margin: 0;
+}
+.page p,
+.list span {
+  color: var(--text-secondary);
+}
+.list {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.list li {
+  display: grid;
+  gap: var(--spacing-1);
+  padding: var(--spacing-4);
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  overflow-wrap: anywhere;
+}

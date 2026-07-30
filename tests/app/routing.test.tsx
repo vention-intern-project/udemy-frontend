@@ -458,7 +458,7 @@ describe('application routing and guards', () => {
       'instructor' as const,
       'My courses',
       'Indira User',
-      ['LearnHub home', 'Catalog', 'My courses', 'Search courses', 'Account menu for Indira User'],
+      ['LearnHub home', 'My courses', 'Account menu for Indira User'],
     ],
   ])(
     'uses the D04 desktop header order and account-menu trigger for %s',

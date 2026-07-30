@@ -1,0 +1,26 @@
+.page {
+  display: grid;
+  gap: var(--spacing-6);
+  min-width: 0;
+}
+.page header,
+.panel,
+.form {
+  display: grid;
+  gap: var(--spacing-4);
+  min-width: 0;
+}
+.page h1,
+.page h2,
+.page p {
+  margin: 0;
+}
+.page header p {
+  color: var(--text-secondary);
+}
+.panel {
+  padding: var(--spacing-4);
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}

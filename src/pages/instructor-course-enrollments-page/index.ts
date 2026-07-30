@@ -1,0 +1,1 @@
+export { InstructorCourseEnrollmentsPage } from './InstructorCourseEnrollmentsPage';
