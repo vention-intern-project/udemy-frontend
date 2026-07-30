@@ -81,6 +81,18 @@ describe('AiChatPage eligibility states', () => {
     expect(screen.getByRole('textbox', { name: 'Message the course assistant' })).toBeTruthy();
   });
 
+  it.each([
+    '/learning/enrollments/abc/ai-chat',
+    '/learning/enrollments/0/ai-chat',
+    '/learning/enrollments/999999999999999999999999/ai-chat',
+  ])('renders an invalid route state without mounting a course workspace for %s', (path) => {
+    renderPage(path);
+
+    expect(screen.getByRole('heading', { name: 'Invalid course assistant address' })).toBeTruthy();
+    expect(screen.queryByRole('textbox', { name: 'Message the course assistant' })).toBeNull();
+    expect(useLearningWorkspaceMock).not.toHaveBeenCalled();
+  });
+
   it('autofocuses the full-page chat composer', () => {
     useLearningWorkspaceMock.mockReturnValue(
       workspaceFor({ isPending: false, isError: false, data: activeEnrollment }),

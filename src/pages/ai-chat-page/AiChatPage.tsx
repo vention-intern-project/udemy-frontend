@@ -22,15 +22,27 @@ import heroImage from './assets/ai-chat-hero.png';
 
 import styles from './AiChatPage.module.css';
 
-function enrollmentIdFrom(value: string | undefined): number | null {
-  return value && /^[1-9]\d*$/.test(value) ? Number(value) : null;
+type AssistantRoute =
+  | { readonly kind: 'general' }
+  | { readonly kind: 'course'; readonly enrollmentId: number }
+  | { readonly kind: 'invalid' };
+
+function assistantRouteFromEnrollmentId(value: string | undefined): AssistantRoute {
+  if (value === undefined) return { kind: 'general' };
+  if (!/^[1-9]\d*$/.test(value)) return { kind: 'invalid' };
+
+  const enrollmentId = Number(value);
+  return Number.isSafeInteger(enrollmentId)
+    ? { kind: 'course', enrollmentId }
+    : { kind: 'invalid' };
 }
 
 export function AiChatPage() {
-  const enrollmentId = enrollmentIdFrom(useParams().enrollmentId);
-  if (enrollmentId === null) return <GeneralAiChatPage />;
+  const route = assistantRouteFromEnrollmentId(useParams().enrollmentId);
+  if (route.kind === 'general') return <GeneralAiChatPage />;
+  if (route.kind === 'invalid') return <InvalidCourseAiChatPage />;
 
-  return <CourseAiChatPage enrollmentId={enrollmentId} />;
+  return <CourseAiChatPage enrollmentId={route.enrollmentId} />;
 }
 
 interface CourseAiChatPageProps {
@@ -75,6 +87,16 @@ function CourseAiChatPage({ enrollmentId }: CourseAiChatPageProps) {
 
 function GeneralAiChatPage() {
   return <AssistantPageLayout context={{ kind: 'general' }} backTo="/learning" />;
+}
+
+function InvalidCourseAiChatPage() {
+  return (
+    <section className={styles.state} aria-labelledby="invalid-course-assistant-route-title">
+      <h1 id="invalid-course-assistant-route-title">Invalid course assistant address</h1>
+      <p>Return to my learning and choose a course to open its assistant.</p>
+      <ContextualNavigationLink to="/learning">Return to my learning</ContextualNavigationLink>
+    </section>
+  );
 }
 
 interface AssistantPageLayoutProps {

@@ -433,7 +433,7 @@ export function CourseCard({
             className={[styles.tooltip, tooltipPlacementClass, styles.tooltipOpen].join(' ')}
             data-placement={tooltipPlacementName}
             id={statusExplanationId}
-            role="dialog"
+            role="tooltip"
             aria-label={`Course description: ${course.title}`}
             style={tooltipStyle}
             onPointerEnter={clearCloseTimer}
@@ -457,7 +457,6 @@ export function CourseCard({
             aria-expanded={isDisclosureVisible}
             aria-pressed={isDisclosurePinned}
             onClick={handleDisclosurePinToggle}
-            aria-haspopup="dialog"
           >
             <span className={styles.disclosurePill} data-part="course-card-disclosure-pill">
               Details
