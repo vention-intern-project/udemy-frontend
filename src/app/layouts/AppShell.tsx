@@ -93,10 +93,7 @@ function navigationForSession(
     ];
   }
   if (status.user.role === 'instructor') {
-    const items: NavigationItem[] = [
-      { label: 'Catalog', to: '/', end: true, variant: 'browse-link' },
-      { label: 'My courses', to: '/instructor/courses', end: true },
-    ];
+    const items: NavigationItem[] = [{ label: 'My courses', to: '/instructor/courses', end: true }];
     if (selectedCourseId) {
       items.push({
         label: 'Course enrollments',
@@ -370,7 +367,8 @@ export function AppShell() {
   const isCatalogRoute = route?.id === 'PAGE-001';
   const isAnonymous = state.status === 'anonymous';
   const hasCatalogSearch =
-    isCatalogRoute || (state.status === 'authenticated' && layout === 'workspace');
+    isCatalogRoute ||
+    (state.status === 'authenticated' && state.user.role === 'student' && layout === 'workspace');
   const isAnonymousCatalogRoute = isCatalogRoute && isAnonymous;
   const launcherRouteIds = new Set(['PAGE-001', 'PAGE-002', 'PAGE-007', 'PAGE-008']);
   const hasGlobalAssistant = route !== undefined && launcherRouteIds.has(route.id);

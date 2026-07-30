@@ -9,6 +9,8 @@ import {
   ForgotPasswordPage,
   LearningDetailPage,
   LearningListPage,
+  InstructorCoursesPage,
+  InstructorCourseEnrollmentsPage,
   LoginPage,
   ResetPasswordPage,
   SignupPage,
@@ -29,6 +31,8 @@ function pageForRoute(route: AppRouteDefinition) {
   if (route.id === 'PAGE-007') return <CartPage />;
   if (route.id === 'PAGE-008') return <LearningListPage />;
   if (route.id === 'PAGE-009') return <LearningDetailPage />;
+  if (route.id === 'PAGE-010') return <InstructorCoursesPage />;
+  if (route.id === 'PAGE-012') return <InstructorCourseEnrollmentsPage />;
   if (route.id === 'PAGE-014' || route.id === 'PAGE-015') return <AiChatPage />;
   return <PlaceholderPage route={route} />;
 }
