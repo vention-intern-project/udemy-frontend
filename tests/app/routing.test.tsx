@@ -836,6 +836,34 @@ describe('application routing and guards', () => {
     expect(document.body.textContent).not.toContain('private upstream hostname');
   });
 
+  it('keeps an unknown route on the session-error title during a retryable bootstrap failure', async () => {
+    const client: ApiClient = {
+      request: async () => {
+        throw new Error('private upstream hostname and diagnostic details');
+      },
+    };
+    render(
+      <QueryClientProvider client={createAppQueryClient()}>
+        <ThemeProvider initialDensityMode="marketplace">
+          <SessionProvider client={client} tokenStore={store('token')}>
+            <MemoryRouter
+              initialEntries={['/does-not-exist']}
+              future={{ v7_relativeSplatPath: true, v7_startTransition: true }}
+            >
+              <ApplicationTitleBoundary>
+                <AppRouter />
+              </ApplicationTitleBoundary>
+            </MemoryRouter>
+          </SessionProvider>
+        </ThemeProvider>
+      </QueryClientProvider>,
+    );
+
+    await screen.findByRole('heading', { level: 1, name: 'Session check failed' });
+    await waitFor(() => expect(document.title).toBe('Session check failed | LearnHub'));
+    expect(document.body.textContent).not.toContain('private upstream hostname');
+  });
+
   it('keeps a guest recovery route usable after a retryable session bootstrap failure', async () => {
     const tokenStore = store('retained-token');
     const client: ApiClient = {
@@ -861,6 +889,7 @@ describe('application routing and guards', () => {
     );
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Forgot password' })).toBeTruthy();
+    await waitFor(() => expect(document.title).toBe('Forgot password | LearnHub'));
     expect(screen.queryByRole('heading', { name: 'Session check failed' })).toBeNull();
     expect(tokenStore.get()).toBe('retained-token');
     expect(document.body.textContent).not.toContain('private upstream hostname');

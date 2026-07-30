@@ -59,7 +59,7 @@ function ResetPasswordForm({ ownerKey, token, onSuccess }: ResetPasswordFormProp
     const remaining = { ...fieldErrors };
     delete remaining[field];
     setFieldErrors(remaining);
-    if (Object.keys(remaining).length === 0) setSummary(null);
+    setSummary(null);
   };
 
   async function submit(event: FormEvent) {
@@ -149,7 +149,8 @@ export function ResetPasswordPage() {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token')?.trim() ?? '';
-  const [resetSucceeded, setResetSucceeded] = useState(false);
+  const [successfulToken, setSuccessfulToken] = useState<string | null>(null);
+  const resetSucceeded = successfulToken !== null && (!token || successfulToken === token);
 
   if (resetSucceeded) {
     return (
@@ -175,7 +176,7 @@ export function ResetPasswordPage() {
       key={token}
       ownerKey={location.key}
       token={token}
-      onSuccess={() => setResetSucceeded(true)}
+      onSuccess={() => setSuccessfulToken(token)}
     />
   );
 }

@@ -73,7 +73,7 @@ export function SignupPage() {
     const remaining = { ...fieldErrors };
     delete remaining[key];
     setFieldErrors(remaining);
-    if (Object.keys(remaining).length === 0) setSummary(null);
+    setSummary(null);
   };
 
   async function submit(event: FormEvent) {
