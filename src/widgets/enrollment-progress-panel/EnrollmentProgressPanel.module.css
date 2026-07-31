@@ -1,14 +1,14 @@
 .panel {
   display: grid;
-  gap: var(--space-4, 16px);
-  padding: var(--space-3, 12px);
+  gap: var(--spacing-4, 16px);
+  padding: var(--spacing-3, 12px);
   border: 1px solid var(--border-default);
-  border-radius: var(--radius-card);
-  background: var(--surface-default);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
 }
 .summary {
   display: flex;
-  gap: var(--space-3, 12px);
+  gap: var(--spacing-3, 12px);
   justify-content: space-between;
   align-items: start;
 }
@@ -19,11 +19,11 @@
 }
 .summary p,
 .lesson p {
-  margin: var(--space-1, 4px) 0 0;
+  margin: var(--spacing-1, 4px) 0 0;
   color: var(--text-secondary);
 }
 .summary strong {
-  font-size: var(--font-size-lg);
+  font-size: var(--type-numeric-emphasis-size);
   color: var(--text-primary);
 }
 .progress {
@@ -32,34 +32,34 @@
 }
 .lessons {
   display: grid;
-  gap: var(--space-3, 12px);
+  gap: var(--spacing-3, 12px);
 }
 .lessonsHeading {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2, 8px);
+  gap: var(--spacing-2, 8px);
   align-items: baseline;
 }
 .lessonAvailability {
   margin: 0;
   color: var(--text-secondary);
-  font-size: var(--font-size-sm);
+  font-size: var(--type-body-sm-size);
 }
 .list {
   display: grid;
-  gap: var(--space-2, 8px);
+  gap: var(--spacing-2, 8px);
   margin: 0;
   padding: 0;
   list-style: none;
 }
 .lesson {
   display: flex;
-  gap: var(--space-3, 12px);
+  gap: var(--spacing-3, 12px);
   justify-content: space-between;
   align-items: flex-start;
-  padding: var(--space-3, 12px);
+  padding: var(--spacing-3, 12px);
   border: 1px solid var(--border-default);
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-md);
 }
 .lessonDetails {
   min-inline-size: 0;
@@ -67,14 +67,14 @@
 }
 .lesson span,
 .completion {
-  font-size: var(--font-size-sm);
+  font-size: var(--type-body-sm-size);
   color: var(--text-muted);
 }
 .completion {
   font-weight: 600;
 }
 .loading {
-  padding: var(--space-3, 12px);
+  padding: var(--spacing-3, 12px);
 }
 .markComplete:disabled {
   color: var(--action-primary-fg);

@@ -42,7 +42,7 @@
 }
 .header {
   display: grid;
-  gap: var(--space-2, 8px);
+  gap: var(--spacing-2, 8px);
 }
 .header h1,
 .header p {
@@ -55,23 +55,23 @@
   font-weight: 600;
 }
 .statusactive {
-  color: var(--feedback-success-fg);
+  color: var(--feedback-success);
 }
 .statuspending_payment {
-  color: var(--feedback-warning-fg);
+  color: var(--feedback-warning);
 }
 .statuscancelled {
-  color: var(--feedback-error-fg);
+  color: var(--feedback-error);
 }
 .loading {
   display: grid;
-  gap: var(--space-3, 12px);
+  gap: var(--spacing-3, 12px);
 }
 .paymentActions {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2, 8px);
-  margin-top: var(--space-3, 12px);
+  gap: var(--spacing-2, 8px);
+  margin-top: var(--spacing-3, 12px);
 }
 .feedbackSlot {
   display: grid;

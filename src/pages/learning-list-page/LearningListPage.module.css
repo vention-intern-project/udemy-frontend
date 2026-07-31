@@ -99,13 +99,13 @@
 }
 
 .statusactive {
-  color: var(--feedback-success-fg);
+  color: var(--feedback-success);
 }
 .statuspending_payment {
-  color: var(--feedback-warning-fg);
+  color: var(--feedback-warning);
 }
 .statuscancelled {
-  color: var(--feedback-error-fg);
+  color: var(--feedback-error);
 }
 .description {
   overflow-wrap: anywhere;
