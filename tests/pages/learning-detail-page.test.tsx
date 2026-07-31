@@ -243,6 +243,8 @@ describe('LearningDetailPage', () => {
 
     await screen.findByRole('link', { name: 'My learning' });
     expectMyLearningReturn();
+    expect(screen.queryByText('Media unavailable in this workspace')).toBeNull();
+    expect(screen.queryByRole('button', { name: /load (video|pdf)/i })).toBeNull();
   });
 
   it('renders the same contextual return for invalid and loading learning-detail states', async () => {
@@ -836,10 +838,14 @@ describe('LearningDetailPage', () => {
     });
     expect(action.getAttribute('aria-busy')).toBe('true');
     expect(action.getAttribute('aria-disabled')).toBe('true');
+    expect((action as HTMLButtonElement).disabled).toBe(false);
+    expect(action).toBe(document.activeElement);
     expect(action.querySelector('[data-part="spinner"]')).toBeNull();
     expect(action.textContent).toContain('Mark incomplete');
     await act(async () => {
       await user.click(action);
+      await user.keyboard('{Enter}');
+      await user.keyboard(' ');
     });
     expect(completeRequests).toBe(1);
     await act(async () => {
