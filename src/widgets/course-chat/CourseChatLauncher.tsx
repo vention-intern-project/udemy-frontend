@@ -15,6 +15,7 @@ interface CourseChatLauncherProps {
 export function CourseChatLauncher({ assistant }: CourseChatLauncherProps) {
   const location = useLocation();
   const launcherDescriptionId = useId();
+  const widgetId = useId();
   const [open, setOpen] = useState(false);
   const [interactionMounted, setInteractionMounted] = useState(false);
   const rootRef = useRef<HTMLElement>(null);
@@ -62,6 +63,7 @@ export function CourseChatLauncher({ assistant }: CourseChatLauncherProps) {
         <CourseChatLauncherInteraction
           assistant={assistant}
           open={open}
+          widgetId={widgetId}
           returnTo={`${location.pathname}${location.search}${location.hash}`}
           onClose={() => close()}
           onExpand={() => {
@@ -81,6 +83,8 @@ export function CourseChatLauncher({ assistant }: CourseChatLauncherProps) {
           type="button"
           aria-describedby={launcherDescriptionId}
           aria-label="Open AI assistant"
+          aria-controls={open ? widgetId : undefined}
+          aria-expanded={open}
           onClick={() => {
             if (interactionMounted && open) {
               close(false);
@@ -104,6 +108,7 @@ interface CourseChatLauncherInteractionProps {
   readonly assistant: CourseAssistantContext;
   readonly open: boolean;
   readonly returnTo: string;
+  readonly widgetId: string;
   onClose(): void;
   onExpand(): void;
 }
@@ -112,6 +117,7 @@ function CourseChatLauncherInteraction({
   assistant,
   open,
   returnTo,
+  widgetId,
   onClose,
   onExpand,
 }: CourseChatLauncherInteractionProps) {
@@ -121,6 +127,7 @@ function CourseChatLauncherInteraction({
   const [isActionTooltipSuppressed, setIsActionTooltipSuppressed] = useState(false);
   const [isClearConfirmationOpen, setIsClearConfirmationOpen] = useState(false);
   const actionTriggerId = useId();
+  const actionMenuId = useId();
   const actionMenuRef = useRef<HTMLSpanElement>(null);
   const widgetRef = useRef<HTMLElement>(null);
 
@@ -145,9 +152,16 @@ function CourseChatLauncherInteraction({
     return () => document.removeEventListener('pointerdown', dismissOnOutsidePointerDown);
   }, [isActionMenuOpen, open]);
 
+  useEffect(() => {
+    if (open) return;
+    setIsActionMenuOpen(false);
+    setIsActionTooltipSuppressed(false);
+  }, [open]);
+
   return (
     <section
       ref={widgetRef}
+      id={widgetId}
       className={styles.widget}
       aria-label="Course assistant chat"
       hidden={!open}
@@ -194,6 +208,7 @@ function CourseChatLauncherInteraction({
               variant="ghost"
               id={actionTriggerId}
               aria-label="Conversation actions"
+              aria-controls={isActionMenuOpen ? actionMenuId : undefined}
               aria-expanded={isActionMenuOpen}
               onClick={() => {
                 setIsActionTooltipSuppressed(true);
@@ -215,6 +230,7 @@ function CourseChatLauncherInteraction({
             {isActionMenuOpen ? (
               <span
                 className={styles.actionMenuList}
+                id={actionMenuId}
                 aria-label="Conversation actions"
                 data-part="mini-chat-action-menu"
                 onKeyDown={(event) => {

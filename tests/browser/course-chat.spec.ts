@@ -144,6 +144,8 @@ test('completes the mobile chat flow, restores focus, and preserves history afte
   await page.goto('/learning/enrollments/4');
   const launcher = page.getByRole('button', { name: 'Open AI assistant' });
   await expect(launcher).toHaveCSS('width', '60px');
+  await expect(launcher).toHaveAttribute('aria-expanded', 'false');
+  await expect(launcher).not.toHaveAttribute('aria-controls');
   await launcher.focus();
   await expect(page.getByRole('tooltip', { name: 'Open AI assistant' })).toBeVisible();
   await launcher.blur();
@@ -155,6 +157,11 @@ test('completes the mobile chat flow, restores focus, and preserves history afte
   await page.waitForTimeout(150);
   await expect(launcherTooltip).toBeVisible();
   await launcher.click();
+  const widget = page.getByRole('region', { name: 'Course assistant chat' });
+  const widgetId = await widget.getAttribute('id');
+  if (widgetId === null) throw new Error('Expected the mini-chat widget ID.');
+  await expect(launcher).toHaveAttribute('aria-expanded', 'true');
+  await expect(launcher).toHaveAttribute('aria-controls', widgetId);
   await expect(page.getByRole('tooltip', { name: 'Open AI assistant' })).toBeHidden();
   const headerTooltips = [
     ['Expand course assistant', 'Expand chat'],
@@ -195,9 +202,15 @@ test('completes the mobile chat flow, restores focus, and preserves history afte
   ).toBe(true);
   await input.fill('');
   const miniActions = page.getByRole('button', { name: 'Conversation actions' });
+  await expect(miniActions).toHaveAttribute('aria-expanded', 'false');
+  await expect(miniActions).not.toHaveAttribute('aria-controls');
   await miniActions.click();
   const miniClear = page.getByRole('button', { name: 'Clear chat' });
   await expect(miniClear).toBeVisible();
+  const actionMenuId = await page.locator('[data-part="mini-chat-action-menu"]').getAttribute('id');
+  if (actionMenuId === null) throw new Error('Expected the mini-chat action-menu ID.');
+  await expect(miniActions).toHaveAttribute('aria-expanded', 'true');
+  await expect(miniActions).toHaveAttribute('aria-controls', actionMenuId);
   const miniMenuGeometry = await page
     .locator('[data-part="mini-chat-action-menu"]')
     .evaluate((menu) => {
@@ -288,7 +301,15 @@ test('completes the mobile chat flow, restores focus, and preserves history afte
   await page.getByRole('button', { name: 'Close course assistant' }).click();
   await expect(page.locator('[aria-label="Course assistant chat"]')).toBeHidden();
   await expect(page.getByRole('button', { name: 'Open AI assistant' })).toBeFocused();
+  await expect(launcher).toHaveAttribute('aria-expanded', 'false');
+  await expect(launcher).not.toHaveAttribute('aria-controls');
   await page.getByRole('button', { name: 'Open AI assistant' }).click();
+  await expect(miniActions).toHaveAttribute('aria-expanded', 'false');
+  await expect(miniActions).not.toHaveAttribute('aria-controls');
+  await expect(page.getByRole('button', { name: 'Clear chat' })).toHaveCount(0);
+  await miniActions.hover();
+  await page.waitForTimeout(2_100);
+  await expect(page.getByRole('tooltip', { name: 'Conversation actions' })).toBeVisible();
   await expect(page.getByText('One answer 1.')).toBeVisible();
   await expect(input).toHaveValue('Keep this draft');
   await page.getByRole('button', { name: 'Expand course assistant' }).click();
