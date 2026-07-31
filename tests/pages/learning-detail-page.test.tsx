@@ -680,6 +680,37 @@ describe('LearningDetailPage', () => {
   );
 
   it.each([403, 404])(
+    'renders a neutral no-action state when API-014 returns %i with successful progress',
+    async (status) => {
+      const rawRequest = vi.fn(
+        async <TResponse, TBody>(options: ApiRequestOptions<TBody, TResponse>) => {
+          if (options.path === '/me') return decode(options, student);
+          if (options.path === '/enrollments/4') return decode(options, activeEnrollment);
+          if (options.path === '/courses/7/progress')
+            return decode(options, {
+              course_id: 7,
+              completed_lessons: 0,
+              total_lessons: 1,
+              progress_percentage: 0,
+            });
+          if (options.path === '/courses/7/lessons')
+            throw new ApiError({ kind: 'forbidden', status, message: 'private backend text' });
+          throw new Error(`Unexpected request ${options.path}`);
+        },
+      );
+      await renderPage(rawRequest as ApiClient['request']);
+      expect(
+        await screen.findByRole('heading', { name: 'Learning workspace unavailable' }),
+      ).toBeTruthy();
+      expect(screen.queryByRole('progressbar')).toBeNull();
+      expect(screen.queryByRole('heading', { name: /Lessons/ })).toBeNull();
+      expect(screen.queryByRole('button', { name: /mark|try again/i })).toBeNull();
+      expect(screen.queryByText('private backend text')).toBeNull();
+      expectMyLearningReturn();
+    },
+  );
+
+  it.each([403, 404])(
     'renders the same neutral no-action state when API-022 returns %i',
     async (status) => {
       const request: ApiClient['request'] = async <TResponse, TBody>(
@@ -731,58 +762,102 @@ describe('LearningDetailPage', () => {
     expectMyLearningReturn();
   });
 
-  it('prioritizes a progress failure over a pending lesson outline', async () => {
-    let rejectProgress: ((reason?: unknown) => void) | undefined;
-    const progress = new Promise<unknown>((_resolve, reject) => {
-      rejectProgress = reject;
-    });
-    const outline = new Promise<unknown>(() => {});
+  it('retains a successful lesson outline when progress fails and retries both peers', async () => {
+    let progressRequests = 0;
+    let outlineRequests = 0;
     const request: ApiClient['request'] = async <TResponse, TBody>(
       options: ApiRequestOptions<TBody, TResponse>,
     ) => {
       if (options.path === '/me') return decode(options, student);
       if (options.path === '/enrollments/4') return decode(options, activeEnrollment);
-      if (options.path === '/courses/7/progress') return decode(options, await progress);
-      if (options.path === '/courses/7/lessons') return decode(options, await outline);
+      if (options.path === '/courses/7/progress') {
+        progressRequests += 1;
+        if (progressRequests === 1)
+          throw new ApiError({ kind: 'server', status: 500, message: 'private progress detail' });
+        return decode(options, {
+          course_id: 7,
+          completed_lessons: 0,
+          total_lessons: 1,
+          progress_percentage: 0,
+        });
+      }
+      if (options.path === '/courses/7/lessons') {
+        outlineRequests += 1;
+        return decode(options, oneLessonOutline);
+      }
       throw new Error(`Unexpected request ${options.path}`);
     };
     await renderPage(request);
-    await screen.findByRole('status', { name: 'Loading learning progress' });
+    expect(await screen.findByRole('heading', { name: 'Lessons (1)' })).toBeTruthy();
+    expect(screen.getByText('First lesson')).toBeTruthy();
+    expect(screen.getByText('Progress summary is unavailable')).toBeTruthy();
+    expect(screen.queryByText('private progress detail')).toBeNull();
+    const user = userEvent.setup();
     await act(async () => {
-      rejectProgress?.(
-        new ApiError({ kind: 'server', status: 500, message: 'private progress detail' }),
-      );
+      await user.click(screen.getByRole('button', { name: 'Try again' }));
     });
-    expect(await screen.findByText('Learning progress is unavailable')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
-    expect(screen.queryByLabelText('Loading learning progress')).toBeNull();
+    expect(await screen.findByRole('progressbar')).toBeTruthy();
+    expect(progressRequests).toBe(2);
+    expect(outlineRequests).toBe(2);
   });
 
-  it('prioritizes a lesson-outline failure over pending progress', async () => {
-    let rejectOutline: ((reason?: unknown) => void) | undefined;
-    const progress = new Promise<unknown>(() => {});
-    const outline = new Promise<unknown>((_resolve, reject) => {
-      rejectOutline = reject;
-    });
+  it('retains a successful progress summary when the lesson outline fails and retries both peers', async () => {
+    let progressRequests = 0;
+    let outlineRequests = 0;
     const request: ApiClient['request'] = async <TResponse, TBody>(
       options: ApiRequestOptions<TBody, TResponse>,
     ) => {
       if (options.path === '/me') return decode(options, student);
       if (options.path === '/enrollments/4') return decode(options, activeEnrollment);
-      if (options.path === '/courses/7/progress') return decode(options, await progress);
-      if (options.path === '/courses/7/lessons') return decode(options, await outline);
+      if (options.path === '/courses/7/progress') {
+        progressRequests += 1;
+        return decode(options, {
+          course_id: 7,
+          completed_lessons: 0,
+          total_lessons: 1,
+          progress_percentage: 0,
+        });
+      }
+      if (options.path === '/courses/7/lessons') {
+        outlineRequests += 1;
+        if (outlineRequests === 1)
+          throw new ApiError({ kind: 'server', status: 500, message: 'private outline detail' });
+        return decode(options, oneLessonOutline);
+      }
       throw new Error(`Unexpected request ${options.path}`);
     };
     await renderPage(request);
-    await screen.findByRole('status', { name: 'Loading learning progress' });
+    expect(await screen.findByRole('progressbar')).toBeTruthy();
+    expect(screen.getByText('Lesson outline is unavailable')).toBeTruthy();
+    expect(screen.queryByText('private outline detail')).toBeNull();
+    const user = userEvent.setup();
     await act(async () => {
-      rejectOutline?.(
-        new ApiError({ kind: 'server', status: 500, message: 'private outline detail' }),
-      );
+      await user.click(screen.getByRole('button', { name: 'Try again' }));
     });
+    expect(await screen.findByRole('heading', { name: 'Lessons (1)' })).toBeTruthy();
+    expect(progressRequests).toBe(2);
+    expect(outlineRequests).toBe(2);
+  });
+
+  it('keeps both independent failures in one truthful total-unavailable state', async () => {
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/enrollments/4') return decode(options, activeEnrollment);
+      if (options.path === '/courses/7/progress')
+        throw new ApiError({ kind: 'server', status: 500, message: 'private progress detail' });
+      if (options.path === '/courses/7/lessons')
+        throw new ApiError({ kind: 'server', status: 500, message: 'private outline detail' });
+      throw new Error(`Unexpected request ${options.path}`);
+    };
+    await renderPage(request);
     expect(await screen.findByText('Learning progress is unavailable')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
-    expect(screen.queryByLabelText('Loading learning progress')).toBeNull();
+    expect(screen.queryByRole('progressbar')).toBeNull();
+    expect(screen.queryByRole('heading', { name: /lessons/i })).toBeNull();
+    expect(screen.queryByText('private progress detail')).toBeNull();
+    expect(screen.queryByText('private outline detail')).toBeNull();
   });
 
   it('deduplicates a pending lesson completion and adopts its successful response', async () => {
