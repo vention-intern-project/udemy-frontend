@@ -290,6 +290,86 @@ describe('LearningListPage', () => {
     expect(screen.queryByText('private')).toBeNull();
   });
 
+  it('does not move focus when a failed list retry is followed by another failed refresh', async () => {
+    let attempts = 0;
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/enrollments/my') {
+        attempts += 1;
+        if (attempts < 4)
+          throw new ApiError({ kind: 'server', status: 500, message: 'private list' });
+        return decode(options, { ...enrollments, page: 1, pages: 2 });
+      }
+      throw new Error(`Unexpected request ${options.path}`);
+    };
+    const queryClient = await renderPage(request, '/learning');
+    const user = userEvent.setup();
+    const retry = await screen.findByRole('button', { name: 'Try again' });
+    await act(async () => {
+      await user.click(retry);
+    });
+    await screen.findByRole('button', { name: 'Try again' });
+    const sentinel = document.createElement('button');
+    document.body.append(sentinel);
+    sentinel.focus();
+    await act(async () => {
+      await queryClient.refetchQueries();
+    });
+    await screen.findByRole('button', { name: 'Try again' });
+    expect(document.activeElement).toBe(sentinel);
+    sentinel.remove();
+  });
+
+  it('does not let a pending list retry focus after its requested page identity changes', async () => {
+    let resolveRetry: (() => void) | undefined;
+    const retryResponse = new Promise<void>((resolve) => {
+      resolveRetry = resolve;
+    });
+    let pageOneRequests = 0;
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/enrollments/my') {
+        const page = Number(options.query?.page);
+        if (page === 1) {
+          pageOneRequests += 1;
+          if (pageOneRequests === 1)
+            throw new ApiError({ kind: 'server', status: 500, message: 'private list' });
+          await retryResponse;
+        }
+        return decode(options, {
+          ...enrollments,
+          page,
+          has_next: page === 1,
+          has_previous: page === 2,
+        });
+      }
+      throw new Error(`Unexpected request ${options.path}`);
+    };
+    await renderPage(request, '/learning');
+    const user = userEvent.setup();
+    const retry = await screen.findByRole('button', { name: 'Try again' });
+    await act(async () => {
+      await user.click(retry);
+    });
+    await waitFor(() => expect(pageOneRequests).toBe(2));
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Navigate to page 2' }));
+    });
+    await screen.findByText('22 enrollments · Page 2 of 2');
+    const sentinel = document.createElement('button');
+    document.body.append(sentinel);
+    sentinel.focus();
+    await act(async () => {
+      resolveRetry?.();
+    });
+    await waitFor(() => expect(document.activeElement).toBe(sentinel));
+    sentinel.remove();
+  });
+
   it('restores focus across uncached and cached API-021 pages without stealing it on background refetch', async () => {
     const requestedPages: number[] = [];
     let holdBackgroundRefresh = false;

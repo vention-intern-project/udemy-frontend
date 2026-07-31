@@ -1721,6 +1721,93 @@ describe('LearningDetailPage', () => {
     await waitFor(() => expect(document.activeElement).toBe(heading));
   });
 
+  it('does not let a later enrollment refresh move focus after the retry fails', async () => {
+    let enrollmentRequests = 0;
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/enrollments/4') {
+        enrollmentRequests += 1;
+        if (enrollmentRequests < 3)
+          throw new ApiError({ kind: 'server', status: 500, message: 'private enrollment' });
+        return decode(options, { ...activeEnrollment, status: 'cancelled' });
+      }
+      throw new Error(`Unexpected request ${options.path}`);
+    };
+    const queryClient = await renderPage(request);
+    const user = userEvent.setup();
+    const retry = await screen.findByRole('button', { name: 'Try again' });
+    await act(async () => {
+      await user.click(retry);
+    });
+    await screen.findByRole('button', { name: 'Try again' });
+    const sentinel = document.createElement('button');
+    document.body.append(sentinel);
+    sentinel.focus();
+    await act(async () => {
+      await queryClient.refetchQueries();
+    });
+    await screen.findByRole('heading', { name: activeEnrollment.course.title });
+    expect(document.activeElement).toBe(sentinel);
+    sentinel.remove();
+  });
+
+  it('does not let a pending enrollment retry focus after its workspace identity changes', async () => {
+    let resolveRetry: (() => void) | undefined;
+    const retryResponse = new Promise<void>((resolve) => {
+      resolveRetry = resolve;
+    });
+    let enrollmentFourRequests = 0;
+    const secondEnrollment = {
+      ...activeEnrollment,
+      id: 5,
+      course_id: 8,
+      course: { ...activeEnrollment.course, id: 8, title: 'Second workspace' },
+    };
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/enrollments/4') {
+        enrollmentFourRequests += 1;
+        if (enrollmentFourRequests === 1)
+          throw new ApiError({ kind: 'server', status: 500, message: 'private enrollment' });
+        await retryResponse;
+        return decode(options, activeEnrollment);
+      }
+      if (options.path === '/enrollments/5') return decode(options, secondEnrollment);
+      if (options.path === '/courses/8/progress')
+        return decode(options, {
+          course_id: 8,
+          completed_lessons: 0,
+          total_lessons: 0,
+          progress_percentage: 0,
+        });
+      if (options.path === '/courses/8/lessons') return decode(options, oneLessonOutline);
+      throw new Error(`Unexpected request ${options.path}`);
+    };
+    await renderPage(request, { routeChange: true });
+    const user = userEvent.setup();
+    const retry = await screen.findByRole('button', { name: 'Try again' });
+    await act(async () => {
+      await user.click(retry);
+    });
+    await waitFor(() => expect(enrollmentFourRequests).toBe(2));
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Open workspace 5' }));
+    });
+    await screen.findByRole('heading', { name: 'Second workspace' });
+    const sentinel = document.createElement('button');
+    document.body.append(sentinel);
+    sentinel.focus();
+    await act(async () => {
+      resolveRetry?.();
+    });
+    await waitFor(() => expect(document.activeElement).toBe(sentinel));
+    sentinel.remove();
+  });
+
   it('restores focus after progress and workspace retry succeeds', async () => {
     let progressRequests = 0;
     const request: ApiClient['request'] = async <TResponse, TBody>(

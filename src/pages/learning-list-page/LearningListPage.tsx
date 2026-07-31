@@ -3,6 +3,7 @@ import { ChevronLeft } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 
 import type { EnrollmentStatus } from '@entities/enrollment';
+import { useSession } from '@features/auth-session';
 import { learningFailure, useLearningList } from '@features/learning-progress';
 import {
   Button,
@@ -28,17 +29,37 @@ function enrollmentStatusLabel(status: EnrollmentStatus): string {
   return 'Payment pending';
 }
 
+interface LearningListRetryFocusIntent {
+  readonly identity: string;
+}
+
+interface RetryResult {
+  readonly isSuccess?: boolean;
+}
+
+function didRetrySucceed(result: unknown): boolean {
+  return (
+    typeof result === 'object' && result !== null && (result as RetryResult).isSuccess === true
+  );
+}
+
 export function LearningListPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const page = parsePage(searchParams.get('page'));
+  const session = useSession();
   const { enrollments, retry } = useLearningList(page);
   const headingRef = useRef<HTMLHeadingElement>(null);
-  const retryRef = useRef(false);
+  const retryIntentRef = useRef<LearningListRetryFocusIntent | null>(null);
   const requestedPageFocusRef = useRef<number | null>(null);
   const observedPageRef = useRef(page);
+  const retryIdentity = `${session.cacheEpoch ?? 'anonymous'}:${page}`;
   useEffect(() => {
-    if (retryRef.current && enrollments.isSuccess) {
-      retryRef.current = false;
+    retryIntentRef.current = null;
+  }, [retryIdentity]);
+  useEffect(() => {
+    const retryIntent = retryIntentRef.current;
+    if (retryIntent?.identity === retryIdentity && enrollments.isSuccess) {
+      retryIntentRef.current = null;
       headingRef.current?.focus();
     }
     const requestedPage = requestedPageFocusRef.current;
@@ -57,7 +78,20 @@ export function LearningListPage() {
       requestedPageFocusRef.current = null;
       headingRef.current?.focus();
     }
-  }, [enrollments.data?.page, enrollments.isSuccess, page]);
+  }, [enrollments.data?.page, enrollments.isSuccess, page, retryIdentity]);
+  const retryList = () => {
+    const intent: LearningListRetryFocusIntent = { identity: retryIdentity };
+    retryIntentRef.current = intent;
+    void retry().then(
+      (result) => {
+        if (!didRetrySucceed(result) && retryIntentRef.current === intent)
+          retryIntentRef.current = null;
+      },
+      () => {
+        if (retryIntentRef.current === intent) retryIntentRef.current = null;
+      },
+    );
+  };
   const changePage = (nextPage: number) => {
     requestedPageFocusRef.current = nextPage;
     setSearchParams(nextPage === 1 ? {} : { page: String(nextPage) });
@@ -89,8 +123,7 @@ export function LearningListPage() {
         </Notice>
         <Button
           onClick={() => {
-            retryRef.current = true;
-            void retry();
+            retryList();
           }}
         >
           Try again
