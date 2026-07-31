@@ -156,6 +156,8 @@ export function CourseCard({
     ? null
     : 'This course is not available for enrollment yet.';
   const statusExplanationId = `catalog-course-${course.id}-status`;
+  const tooltipLabelId = `catalog-course-${course.id}-description-label`;
+  const tooltipDescriptionId = `catalog-course-${course.id}-description`;
   const description = course.description ?? 'No course description is available.';
   const linkRef = useRef<HTMLAnchorElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
@@ -402,7 +404,7 @@ export function CourseCard({
           className={styles.link}
           to={`/courses/${course.id}`}
           aria-label={course.title}
-          aria-describedby={isDisclosureVisible ? statusExplanationId : undefined}
+          aria-describedby={isDisclosureVisible ? tooltipDescriptionId : undefined}
           onFocus={handleLinkFocus}
           onBlur={handleLinkBlur}
         >
@@ -433,16 +435,20 @@ export function CourseCard({
             className={[styles.tooltip, tooltipPlacementClass, styles.tooltipOpen].join(' ')}
             data-placement={tooltipPlacementName}
             id={statusExplanationId}
-            role="dialog"
-            aria-label={`Course description: ${course.title}`}
+            role="tooltip"
+            aria-labelledby={tooltipLabelId}
             style={tooltipStyle}
             onPointerEnter={clearCloseTimer}
             onPointerLeave={handleCardPointerLeave}
           >
             <div className={styles.tooltipContent} data-part="course-card-tooltip-content">
               {tooltipNotice ? <span className={styles.tooltipNotice}>{tooltipNotice}</span> : null}
-              <span className={styles.tooltipCourse}>About {course.title}</span>
-              <span className={styles.tooltipDescription}>{description}</span>
+              <span id={tooltipLabelId} className={styles.tooltipCourse}>
+                Course description: {course.title}
+              </span>
+              <span id={tooltipDescriptionId} className={styles.tooltipDescription}>
+                {description}
+              </span>
             </div>
           </div>
         ) : null}
@@ -454,10 +460,10 @@ export function CourseCard({
             className={styles.disclosureButton}
             aria-label="View course details"
             aria-controls={statusExplanationId}
+            aria-describedby={isDisclosureVisible ? tooltipDescriptionId : undefined}
             aria-expanded={isDisclosureVisible}
             aria-pressed={isDisclosurePinned}
             onClick={handleDisclosurePinToggle}
-            aria-haspopup="dialog"
           >
             <span className={styles.disclosurePill} data-part="course-card-disclosure-pill">
               Details

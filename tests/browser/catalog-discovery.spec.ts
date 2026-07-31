@@ -336,7 +336,7 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
   ).toHaveAttribute('value', '0');
   await expect(page.getByText('Price unavailable')).toBeVisible();
   await expect(page.locator('[data-part="course-card-body"] p')).toHaveCount(0);
-  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'View course details' })).toHaveCount(5);
 
   for (const width of [320, 390, 768, 1100, 1280, 1440]) {
@@ -575,21 +575,21 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
       .locator('[data-part="course-card-metadata"]'),
   ).toHaveText('Ada Lovelace · 1 lesson available');
   const reactCardLink = reactCard.getByRole('link', { name: 'React' });
-  await expect(reactCard.getByRole('dialog')).toHaveCount(0);
+  await expect(reactCard.getByRole('tooltip')).toHaveCount(0);
   await expect(reactCardLink).not.toHaveAttribute('aria-describedby');
   await reactCard.hover();
-  const reactTooltip = reactCard.getByRole('dialog');
+  const reactTooltip = reactCard.getByRole('tooltip');
   const reactTooltipContent = reactTooltip.locator('[data-part="course-card-tooltip-content"]');
   await expect(reactTooltip).toHaveCSS('opacity', '1');
   await expect(reactTooltipContent.locator(':scope > :first-child')).toHaveText(
     'This course is not available for enrollment yet.',
   );
   await expect(reactTooltip).toHaveText(
-    /^This course is not available for enrollment yet\.About ReactA concise course description\.$/,
+    /^This course is not available for enrollment yet\.Course description: ReactA concise course description\.$/,
   );
   await expect(reactTooltip).toContainText('A concise course description.');
   await expect(reactTooltipContent.locator(':scope > span[class*="tooltipCourse"]')).toHaveText(
-    'About React',
+    'Course description: React',
   );
   await expect(
     reactTooltipContent.locator(':scope > span[class*="tooltipCourse"]'),
@@ -601,7 +601,7 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
     .locator('[data-part="course-card"]')
     .filter({ has: page.getByRole('heading', { level: 3, name: 'TypeScript' }) });
   await publishedCard.hover();
-  const publishedTooltip = publishedCard.getByRole('dialog');
+  const publishedTooltip = publishedCard.getByRole('tooltip');
   await expect(publishedTooltip).toHaveCSS('opacity', '1');
   await expect(publishedTooltip).not.toContainText('Published means this course');
   await expect(publishedTooltip).not.toContainText('published_at');
@@ -627,7 +627,7 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
       clientWidth: document.documentElement.clientWidth,
       clientHeight: document.documentElement.clientHeight,
       headerBottom,
-      hitInsideTooltip: hit?.closest('[role="dialog"]') === tooltip,
+      hitInsideTooltip: hit?.closest('[role="tooltip"]') === tooltip,
       hasNeighborBelow,
       tailBorderRightWidth: getComputedStyle(tooltip, '::before').borderRightWidth,
       tailTop: getComputedStyle(tooltip, '::before').top,
@@ -665,8 +665,8 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
   });
   await page.mouse.move(seam.sourceX, seam.y);
   await page.mouse.move(seam.neighborX, seam.y, { steps: 8 });
-  await expect(publishedCard.getByRole('dialog')).toHaveCSS('opacity', '1');
-  const seamDisclosureState = await page.getByRole('dialog').evaluateAll((tooltips) =>
+  await expect(publishedCard.getByRole('tooltip')).toHaveCSS('opacity', '1');
+  const seamDisclosureState = await page.getByRole('tooltip').evaluateAll((tooltips) =>
     tooltips.map((tooltip) => ({
       opacity: getComputedStyle(tooltip).opacity,
       pointerEvents: getComputedStyle(tooltip).pointerEvents,
@@ -679,7 +679,7 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
     .locator('[data-part="course-card"]')
     .filter({ has: page.getByRole('heading', { level: 3, name: longTitle }) });
   await rightmostCard.hover();
-  const longTitleTooltip = rightmostCard.getByRole('dialog');
+  const longTitleTooltip = rightmostCard.getByRole('tooltip');
   await expect(longTitleTooltip).toHaveCSS('opacity', '1');
   const longTitlePlacement = await longTitleTooltip.evaluate((tooltip) => ({
     placement: tooltip.getAttribute('data-placement'),
@@ -898,11 +898,11 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
   });
   await expect(publishedDisclosureButton).toHaveAttribute('aria-expanded', 'true');
   await expect(publishedDisclosureButton).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByRole('dialog')).toHaveCount(1);
+  await expect(page.getByRole('tooltip')).toHaveCount(1);
   await page.getByRole('heading', { level: 2, name: 'Found 5 courses' }).hover();
   await expect(publishedDisclosureButton).toHaveAttribute('aria-expanded', 'true');
   await expect(publishedDisclosureButton).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByRole('dialog')).toHaveCount(1);
+  await expect(page.getByRole('tooltip')).toHaveCount(1);
   const cardBoundsAfterDisclosure = await page
     .locator('[data-part="course-card"]')
     .evaluateAll((cards) =>
@@ -1067,8 +1067,16 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
   await previous.focus();
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/\/$/);
+  const courseNavigationAbort = page.waitForEvent(
+    'requestfailed',
+    (request) =>
+      request.method() === 'GET' &&
+      new URL(request.url()).pathname === '/courses/7' &&
+      request.failure()?.errorText === 'net::ERR_ABORTED',
+  );
   await reactLink.press('Enter');
   await expect(page).toHaveURL(/\/courses\/7$/);
+  await courseNavigationAbort;
   expect(forbiddenMutationRequests).toEqual([]);
   assertClean();
 });
@@ -1797,7 +1805,7 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   expect(sortIdle.transition).toContain('color');
   expect(sortIdle.duration).not.toBe('0s');
   const focusedCourseLink = page.getByRole('link', { name: 'React' });
-  const focusedCourseTooltip = focusedCourseLink.locator('xpath=..').getByRole('dialog');
+  const focusedCourseTooltip = focusedCourseLink.locator('xpath=..').getByRole('tooltip');
   await focusedCourseLink.focus();
   await expect(focusedCourseTooltip).toHaveCSS('opacity', '1');
   await sortTrigger.hover();
@@ -1867,8 +1875,9 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   expect(requests).toHaveLength(requestCountBeforeHover);
   const lowToHighOption = sortListbox.getByRole('option', { name: 'Low to High' });
   await lowToHighOption.evaluate((option) => {
-    const describedBy = document.activeElement?.getAttribute('aria-describedby');
-    const tooltip = describedBy ? document.getElementById(describedBy) : null;
+    const tooltip = document.activeElement
+      ?.closest<HTMLElement>('[data-part="course-card"]')
+      ?.querySelector<HTMLElement>('[role="tooltip"]');
     const rect = option.getBoundingClientRect();
     if (!tooltip) throw new Error('Focused course tooltip is required for Sort layering coverage.');
     tooltip.style.setProperty(
@@ -1883,14 +1892,16 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
     const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
     return {
       listboxHit: hit?.closest('[role="listbox"]') === option.closest('[role="listbox"]'),
-      tooltipHit: Boolean(hit?.closest('[role="dialog"]')),
+      tooltipHit: Boolean(hit?.closest('[role="tooltip"]')),
     };
   });
   expect(sortHit).toEqual({ listboxHit: true, tooltipHit: false });
   await expect(sortTrigger).toHaveAttribute('aria-expanded', 'true');
   await lowToHighOption.evaluate(() => {
-    const describedBy = document.activeElement?.getAttribute('aria-describedby');
-    if (describedBy) document.getElementById(describedBy)?.style.removeProperty('transform');
+    document.activeElement
+      ?.closest<HTMLElement>('[data-part="course-card"]')
+      ?.querySelector<HTMLElement>('[role="tooltip"]')
+      ?.style.removeProperty('transform');
   });
   await expect(sortListbox).toHaveAttribute(
     'aria-activedescendant',
@@ -2603,9 +2614,9 @@ test('contains a right-exhausted left course tooltip without horizontal document
   const recordedGeometry: string[] = [];
   await expect(cards).toHaveCount(4);
   for (const width of [1280, 1100, 768, 640, 390, 320]) {
-    if (await page.getByRole('dialog').count()) {
+    if (await page.getByRole('tooltip').count()) {
       await page.keyboard.press('Escape');
-      await expect(page.getByRole('dialog')).toHaveCount(0);
+      await expect(page.getByRole('tooltip')).toHaveCount(0);
     }
     await page.setViewportSize({ width, height: 900 });
     const rightmostIndex = await cards.evaluateAll((elements) =>
@@ -2620,7 +2631,7 @@ test('contains a right-exhausted left course tooltip without horizontal document
     const card = cards.nth(rightmostIndex);
     const cardId = await card.getAttribute('data-course-card-id');
     await card.locator('a[href^="/courses/"]').hover();
-    const tooltip = page.getByRole('dialog');
+    const tooltip = page.getByRole('tooltip');
     await expect(tooltip).toHaveCount(1);
     await expect
       .poll(() =>
@@ -2768,7 +2779,7 @@ test('contains a right-exhausted left course tooltip without horizontal document
     recordedGeometry.push(JSON.stringify({ width, ...geometry }));
   }
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
   await page.setViewportSize({ width: 1280, height: 900 });
   const leftmostIndex = await cards.evaluateAll((elements) =>
     elements.reduce(
@@ -2780,7 +2791,7 @@ test('contains a right-exhausted left course tooltip without horizontal document
     ),
   );
   await cards.nth(leftmostIndex).locator('a[href^="/courses/"]').hover();
-  const rightPlacementGeometry = await page.getByRole('dialog').evaluate((element) => {
+  const rightPlacementGeometry = await page.getByRole('tooltip').evaluate((element) => {
     const readingSurface = element.querySelector<HTMLElement>(
       '[data-part="course-card-tooltip-content"]',
     );
@@ -2819,7 +2830,7 @@ test('contains a right-exhausted left course tooltip without horizontal document
     JSON.stringify({ width: 1280, edge: 'leftmost-right-placement', ...rightPlacementGeometry }),
   );
   await page.getByRole('heading', { level: 2, name: 'Found 4 courses' }).hover();
-  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.evaluate(() => {
     document.documentElement.style.zoom = '200%';
@@ -2840,7 +2851,7 @@ test('contains a right-exhausted left course tooltip without horizontal document
   );
   const zoomedCard = cards.nth(zoomedRightmostIndex);
   await zoomedCard.locator('a[href^="/courses/"]').hover();
-  const zoomedGeometry = await page.getByRole('dialog').evaluate((element) => {
+  const zoomedGeometry = await page.getByRole('tooltip').evaluate((element) => {
     const card = element.closest<HTMLElement>('[data-part="course-card"]');
     if (!card) throw new Error('Zoomed course-card tooltip owner is missing.');
     const style = getComputedStyle(element);
@@ -3530,9 +3541,9 @@ test('A124 keeps one delayed, hoverable and pinnable controlled popover with a c
   const action = reactCard.getByRole('link', { name: 'Add to cart' });
 
   await reactCard.hover();
-  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
   await page.waitForTimeout(280);
-  const popover = page.getByRole('dialog', { name: 'Course description: React' });
+  const popover = page.getByRole('tooltip', { name: 'Course description: React' });
   await expect(popover).toHaveCount(1);
   await expect(reactTrigger).toHaveAttribute('aria-expanded', 'true');
   await expect(reactTrigger).toHaveAttribute(
@@ -3550,29 +3561,29 @@ test('A124 keeps one delayed, hoverable and pinnable controlled popover with a c
   await expect(popover).toHaveCount(1);
   await page.mouse.move(4, 600, { steps: 8 });
   await page.waitForTimeout(180);
-  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
 
   await action.hover();
   await page.waitForTimeout(280);
-  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
   await reactTrigger.click();
   await expect(reactTrigger).toHaveAttribute('aria-pressed', 'true');
   await typeScriptCard.hover();
   await page.waitForTimeout(280);
-  await expect(page.getByRole('dialog')).toHaveCount(1);
-  await expect(page.getByRole('dialog')).toHaveAccessibleName('Course description: React');
+  await expect(page.getByRole('tooltip')).toHaveCount(1);
+  await expect(page.getByRole('tooltip')).toHaveAccessibleName('Course description: React');
   await typeScriptTrigger.click();
   await expect(reactTrigger).toHaveAttribute('aria-expanded', 'false');
   await expect(typeScriptTrigger).toHaveAttribute('aria-pressed', 'true');
   await typeScriptTrigger.click();
-  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
 
   await reactTrigger.click();
   await page.mouse.click(8, 800);
-  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
   await reactTrigger.click();
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
   await expect(reactTrigger).toBeFocused();
 
   const cards = page.locator('[data-part="course-card"]');
@@ -3587,7 +3598,7 @@ test('A124 keeps one delayed, hoverable and pinnable controlled popover with a c
   );
   await cards.nth(rightmostIndex).hover();
   await page.waitForTimeout(280);
-  const edgePopover = page.getByRole('dialog');
+  const edgePopover = page.getByRole('tooltip');
   const connector = await edgePopover.evaluate((element) => {
     const card = element.closest<HTMLElement>('[data-part="course-card"]');
     if (!card) throw new Error('Popover active card is missing.');
@@ -3676,9 +3687,9 @@ test('A124 uses the explicit trigger only for coarse-pointer input', async ({ pa
   const trigger = card.getByRole('button', { name: 'View course details' });
   await card.hover();
   await page.waitForTimeout(320);
-  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
   await trigger.click();
-  await expect(page.getByRole('dialog', { name: 'Course description: Touch course' })).toHaveCount(
+  await expect(page.getByRole('tooltip', { name: 'Course description: Touch course' })).toHaveCount(
     1,
   );
   await expect(trigger).toHaveAttribute('aria-expanded', 'true');

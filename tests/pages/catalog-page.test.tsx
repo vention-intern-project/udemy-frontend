@@ -1001,7 +1001,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(reactMetadata?.textContent).not.toContain('Instructor');
     const draftExplanationId = reactLink.getAttribute('aria-describedby');
     expect(draftExplanationId).toBeNull();
-    expect(within(reactCard as HTMLElement).queryByRole('dialog')).toBeNull();
+    expect(within(reactCard as HTMLElement).queryByRole('tooltip')).toBeNull();
     const price = reactCard?.querySelector('[data-part="course-card-price"]');
     if (!price) throw new Error('Card price is required.');
     const reactDisclosure = within(reactCard as HTMLElement).getByRole('button', {
@@ -1014,7 +1014,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
     });
     expect(reactDisclosure.getAttribute('aria-expanded')).toBe('true');
     expect(reactDisclosure.getAttribute('aria-pressed')).toBe('false');
-    expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+    expect(document.querySelectorAll('[role="tooltip"]')).toHaveLength(1);
     await act(async () => {
       fireEvent.blur(reactLink);
     });
@@ -1027,17 +1027,25 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(reactDisclosure.textContent).toBe('Details');
     const openDescriptionId = reactLink.getAttribute('aria-describedby');
     expect(openDescriptionId).toBeTruthy();
-    expect(reactDisclosure.getAttribute('aria-controls')).toBe(openDescriptionId);
-    const tooltip = document.getElementById(openDescriptionId ?? '');
+    expect(reactDisclosure.getAttribute('aria-describedby')).toBe(openDescriptionId);
+    const tooltipId = reactDisclosure.getAttribute('aria-controls');
+    expect(tooltipId).toBeTruthy();
+    const tooltip = document.getElementById(tooltipId ?? '');
     if (!tooltip) throw new Error('Open card popover is required.');
     const tooltipContent = tooltip.querySelector('[data-part="course-card-tooltip-content"]');
     if (!tooltipContent) throw new Error('Open card tooltip reading surface is required.');
     expect(price.compareDocumentPosition(tooltip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(tooltip?.getAttribute('role')).toBe('dialog');
+    expect(tooltip?.getAttribute('role')).toBe('tooltip');
+    expect(tooltip.getAttribute('aria-label')).toBeNull();
+    expect(tooltip.getAttribute('aria-labelledby')).toBeTruthy();
+    expect(document.getElementById(openDescriptionId ?? '')?.textContent).toBe(
+      'A concise course description.',
+    );
+    expect(reactDisclosure.getAttribute('aria-haspopup')).toBeNull();
     expect(tooltipContent.firstElementChild?.textContent).toBe(
       'This course is not available for enrollment yet.',
     );
-    expect(tooltipContent.children.item(1)?.textContent).toBe('About React');
+    expect(tooltipContent.children.item(1)?.textContent).toBe('Course description: React');
     expect(tooltip?.textContent).toContain('A concise course description.');
     expect(tooltip?.textContent).not.toContain('published_at');
     expect(tooltip?.textContent).not.toContain('Draft means this course');
@@ -1062,7 +1070,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(reactDisclosure.getAttribute('aria-expanded')).toBe('false');
     expect(reactDisclosure.getAttribute('aria-pressed')).toBe('false');
     expect(reactLink.getAttribute('aria-describedby')).toBeNull();
-    expect(within(reactCard as HTMLElement).queryByRole('dialog')).toBeNull();
+    expect(within(reactCard as HTMLElement).queryByRole('tooltip')).toBeNull();
     expect(publishedDisclosure.getAttribute('aria-expanded')).toBe('true');
     expect(publishedDisclosure.getAttribute('aria-pressed')).toBe('true');
     expect(publishedDisclosure.textContent).toBe('Details');
@@ -1085,13 +1093,13 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(reactDisclosure.getAttribute('aria-pressed')).toBe('false');
     expect(publishedDisclosure.getAttribute('aria-expanded')).toBe('true');
     expect(publishedDisclosure.getAttribute('aria-pressed')).toBe('true');
-    expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+    expect(document.querySelectorAll('[role="tooltip"]')).toHaveLength(1);
     await act(async () => {
       fireEvent.blur(reactLink);
     });
     expect(publishedDisclosure.getAttribute('aria-expanded')).toBe('true');
     expect(publishedDisclosure.getAttribute('aria-pressed')).toBe('true');
-    expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+    expect(document.querySelectorAll('[role="tooltip"]')).toHaveLength(1);
     await act(async () => {
       await user.click(publishedDisclosure);
     });
@@ -1213,14 +1221,12 @@ describe('CatalogPage public URL and pagination behavior', () => {
     await act(async () => {
       vi.advanceTimersByTime(1);
     });
-    expect(screen.getByRole('dialog').getAttribute('aria-label')).toBe(
-      'Course description: TypeScript',
-    );
+    expect(screen.getByRole('tooltip', { name: 'Course description: TypeScript' })).toBeTruthy();
     fireEvent.click(typeScriptTrigger);
     await act(async () => {
       vi.advanceTimersByTime(280);
     });
-    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByRole('tooltip')).toBeNull();
 
     fireEvent.pointerLeave(reactCard, { pointerType: 'mouse' });
     fireEvent.pointerEnter(reactCard, { pointerType: 'mouse' });
@@ -1232,18 +1238,18 @@ describe('CatalogPage public URL and pagination behavior', () => {
     await act(async () => {
       vi.advanceTimersByTime(1);
     });
-    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByRole('tooltip')).toBeNull();
 
     fireEvent.pointerLeave(reactCard, { pointerType: 'mouse' });
     fireEvent.pointerEnter(reactCard, { pointerType: 'mouse' });
     await act(async () => {
       vi.advanceTimersByTime(279);
     });
-    expect(screen.queryByRole('dialog', { name: 'Course description: React' })).toBeNull();
+    expect(screen.queryByRole('tooltip', { name: 'Course description: React' })).toBeNull();
     await act(async () => {
       vi.advanceTimersByTime(1);
     });
-    const popover = screen.getByRole('dialog', { name: 'Course description: React' });
+    const popover = screen.getByRole('tooltip', { name: 'Course description: React' });
     expect(reactTrigger.getAttribute('aria-expanded')).toBe('true');
     expect(reactTrigger.getAttribute('aria-controls')).toBe(popover.id);
     expect(popover.textContent).toContain('React description.');
@@ -1257,18 +1263,18 @@ describe('CatalogPage public URL and pagination behavior', () => {
     await act(async () => {
       vi.advanceTimersByTime(1);
     });
-    expect(screen.getByRole('dialog', { name: 'Course description: React' })).toBeTruthy();
+    expect(screen.getByRole('tooltip', { name: 'Course description: React' })).toBeTruthy();
     fireEvent.pointerLeave(popover, { pointerType: 'mouse' });
     await act(async () => {
       vi.advanceTimersByTime(180);
     });
-    expect(screen.queryByRole('dialog', { name: 'Course description: React' })).toBeNull();
+    expect(screen.queryByRole('tooltip', { name: 'Course description: React' })).toBeNull();
 
     fireEvent.pointerEnter(action, { pointerType: 'mouse' });
     await act(async () => {
       vi.advanceTimersByTime(280);
     });
-    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByRole('tooltip')).toBeNull();
 
     fireEvent.click(reactTrigger);
     expect(reactTrigger.getAttribute('aria-pressed')).toBe('true');
@@ -1276,22 +1282,22 @@ describe('CatalogPage public URL and pagination behavior', () => {
     await act(async () => {
       vi.advanceTimersByTime(280);
     });
-    expect(screen.getByRole('dialog').getAttribute('aria-label')).toBe('Course description: React');
+    expect(screen.getByRole('tooltip', { name: 'Course description: React' })).toBeTruthy();
     fireEvent.click(typeScriptTrigger);
     expect(reactTrigger.getAttribute('aria-expanded')).toBe('false');
     expect(typeScriptTrigger.getAttribute('aria-pressed')).toBe('true');
     fireEvent.click(typeScriptTrigger);
-    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByRole('tooltip')).toBeNull();
 
     fireEvent.click(reactTrigger);
     fireEvent.pointerDown(document.body, { pointerType: 'mouse' });
-    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByRole('tooltip')).toBeNull();
     fireEvent.click(reactTrigger);
     fireEvent.keyDown(document, { key: 'Escape' });
     await act(async () => {
       vi.advanceTimersByTime(16);
     });
-    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByRole('tooltip')).toBeNull();
     expect(document.activeElement).toBe(reactTrigger);
     vi.useRealTimers();
   });
@@ -1355,14 +1361,14 @@ describe('CatalogPage public URL and pagination behavior', () => {
     await act(async () => {
       vi.advanceTimersByTime(281);
     });
-    expect(screen.queryByRole('dialog', { name: 'Course description: React' })).toBeNull();
+    expect(screen.queryByRole('tooltip', { name: 'Course description: React' })).toBeNull();
 
     fireEvent.pointerLeave(reactCard, { pointerType: 'mouse' });
     fireEvent.pointerEnter(reactCard, { pointerType: 'mouse' });
     await act(async () => {
       vi.advanceTimersByTime(280);
     });
-    expect(screen.getByRole('dialog', { name: 'Course description: React' })).toBeTruthy();
+    expect(screen.getByRole('tooltip', { name: 'Course description: React' })).toBeTruthy();
 
     fireEvent.pointerLeave(reactCard, { pointerType: 'mouse' });
     await act(async () => {
@@ -1376,13 +1382,13 @@ describe('CatalogPage public URL and pagination behavior', () => {
     await act(async () => {
       vi.advanceTimersByTime(281);
     });
-    expect(screen.queryByRole('dialog', { name: 'Course description: React' })).toBeNull();
+    expect(screen.queryByRole('tooltip', { name: 'Course description: React' })).toBeNull();
     fireEvent.pointerLeave(reactCard, { pointerType: 'mouse' });
     fireEvent.pointerEnter(reactCard, { pointerType: 'mouse' });
     await act(async () => {
       vi.advanceTimersByTime(280);
     });
-    expect(screen.getByRole('dialog', { name: 'Course description: React' })).toBeTruthy();
+    expect(screen.getByRole('tooltip', { name: 'Course description: React' })).toBeTruthy();
     delete (document as Partial<Document>).elementsFromPoint;
     vi.useRealTimers();
   });
