@@ -67,6 +67,8 @@ describe('course chat interaction lifecycle', () => {
     launcherButton.focus();
 
     expect(launcherButton.getAttribute('aria-describedby')).toBe(description.id);
+    expect(launcherButton.getAttribute('aria-expanded')).toBe('false');
+    expect(launcherButton.hasAttribute('aria-controls')).toBe(false);
     expect(description.textContent).toBe('Open AI assistant');
     expect(document.activeElement).toBe(launcherButton);
   });
@@ -82,7 +84,14 @@ describe('course chat interaction lifecycle', () => {
     const user = userEvent.setup();
     render(launcher());
 
-    await interact(() => user.click(screen.getByRole('button', { name: 'Open AI assistant' })));
+    const launcherButton = screen.getByRole('button', { name: 'Open AI assistant' });
+    await interact(() => user.click(launcherButton));
+    const widget = screen.getByRole('region', { name: 'Course assistant chat' });
+    expect(launcherButton.getAttribute('aria-expanded')).toBe('true');
+    expect(launcherButton.getAttribute('aria-controls')).toBe(widget.id);
+    const actionTrigger = screen.getByRole('button', { name: 'Conversation actions' });
+    expect(actionTrigger.getAttribute('aria-expanded')).toBe('false');
+    expect(actionTrigger.hasAttribute('aria-controls')).toBe(false);
     const input = screen.getByRole('textbox', { name: 'Message the course assistant' });
     expect(screen.queryByRole('button', { name: 'Send message' })).toBeNull();
     await interact(() => user.type(input, '{Enter}'));
@@ -118,6 +127,12 @@ describe('course chat interaction lifecycle', () => {
       ),
     );
 
+    await interact(() => user.click(actionTrigger));
+    const actionMenu = document.querySelector<HTMLElement>('[data-part="mini-chat-action-menu"]');
+    if (actionMenu === null) throw new Error('Expected the action menu to be visible.');
+    expect(actionTrigger.getAttribute('aria-expanded')).toBe('true');
+    expect(actionTrigger.getAttribute('aria-controls')).toBe(actionMenu.id);
+
     await interact(() =>
       user.click(screen.getByRole('button', { name: 'Close course assistant' })),
     );
@@ -126,7 +141,13 @@ describe('course chat interaction lifecycle', () => {
         screen.getByRole('button', { name: 'Open AI assistant' }),
       ),
     );
-    await interact(() => user.click(screen.getByRole('button', { name: 'Open AI assistant' })));
+    expect(launcherButton.getAttribute('aria-expanded')).toBe('false');
+    expect(launcherButton.hasAttribute('aria-controls')).toBe(false);
+    await interact(() => user.click(launcherButton));
+    expect(
+      screen.getByRole('button', { name: 'Conversation actions' }).getAttribute('aria-expanded'),
+    ).toBe('false');
+    expect(screen.queryByRole('button', { name: 'Clear chat' })).toBeNull();
     expect(screen.getByText('First response')).toBeTruthy();
     expect(
       (screen.getByRole('textbox', { name: 'Message the course assistant' }) as HTMLTextAreaElement)
