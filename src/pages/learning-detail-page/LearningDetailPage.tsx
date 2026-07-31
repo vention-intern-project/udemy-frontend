@@ -264,7 +264,10 @@ export function LearningDetailPage() {
   const progressFailure = workspace.progress.isError
     ? learningFailure(workspace.progress.error)
     : null;
-  if (workspace.mutationUnavailable || progressFailure?.unavailable)
+  const outlineFailure = workspace.outline.isError
+    ? learningFailure(workspace.outline.error)
+    : null;
+  if (workspace.mutationUnavailable || progressFailure?.unavailable || outlineFailure?.unavailable)
     return (
       <section className={styles.state}>
         <h1 tabIndex={-1} ref={headingRef}>

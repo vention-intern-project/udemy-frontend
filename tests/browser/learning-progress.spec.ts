@@ -1331,6 +1331,8 @@ const unavailableScenarios = [
   { operation: 'API-022', path: '/enrollments/4', status: 404 },
   { operation: 'API-019', path: '/courses/7/progress', status: 403 },
   { operation: 'API-019', path: '/courses/7/progress', status: 404 },
+  { operation: 'API-014', path: '/courses/7/lessons', status: 403 },
+  { operation: 'API-014', path: '/courses/7/lessons', status: 404 },
 ] as const;
 
 for (const scenario of unavailableScenarios)
@@ -1379,8 +1381,120 @@ for (const scenario of unavailableScenarios)
     ).toBeVisible();
     await expect(page.getByRole('button', { name: /mark|try again/i })).toHaveCount(0);
     await expect(page.getByText('private')).toHaveCount(0);
+    await expect(page.getByRole('progressbar')).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: /Lessons/ })).toHaveCount(0);
     expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
     expect(diagnostics.httpFailures).toEqual([`GET ${scenario.path} ${scenario.status}`]);
+  });
+
+interface PartialAvailabilityScenario {
+  readonly name: string;
+  readonly failedPaths: readonly string[];
+  readonly notice: string;
+  readonly retained: 'outline' | 'progress' | 'none';
+}
+
+const partialAvailabilityScenarios: readonly PartialAvailabilityScenario[] = [
+  {
+    name: 'progress failure retains the lesson outline',
+    failedPaths: ['/courses/7/progress'],
+    notice: 'Progress summary is unavailable',
+    retained: 'outline',
+  },
+  {
+    name: 'lesson-outline failure retains the progress summary',
+    failedPaths: ['/courses/7/lessons'],
+    notice: 'Lesson outline is unavailable',
+    retained: 'progress',
+  },
+  {
+    name: 'both failures remain total-unavailable',
+    failedPaths: ['/courses/7/progress', '/courses/7/lessons'],
+    notice: 'Learning progress is unavailable',
+    retained: 'none',
+  },
+];
+
+for (const scenario of partialAvailabilityScenarios)
+  test(`keeps independent learning data useful when ${scenario.name}`, async ({ page }) => {
+    await installStudent(page);
+    const diagnostics = captureRuntimeDiagnostics(page, {
+      failedResourcePaths: new Set(scenario.failedPaths),
+      abortedRequests: [expectedGetAbort('/enrollments/4', 1)],
+    });
+    let recoveryEnabled = false;
+    await page.route('**/*', async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (url.origin !== 'http://127.0.0.1:4179') return route.fallback();
+      if (url.pathname.startsWith('/media/'))
+        throw new Error('Media must not be requested by FE-037');
+      if (url.pathname === '/me') return json(route, student);
+      if (url.pathname === '/enrollments/4') return json(route, enrollment);
+      if (url.pathname === '/courses/7/progress') {
+        if (!recoveryEnabled && scenario.failedPaths.includes(url.pathname))
+          return json(route, { detail: 'private progress detail' }, 500);
+        return json(route, {
+          course_id: 7,
+          completed_lessons: 0,
+          total_lessons: 1,
+          progress_percentage: 0,
+        });
+      }
+      if (url.pathname === '/courses/7/lessons') {
+        if (!recoveryEnabled && scenario.failedPaths.includes(url.pathname))
+          return json(route, { detail: 'private outline detail' }, 500);
+        return json(route, {
+          items: [
+            {
+              id: 12,
+              title: 'Recovered independent lesson',
+              lesson_type: 'text',
+              download_url: null,
+              description: null,
+              is_published: true,
+              created_at: '2026-01-01T00:00:00Z',
+              updated_at: '2026-01-01T00:00:00Z',
+            },
+          ],
+          page: 1,
+          page_size: 100,
+          total: 1,
+          pages: 1,
+          has_next: false,
+          has_previous: false,
+        });
+      }
+      if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/'))
+        throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
+      return route.fallback();
+    });
+
+    await page.goto('/learning/enrollments/4');
+    const retry = page.getByRole('button', { name: 'Try again' });
+    await expect(page.getByText(scenario.notice, { exact: true })).toBeVisible();
+    await expect(page.getByText('private progress detail')).toHaveCount(0);
+    await expect(page.getByText('private outline detail')).toHaveCount(0);
+    if (scenario.retained === 'outline') {
+      await expect(page.getByRole('heading', { name: 'Lessons (1)' })).toBeVisible();
+      await expect(page.getByText('Recovered independent lesson')).toBeVisible();
+      await expect(page.getByRole('progressbar')).toHaveCount(0);
+    } else if (scenario.retained === 'progress') {
+      await expect(page.getByRole('progressbar')).toBeVisible();
+      await expect(page.getByRole('heading', { name: /Lessons/ })).toHaveCount(0);
+    } else {
+      await expect(page.getByRole('progressbar')).toHaveCount(0);
+      await expect(page.getByRole('heading', { name: /Lessons/ })).toHaveCount(0);
+    }
+    await tabTo(page, retry);
+    recoveryEnabled = true;
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('heading', { name: 'Learning progress' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Lessons (1)' })).toBeVisible();
+    expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
+    expect([...diagnostics.httpFailures].sort()).toEqual(
+      scenario.failedPaths.flatMap((path) => [`GET ${path} 500`, `GET ${path} 500`]).sort(),
+    );
   });
 
 test('recovers API-022 enrollment detail by keyboard and focuses the restored course heading', async ({
