@@ -298,7 +298,7 @@ describe('LearningListPage', () => {
       if (options.path === '/me') return decode(options, student);
       if (options.path === '/enrollments/my') {
         attempts += 1;
-        if (attempts < 3)
+        if (attempts < 4)
           throw new ApiError({ kind: 'server', status: 500, message: 'private list' });
         return decode(options, { ...enrollments, page: 1, pages: 2 });
       }
