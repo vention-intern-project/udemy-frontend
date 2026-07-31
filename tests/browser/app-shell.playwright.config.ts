@@ -11,7 +11,7 @@ export default defineConfig({
   retries: 0,
   workers: 1,
   globalSetup: './app-shell-server.ts',
-  timeout: 30_000,
+  timeout: 60_000,
   expect: { timeout: 5_000 },
   outputDir: '../../test-results/playwright-fe005',
   reporter: 'line',

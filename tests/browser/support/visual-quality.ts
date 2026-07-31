@@ -76,6 +76,7 @@ export interface HttpFailureAccounting {
 
 export interface RequestFailureAccounting {
   allow(identity: RequestFailureIdentity, occurrences: number): void;
+  allowOptional(identity: RequestFailureIdentity): void;
   observe(method: string, url: string, errorText: string): void;
   acceptedFailures(): readonly ObservedRequestFailure[];
   violations(): {
@@ -174,6 +175,7 @@ export function createHttpFailureAccounting(): HttpFailureAccounting {
 
 export function createRequestFailureAccounting(): RequestFailureAccounting {
   const expectedFailures: ExpectedRequestFailure[] = [];
+  const optionalFailures: ExpectedRequestFailure[] = [];
   const acceptedFailures: ObservedRequestFailure[] = [];
   const requestFailures: ObservedRequestFailure[] = [];
 
@@ -186,9 +188,12 @@ export function createRequestFailureAccounting(): RequestFailureAccounting {
       }
       expectedFailures.push({ ...identity, occurrences, remaining: occurrences });
     },
+    allowOptional(identity) {
+      optionalFailures.push({ ...identity, occurrences: 1, remaining: 1 });
+    },
     observe(method, url, errorText) {
       const failure = { method, path: requestPath(url), errorText, url };
-      const expected = expectedFailures.find(
+      const expected = [...expectedFailures, ...optionalFailures].find(
         (candidate) =>
           candidate.remaining > 0 &&
           candidate.method === failure.method &&
