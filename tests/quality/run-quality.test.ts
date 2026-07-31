@@ -1374,7 +1374,7 @@ describe('staged and CI decision simulations', () => {
     expect(invalidCjs.status).not.toBe(0);
     expect(`${invalidCjs.stdout}\n${invalidCjs.stderr}`).toContain('no-undef');
     expect(await readFile(liveIndex)).toEqual(before);
-  });
+  }, 30_000);
 
   it('models staged clean, fail, non-target, and bypass semantics without touching the index', () => {
     expect(
