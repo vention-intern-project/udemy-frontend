@@ -161,6 +161,16 @@ describe('AppShell student cart query and presentation', () => {
     expect(screen.getByRole('separator')).toBeTruthy();
 
     fireEvent.click(accountTrigger);
+    expect(accountTrigger.getAttribute('aria-expanded')).toBe('true');
+
+    fireEvent.click(accountTrigger);
+    expect(accountTrigger.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByRole('group', { name: 'Account details for student User' })).toBeNull();
+
+    fireEvent.click(accountTrigger);
+    expect(accountTrigger.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByRole('group', { name: 'Account details for student User' })).toBeTruthy();
+
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByRole('group', { name: 'Account details for student User' })).toBeNull();
     expect(document.activeElement).toBe(accountTrigger);

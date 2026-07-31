@@ -236,6 +236,11 @@ function AccountMenu({ user }: AccountMenuProps) {
         ref={accountTriggerRef}
         type="button"
         onClick={() => {
+          if (pinned) {
+            setPinned(false);
+            setOpen(false);
+            return;
+          }
           setPinned(true);
           setOpen(true);
         }}
