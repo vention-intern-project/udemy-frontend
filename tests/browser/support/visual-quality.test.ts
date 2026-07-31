@@ -82,6 +82,36 @@ describe('request failure accounting', () => {
       ),
     ).toHaveLength(1);
   });
+
+  it('permits zero-or-one exact optional request failure while rejecting unmatched and over-budget failures', () => {
+    const absent = createRequestFailureAccounting();
+    absent.allowOptional(expectedFailure);
+    expect(absent.violations()).toEqual({
+      requestFailures: [],
+      unconsumedExpectedRequestFailures: [],
+    });
+
+    const present = createRequestFailureAccounting();
+    present.allowOptional(expectedFailure);
+    present.observe(
+      'GET',
+      'http://127.0.0.1:4178/courses?search=offline',
+      expectedFailure.errorText,
+    );
+    present.observe(
+      'GET',
+      'http://127.0.0.1:4178/courses?search=offline',
+      expectedFailure.errorText,
+    );
+    present.observe('GET', 'http://127.0.0.1:4178/other', expectedFailure.errorText);
+
+    expect(present.acceptedFailures()).toHaveLength(1);
+    expect(present.violations().requestFailures).toEqual([
+      expect.objectContaining(expectedFailure),
+      expect.objectContaining({ ...expectedFailure, path: '/other' }),
+    ]);
+    expect(present.violations().unconsumedExpectedRequestFailures).toEqual([]);
+  });
 });
 
 describe('HTTP failure accounting', () => {

@@ -136,6 +136,7 @@ function monitorRuntime(
   page: Page,
   expectedHttpFailures: readonly HttpFailureIdentity[] = [],
   expectedRequestFailures: readonly ExpectedRequestFailureInput[] = [],
+  optionalRequestFailures: readonly RequestFailureIdentity[] = [],
 ) {
   const pageErrors: string[] = [];
   const consoleErrors: ConsoleErrorEvidence[] = [];
@@ -145,6 +146,7 @@ function monitorRuntime(
   expectedRequestFailures.forEach(({ occurrences = 1, ...failure }) => {
     requestAccounting.allow(failure, occurrences);
   });
+  optionalRequestFailures.forEach((failure) => requestAccounting.allowOptional(failure));
   page.on('pageerror', (error) => pageErrors.push(error.stack ?? error.message));
   page.on('console', (message) => {
     if (message.type() === 'error')
@@ -1398,7 +1400,8 @@ test('announces a recoverable session error and retries /me', async ({ page }) =
   const assertRuntimeClean = monitorRuntime(
     page,
     [{ method: 'GET', path: '/me', status: 503 }],
-    [CART_STRICT_MODE_ABORT],
+    [],
+    [CART_STRICT_MODE_ABORT, ENROLLMENTS_STRICT_MODE_ABORT],
   );
   await mockStudentWorkspaceData(page);
   await page.addInitScript(() => localStorage.setItem('learnhub.access-token', 'retry-token'));
@@ -1427,16 +1430,13 @@ test('announces a recoverable session error and retries /me', async ({ page }) =
       }),
     });
   });
-  await page.goto('/');
+  await page.goto('/learning');
   await expect(page.getByRole('heading', { level: 1, name: 'Session check failed' })).toBeVisible();
   await expect(page.getByRole('alert')).toContainText(
     'We could not verify your session. Check your connection and try again.',
   );
   await page.getByRole('button', { name: 'Try again' }).click();
-  await expect(
-    page.getByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' }),
-  ).toBeVisible();
-  await expect(page.getByRole('heading', { level: 2, name: 'Found 1 course' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'My learning' })).toBeVisible();
   expect(attempts).toBe(2);
   assertRuntimeClean();
 });
