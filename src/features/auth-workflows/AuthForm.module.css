@@ -53,8 +53,8 @@
 }
 
 .reveal svg {
-  width: var(--spacing-5);
-  height: var(--spacing-5);
+  width: var(--spacing-4);
+  height: var(--spacing-4);
 }
 
 .reveal:not(:disabled) {
