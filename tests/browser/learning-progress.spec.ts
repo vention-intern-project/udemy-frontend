@@ -477,8 +477,8 @@ test('keeps aggregate progress separate from fresh lesson state, dedupes action,
           {
             id: 12,
             title: 'First browser lesson',
-            lesson_type: 'video',
-            download_url: '/media/private.mp4',
+            lesson_type: 'text',
+            download_url: null,
             description: null,
             is_published: true,
             created_at: '2026-01-01T00:00:00Z',
@@ -512,6 +512,7 @@ test('keeps aggregate progress separate from fresh lesson state, dedupes action,
     '1 of 2 lessons completed, 50%',
   );
   await expect(page.getByText('1 available now · 1 lesson coming soon')).toBeVisible();
+  await expect(page.getByText('Media unavailable in this workspace')).toHaveCount(0);
   const markComplete = page.getByRole('button', { name: 'Mark complete' });
   await expect(markComplete).toHaveCSS('color', 'rgb(255, 255, 255)');
   const markCompleteBox = await markComplete.boundingBox();
@@ -975,66 +976,159 @@ test('aborts a pending authorized media request when the workspace unmounts', as
   expect(diagnostics.httpFailures).toEqual([]);
 });
 
-for (const status of [403, 404])
-  test(`keeps API-025 ${status} neutral and focuses its announced result`, async ({ page }) => {
-    await installStudent(page);
-    const diagnostics = captureRuntimeDiagnostics(page, {
-      failedResourcePaths: new Set(['/media/lessons/denied.mp4']),
-      abortedRequests: [expectedGetAbort('/enrollments/4', 1)],
-    });
-    await page.route('**/*', async (route) => {
-      const request = route.request();
-      const url = new URL(request.url());
-      if (url.origin !== 'http://127.0.0.1:4179') return route.fallback();
-      if (url.pathname === '/me') return json(route, student);
-      if (url.pathname === '/enrollments/4') return json(route, enrollment);
-      if (url.pathname === '/courses/7/progress')
-        return json(route, {
-          course_id: 7,
-          completed_lessons: 0,
-          total_lessons: 1,
-          progress_percentage: 0,
-        });
-      if (url.pathname === '/courses/7/lessons' && request.method() === 'GET')
-        return json(route, {
-          items: [
-            {
-              id: 12,
-              title: 'Neutral denied media',
-              lesson_type: 'video',
-              download_url: '/media/lessons/denied.mp4',
-              description: null,
-              is_published: true,
-              created_at: '2026-01-01T00:00:00Z',
-              updated_at: '2026-01-01T00:00:00Z',
-            },
-          ],
-          page: 1,
-          page_size: 100,
-          total: 1,
-          pages: 1,
-          has_next: false,
-          has_previous: false,
-        });
-      if (url.pathname === '/media/lessons/denied.mp4')
-        return json(route, { detail: 'private' }, status);
-      if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/'))
-        throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
-      return route.fallback();
+const deniedMediaScenarios = [
+  { lessonType: 'video', mediaPath: '/media/lessons/denied.mp4', loadControl: 'Load video' },
+  { lessonType: 'pdf', mediaPath: '/media/lessons/denied.pdf', loadControl: 'Load PDF' },
+] as const;
+
+for (const scenario of deniedMediaScenarios)
+  for (const status of [403, 404])
+    test(`keeps denied ${scenario.lessonType} API-025 ${status} neutral and focuses its announced result`, async ({
+      page,
+    }) => {
+      await installStudent(page);
+      const diagnostics = captureRuntimeDiagnostics(page, {
+        failedResourcePaths: new Set([scenario.mediaPath]),
+        abortedRequests: [expectedGetAbort('/enrollments/4', 1)],
+      });
+      await page.route('**/*', async (route) => {
+        const request = route.request();
+        const url = new URL(request.url());
+        if (url.origin !== 'http://127.0.0.1:4179') return route.fallback();
+        if (url.pathname === '/me') return json(route, student);
+        if (url.pathname === '/enrollments/4') return json(route, enrollment);
+        if (url.pathname === '/courses/7/progress')
+          return json(route, {
+            course_id: 7,
+            completed_lessons: 0,
+            total_lessons: 1,
+            progress_percentage: 0,
+          });
+        if (url.pathname === '/courses/7/lessons' && request.method() === 'GET')
+          return json(route, {
+            items: [
+              {
+                id: 12,
+                title: 'Neutral denied media',
+                lesson_type: scenario.lessonType,
+                download_url: scenario.mediaPath,
+                description: null,
+                is_published: true,
+                created_at: '2026-01-01T00:00:00Z',
+                updated_at: '2026-01-01T00:00:00Z',
+              },
+            ],
+            page: 1,
+            page_size: 100,
+            total: 1,
+            pages: 1,
+            has_next: false,
+            has_previous: false,
+          });
+        if (url.pathname === scenario.mediaPath) return json(route, { detail: 'private' }, status);
+        if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/'))
+          throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
+        return route.fallback();
+      });
+
+      await page.goto('/learning/enrollments/4');
+      const loadMedia = page.getByRole('button', { name: scenario.loadControl });
+      await tabTo(page, loadMedia);
+      await page.keyboard.press('Enter');
+      const unavailable = page.getByText('Media unavailable in this workspace');
+      await expect(unavailable).toBeVisible();
+      await expect(unavailable).toHaveAttribute('role', 'status');
+      await expect(unavailable).toBeFocused();
+      await expect(page.getByText('private')).toHaveCount(0);
+      expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
+      expect(diagnostics.httpFailures).toEqual([`GET ${scenario.mediaPath} ${status}`]);
     });
 
-    await page.goto('/learning/enrollments/4');
-    const loadVideo = page.getByRole('button', { name: 'Load video' });
-    await tabTo(page, loadVideo);
-    await page.keyboard.press('Enter');
-    const unavailable = page.getByText('Media unavailable in this workspace');
-    await expect(unavailable).toBeVisible();
-    await expect(unavailable).toHaveAttribute('role', 'status');
-    await expect(unavailable).toBeFocused();
-    await expect(page.getByText('private')).toHaveCount(0);
-    expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
-    expect(diagnostics.httpFailures).toEqual([`GET /media/lessons/denied.mp4 ${status}`]);
+test('keeps the native completion action truthful and single-request while pending across pointer and keyboard input', async ({
+  page,
+}) => {
+  await installStudent(page);
+  const diagnostics = captureRuntimeDiagnostics(page, {
+    abortedRequests: [expectedGetAbort('/enrollments/4', 1)],
   });
+  let completionRequests = 0;
+  let settleCompletion: (() => void) | undefined;
+  const completion = new Promise<void>((resolve) => {
+    settleCompletion = resolve;
+  });
+  await page.route('**/*', async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.origin !== 'http://127.0.0.1:4179') return route.fallback();
+    if (url.pathname.startsWith('/media/'))
+      throw new Error('Media must not be requested by the pending-control scenario');
+    if (url.pathname === '/me') return json(route, student);
+    if (url.pathname === '/enrollments/4') return json(route, enrollment);
+    if (url.pathname === '/courses/7/progress')
+      return json(route, {
+        course_id: 7,
+        completed_lessons: 0,
+        total_lessons: 1,
+        progress_percentage: 0,
+      });
+    if (url.pathname === '/courses/7/lessons' && request.method() === 'GET')
+      return json(route, {
+        items: [
+          {
+            id: 12,
+            title: 'Pending browser lesson',
+            lesson_type: 'text',
+            download_url: null,
+            description: null,
+            is_published: true,
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: '2026-01-01T00:00:00Z',
+          },
+        ],
+        page: 1,
+        page_size: 100,
+        total: 1,
+        pages: 1,
+        has_next: false,
+        has_previous: false,
+      });
+    if (url.pathname === '/courses/7/lessons/12/complete') {
+      completionRequests += 1;
+      await completion;
+      return json(route, {
+        lesson_id: 12,
+        completed: true,
+        completed_at: '2026-07-31T00:00:00Z',
+      });
+    }
+    if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/'))
+      throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
+    return route.fallback();
+  });
+
+  await page.goto('/learning/enrollments/4');
+  const action = page.getByRole('button', { name: /Mark (complete|incomplete)/ });
+  await action.click();
+  await expect.poll(() => completionRequests).toBe(1);
+  await expect(action).toBeFocused();
+  await expect(action).toHaveAttribute('aria-disabled', 'true');
+  await expect(action).toHaveAttribute('aria-busy', 'true');
+  await expect(action).toHaveJSProperty('disabled', false);
+  await expect(action).toHaveAccessibleName('Mark incomplete');
+  await expect(action.locator('[data-part="spinner"]')).toHaveCount(0);
+  await page.keyboard.press('Enter');
+  await page.keyboard.press(' ');
+  await expect.poll(() => completionRequests).toBe(1);
+
+  settleCompletion?.();
+  await expect(page.getByText('Completed', { exact: true })).toBeVisible();
+  await expect(
+    page.getByText('Lesson marked complete.').locator('xpath=ancestor::*[@role="status"]'),
+  ).toHaveAttribute('data-tone', 'success');
+  await expect(page.getByRole('button', { name: 'Mark incomplete' })).toBeFocused();
+  expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
+  expect(diagnostics.httpFailures).toEqual([]);
+});
 
 test('focuses the retry action after a retryable API-025 failure', async ({ page }) => {
   await installStudent(page);

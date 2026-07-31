@@ -23,6 +23,16 @@ function lessonCountLabel(totalLessons: number): string {
   return totalLessons === 1 ? 'lesson' : 'lessons';
 }
 
+function setLessonCompletion(
+  pending: boolean,
+  lessonId: number,
+  completed: boolean,
+  onSetCompletion: EnrollmentProgressPanelProps['onSetCompletion'],
+) {
+  if (pending) return;
+  onSetCompletion(lessonId, completed);
+}
+
 export function EnrollmentProgressPanel({
   progress,
   progressError,
@@ -116,9 +126,9 @@ export function EnrollmentProgressPanel({
                     className={`${styles.lessonCompletionAction}${
                       markComplete ? ` ${styles.markComplete}` : ''
                     }`}
-                    onClick={() => {
-                      if (!pending) onSetCompletion(lesson.id, markComplete);
-                    }}
+                    onClick={() =>
+                      setLessonCompletion(pending, lesson.id, markComplete, onSetCompletion)
+                    }
                   >
                     {markComplete ? 'Mark complete' : 'Mark incomplete'}
                   </Button>
