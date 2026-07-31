@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 
 import { courseDetailFailure, useCourseDetail } from '@features/course-detail';
+import { useSession } from '@features/auth-session';
 import {
   Button,
   ContextualNavigationLink,
@@ -21,6 +22,13 @@ function parseCourseId(value: string | undefined): number | null {
   return Number.isSafeInteger(numeric) ? numeric : null;
 }
 
+type CourseRecoveryTarget = 'detail' | 'outline';
+
+interface CourseRetryFocusIntent {
+  readonly identity: string;
+  readonly target: CourseRecoveryTarget;
+}
+
 function CourseNotFound() {
   return (
     <section className={styles.state} aria-labelledby="course-not-found-heading">
@@ -34,39 +42,55 @@ function CourseNotFound() {
 export function CourseDetailPage() {
   const { courseId: courseIdParam } = useParams();
   const courseId = parseCourseId(courseIdParam);
+  const session = useSession();
   const { action, detail, mutationState, outline, preflight, retryPreflight, submitAction } =
     useCourseDetail(courseId);
   const detailHeadingRef = useRef<HTMLHeadingElement>(null);
   const outlineHeadingRef = useRef<HTMLHeadingElement>(null);
-  const retryTargetRef = useRef<'detail' | 'outline' | null>(null);
+  const retryIntentRef = useRef<CourseRetryFocusIntent | null>(null);
   const [recoveryMessage, setRecoveryMessage] = useState<string | null>(null);
+  const retryIdentity = `${session.cacheEpoch ?? 'anonymous'}:${courseId ?? 'invalid'}`;
 
   useEffect(() => {
-    retryTargetRef.current = null;
+    retryIntentRef.current = null;
     setRecoveryMessage(null);
-  }, [courseId]);
+  }, [retryIdentity]);
 
   useEffect(() => {
-    if (retryTargetRef.current === 'detail' && detail.isSuccess) {
-      retryTargetRef.current = null;
+    const intent = retryIntentRef.current;
+    if (intent?.identity !== retryIdentity) return;
+    if (intent.target === 'detail' && detail.isSuccess) {
+      retryIntentRef.current = null;
       setRecoveryMessage('Course details recovered.');
       detailHeadingRef.current?.focus();
-    } else if (retryTargetRef.current === 'outline' && outline.isSuccess) {
-      retryTargetRef.current = null;
+    } else if (intent.target === 'outline' && outline.isSuccess) {
+      retryIntentRef.current = null;
       setRecoveryMessage('Course outline recovered.');
       outlineHeadingRef.current?.focus();
     }
-  }, [detail.isSuccess, outline.isSuccess]);
+  }, [detail.isSuccess, outline.isSuccess, retryIdentity]);
+
+  const finishRetry = (intent: CourseRetryFocusIntent, succeeded: boolean) => {
+    if (!succeeded && retryIntentRef.current === intent) retryIntentRef.current = null;
+  };
 
   const retryDetail = () => {
-    retryTargetRef.current = 'detail';
+    const intent: CourseRetryFocusIntent = { identity: retryIdentity, target: 'detail' };
+    retryIntentRef.current = intent;
     setRecoveryMessage(null);
-    void detail.refetch();
+    void detail.refetch().then(
+      (result) => finishRetry(intent, result.isSuccess),
+      () => finishRetry(intent, false),
+    );
   };
   const retryOutline = () => {
-    retryTargetRef.current = 'outline';
+    const intent: CourseRetryFocusIntent = { identity: retryIdentity, target: 'outline' };
+    retryIntentRef.current = intent;
     setRecoveryMessage(null);
-    void outline.refetch();
+    void outline.refetch().then(
+      (result) => finishRetry(intent, result.isSuccess),
+      () => finishRetry(intent, false),
+    );
   };
 
   if (courseId === null) return <CourseNotFound />;

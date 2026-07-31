@@ -393,6 +393,81 @@ describe('CourseDetailPage', () => {
     expect(detailAttempts).toBe(2);
   });
 
+  it('does not let a later background detail success consume a failed retry focus intent', async () => {
+    let detailAttempts = 0;
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/courses/7') {
+        detailAttempts += 1;
+        if (detailAttempts < 3)
+          throw new ApiError({ kind: 'server', status: 503, message: 'private detail' });
+        return decode(options, course);
+      }
+      if (options.path === '/courses/7/lessons') return decode(options, outline(null));
+      throw new Error(`Unexpected request ${options.path}`);
+    };
+    const { queryClient } = renderPage(request);
+    const user = userEvent.setup();
+    const retry = await screen.findByRole('button', { name: 'Try again' });
+    await act(async () => {
+      await user.click(retry);
+    });
+    await screen.findByRole('button', { name: 'Try again' });
+    const sentinel = document.createElement('button');
+    document.body.append(sentinel);
+    sentinel.focus();
+    await act(async () => {
+      await queryClient.refetchQueries();
+    });
+    await screen.findByRole('heading', { name: 'React foundations' });
+    expect(document.activeElement).toBe(sentinel);
+    sentinel.remove();
+  });
+
+  it('does not let a pending detail retry focus after its course identity changes', async () => {
+    let resolveRetry: (() => void) | undefined;
+    const retryResponse = new Promise<void>((resolve) => {
+      resolveRetry = resolve;
+    });
+    let courseSevenRequests = 0;
+    const courseEight = { ...course, id: 8, title: 'Course eight' };
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/courses/7') {
+        courseSevenRequests += 1;
+        if (courseSevenRequests === 1)
+          throw new ApiError({ kind: 'server', status: 503, message: 'private detail' });
+        await retryResponse;
+        return decode(options, course);
+      }
+      if (options.path === '/courses/8') return decode(options, courseEight);
+      if (options.path === '/courses/7/lessons' || options.path === '/courses/8/lessons')
+        return decode(options, outline(null));
+      throw new Error(`Unexpected request ${options.path}`);
+    };
+    renderPage(request, null, '/courses/7', { routeControls: true });
+    const user = userEvent.setup();
+    const retry = await screen.findByRole('button', { name: 'Try again' });
+    await act(async () => {
+      await user.click(retry);
+    });
+    await waitFor(() => expect(courseSevenRequests).toBe(2));
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Open course 8' }));
+    });
+    await screen.findByRole('heading', { name: 'Course eight' });
+    const sentinel = document.createElement('button');
+    document.body.append(sentinel);
+    sentinel.focus();
+    await act(async () => {
+      resolveRetry?.();
+    });
+    await waitFor(() => expect(document.activeElement).toBe(sentinel));
+    sentinel.remove();
+  });
+
   it('shows an authenticated Draft without preflight reads or a mutation', async () => {
     const paths: string[] = [];
     const request: ApiClient['request'] = async <TResponse, TBody>(

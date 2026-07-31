@@ -8,6 +8,7 @@ import type {
 } from '@features/learning-progress';
 
 import { learningFailure, useLearningWorkspace } from '@features/learning-progress';
+import { useSession } from '@features/auth-session';
 import {
   useCheckoutCart,
   type CheckoutFeedback,
@@ -65,6 +66,23 @@ function observedEnrollmentStatus(result: EnrollmentRefreshResult): EnrollmentSt
 
 interface PaymentFeedbackNoticeProps {
   readonly feedback: CheckoutFeedback | null;
+}
+
+type LearningRetryFocusTarget = 'enrollment' | 'workspace';
+
+interface LearningRetryFocusIntent {
+  readonly identity: string;
+  readonly target: LearningRetryFocusTarget;
+}
+
+interface RetryResult {
+  readonly isSuccess?: boolean;
+}
+
+function didRetrySucceed(result: unknown): boolean {
+  return (
+    typeof result === 'object' && result !== null && (result as RetryResult).isSuccess === true
+  );
 }
 
 function PaymentFeedbackNotice({ feedback }: PaymentFeedbackNoticeProps) {
@@ -127,28 +145,62 @@ function LearningReturnLink() {
 
 export function LearningDetailPage() {
   const enrollmentId = parseEnrollmentId(useParams().enrollmentId);
+  const session = useSession();
   const feedbackMotion = useLearningFeedbackMotionPreferences();
   const workspace = useLearningWorkspace(enrollmentId, feedbackMotion);
   const checkout = useCheckoutCart(`enrollment:${enrollmentId ?? 0}`);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const paymentNoticeRef = useRef<HTMLDivElement>(null);
-  const retryEnrollmentRef = useRef(false);
-  const retryWorkspaceRef = useRef(false);
+  const retryIntentRef = useRef<LearningRetryFocusIntent | null>(null);
+  const retryIdentity = `${session.cacheEpoch ?? 'anonymous'}:${enrollmentId ?? 'invalid'}`;
   useEffect(() => {
-    if (retryEnrollmentRef.current && workspace.enrollment.isSuccess) {
-      retryEnrollmentRef.current = false;
+    retryIntentRef.current = null;
+  }, [retryIdentity]);
+  useEffect(() => {
+    const intent = retryIntentRef.current;
+    if (
+      intent?.identity === retryIdentity &&
+      intent.target === 'enrollment' &&
+      workspace.enrollment.isSuccess
+    ) {
+      retryIntentRef.current = null;
       headingRef.current?.focus();
     }
-  }, [workspace.enrollment.isSuccess]);
+  }, [retryIdentity, workspace.enrollment.isSuccess]);
   useEffect(() => {
-    if (retryWorkspaceRef.current && workspace.progress.isSuccess && workspace.outline.isSuccess) {
-      retryWorkspaceRef.current = false;
+    const intent = retryIntentRef.current;
+    if (
+      intent?.identity === retryIdentity &&
+      intent.target === 'workspace' &&
+      workspace.progress.isSuccess &&
+      workspace.outline.isSuccess
+    ) {
+      retryIntentRef.current = null;
       headingRef.current?.focus();
     }
-  }, [workspace.outline.isSuccess, workspace.progress.isSuccess]);
+  }, [retryIdentity, workspace.outline.isSuccess, workspace.progress.isSuccess]);
   useEffect(() => {
     if (checkout.feedback !== null && !checkout.pending) paymentNoticeRef.current?.focus();
   }, [checkout.feedback, checkout.pending]);
+  const finishRetry = (intent: LearningRetryFocusIntent, succeeded: boolean) => {
+    if (!succeeded && retryIntentRef.current === intent) retryIntentRef.current = null;
+  };
+  const retryEnrollment = () => {
+    const intent: LearningRetryFocusIntent = { identity: retryIdentity, target: 'enrollment' };
+    retryIntentRef.current = intent;
+    void workspace.retryEnrollment().then(
+      (result) => finishRetry(intent, didRetrySucceed(result)),
+      () => finishRetry(intent, false),
+    );
+  };
+  const retryWorkspace = () => {
+    const intent: LearningRetryFocusIntent = { identity: retryIdentity, target: 'workspace' };
+    retryIntentRef.current = intent;
+    void workspace.retryWorkspace().then(
+      (results) => finishRetry(intent, Array.isArray(results) && results.every(didRetrySucceed)),
+      () => finishRetry(intent, false),
+    );
+  };
   if (enrollmentId === null)
     return (
       <section className={styles.state}>
@@ -184,8 +236,7 @@ export function LearningDetailPage() {
         {!failure.unavailable ? (
           <Button
             onClick={() => {
-              retryEnrollmentRef.current = true;
-              void workspace.retryEnrollment();
+              retryEnrollment();
             }}
           >
             Try again
@@ -275,8 +326,7 @@ export function LearningDetailPage() {
               isPending={workspace.isPending}
               onSetCompletion={workspace.setCompletion}
               onRetry={() => {
-                retryWorkspaceRef.current = true;
-                void workspace.retryWorkspace();
+                retryWorkspace();
               }}
             />
             <CourseChatLauncher
