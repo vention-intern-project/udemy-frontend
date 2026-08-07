@@ -209,65 +209,82 @@ describe('AiChatPage eligibility states', () => {
     useLearningWorkspaceMock.mockReturnValue(
       workspaceFor({ isPending: false, isError: false, data: activeEnrollment }),
     );
-    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: true }));
-    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
-      callback(0);
-      return 1;
-    });
-    vi.stubGlobal('cancelAnimationFrame', vi.fn());
-    Object.defineProperties(document.documentElement, {
-      clientHeight: { configurable: true, value: 720 },
-      clientWidth: { configurable: true, value: 320 },
-    });
-    renderPage('/ai-chat');
+    const originalClientHeight = Object.getOwnPropertyDescriptor(
+      document.documentElement,
+      'clientHeight',
+    );
+    const originalClientWidth = Object.getOwnPropertyDescriptor(
+      document.documentElement,
+      'clientWidth',
+    );
+    try {
+      vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: true }));
+      vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+        callback(0);
+        return 1;
+      });
+      vi.stubGlobal('cancelAnimationFrame', vi.fn());
+      Object.defineProperties(document.documentElement, {
+        clientHeight: { configurable: true, value: 720 },
+        clientWidth: { configurable: true, value: 320 },
+      });
+      renderPage('/ai-chat');
 
-    const input = screen.getByRole('textbox', {
-      name: 'Message the course assistant',
-    }) as HTMLTextAreaElement;
-    const scrollIntoView = vi.fn();
-    Object.defineProperty(input, 'scrollIntoView', { configurable: true, value: scrollIntoView });
-    let isOffscreen = false;
-    vi.spyOn(input, 'getBoundingClientRect').mockImplementation(
-      () =>
-        ({
-          bottom: isOffscreen ? 760 : 120,
-          height: 40,
-          left: 0,
-          right: 320,
-          top: isOffscreen ? 720 : 80,
-          width: 320,
-          x: 0,
-          y: isOffscreen ? 720 : 80,
-          toJSON: () => ({}),
-        }) as DOMRect,
-    );
+      const input = screen.getByRole('textbox', {
+        name: 'Message the course assistant',
+      }) as HTMLTextAreaElement;
+      const scrollIntoView = vi.fn();
+      Object.defineProperty(input, 'scrollIntoView', { configurable: true, value: scrollIntoView });
+      let isPartiallyBelowViewport = false;
+      vi.spyOn(input, 'getBoundingClientRect').mockImplementation(
+        () =>
+          ({
+            bottom: isPartiallyBelowViewport ? 721 : 120,
+            height: 40,
+            left: 0,
+            right: 320,
+            top: isPartiallyBelowViewport ? 681 : 80,
+            width: 320,
+            x: 0,
+            y: isPartiallyBelowViewport ? 681 : 80,
+            toJSON: () => ({}),
+          }) as DOMRect,
+      );
 
-    const trigger = screen.getByRole('button', { name: 'Suggested Actions' });
-    fireEvent.click(trigger);
-    const compactPanel = document.getElementById(trigger.getAttribute('aria-controls') ?? '');
-    fireEvent.click(
-      within(compactPanel as HTMLElement).getByRole('button', { name: 'Recommend a course' }),
-    );
-    expect(scrollIntoView).not.toHaveBeenCalled();
+      const trigger = screen.getByRole('button', { name: 'Suggested Actions' });
+      fireEvent.click(trigger);
+      const compactPanel = document.getElementById(trigger.getAttribute('aria-controls') ?? '');
+      fireEvent.click(
+        within(compactPanel as HTMLElement).getByRole('button', { name: 'Recommend a course' }),
+      );
+      expect(scrollIntoView).not.toHaveBeenCalled();
 
-    isOffscreen = true;
-    fireEvent.click(trigger);
-    const reopenedCompactPanel = document.getElementById(
-      trigger.getAttribute('aria-controls') ?? '',
-    );
-    fireEvent.click(
-      within(reopenedCompactPanel as HTMLElement).getByRole('button', {
-        name: 'Explain a concept',
-      }),
-    );
-    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
-    expect(scrollIntoView).toHaveBeenCalledWith({
-      behavior: 'auto',
-      block: 'nearest',
-      inline: 'nearest',
-    });
-    expect(document.activeElement).toBe(input);
-    expect((input as HTMLTextAreaElement).selectionStart).toBe(input.value.length);
-    expect((input as HTMLTextAreaElement).selectionEnd).toBe(input.value.length);
+      isPartiallyBelowViewport = true;
+      fireEvent.click(trigger);
+      const reopenedCompactPanel = document.getElementById(
+        trigger.getAttribute('aria-controls') ?? '',
+      );
+      fireEvent.click(
+        within(reopenedCompactPanel as HTMLElement).getByRole('button', {
+          name: 'Explain a concept',
+        }),
+      );
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
+      expect(scrollIntoView).toHaveBeenCalledWith({
+        behavior: 'auto',
+        block: 'nearest',
+        inline: 'nearest',
+      });
+      expect(document.activeElement).toBe(input);
+      expect((input as HTMLTextAreaElement).selectionStart).toBe(input.value.length);
+      expect((input as HTMLTextAreaElement).selectionEnd).toBe(input.value.length);
+    } finally {
+      if (originalClientHeight)
+        Object.defineProperty(document.documentElement, 'clientHeight', originalClientHeight);
+      else delete (document.documentElement as { clientHeight?: number }).clientHeight;
+      if (originalClientWidth)
+        Object.defineProperty(document.documentElement, 'clientWidth', originalClientWidth);
+      else delete (document.documentElement as { clientWidth?: number }).clientWidth;
+    }
   });
 });

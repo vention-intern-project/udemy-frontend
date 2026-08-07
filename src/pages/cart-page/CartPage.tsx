@@ -167,6 +167,7 @@ export function CartPage() {
   const [removeFocusTarget, setRemoveFocusTarget] = useState<RemoveFocusTarget | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const summaryHeadingRef = useRef<HTMLHeadingElement>(null);
+  const summaryJumpFrameRef = useRef<number | null>(null);
   const removeActionRefs = useRef(new Map<number, HTMLDivElement>());
   const recoveryFocusPendingRef = useRef(false);
   const recoveryRetryPendingRef = useRef(false);
@@ -231,23 +232,35 @@ export function CartPage() {
       const state = getSummaryJumpState(summaryHeading);
       setIsSummaryJumpVisible(state.isMobile && state.isBelowViewport);
     };
+    const scheduleSummaryJumpVisibility = () => {
+      if (summaryJumpFrameRef.current !== null) return;
+      summaryJumpFrameRef.current = requestAnimationFrame(() => {
+        summaryJumpFrameRef.current = null;
+        updateSummaryJumpVisibility();
+      });
+    };
     const mobileMedia = window.matchMedia?.(mobileSummaryQuery);
     const observer =
       typeof IntersectionObserver === 'undefined'
         ? null
-        : new IntersectionObserver(updateSummaryJumpVisibility, { threshold: 0 });
+        : new IntersectionObserver(scheduleSummaryJumpVisibility, { threshold: 0 });
 
     observer?.observe(summaryHeading);
     updateSummaryJumpVisibility();
-    window.addEventListener('scroll', updateSummaryJumpVisibility, { passive: true });
-    window.addEventListener('resize', updateSummaryJumpVisibility);
-    mobileMedia?.addEventListener('change', updateSummaryJumpVisibility);
+    window.addEventListener('scroll', scheduleSummaryJumpVisibility, { passive: true });
+    window.addEventListener('resize', scheduleSummaryJumpVisibility);
+    mobileMedia?.addEventListener('change', scheduleSummaryJumpVisibility);
 
     return () => {
       observer?.disconnect();
-      window.removeEventListener('scroll', updateSummaryJumpVisibility);
-      window.removeEventListener('resize', updateSummaryJumpVisibility);
-      mobileMedia?.removeEventListener('change', updateSummaryJumpVisibility);
+      const pendingFrame = summaryJumpFrameRef.current;
+      if (pendingFrame !== null) {
+        cancelAnimationFrame(pendingFrame);
+        if (summaryJumpFrameRef.current === pendingFrame) summaryJumpFrameRef.current = null;
+      }
+      window.removeEventListener('scroll', scheduleSummaryJumpVisibility);
+      window.removeEventListener('resize', scheduleSummaryJumpVisibility);
+      mobileMedia?.removeEventListener('change', scheduleSummaryJumpVisibility);
     };
   }, [currentCart]);
 

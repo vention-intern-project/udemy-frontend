@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppShell, presentCart } from '../../src/app/layouts/AppShell';
@@ -58,12 +58,18 @@ function renderShell(client: ApiClient, token: string | null, path = '/') {
         <SessionProvider client={client} tokenStore={tokenStore(token)}>
           <MemoryRouter initialEntries={[path]}>
             <AppShell />
+            <LocationStateProbe />
           </MemoryRouter>
         </SessionProvider>
       </ThemeProvider>
     </QueryClientProvider>,
   );
   return queryClient;
+}
+
+function LocationStateProbe() {
+  const location = useLocation();
+  return <output aria-label="location state">{JSON.stringify(location.state)}</output>;
 }
 
 function stubCompactViewport(matches = true) {
@@ -289,5 +295,24 @@ describe('AppShell student cart query and presentation', () => {
 
     fireEvent.click(within(studentNavigation).getByRole('link', { name: 'AI chat' }));
     expect(request.mock.calls.map(([options]) => options.path)).toEqual(['/me', '/cart']);
+  });
+
+  it('uses the enrollment-aware assistant destination from student mobile navigation', async () => {
+    stubCompactViewport();
+    renderShell(
+      authenticatedClient('student'),
+      'student-token',
+      '/learning/enrollments/42/lesson-3',
+    );
+
+    const navigation = await screen.findByRole('navigation', { name: 'Student navigation' });
+    const assistant = within(navigation).getByRole('link', { name: 'AI chat' });
+    expect(assistant.getAttribute('href')).toBe('/learning/enrollments/42/ai-chat');
+    fireEvent.click(assistant);
+    await waitFor(() =>
+      expect(screen.getByLabelText('location state').textContent).toBe(
+        '{"returnTo":"/learning/enrollments/42/lesson-3"}',
+      ),
+    );
   });
 });

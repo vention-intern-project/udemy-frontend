@@ -81,6 +81,12 @@ const ENROLLMENTS_STRICT_MODE_ABORT: RequestFailureIdentity = {
   errorText: 'net::ERR_ABORTED',
 };
 
+const AI_ASSISTANT_NAVIGATION_RASTER_ABORT: RequestFailureIdentity = {
+  method: 'GET',
+  path: '/src/app/layouts/assets/ai-assistant-navigation-ui018-2.png',
+  errorText: 'net::ERR_ABORTED',
+};
+
 async function readRepresentativeTokenSnapshot(page: Page): Promise<RepresentativeTokenSnapshot> {
   return page.evaluate(() => {
     const root = document.documentElement;
@@ -1050,7 +1056,12 @@ test('keeps the accepted shared-header marks and quiet desktop primary navigatio
         height: rect(cartIcon).height,
         stroke: cartIcon.getAttribute('stroke-width'),
       },
-      activeIndicator: getComputedStyle(activeLink, '::after'),
+      activeIndicator: {
+        height: getComputedStyle(activeLink, '::after').height,
+        opacity: getComputedStyle(activeLink, '::after').opacity,
+        transitionDuration: getComputedStyle(activeLink, '::after').transitionDuration,
+        width: getComputedStyle(activeLink, '::after').width,
+      },
     };
   });
   expect(geometry.assistant.width).toBe(44);
@@ -1534,6 +1545,7 @@ test('composes the student mobile shell with a scroll-away identity row and rout
     page,
     [],
     [{ ...CART_STRICT_MODE_ABORT, occurrences: 6 }],
+    [AI_ASSISTANT_NAVIGATION_RASTER_ABORT],
   );
   await mockAuthenticatedSession(page, 'student');
   await mockStudentWorkspaceData(page);

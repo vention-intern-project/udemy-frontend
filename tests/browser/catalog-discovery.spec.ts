@@ -224,7 +224,7 @@ test('renders a semantic full-width catalog hero at scrollable physical client e
     expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.clientWidth);
     expect(geometry.bodyWidth).toBeLessThanOrEqual(geometry.clientWidth);
     expect(geometry.documentHeight).toBeGreaterThan(geometry.clientHeight);
-    if (geometry.clientWidth > 1960 && geometry.heroBackgroundSize.includes(',')) {
+    if (geometry.clientWidth > 1960) {
       const backgroundLayers = geometry.heroBackgroundSize.split(',').map((layer) => layer.trim());
       expect(backgroundLayers).toHaveLength(2);
       expect(backgroundLayers[0]).toBe('100% 100%');
@@ -593,10 +593,8 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
       geometry.every((card) => card.titleFontSize === '16px' && card.titleLineHeight === '24px'),
     ).toBe(true);
     expect(
-      geometry.every((card) =>
-        width < 768
-          ? Math.abs(card.titleHeight - 48) <= 0.5 && card.titleMinHeight === '48px'
-          : Math.abs(card.titleHeight - 48) <= 0.5 && card.titleMinHeight === '48px',
+      geometry.every(
+        (card) => Math.abs(card.titleHeight - 48) <= 0.5 && card.titleMinHeight === '48px',
       ),
     ).toBe(true);
     expect(

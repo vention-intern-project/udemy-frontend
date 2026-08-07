@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createAppQueryClient } from '../../src/app/query';
+import type { Cart } from '../../src/entities/cart';
 import { SessionProvider, type AccessTokenStore } from '../../src/features/auth-session';
 import { CartPage } from '../../src/pages/cart-page';
 import { ApiError, type ApiClient, type ApiRequestOptions } from '../../src/shared/api';
@@ -149,80 +150,205 @@ async function removeCourseAndExpectFocus(courseId: number, expectedActionName: 
 
 describe('CartPage', () => {
   it('uses the no-observer fallback to expose one mobile summary jump without checkout', async () => {
-    const originalInnerHeight = window.innerHeight;
-    const originalInnerWidth = window.innerWidth;
-    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 800 });
-    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
-    vi.stubGlobal('IntersectionObserver', undefined);
-    vi.stubGlobal(
-      'matchMedia',
-      vi.fn((query: string) => ({
-        matches: query === '(max-width: 1023px)',
-        media: query,
-        onchange: null,
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-        addListener: vi.fn(),
-        removeListener: vi.fn(),
-        dispatchEvent: vi.fn(),
-      })),
+    const originalInnerHeight = Object.getOwnPropertyDescriptor(window, 'innerHeight');
+    const originalInnerWidth = Object.getOwnPropertyDescriptor(window, 'innerWidth');
+    const originalScrollIntoView = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      'scrollIntoView',
     );
-    const scrollIntoView = vi.fn();
-    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
-      configurable: true,
-      value: scrollIntoView,
-    });
-    const request: ApiClient['request'] = async <TResponse, TBody>(
-      options: ApiRequestOptions<TBody, TResponse>,
-    ) => {
-      if (options.path === '/me') return decode(options, student);
-      if (options.path === '/cart' && options.method === 'GET')
-        return decode(options, cartWithItems);
-      if (options.path === '/cart/checkout') throw new Error('Checkout must not run');
-      throw new Error(`Unexpected request ${options.method} ${options.path}`);
-    };
+    try {
+      Object.defineProperty(window, 'innerHeight', { configurable: true, value: 800 });
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
+      vi.stubGlobal('IntersectionObserver', undefined);
+      vi.stubGlobal(
+        'matchMedia',
+        vi.fn((query: string) => ({
+          matches: query === '(max-width: 1023px)',
+          media: query,
+          onchange: null,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          addListener: vi.fn(),
+          removeListener: vi.fn(),
+          dispatchEvent: vi.fn(),
+        })),
+      );
+      const scrollIntoView = vi.fn();
+      Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+        configurable: true,
+        value: scrollIntoView,
+      });
+      const request: ApiClient['request'] = async <TResponse, TBody>(
+        options: ApiRequestOptions<TBody, TResponse>,
+      ) => {
+        if (options.path === '/me') return decode(options, student);
+        if (options.path === '/cart' && options.method === 'GET')
+          return decode(options, cartWithItems);
+        if (options.path === '/cart/checkout') throw new Error('Checkout must not run');
+        throw new Error(`Unexpected request ${options.method} ${options.path}`);
+      };
 
-    await renderCart(request);
-    const summaryHeading = await screen.findByRole('heading', { name: 'Order summary' });
-    Object.defineProperty(summaryHeading, 'getBoundingClientRect', {
-      configurable: true,
-      value: () => ({
-        bottom: 1024,
-        height: 24,
-        left: 0,
-        right: 0,
-        toJSON: () => ({}),
-        top: 1000,
-        width: 200,
-        x: 0,
-        y: 1000,
-      }),
-    });
-    fireEvent.scroll(window);
+      await renderCart(request);
+      const summaryHeading = await screen.findByRole('heading', { name: 'Order summary' });
+      Object.defineProperty(summaryHeading, 'getBoundingClientRect', {
+        configurable: true,
+        value: () => ({
+          bottom: 1024,
+          height: 24,
+          left: 0,
+          right: 0,
+          toJSON: () => ({}),
+          top: 1000,
+          width: 200,
+          x: 0,
+          y: 1000,
+        }),
+      });
+      fireEvent.scroll(window);
 
-    const jump = await screen.findByRole('button', { name: 'Go to order summary' });
-    expect(screen.getAllByRole('heading', { name: 'Order summary' })).toHaveLength(1);
-    const cartCourses = screen.getByRole('list', { name: 'Cart courses' });
-    expect(
-      cartCourses.compareDocumentPosition(jump) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    const user = userEvent.setup();
-    screen.getByRole('button', { name: 'Remove Second course' }).focus();
-    await interact(() => user.tab());
-    expect(jump).toBe(document.activeElement);
-    await interact(() => user.tab());
-    expect(screen.getByRole('button', { name: 'Mock checkout' })).toBe(document.activeElement);
-    fireEvent.click(jump);
-    expect(summaryHeading).toBe(document.activeElement);
-    expect(scrollIntoView).toHaveBeenCalledTimes(1);
-    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' });
-    expect(screen.getByRole('button', { name: 'Mock checkout' })).toBeTruthy();
+      const jump = await screen.findByRole('button', { name: 'Go to order summary' });
+      expect(screen.getAllByRole('heading', { name: 'Order summary' })).toHaveLength(1);
+      const cartCourses = screen.getByRole('list', { name: 'Cart courses' });
+      expect(
+        cartCourses.compareDocumentPosition(jump) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      const user = userEvent.setup();
+      screen.getByRole('button', { name: 'Remove Second course' }).focus();
+      await interact(() => user.tab());
+      expect(jump).toBe(document.activeElement);
+      await interact(() => user.tab());
+      expect(screen.getByRole('button', { name: 'Mock checkout' })).toBe(document.activeElement);
+      fireEvent.click(jump);
+      expect(summaryHeading).toBe(document.activeElement);
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+      expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' });
+      expect(screen.getByRole('button', { name: 'Mock checkout' })).toBeTruthy();
+    } finally {
+      if (originalInnerHeight) Object.defineProperty(window, 'innerHeight', originalInnerHeight);
+      else delete (window as { innerHeight?: number }).innerHeight;
+      if (originalInnerWidth) Object.defineProperty(window, 'innerWidth', originalInnerWidth);
+      else delete (window as { innerWidth?: number }).innerWidth;
+      if (originalScrollIntoView)
+        Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', originalScrollIntoView);
+      else delete (HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    }
+  });
 
-    Object.defineProperty(window, 'innerHeight', {
-      configurable: true,
-      value: originalInnerHeight,
+  it('clears cancelled summary frames across effect restart and unmount cleanup', async () => {
+    const originalSummaryBounds = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      'getBoundingClientRect',
+    );
+    const frameCallbacks = new Map<number, FrameRequestCallback>();
+    let nextFrameId = 0;
+    const requestAnimationFrame = vi.fn((callback: FrameRequestCallback) => {
+      nextFrameId += 1;
+      frameCallbacks.set(nextFrameId, callback);
+      return nextFrameId;
     });
-    Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalInnerWidth });
+    const cancelAnimationFrame = vi.fn((frameId: number) => {
+      frameCallbacks.delete(frameId);
+    });
+    let summaryTop = 1000;
+    try {
+      Object.defineProperty(HTMLElement.prototype, 'getBoundingClientRect', {
+        configurable: true,
+        value: () => ({
+          bottom: summaryTop + 24,
+          height: 24,
+          left: 0,
+          right: 200,
+          toJSON: () => ({}),
+          top: summaryTop,
+          width: 200,
+          x: 0,
+          y: summaryTop,
+        }),
+      });
+      vi.stubGlobal('IntersectionObserver', undefined);
+      vi.stubGlobal('requestAnimationFrame', requestAnimationFrame);
+      vi.stubGlobal('cancelAnimationFrame', cancelAnimationFrame);
+      vi.stubGlobal(
+        'matchMedia',
+        vi.fn(() => ({
+          matches: true,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+        })),
+      );
+      const request: ApiClient['request'] = async <TResponse, TBody>(
+        options: ApiRequestOptions<TBody, TResponse>,
+      ) => {
+        if (options.path === '/me') return decode(options, student);
+        if (options.path === '/cart' && options.method === 'GET')
+          return decode(options, cartWithItems);
+        throw new Error(`Unexpected request ${options.method} ${options.path}`);
+      };
+
+      const queryClient = await renderCart(request);
+      expect(await screen.findByRole('button', { name: 'Go to order summary' })).toBeTruthy();
+      expect(requestAnimationFrame).not.toHaveBeenCalled();
+
+      fireEvent.scroll(window);
+      fireEvent.resize(window);
+      fireEvent.scroll(window);
+      expect(requestAnimationFrame).toHaveBeenCalledTimes(1);
+      expect(frameCallbacks).toHaveLength(1);
+      const firstFrame = frameCallbacks.get(1);
+      if (!firstFrame) throw new Error('Expected the summary visibility frame.');
+      frameCallbacks.delete(1);
+      await act(async () => {
+        firstFrame(0);
+      });
+
+      fireEvent.resize(window);
+      expect(requestAnimationFrame).toHaveBeenCalledTimes(2);
+      expect(frameCallbacks.has(2)).toBe(true);
+
+      const cartQuery = queryClient
+        .getQueryCache()
+        .getAll()
+        .find((query) => query.queryKey[2] === 'API-002');
+      const cachedCart = cartQuery?.state.data as Cart | undefined;
+      if (!cartQuery || !cachedCart) throw new Error('Expected the cached Cart query.');
+      await act(async () => {
+        queryClient.setQueryData<Cart>(cartQuery.queryKey, {
+          ...cachedCart,
+          totalPrice: `${cachedCart.totalPrice}0`,
+        });
+      });
+      await waitFor(() => expect(cancelAnimationFrame).toHaveBeenCalledWith(2));
+      expect(frameCallbacks).toHaveLength(0);
+
+      summaryTop = 80;
+      fireEvent.resize(window);
+      expect(requestAnimationFrame).toHaveBeenCalledTimes(3);
+      const restartedFrame = frameCallbacks.get(3);
+      if (!restartedFrame) throw new Error('Expected a frame after the summary effect restarted.');
+      frameCallbacks.delete(3);
+      await act(async () => {
+        restartedFrame(0);
+      });
+      await waitFor(() =>
+        expect(screen.queryByRole('button', { name: 'Go to order summary' })).toBeNull(),
+      );
+
+      fireEvent.scroll(window);
+      expect(requestAnimationFrame).toHaveBeenCalledTimes(4);
+      expect(frameCallbacks.has(4)).toBe(true);
+      cleanup();
+      expect(cancelAnimationFrame).toHaveBeenCalledWith(4);
+      expect(frameCallbacks).toHaveLength(0);
+    } finally {
+      if (originalSummaryBounds)
+        Object.defineProperty(
+          HTMLElement.prototype,
+          'getBoundingClientRect',
+          originalSummaryBounds,
+        );
+      else
+        delete (HTMLElement.prototype as { getBoundingClientRect?: unknown }).getBoundingClientRect;
+    }
   });
 
   it('submits one labelled mock checkout, requires explicit cart recovery after an unknown result, and never reports payment success', async () => {

@@ -103,6 +103,9 @@ function FocusNavigationProbe() {
       <button type="button" onClick={() => navigate('/login')}>
         Navigate pathname
       </button>
+      <button type="button" onClick={() => navigate(-1)}>
+        Navigate back
+      </button>
       <button type="button" onClick={() => navigate('/', { replace: true })}>
         Replace pathname
       </button>
@@ -761,52 +764,116 @@ describe('application routing and guards', () => {
   it('resets path-changing pushes and replaces while preserving query scroll and delegating fragments to their targets', async () => {
     const scrollTo = vi.mocked(window.scrollTo);
     const scrollIntoView = vi.fn();
-    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
-      configurable: true,
-      value: scrollIntoView,
-    });
-    renderApp('/', undefined, { focusNavigationProbe: true });
-    const user = userEvent.setup();
-    await screen.findByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' });
-
-    await act(async () => {
-      await user.click(screen.getByRole('button', { name: 'Navigate pathname' }));
-    });
-    await screen.findByRole('heading', { level: 1, name: 'Log in' });
-    expect(scrollTo).toHaveBeenCalledWith(0, 0);
-
-    scrollTo.mockClear();
-    await act(async () => {
-      await user.click(screen.getByRole('button', { name: 'Replace pathname' }));
-    });
-    await screen.findByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' });
-    expect(scrollTo).toHaveBeenCalledTimes(1);
-    expect(scrollTo).toHaveBeenCalledWith(0, 0);
-
-    scrollTo.mockClear();
-    await act(async () => {
-      await user.click(screen.getByRole('button', { name: 'Navigate pathname' }));
-    });
-    await screen.findByRole('heading', { level: 1, name: 'Log in' });
-
-    scrollTo.mockClear();
-    await act(async () => {
-      await user.click(screen.getByRole('button', { name: 'Navigate search' }));
-    });
-    await waitFor(() =>
-      expect(screen.getByLabelText('current location').textContent).toBe('/login?focus=next'),
+    const originalScrollIntoView = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      'scrollIntoView',
     );
-    expect(scrollTo).not.toHaveBeenCalled();
+    try {
+      Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+        configurable: true,
+        value: scrollIntoView,
+      });
+      renderApp('/', undefined, { focusNavigationProbe: true });
+      const user = userEvent.setup();
+      await screen.findByRole('heading', {
+        level: 1,
+        name: 'Master the Skills Shaping the Future',
+      });
 
-    await act(async () => {
-      await user.click(screen.getByRole('button', { name: 'Navigate focus fragment' }));
-    });
-    await waitFor(() =>
-      expect(screen.getByLabelText('current location').textContent).toBe(
-        '/login?focus=next#focus-target',
-      ),
-    );
-    expect(scrollIntoView).toHaveBeenCalledWith();
+      await act(async () => {
+        await user.click(screen.getByRole('button', { name: 'Navigate pathname' }));
+      });
+      await screen.findByRole('heading', { level: 1, name: 'Log in' });
+      expect(scrollTo).toHaveBeenCalledWith(0, 0);
+
+      scrollTo.mockClear();
+      await act(async () => {
+        await user.click(screen.getByRole('button', { name: 'Replace pathname' }));
+      });
+      await screen.findByRole('heading', {
+        level: 1,
+        name: 'Master the Skills Shaping the Future',
+      });
+      expect(scrollTo).toHaveBeenCalledTimes(1);
+      expect(scrollTo).toHaveBeenCalledWith(0, 0);
+
+      scrollTo.mockClear();
+      await act(async () => {
+        await user.click(screen.getByRole('button', { name: 'Navigate pathname' }));
+      });
+      await screen.findByRole('heading', { level: 1, name: 'Log in' });
+
+      scrollTo.mockClear();
+      await act(async () => {
+        await user.click(screen.getByRole('button', { name: 'Navigate search' }));
+      });
+      await waitFor(() =>
+        expect(screen.getByLabelText('current location').textContent).toBe('/login?focus=next'),
+      );
+      expect(scrollTo).not.toHaveBeenCalled();
+
+      await act(async () => {
+        await user.click(screen.getByRole('button', { name: 'Navigate focus fragment' }));
+      });
+      await waitFor(() =>
+        expect(screen.getByLabelText('current location').textContent).toBe(
+          '/login?focus=next#focus-target',
+        ),
+      );
+      expect(scrollIntoView).toHaveBeenCalledWith();
+    } finally {
+      if (originalScrollIntoView)
+        Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', originalScrollIntoView);
+      else delete (HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    }
+  });
+
+  it('restores the stored POP position without replacing the incoming entry before restoration', async () => {
+    let scrollLeft = 0;
+    let scrollTop = 0;
+    const originalScrollX = Object.getOwnPropertyDescriptor(window, 'scrollX');
+    const originalScrollY = Object.getOwnPropertyDescriptor(window, 'scrollY');
+    const scrollTo = vi.mocked(window.scrollTo);
+
+    try {
+      Object.defineProperties(window, {
+        scrollX: { configurable: true, get: () => scrollLeft },
+        scrollY: { configurable: true, get: () => scrollTop },
+      });
+      renderApp('/', undefined, { focusNavigationProbe: true });
+      const user = userEvent.setup();
+      await screen.findByRole('heading', {
+        level: 1,
+        name: 'Master the Skills Shaping the Future',
+      });
+
+      scrollLeft = 18;
+      scrollTop = 246;
+      window.dispatchEvent(new Event('scroll'));
+      await act(async () => {
+        await user.click(screen.getByRole('button', { name: 'Navigate pathname' }));
+      });
+      await screen.findByRole('heading', { level: 1, name: 'Log in' });
+
+      scrollTo.mockClear();
+      scrollLeft = 0;
+      scrollTop = 0;
+      window.dispatchEvent(new Event('scroll'));
+      await act(async () => {
+        await user.click(screen.getByRole('button', { name: 'Navigate back' }));
+      });
+
+      await screen.findByRole('heading', {
+        level: 1,
+        name: 'Master the Skills Shaping the Future',
+      });
+      expect(scrollTo).toHaveBeenCalledWith(18, 246);
+    } finally {
+      if (originalScrollX) Object.defineProperty(window, 'scrollX', originalScrollX);
+      else delete (window as { scrollX?: number }).scrollX;
+      if (originalScrollY) Object.defineProperty(window, 'scrollY', originalScrollY);
+      else delete (window as { scrollY?: number }).scrollY;
+    }
   });
 
   it('closes mobile navigation when Escape is pressed while its trigger remains focused', async () => {

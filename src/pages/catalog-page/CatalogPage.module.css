@@ -269,6 +269,12 @@
   }
 }
 
+@media (max-width: 239px) {
+  .toolbarControls form[aria-label='Course filters'] fieldset {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @media (min-width: 1280px) {
   @container (min-width: 1232px) {
     .list {
@@ -361,6 +367,22 @@
     /* stylelint-disable-next-line property-no-vendor-prefix -- Chromium alpha-mask compatibility */
     -webkit-mask-repeat: no-repeat;
     mask-repeat: no-repeat;
+  }
+}
+
+@media (min-width: 1961px) {
+  .hero {
+    background-color: #0d0d37;
+    background-image:
+      linear-gradient(90deg, #0d0d37 0%, #0b0c32 58%, #080b2b 100%),
+      url('/src/pages/catalog-page/assets/catalog-hero-ui025.png');
+    background-position:
+      right center,
+      right center;
+    background-repeat: no-repeat, no-repeat;
+    background-size:
+      100% 100%,
+      1960px;
   }
 }
 

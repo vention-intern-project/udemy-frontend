@@ -54,10 +54,10 @@ function isOutsideVisibleViewport(input: HTMLTextAreaElement) {
   const bottom = top + (viewport?.height ?? document.documentElement.clientHeight);
 
   return (
-    inputRect.right <= left ||
-    inputRect.left >= right ||
-    inputRect.bottom <= top ||
-    inputRect.top >= bottom
+    inputRect.left < left ||
+    inputRect.right > right ||
+    inputRect.top < top ||
+    inputRect.bottom > bottom
   );
 }
 

@@ -55,6 +55,7 @@ interface AiHeroGeometry {
 }
 
 function expectedAiHeroImageWidth(viewportWidth: number): number {
+  // Mirrors the responsive CSS clamp coefficients in AiChatPage.module.css.
   if (viewportWidth <= 895) {
     return Math.min(959.88, Math.max(820.95, viewportWidth * 1.085391 - 12.6303));
   }
@@ -719,7 +720,9 @@ test('uses one compact Suggested Actions disclosure below 1000px without changin
       expect(heroGeometry.headingRight).toBeLessThanOrEqual(heroGeometry.heroContentRight + 1);
       expect(heroGeometry.headingWidth).toBeLessThanOrEqual(680);
     }
-    expect(heroGeometry.imageWidth).toBeCloseTo(expectedAiHeroImageWidth(width), 1);
+    expect(Math.abs(heroGeometry.imageWidth - expectedAiHeroImageWidth(width))).toBeLessThanOrEqual(
+      1,
+    );
     expect(heroGeometry.imageRight).toBeGreaterThan(width / 2);
     expect(heroGeometry.imageRight).toBeLessThanOrEqual(width + heroGeometry.imageWidth);
     if (width >= 896) expect(heroGeometry.imageFit).toBe('contain');

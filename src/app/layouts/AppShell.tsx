@@ -11,6 +11,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Bot, GraduationCap, LibraryBig, LogIn, ShoppingCart, UserPlus } from 'lucide-react';
 import {
   Link,
+  type Location,
   matchPath,
   NavLink,
   Outlet,
@@ -152,6 +153,20 @@ interface CartNavigationLinkProps {
   itemCount: number | undefined;
 }
 
+interface AssistantNavigationTarget {
+  state: { returnTo: string } | undefined;
+  to: string;
+}
+
+function assistantNavigationTarget(location: Location): AssistantNavigationTarget {
+  const returnTo = `${location.pathname}${location.search}${location.hash}`;
+  const enrollmentMatch = matchPath('/learning/enrollments/:enrollmentId/*', location.pathname);
+  const to = enrollmentMatch?.params.enrollmentId
+    ? `/learning/enrollments/${enrollmentMatch.params.enrollmentId}/ai-chat`
+    : '/ai-chat';
+  return { state: location.pathname === to ? undefined : { returnTo }, to };
+}
+
 function CartNavigationLink({ itemCount }: CartNavigationLinkProps) {
   const presentation = presentCart(itemCount);
   return (
@@ -171,11 +186,7 @@ function CartNavigationLink({ itemCount }: CartNavigationLinkProps) {
 
 function AiAssistantNavigationLink() {
   const location = useLocation();
-  const returnTo = `${location.pathname}${location.search}${location.hash}`;
-  const enrollmentMatch = matchPath('/learning/enrollments/:enrollmentId/*', location.pathname);
-  const assistantPath = enrollmentMatch?.params.enrollmentId
-    ? `/learning/enrollments/${enrollmentMatch.params.enrollmentId}/ai-chat`
-    : '/ai-chat';
+  const target = assistantNavigationTarget(location);
   return (
     <NavLink
       aria-label="Open AI assistant"
@@ -184,8 +195,8 @@ function AiAssistantNavigationLink() {
           .filter(Boolean)
           .join(' ')
       }
-      state={location.pathname === assistantPath ? undefined : { returnTo }}
-      to={assistantPath}
+      state={target.state}
+      to={target.to}
     >
       <img
         alt=""
@@ -198,6 +209,7 @@ function AiAssistantNavigationLink() {
 }
 
 function StudentMobileNavigation({ itemCount }: CartNavigationLinkProps) {
+  const assistantTarget = assistantNavigationTarget(useLocation());
   const cartPresentation = presentCart(itemCount);
   return (
     <nav className={styles.studentMobileNavigation} aria-label="Student navigation">
@@ -209,7 +221,12 @@ function StudentMobileNavigation({ itemCount }: CartNavigationLinkProps) {
         <GraduationCap aria-hidden="true" focusable="false" size={20} />
         <span>My learning</span>
       </NavLink>
-      <NavLink className={styles.studentMobileNavigationLink} end to="/ai-chat">
+      <NavLink
+        className={styles.studentMobileNavigationLink}
+        end
+        state={assistantTarget.state}
+        to={assistantTarget.to}
+      >
         <Bot aria-hidden="true" focusable="false" size={20} />
         <span>AI chat</span>
       </NavLink>
@@ -452,7 +469,6 @@ export function AppShell() {
       });
     };
 
-    rememberCurrentPosition();
     window.addEventListener('scroll', rememberCurrentPosition, { passive: true });
     return () => window.removeEventListener('scroll', rememberCurrentPosition);
   }, [location.key]);
