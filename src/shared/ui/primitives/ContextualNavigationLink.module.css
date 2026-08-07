@@ -1,13 +1,17 @@
 .link {
   display: inline-flex;
   align-items: center;
+  box-sizing: border-box;
+  min-inline-size: 0;
   inline-size: fit-content;
   max-inline-size: 100%;
   min-block-size: var(--control-height-md);
+  gap: var(--spacing-1);
   padding-inline: var(--spacing-3);
   border-radius: var(--radius-md);
   color: var(--action-link);
   overflow-wrap: anywhere;
+  text-align: start;
   text-decoration: none;
 }
 

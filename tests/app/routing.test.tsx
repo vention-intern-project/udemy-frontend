@@ -4,7 +4,7 @@ import { act, cleanup, render, screen, waitFor, within } from '@testing-library/
 import { QueryClientProvider } from '@tanstack/react-query';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApplicationTitleBoundary, AppRouter, densityForPath } from '../../src/app/router';
 import { createAppQueryClient } from '../../src/app/query';
@@ -103,6 +103,12 @@ function FocusNavigationProbe() {
       <button type="button" onClick={() => navigate('/login')}>
         Navigate pathname
       </button>
+      <button type="button" onClick={() => navigate(-1)}>
+        Navigate back
+      </button>
+      <button type="button" onClick={() => navigate('/', { replace: true })}>
+        Replace pathname
+      </button>
       <button
         type="button"
         onClick={() =>
@@ -191,6 +197,10 @@ afterEach(() => {
   globalThis.localStorage.clear();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+});
+
+beforeEach(() => {
+  vi.stubGlobal('scrollTo', vi.fn());
 });
 
 describe('application routing and guards', () => {
@@ -390,16 +400,15 @@ describe('application routing and guards', () => {
       await screen.findByRole('heading', { level: 1, name: heading });
 
       const brand = screen.getByRole('link', { name: 'LearnHub home' });
-      const marks = brand.querySelectorAll(':scope > svg[aria-hidden="true"]');
+      const marks = brand.querySelectorAll(':scope > img');
       const wordmarks = brand.querySelectorAll(':scope > span');
 
       expect(brand.getAttribute('aria-label')).toBe('LearnHub home');
       expect(brand.textContent?.replace(/\s+/g, ' ').trim()).toBe('LearnHub');
       expect(marks).toHaveLength(1);
       expect(marks[0]?.getAttribute('aria-hidden')).toBe('true');
-      expect(marks[0]?.getAttribute('focusable')).toBe('false');
-      expect(marks[0]?.textContent?.trim()).toBe('');
-      expect(marks[0]?.querySelectorAll('text')).toHaveLength(0);
+      expect(marks[0]?.getAttribute('alt')).toBe('');
+      expect(marks[0]?.getAttribute('src')).toContain('learnhub-book-ui018.png');
       expect(wordmarks).toHaveLength(1);
       expect(wordmarks[0]?.textContent).toBe('LearnHub');
     },
@@ -750,6 +759,121 @@ describe('application routing and guards', () => {
       { preventScroll: true },
       { preventScroll: true },
     ]);
+  });
+
+  it('resets path-changing pushes and replaces while preserving query scroll and delegating fragments to their targets', async () => {
+    const scrollTo = vi.mocked(window.scrollTo);
+    const scrollIntoView = vi.fn();
+    const originalScrollIntoView = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      'scrollIntoView',
+    );
+    try {
+      Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+        configurable: true,
+        value: scrollIntoView,
+      });
+      renderApp('/', undefined, { focusNavigationProbe: true });
+      const user = userEvent.setup();
+      await screen.findByRole('heading', {
+        level: 1,
+        name: 'Master the Skills Shaping the Future',
+      });
+
+      await act(async () => {
+        await user.click(screen.getByRole('button', { name: 'Navigate pathname' }));
+      });
+      await screen.findByRole('heading', { level: 1, name: 'Log in' });
+      expect(scrollTo).toHaveBeenCalledWith(0, 0);
+
+      scrollTo.mockClear();
+      await act(async () => {
+        await user.click(screen.getByRole('button', { name: 'Replace pathname' }));
+      });
+      await screen.findByRole('heading', {
+        level: 1,
+        name: 'Master the Skills Shaping the Future',
+      });
+      expect(scrollTo).toHaveBeenCalledTimes(1);
+      expect(scrollTo).toHaveBeenCalledWith(0, 0);
+
+      scrollTo.mockClear();
+      await act(async () => {
+        await user.click(screen.getByRole('button', { name: 'Navigate pathname' }));
+      });
+      await screen.findByRole('heading', { level: 1, name: 'Log in' });
+
+      scrollTo.mockClear();
+      await act(async () => {
+        await user.click(screen.getByRole('button', { name: 'Navigate search' }));
+      });
+      await waitFor(() =>
+        expect(screen.getByLabelText('current location').textContent).toBe('/login?focus=next'),
+      );
+      expect(scrollTo).not.toHaveBeenCalled();
+
+      await act(async () => {
+        await user.click(screen.getByRole('button', { name: 'Navigate focus fragment' }));
+      });
+      await waitFor(() =>
+        expect(screen.getByLabelText('current location').textContent).toBe(
+          '/login?focus=next#focus-target',
+        ),
+      );
+      expect(scrollIntoView).toHaveBeenCalledWith();
+    } finally {
+      if (originalScrollIntoView)
+        Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', originalScrollIntoView);
+      else delete (HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    }
+  });
+
+  it('restores the stored POP position without replacing the incoming entry before restoration', async () => {
+    let scrollLeft = 0;
+    let scrollTop = 0;
+    const originalScrollX = Object.getOwnPropertyDescriptor(window, 'scrollX');
+    const originalScrollY = Object.getOwnPropertyDescriptor(window, 'scrollY');
+    const scrollTo = vi.mocked(window.scrollTo);
+
+    try {
+      Object.defineProperties(window, {
+        scrollX: { configurable: true, get: () => scrollLeft },
+        scrollY: { configurable: true, get: () => scrollTop },
+      });
+      renderApp('/', undefined, { focusNavigationProbe: true });
+      const user = userEvent.setup();
+      await screen.findByRole('heading', {
+        level: 1,
+        name: 'Master the Skills Shaping the Future',
+      });
+
+      scrollLeft = 18;
+      scrollTop = 246;
+      window.dispatchEvent(new Event('scroll'));
+      await act(async () => {
+        await user.click(screen.getByRole('button', { name: 'Navigate pathname' }));
+      });
+      await screen.findByRole('heading', { level: 1, name: 'Log in' });
+
+      scrollTo.mockClear();
+      scrollLeft = 0;
+      scrollTop = 0;
+      window.dispatchEvent(new Event('scroll'));
+      await act(async () => {
+        await user.click(screen.getByRole('button', { name: 'Navigate back' }));
+      });
+
+      await screen.findByRole('heading', {
+        level: 1,
+        name: 'Master the Skills Shaping the Future',
+      });
+      expect(scrollTo).toHaveBeenCalledWith(18, 246);
+    } finally {
+      if (originalScrollX) Object.defineProperty(window, 'scrollX', originalScrollX);
+      else delete (window as { scrollX?: number }).scrollX;
+      if (originalScrollY) Object.defineProperty(window, 'scrollY', originalScrollY);
+      else delete (window as { scrollY?: number }).scrollY;
+    }
   });
 
   it('closes mobile navigation when Escape is pressed while its trigger remains focused', async () => {

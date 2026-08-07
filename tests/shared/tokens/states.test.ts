@@ -132,7 +132,7 @@ describe('Component state tokens', () => {
   });
 
   describe('State: focus', () => {
-    it('should use focus-ring token for border', () => {
+    it('should use the inheritable focus role for border', () => {
       expect(stateTokenMap.focus.border).toBe('var(--focus-ring)');
     });
   });

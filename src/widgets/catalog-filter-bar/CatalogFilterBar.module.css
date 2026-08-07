@@ -34,6 +34,15 @@
   content: ':';
 }
 
+.priceLabel {
+  display: none;
+  color: var(--text-muted);
+  font-size: var(--type-label-size);
+  font-weight: var(--type-label-weight);
+  line-height: var(--type-label-lh);
+  white-space: nowrap;
+}
+
 .field [data-part='label'] {
   position: absolute;
   width: 1px;
@@ -49,8 +58,9 @@
 
 @media (max-width: 767px) {
   .priceRange {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: auto repeat(2, minmax(0, 1fr));
   }
+
   .legend {
     position: absolute;
     width: 1px;
@@ -59,13 +69,24 @@
     clip: rect(0 0 0 0);
     white-space: nowrap;
   }
-  .field [data-part='label'] {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    white-space: nowrap;
+
+  .priceLabel {
+    display: block;
+  }
+}
+
+@container (min-width: 34rem) {
+  .root {
+    flex: 0 0 auto;
+  }
+
+  .priceRange {
+    grid-template-columns: auto repeat(2, 7.5rem);
+    inline-size: auto;
+  }
+
+  .field {
+    inline-size: 7.5rem;
   }
 }
 

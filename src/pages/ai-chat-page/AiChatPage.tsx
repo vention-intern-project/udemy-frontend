@@ -18,7 +18,7 @@ import {
   SkeletonGroup,
 } from '@shared/ui/primitives';
 import { CourseChatContent } from '@widgets/course-chat';
-import heroImage from './assets/ai-chat-hero.png';
+import heroImage from './assets/ai-chat-hero-ui020-1.png';
 
 import styles from './AiChatPage.module.css';
 
@@ -135,46 +135,90 @@ const SUGGESTED_ACTIONS: readonly SuggestedAction[] = [
 interface SuggestedActionsProps {
   readonly chat: CourseChatWorkflow;
   readonly backTo: string;
+  readonly isCompactOpen: boolean;
+  readonly onActionSelect: () => void;
+  readonly onCompactToggle: () => void;
+}
+
+interface SuggestedActionListProps {
+  readonly chat: CourseChatWorkflow;
   readonly onActionSelect: () => void;
 }
 
-function SuggestedActions({ chat, backTo, onActionSelect }: SuggestedActionsProps) {
+function SuggestedActionList({ chat, onActionSelect }: SuggestedActionListProps) {
   return (
-    <div className={styles.sidebarColumn}>
-      <ContextualNavigationLink className={styles.returnLink} to={backTo}>
-        <ChevronLeft aria-hidden="true" />
-        Return to my learning
-      </ContextualNavigationLink>
-      <aside className={styles.sidebar} aria-labelledby="suggested-actions-title">
-        <h2 id="suggested-actions-title">Suggested Actions</h2>
-        <p>Quick prompts to jumpstart your session</p>
-        <div className={styles.suggestedActions}>
-          {SUGGESTED_ACTIONS.map(({ icon: Icon, label, prompt }) => {
-            const selected = chat.draft === prompt;
-            return (
-              <button
-                key={label}
-                className={[
-                  styles.suggestedAction,
-                  selected ? styles.suggestedActionSelected : null,
-                ]
-                  .filter(Boolean)
-                  .join(' ')}
-                data-selected={selected ? 'true' : 'false'}
-                type="button"
-                onClick={() => {
-                  chat.setDraft(prompt);
-                  onActionSelect();
-                }}
-              >
-                <Icon aria-hidden="true" focusable="false" />
-                {label}
-              </button>
-            );
-          })}
-        </div>
-      </aside>
+    <div className={styles.suggestedActions}>
+      {SUGGESTED_ACTIONS.map(({ icon: Icon, label, prompt }) => {
+        const selected = chat.draft === prompt;
+        return (
+          <button
+            key={label}
+            className={[styles.suggestedAction, selected ? styles.suggestedActionSelected : null]
+              .filter(Boolean)
+              .join(' ')}
+            data-selected={selected ? 'true' : 'false'}
+            type="button"
+            onClick={() => {
+              chat.setDraft(prompt);
+              onActionSelect();
+            }}
+          >
+            <Icon aria-hidden="true" focusable="false" />
+            {label}
+          </button>
+        );
+      })}
     </div>
+  );
+}
+
+function SuggestedActions({
+  chat,
+  backTo,
+  isCompactOpen,
+  onActionSelect,
+  onCompactToggle,
+}: SuggestedActionsProps) {
+  const compactPanelId = useId();
+  return (
+    <>
+      <div className={styles.compactSuggestedActions}>
+        <ContextualNavigationLink className={styles.returnLink} to={backTo}>
+          <ChevronLeft aria-hidden="true" />
+          Return to my learning
+        </ContextualNavigationLink>
+        <button
+          className={styles.suggestedActionsTrigger}
+          type="button"
+          aria-expanded={isCompactOpen}
+          aria-controls={compactPanelId}
+          onClick={onCompactToggle}
+        >
+          Suggested Actions
+        </button>
+        {isCompactOpen ? (
+          <section
+            id={compactPanelId}
+            className={styles.compactSuggestedActionsPanel}
+            aria-label="Suggested Actions"
+          >
+            <p>Quick prompts to jumpstart your session</p>
+            <SuggestedActionList chat={chat} onActionSelect={onActionSelect} />
+          </section>
+        ) : null}
+      </div>
+      <div className={styles.sidebarColumn}>
+        <ContextualNavigationLink className={styles.returnLink} to={backTo}>
+          <ChevronLeft aria-hidden="true" />
+          Return to my learning
+        </ContextualNavigationLink>
+        <aside className={styles.sidebar} aria-labelledby="suggested-actions-title">
+          <h2 id="suggested-actions-title">Suggested Actions</h2>
+          <p>Quick prompts to jumpstart your session</p>
+          <SuggestedActionList chat={chat} onActionSelect={onActionSelect} />
+        </aside>
+      </div>
+    </>
   );
 }
 
@@ -184,6 +228,7 @@ function AssistantPageLayout({ context, backTo }: AssistantPageLayoutProps) {
   const navigate = useNavigate();
   const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
   const [isClearConfirmationOpen, setIsClearConfirmationOpen] = useState(false);
+  const [isCompactSuggestedActionsOpen, setIsCompactSuggestedActionsOpen] = useState(false);
   const [composerFocusRequest, setComposerFocusRequest] = useState(0);
   const actionTriggerId = useId();
   const isUnavailable = chat.error === 'temporarily_unavailable' || chat.error === 'unavailable';
@@ -204,7 +249,13 @@ function AssistantPageLayout({ context, backTo }: AssistantPageLayoutProps) {
   return (
     <article className={styles.page}>
       <section className={styles.hero} aria-labelledby="ai-chat-hero-title">
-        <img className={styles.heroImage} src={heroImage} alt="" aria-hidden="true" />
+        <img
+          className={styles.heroImage}
+          data-part="ai-chat-hero-image"
+          src={heroImage}
+          alt=""
+          aria-hidden="true"
+        />
         <div className={styles.heroContent}>
           <h1 id="ai-chat-hero-title">
             <span className={styles.betaBadge}>BETA</span> AI Learning Assistant
@@ -218,7 +269,12 @@ function AssistantPageLayout({ context, backTo }: AssistantPageLayoutProps) {
       <SuggestedActions
         chat={chat}
         backTo={backTo}
-        onActionSelect={() => setComposerFocusRequest((request) => request + 1)}
+        isCompactOpen={isCompactSuggestedActionsOpen}
+        onCompactToggle={() => setIsCompactSuggestedActionsOpen((isOpen) => !isOpen)}
+        onActionSelect={() => {
+          setIsCompactSuggestedActionsOpen(false);
+          setComposerFocusRequest((request) => request + 1);
+        }}
       />
       <section className={styles.chatArea}>
         <section className={styles.chatFrame} aria-label="AI assistant chat">

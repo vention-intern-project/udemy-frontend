@@ -21,7 +21,7 @@ import {
 type BackendRole = 'student' | 'instructor' | 'admin';
 type ShellSurfaceViewportWidth = 320 | 390 | 768 | 1280 | 1440;
 type DesktopViewportWidth = 768 | 1280;
-type MobileViewportWidth = 320 | 390;
+type MobileViewportWidth = 320 | 390 | 767;
 
 interface RepresentativeTokenSnapshot {
   density: string | null;
@@ -78,6 +78,12 @@ const CART_STRICT_MODE_ABORT: RequestFailureIdentity = {
 const ENROLLMENTS_STRICT_MODE_ABORT: RequestFailureIdentity = {
   method: 'GET',
   path: '/enrollments/my?page=1&page_size=20',
+  errorText: 'net::ERR_ABORTED',
+};
+
+const AI_ASSISTANT_NAVIGATION_RASTER_ABORT: RequestFailureIdentity = {
+  method: 'GET',
+  path: '/src/app/layouts/assets/ai-assistant-navigation-ui018-2.png',
   errorText: 'net::ERR_ABORTED',
 };
 
@@ -306,8 +312,15 @@ async function expectShellSurfacesAtViewportEdges(page: Page, width: ShellSurfac
       headerY: Math.floor((headerRect.top + headerRect.bottom) / 2),
       footerY: Math.floor((footerRect.top + footerRect.bottom) / 2),
       footerVisible: footerRect.top >= -1 && footerRect.bottom <= window.innerHeight + 1,
-      headerColor: colorPixel(getComputedStyle(header).backgroundColor),
-      footerColor: colorPixel(getComputedStyle(footer).backgroundColor),
+      headerColor: colorPixel(
+        getComputedStyle(document.documentElement).getPropertyValue('--color-surface'),
+      ),
+      detachedSearchColor: colorPixel(
+        getComputedStyle(document.documentElement).getPropertyValue('--state-control-highlight'),
+      ),
+      footerColor: colorPixel(
+        getComputedStyle(document.documentElement).getPropertyValue('--color-surface-inverted'),
+      ),
     };
   });
   expect(geometry.scrollbarGutter).toBe('auto');
@@ -321,50 +334,47 @@ async function expectShellSurfacesAtViewportEdges(page: Page, width: ShellSurfac
   expect(physicalLeftGap).toBeLessThanOrEqual(1);
   expect(physicalRightGap).toBeGreaterThanOrEqual(0);
   expect(physicalRightGap).toBeLessThanOrEqual(17);
-  for (const surface of [geometry.header, geometry.footer]) {
-    expect(Math.abs(surface.left - geometry.root.left)).toBeLessThanOrEqual(1);
-    expect(Math.abs(surface.right - geometry.root.right)).toBeLessThanOrEqual(1);
-  }
+  expect(physicalLeftGap + physicalRightGap).toBeLessThanOrEqual(17);
 
-  const screenshot = await page.screenshot({ animations: 'disabled' });
+  const [headerScreenshot, footerScreenshot] = await Promise.all([
+    page.locator('[data-app-shell-header]').screenshot({ animations: 'disabled' }),
+    page.getByRole('contentinfo').screenshot({ animations: 'disabled' }),
+  ]);
   const edgePixels = await page.evaluate(
-    async ({ imageBase64, points }) => {
-      const image = new Image();
-      image.src = `data:image/png;base64,${imageBase64}`;
-      await image.decode();
-      const canvas = document.createElement('canvas');
-      canvas.width = image.naturalWidth;
-      canvas.height = image.naturalHeight;
-      const context = canvas.getContext('2d');
-      if (!context) throw new Error('Screenshot pixel probe is unavailable');
-      context.drawImage(image, 0, 0);
-      const scaleX = image.naturalWidth / window.innerWidth;
-      const scaleY = image.naturalHeight / window.innerHeight;
-      return points.map(({ x, y }) =>
-        Array.from(
-          context.getImageData(
-            Math.min(image.naturalWidth - 1, Math.max(0, Math.floor(x * scaleX))),
-            Math.min(image.naturalHeight - 1, Math.max(0, Math.floor(y * scaleY))),
-            1,
-            1,
-          ).data,
-        ),
-      );
+    async ({ imageBase64 }) => {
+      const edgePixelsForImage = async (base64: string) => {
+        const image = new Image();
+        image.src = `data:image/png;base64,${base64}`;
+        await image.decode();
+        const canvas = document.createElement('canvas');
+        canvas.width = image.naturalWidth;
+        canvas.height = image.naturalHeight;
+        const context = canvas.getContext('2d');
+        if (!context) throw new Error('Screenshot pixel probe is unavailable');
+        context.drawImage(image, 0, 0);
+        const y = Math.floor(image.naturalHeight / 2);
+        return [
+          Array.from(context.getImageData(0, y, 1, 1).data),
+          Array.from(context.getImageData(image.naturalWidth - 1, y, 1, 1).data),
+        ];
+      };
+
+      return Promise.all(imageBase64.map((base64) => edgePixelsForImage(base64)));
     },
     {
-      imageBase64: screenshot.toString('base64'),
-      points: [
-        { x: 0, y: geometry.headerY },
-        { x: Math.max(0, Math.ceil(geometry.root.right) - 1), y: geometry.headerY },
-        { x: 0, y: geometry.footerY },
-        { x: Math.max(0, Math.ceil(geometry.root.right) - 1), y: geometry.footerY },
-      ],
+      imageBase64: [headerScreenshot.toString('base64'), footerScreenshot.toString('base64')],
     },
   );
-  expect(edgePixels[0]).toEqual(geometry.headerColor);
-  expect(edgePixels[1]).toEqual(geometry.headerColor);
-  expect(edgePixels[2]).toEqual(geometry.footerColor);
-  expect(edgePixels[3]).toEqual(geometry.footerColor);
+  const [headerEdgePixels, footerEdgePixels] = edgePixels;
+  const expectedHeaderEdgeColor = width < 768 ? geometry.detachedSearchColor : geometry.headerColor;
+  const expectPixelColor = (actual: number[], expected: number[]) => {
+    expect(actual).toHaveLength(expected.length);
+    expect(actual.every((channel, index) => Math.abs(channel - expected[index]) <= 1)).toBe(true);
+  };
+  expectPixelColor(headerEdgePixels[0], expectedHeaderEdgeColor);
+  expectPixelColor(headerEdgePixels[1], expectedHeaderEdgeColor);
+  expectPixelColor(footerEdgePixels[0], geometry.footerColor);
+  expectPixelColor(footerEdgePixels[1], geometry.footerColor);
   await expectNoHorizontalOverflow(page);
 }
 
@@ -380,44 +390,30 @@ async function expectBrandComposition(brand: Locator) {
   await expect(brand).toHaveText('LearnHub');
 
   const metrics = await brand.evaluate((link) => {
-    const marks = link.querySelectorAll(':scope > svg[aria-hidden="true"]');
+    const marks = link.querySelectorAll(':scope > img[aria-hidden="true"]');
     const wordmarks = link.querySelectorAll(':scope > span');
     const mark = marks.item(0);
     const wordmark = wordmarks.item(0);
-    const outline = mark?.querySelector('rect');
-    const book = mark?.querySelector('path');
     if (
       marks.length !== 1 ||
       wordmarks.length !== 1 ||
-      !(mark instanceof SVGElement) ||
-      !(wordmark instanceof HTMLElement) ||
-      !(outline instanceof SVGElement) ||
-      !(book instanceof SVGElement)
+      !(mark instanceof HTMLImageElement) ||
+      !(wordmark instanceof HTMLElement)
     ) {
       throw new Error('Brand composition targets are unavailable');
     }
 
-    const resolveColor = (token: string) => {
-      const probe = document.createElement('span');
-      probe.style.color = `var(${token})`;
-      document.body.append(probe);
-      const color = getComputedStyle(probe).color;
-      probe.remove();
-      return color;
-    };
     const linkRect = link.getBoundingClientRect();
     const markRect = mark.getBoundingClientRect();
     const wordmarkRect = wordmark.getBoundingClientRect();
-    const outlineStyle = getComputedStyle(outline);
-    const bookStyle = getComputedStyle(book);
+    const markStyle = getComputedStyle(mark);
     const linkStyle = getComputedStyle(link);
     const wordmarkStyle = getComputedStyle(wordmark);
     return {
       linkText: link.textContent?.replace(/\s+/g, ' ').trim() ?? '',
-      markText: mark.textContent?.trim() ?? '',
       markAriaHidden: mark.getAttribute('aria-hidden'),
-      markFocusable: mark.getAttribute('focusable'),
-      textElementCount: mark.querySelectorAll('text').length,
+      markAlt: mark.alt,
+      markSource: mark.getAttribute('src'),
       wordmarkText: wordmark.textContent,
       wordmarkVisible: wordmarkStyle.display !== 'none',
       markWidth: markRect.width,
@@ -435,11 +431,8 @@ async function expectBrandComposition(brand: Locator) {
         wordmarkRect.right <= linkRect.right + 0.5 &&
         wordmarkRect.top >= linkRect.top - 0.5 &&
         wordmarkRect.bottom <= linkRect.bottom + 0.5,
-      outlineStroke: outlineStyle.stroke,
-      bookFill: bookStyle.fill,
-      expectedPurple: resolveColor('--action-primary-bg'),
-      outlineStrokeWidth: Number.parseFloat(outlineStyle.strokeWidth),
-      outlineRadius: Number.parseFloat(outline.getAttribute('rx') ?? '0'),
+      markDisplay: markStyle.display,
+      markObjectFit: markStyle.objectFit,
       wordmarkWeight: linkStyle.fontWeight,
       expectedWeight: getComputedStyle(document.documentElement)
         .getPropertyValue('--font-weight-semibold')
@@ -448,20 +441,17 @@ async function expectBrandComposition(brand: Locator) {
   });
 
   expect(metrics.linkText).toBe('LearnHub');
-  expect(metrics.markText).toBe('');
   expect(metrics.markAriaHidden).toBe('true');
-  expect(metrics.markFocusable).toBe('false');
-  expect(metrics.textElementCount).toBe(0);
+  expect(metrics.markAlt).toBe('');
+  expect(metrics.markSource).toContain('learnhub-book-ui018.png');
   expect(metrics.wordmarkText).toBe('LearnHub');
-  expect(metrics.markWidth).toBe(32);
-  expect(metrics.markHeight).toBe(32);
+  expect(metrics.markWidth).toBe(44);
+  expect(metrics.markHeight).toBe(44);
   if (metrics.wordmarkVisible) expect(metrics.centerDelta).toBeLessThanOrEqual(1);
   expect(metrics.markInsideLink).toBe(true);
   expect(metrics.wordmarkInsideLink).toBe(true);
-  expect(metrics.outlineStroke).toBe(metrics.expectedPurple);
-  expect(metrics.bookFill).toBe(metrics.expectedPurple);
-  expect(metrics.outlineStrokeWidth).toBe(2);
-  expect(metrics.outlineRadius).toBeGreaterThan(0);
+  expect(metrics.markDisplay).toBe('block');
+  expect(metrics.markObjectFit).toBe('contain');
   expect(metrics.wordmarkWeight).toBe(metrics.expectedWeight);
 }
 
@@ -517,11 +507,13 @@ async function expectAnonymousDesktopHeaderGeometry(page: Page, width: DesktopVi
   const navigation = page.getByRole('navigation', { name: 'Primary navigation' });
   const accountNavigation = page.getByRole('navigation', { name: 'Account navigation' });
   const browse = navigation.getByRole('link', { name: 'Catalog' });
+  const cart = page.getByRole('link', { name: /^Cart/ });
   const login = accountNavigation.getByRole('link', { name: 'Log in' });
   const signup = accountNavigation.getByRole('link', { name: 'Sign up' });
   await expectBrandComposition(brand);
   await expectBrandFocusTreatment(page, brand);
   await expect(browse).toBeVisible();
+  await expect(cart).toBeVisible();
   await expect(login).toBeVisible();
   await expect(signup).toBeVisible();
   expect(await navigation.locator('a').allTextContents()).toEqual(['Catalog']);
@@ -582,6 +574,76 @@ async function expectAnonymousDesktopHeaderGeometry(page: Page, width: DesktopVi
   expect(idleStyles[0].underlineWidth).toBe('24px');
   expect(idleStyles[1].color).toBe(idleStyles[1].expectedColor);
   expect(idleStyles[1].background).toBe(idleStyles[1].expectedBackground);
+  const loginRestStyle = await login.evaluate((link) => {
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--text-secondary)';
+    document.body.append(probe);
+    const expectedColor = getComputedStyle(probe).color;
+    probe.remove();
+    return {
+      color: getComputedStyle(link).color,
+      background: getComputedStyle(link).backgroundColor,
+      expectedColor,
+    };
+  });
+  expect(loginRestStyle.color).toBe(loginRestStyle.expectedColor);
+  expect(loginRestStyle.background).toBe('rgba(0, 0, 0, 0)');
+  await login.hover();
+  const expectedLoginHoverStyle = await login.evaluate(() => {
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--action-secondary-fg)';
+    probe.style.background = 'var(--action-secondary-bg)';
+    document.body.append(probe);
+    const expected = getComputedStyle(probe);
+    const result = [expected.color, expected.backgroundColor];
+    probe.remove();
+    return result;
+  });
+  await expect
+    .poll(() =>
+      login.evaluate((link) => {
+        const style = getComputedStyle(link);
+        return [style.color, style.backgroundColor];
+      }),
+    )
+    .toEqual(expectedLoginHoverStyle);
+  const loginPointerBox = await requiredBoundingBox(login);
+  await page.mouse.move(
+    loginPointerBox.x + loginPointerBox.width / 2,
+    loginPointerBox.y + loginPointerBox.height / 2,
+  );
+  await page.mouse.down();
+  const expectedLoginPressedBackground = await login.evaluate(() => {
+    const probe = document.createElement('span');
+    probe.style.background = 'var(--action-secondary-bg-pressed)';
+    document.body.append(probe);
+    const expectedBackground = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return expectedBackground;
+  });
+  await expect
+    .poll(() => login.evaluate((link) => getComputedStyle(link).backgroundColor))
+    .toBe(expectedLoginPressedBackground);
+  await page.mouse.move(0, 0);
+  await page.mouse.up();
+  await cart.focus();
+  await page.keyboard.press('Tab');
+  await expect(login).toBeFocused();
+  const loginFocusStyle = await login.evaluate((link) => {
+    const rootStyle = getComputedStyle(document.documentElement);
+    const style = getComputedStyle(link);
+    return {
+      color: style.outlineColor,
+      expectedColor: rootStyle.getPropertyValue('--focus-ring').trim(),
+      style: style.outlineStyle,
+      width: Number.parseFloat(style.outlineWidth),
+    };
+  });
+  expect(loginFocusStyle.style).not.toBe('none');
+  expect(loginFocusStyle.width).toBeGreaterThan(0);
+  expect(loginFocusStyle.color).toBe(
+    await resolveBrowserColor(page, loginFocusStyle.expectedColor),
+  );
   await signup.hover();
   await expect
     .poll(() =>
@@ -608,8 +670,8 @@ async function expectAnonymousDesktopHeaderGeometry(page: Page, width: DesktopVi
   await expect(activeLogin).toHaveAttribute('aria-current', 'page');
   const activeLoginStyle = await activeLogin.evaluate((link) => {
     const probe = document.createElement('span');
-    probe.style.color = 'var(--action-primary-bg-pressed)';
-    probe.style.background = 'var(--action-secondary-bg)';
+    probe.style.color = 'var(--action-secondary-fg)';
+    probe.style.background = 'var(--action-secondary-bg-hover)';
     document.body.append(probe);
     const expected = getComputedStyle(probe);
     const result = {
@@ -628,19 +690,54 @@ async function expectAnonymousDesktopHeaderGeometry(page: Page, width: DesktopVi
 async function expectAnonymousMobileNavigation(page: Page, width: MobileViewportWidth) {
   await page.setViewportSize({ width, height: 844 });
   await page.goto('/');
-  const menu = page.getByRole('button', { name: 'Open navigation' });
-  await menu.focus();
-  await page.keyboard.press('Enter');
-  const navigation = page.getByRole('navigation', { name: 'Mobile navigation' });
+  await page.waitForTimeout(220);
+  const navigation = page.getByRole('navigation', { name: 'Anonymous navigation' });
   const browse = navigation.getByRole('link', { name: 'Catalog' });
   const login = navigation.getByRole('link', { name: 'Log in' });
   const signup = navigation.getByRole('link', { name: 'Sign up' });
   expect(await navigation.locator('a').allTextContents()).toEqual(['Catalog', 'Log in', 'Sign up']);
+  await expect(page.getByRole('button', { name: /Open navigation|Close navigation/ })).toHaveCount(
+    0,
+  );
+  await expect(page.getByRole('link', { name: /^Cart/ })).toHaveCount(0);
+  await expect(page.locator('a[href="/cart"]')).toHaveCount(0);
+  const browseState = await browse.evaluate((link) => {
+    const linkStyle = getComputedStyle(link);
+    const indicatorStyle = getComputedStyle(link, '::after');
+    return {
+      indicatorTransitionDuration: indicatorStyle.transitionDuration,
+      paddingBottom: linkStyle.paddingBottom,
+    };
+  });
+  expect(browseState.paddingBottom).toBe('4px');
+  expect(browseState.indicatorTransitionDuration).toBe('0s');
   await browse.focus();
   await page.keyboard.press('Tab');
   await expect(login).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(signup).toBeFocused();
+  const stickyGeometry = await page.evaluate(async () => {
+    const header = document.querySelector<HTMLElement>('[data-app-shell-header]');
+    const search = document.querySelector<HTMLElement>('form[role="search"]');
+    if (!header || !search) throw new Error('Anonymous mobile sticky targets are unavailable.');
+    window.scrollTo({ top: 320 });
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 220));
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+    );
+    return {
+      headerTop: header.getBoundingClientRect().top,
+      searchTop: search.getBoundingClientRect().top,
+      searchBackground: getComputedStyle(search).backgroundColor,
+      searchBorderTop: getComputedStyle(search).borderTopColor,
+      searchShadow: getComputedStyle(search).boxShadow,
+    };
+  });
+  expect(stickyGeometry.headerTop).toBeLessThan(0);
+  expect(stickyGeometry.searchTop).toBeCloseTo(0, 1);
+  expect(stickyGeometry.searchBackground).toBe('rgb(238, 240, 244)');
+  expect(stickyGeometry.searchBorderTop).toBe('rgb(209, 213, 219)');
+  expect(stickyGeometry.searchShadow).not.toBe('none');
   await expectNoHorizontalOverflow(page);
 }
 
@@ -793,6 +890,70 @@ test('redirects an anonymous protected route with its internal returnTo', async 
   assertRuntimeClean();
 });
 
+test('resets pathname navigation while restoring the browser history entry scroll position', async ({
+  page,
+}) => {
+  const assertRuntimeClean = monitorRuntime(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/');
+  await page.getByRole('contentinfo').scrollIntoViewIfNeeded();
+  const catalogScroll = await page.evaluate(() => window.scrollY);
+  expect(catalogScroll).toBeGreaterThan(0);
+
+  await page.getByRole('link', { name: 'Log in', exact: true }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(page.getByRole('heading', { level: 1, name: 'Log in' })).toBeVisible();
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  await expect(page.locator('#main-content')).toBeFocused();
+
+  await page.goBack();
+  await expect(page).toHaveURL('/');
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' }),
+  ).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeCloseTo(catalogScroll, 0);
+  await expect(page.locator('#main-content')).toBeFocused();
+
+  await page.goForward();
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(page.getByRole('heading', { level: 1, name: 'Log in' })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  await expect(page.locator('#main-content')).toBeFocused();
+  await expectNoHorizontalOverflow(page);
+  assertRuntimeClean();
+});
+
+test('preserves same-path query scroll and navigates a hash target in Chromium', async ({
+  page,
+}) => {
+  const assertRuntimeClean = monitorRuntime(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/');
+  await expect(page.getByRole('heading', { level: 2, name: '1 course' })).toBeVisible();
+
+  await page.evaluate(() => window.scrollTo(0, 180));
+  const sortTrigger = page.getByRole('button', { name: 'Sort by: Oldest' });
+  await sortTrigger.focus();
+  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/\?sort=-created_at$/);
+  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+  await expect(page.getByRole('button', { name: 'Sort by: Newest' })).toBeFocused();
+
+  await page.getByRole('contentinfo').scrollIntoViewIfNeeded();
+  const beforeHashScroll = await page.evaluate(() => window.scrollY);
+  const skipLink = page.getByRole('link', { name: 'Skip to main content' });
+  await skipLink.focus();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/\?sort=-created_at#main-content$/);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(beforeHashScroll);
+  await expect(page.locator('#main-content')).toBeInViewport();
+  await expect(page.locator('#main-content')).toBeFocused();
+  await expectNoHorizontalOverflow(page);
+  assertRuntimeClean();
+});
+
 test('aligns anonymous desktop navigation and renders the lighter brand', async ({ page }) => {
   const assertRuntimeClean = monitorRuntime(page);
   await expectAnonymousDesktopHeaderGeometry(page, 768);
@@ -804,6 +965,7 @@ test('keeps anonymous mobile navigation in visual and keyboard order', async ({ 
   const assertRuntimeClean = monitorRuntime(page);
   await expectAnonymousMobileNavigation(page, 320);
   await expectAnonymousMobileNavigation(page, 390);
+  await expectAnonymousMobileNavigation(page, 767);
   assertRuntimeClean();
 });
 
@@ -829,6 +991,107 @@ test('keeps the complete LearnHub brand accessible when authenticated', async ({
   await page.goto('/learning');
   const brand = page.getByRole('link', { name: 'LearnHub home' });
   await expectBrandComposition(brand);
+  await expectNoHorizontalOverflow(page);
+  assertRuntimeClean();
+});
+
+test('keeps the accepted shared-header marks and quiet desktop primary navigation states', async ({
+  page,
+}) => {
+  const assertRuntimeClean = monitorRuntime(
+    page,
+    [],
+    [ENROLLMENTS_STRICT_MODE_ABORT, { ...CART_STRICT_MODE_ABORT, occurrences: 2 }],
+  );
+  await mockAuthenticatedSession(page, 'student');
+  await mockStudentWorkspaceData(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto('/learning');
+
+  const navigation = page.getByRole('navigation', { name: 'Primary navigation' });
+  const catalog = navigation.getByRole('link', { name: 'Catalog', exact: true });
+  const learning = navigation.getByRole('link', { name: 'My learning', exact: true });
+
+  await expect(learning).toHaveAttribute('aria-current', 'page');
+  await catalog.hover();
+  await expect(catalog).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(catalog).toHaveCSS('color', 'rgb(55, 65, 81)');
+  await learning.focus();
+  await expect(learning).toHaveCSS('outline-width', '2px');
+
+  const geometry = await page.evaluate(() => {
+    const assistantLink = document.querySelector<HTMLAnchorElement>(
+      'a[aria-label="Open AI assistant"]',
+    );
+    const cartLink = document.querySelector<HTMLAnchorElement>('a[aria-label="Cart (0)"]');
+    const profileButton = document.querySelector<HTMLElement>('[data-account-initials]');
+    const activeLink = document.querySelector<HTMLAnchorElement>(
+      'nav[aria-label="Primary navigation"] a[aria-current="page"]',
+    );
+    if (!assistantLink || !cartLink || !profileButton || !activeLink) {
+      throw new Error('Shared-header visual targets are unavailable.');
+    }
+    const mark = assistantLink.querySelector('img');
+    const cartIcon = cartLink.querySelector('svg');
+    if (!(mark instanceof HTMLImageElement) || !(cartIcon instanceof SVGElement)) {
+      throw new Error('Shared-header icon targets are unavailable.');
+    }
+    const rect = (element: Element) => element.getBoundingClientRect().toJSON();
+    return {
+      assistant: rect(assistantLink),
+      profile: rect(profileButton),
+      cart: rect(cartLink),
+      assistantMark: {
+        ariaHidden: mark.getAttribute('aria-hidden'),
+        alt: mark.alt,
+        source: mark.getAttribute('src'),
+        width: rect(mark).width,
+        height: rect(mark).height,
+        display: getComputedStyle(mark).display,
+        objectFit: getComputedStyle(mark).objectFit,
+      },
+      cartIcon: {
+        width: rect(cartIcon).width,
+        height: rect(cartIcon).height,
+        stroke: cartIcon.getAttribute('stroke-width'),
+      },
+      activeIndicator: {
+        height: getComputedStyle(activeLink, '::after').height,
+        opacity: getComputedStyle(activeLink, '::after').opacity,
+        transitionDuration: getComputedStyle(activeLink, '::after').transitionDuration,
+        width: getComputedStyle(activeLink, '::after').width,
+      },
+    };
+  });
+  expect(geometry.assistant.width).toBe(44);
+  expect(geometry.profile.width).toBe(44);
+  expect(geometry.cart.width).toBe(44);
+  expect(geometry.assistant.right).toBeLessThanOrEqual(geometry.profile.x + 0.5);
+  expect(geometry.profile.right).toBeLessThanOrEqual(geometry.cart.x + 0.5);
+  expect(geometry.assistantMark).toEqual({
+    ariaHidden: 'true',
+    alt: '',
+    source: expect.stringContaining('ai-assistant-navigation-ui018-2.png'),
+    width: 44,
+    height: 44,
+    display: 'block',
+    objectFit: 'contain',
+  });
+  expect(geometry.cartIcon).toEqual({ width: 28, height: 28, stroke: '1.6' });
+  expect(geometry.activeIndicator.width).toBe('24px');
+  expect(geometry.activeIndicator.height).toBe('2px');
+  expect(geometry.activeIndicator.opacity).toBe('1');
+  expect(geometry.activeIndicator.transitionDuration).toBe('0.18s, 0.18s');
+
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/');
+  await expect(catalog).toHaveAttribute('aria-current', 'page');
+  const reducedMotion = await catalog.evaluate((link) => {
+    const indicator = getComputedStyle(link, '::after');
+    return { duration: indicator.transitionDuration, transform: indicator.transform };
+  });
+  expect(reducedMotion).toEqual({ duration: '0s', transform: 'matrix(1, 0, 0, 1, -12, 0)' });
   await expectNoHorizontalOverflow(page);
   assertRuntimeClean();
 });
@@ -933,7 +1196,10 @@ test('shows authenticated account details on hover and clears the session throug
   const role = accountDetails.getByText('student', { exact: true });
   await expect(role).toBeVisible();
   await expect(role).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-  await expect(role).toHaveCSS('color', 'rgb(76, 29, 149)');
+  await expect(role).toHaveCSS(
+    'color',
+    await resolveBrowserColor(page, colorTokens['--text-secondary']),
+  );
   await expect(accountDetails.locator('[data-part="account-menu-role-icon"]')).toBeVisible();
   const [emailBox, roleBox] = await Promise.all([
     accountDetails.getByText('student@example.com').boundingBox(),
@@ -947,7 +1213,7 @@ test('shows authenticated account details on hover and clears the session throug
   await expect(logout).toHaveCSS('border-top-style', 'none');
   await expect(logout).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await logout.hover();
-  await expect(logout).toHaveCSS('background-color', 'rgb(254, 242, 242)');
+  await expect(logout).toHaveCSS('background-color', 'rgb(238, 240, 244)');
   await logout.click();
 
   await expect(page).toHaveURL('/');
@@ -965,14 +1231,14 @@ test('keeps a clicked account menu open until Escape or an outside click', async
   const accountDetails = page.getByRole('group', { name: 'Account details for Sam User' });
   await account.hover();
   await expect(accountDetails).toBeVisible();
-  await expect(account).toHaveCSS('box-shadow', 'rgb(109, 40, 217) 0px 0px 0px 1px');
+  await expect(account).toHaveCSS('box-shadow', 'rgb(91, 63, 214) 0px 0px 0px 1px');
   await page.mouse.move(8, 300);
   await expect(accountDetails).toBeHidden();
   await expect(account).toHaveCSS('box-shadow', 'none');
 
   await account.click();
   await expect(accountDetails).toBeVisible();
-  await expect(account).toHaveCSS('box-shadow', 'rgb(109, 40, 217) 0px 0px 0px 1px');
+  await expect(account).toHaveCSS('box-shadow', 'rgb(91, 63, 214) 0px 0px 0px 1px');
   await page.mouse.move(8, 300);
   await expect(accountDetails).toBeVisible();
 
@@ -985,6 +1251,37 @@ test('keeps a clicked account menu open until Escape or an outside click', async
   await expect(accountDetails).toBeVisible();
   await page.locator('main').click({ position: { x: 1, y: 1 } });
   await expect(accountDetails).toBeHidden();
+});
+
+test('restores the account trigger when viewport scroll removes its focused details', async ({
+  page,
+}) => {
+  await mockAuthenticatedSession(page, 'student');
+  await mockStudentWorkspaceData(page);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto('/learning');
+  await page.evaluate(() => {
+    const spacer = document.createElement('div');
+    spacer.setAttribute('aria-hidden', 'true');
+    spacer.style.blockSize = '200vh';
+    document.body.append(spacer);
+  });
+
+  const account = page.getByRole('button', { name: 'Account menu for Sam User' });
+  await account.click();
+  const accountDetails = page.getByRole('group', { name: 'Account details for Sam User' });
+  const logout = page.getByRole('button', { name: 'Log out' });
+  await expect(accountDetails).toBeVisible();
+  await logout.focus();
+  await expect(logout).toBeFocused();
+
+  await page.evaluate(() => window.scrollTo({ top: 320 }));
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+  await expect(accountDetails).toHaveCount(0);
+  await expect(account).toBeFocused();
+
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('link', { name: 'Cart (0)' })).toBeFocused();
 });
 
 test('keeps anonymous Cart-to-Login actions in their stable desktop end group', async ({
@@ -1241,13 +1538,14 @@ test('preserves student header geometry when Catalog alone requires a document s
   assertRuntimeClean();
 });
 
-test('keeps authenticated mobile header controls visible, Cart outermost, and Search flush with Catalog hero', async ({
+test('composes the student mobile shell with a scroll-away identity row and route-only AI tab', async ({
   page,
 }) => {
   const assertRuntimeClean = monitorRuntime(
     page,
     [],
-    [{ ...CART_STRICT_MODE_ABORT, occurrences: 3 }],
+    [{ ...CART_STRICT_MODE_ABORT, occurrences: 6 }],
+    [AI_ASSISTANT_NAVIGATION_RASTER_ABORT],
   );
   await mockAuthenticatedSession(page, 'student');
   await mockStudentWorkspaceData(page);
@@ -1266,39 +1564,69 @@ test('keeps authenticated mobile header controls visible, Cart outermost, and Se
       }),
     }),
   );
+  const chatRequestUrls: string[] = [];
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname === '/chat/') chatRequestUrls.push(request.url());
+  });
 
-  for (const width of [320, 390, 767] as const) {
+  for (const width of [320, 390, 618, 767] as const) {
     await page.setViewportSize({ width, height: 720 });
     await page.goto('/');
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.waitForTimeout(220);
 
-    const aiAssistant = page.getByRole('link', { name: 'Open AI assistant' });
     const profile = page.getByRole('button', { name: 'Account menu for Sam User' });
-    const cart = page.getByRole('link', { name: /^Cart/ });
-    await expect(aiAssistant).toBeVisible();
+    const studentNavigation = page.getByRole('navigation', { name: 'Student navigation' });
+    const catalog = studentNavigation.getByRole('link', { name: 'Catalog', exact: true });
+    const aiChat = studentNavigation.getByRole('link', { name: 'AI chat', exact: true });
+    const cart = studentNavigation.getByRole('link', { name: 'Cart (0)', exact: true });
     await expect(profile).toBeVisible();
-    await expect(cart).toBeVisible();
-
-    const geometry = await page.evaluate(() => {
-      const read = (selector: string) => {
-        const element = document.querySelector<HTMLElement>(selector);
-        if (!element) throw new Error(`Missing mobile header target: ${selector}`);
-        return element.getBoundingClientRect().toJSON();
-      };
+    await expect(studentNavigation).toBeVisible();
+    const controlChrome = await page.evaluate(() => {
+      const search = document.querySelector<HTMLElement>('form[role="search"]');
+      const navigation = document.querySelector<HTMLElement>('[aria-label="Student navigation"]');
+      if (!search || !navigation) {
+        throw new Error('Student mobile control-chrome targets are unavailable.');
+      }
+      const expectedShadow = document.createElement('div');
+      expectedShadow.style.boxShadow = 'var(--shadow-2)';
+      document.body.append(expectedShadow);
+      const expectedShadowValue = getComputedStyle(expectedShadow).boxShadow;
+      expectedShadow.remove();
+      const searchStyle = getComputedStyle(search);
+      const navigationStyle = getComputedStyle(navigation);
       return {
-        aiAssistant: read('a[aria-label="Open AI assistant"]'),
-        profile: read('[data-account-initials]'),
-        cart: read('a[aria-label^="Cart"]'),
-        search: read('form[role="search"]'),
-        hero: read('[data-part="catalog-hero"]'),
-        viewportWidth: document.documentElement.clientWidth,
-        scrollWidth: document.documentElement.scrollWidth,
+        searchBackground: searchStyle.backgroundColor,
+        searchBorderTop: searchStyle.borderTopColor,
+        searchBorderBottom: searchStyle.borderBottomColor,
+        searchShadow: searchStyle.boxShadow,
+        navigationBackground: navigationStyle.backgroundColor,
+        navigationBorderTop: navigationStyle.borderTopColor,
+        navigationShadow: navigationStyle.boxShadow,
+        expectedShadow: expectedShadowValue,
       };
     });
-    expect(geometry.aiAssistant.right).toBeLessThanOrEqual(geometry.profile.x + 0.5);
-    expect(geometry.profile.right).toBeLessThanOrEqual(geometry.cart.x + 0.5);
-    expect(geometry.cart.right).toBeCloseTo(geometry.viewportWidth - 16, 1);
-    expect(Math.abs(geometry.search.bottom - geometry.hero.y)).toBeLessThanOrEqual(1);
-    expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.viewportWidth);
+    expect(controlChrome).toEqual({
+      searchBackground: 'rgb(255, 255, 255)',
+      searchBorderTop: 'rgba(0, 0, 0, 0)',
+      searchBorderBottom: 'rgba(0, 0, 0, 0)',
+      searchShadow: 'none',
+      navigationBackground: 'rgb(238, 240, 244)',
+      navigationBorderTop: 'rgb(209, 213, 219)',
+      navigationShadow: controlChrome.expectedShadow,
+      expectedShadow: controlChrome.expectedShadow,
+    });
+    await expect(catalog).toHaveAttribute('aria-current', 'page');
+    await expect(catalog).toHaveCSS('color', 'rgb(91, 63, 214)');
+    await expect
+      .poll(() => catalog.evaluate((link) => getComputedStyle(link, '::after').width))
+      .toBe('20px');
+    await expect(aiChat).toHaveAttribute('href', '/ai-chat');
+    await expect(cart).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Open AI assistant' })).toHaveCount(0);
+    await expect(
+      page.getByRole('button', { name: /Open navigation|Close navigation/ }),
+    ).toHaveCount(0);
 
     await profile.click();
     const accountDetails = page.getByRole('group', { name: 'Account details for Sam User' });
@@ -1307,8 +1635,166 @@ test('keeps authenticated mobile header controls visible, Cart outermost, and Se
       element.getBoundingClientRect().toJSON(),
     );
     expect(menuRect.x).toBeGreaterThanOrEqual(0);
-    expect(menuRect.right).toBeLessThanOrEqual(geometry.viewportWidth);
+    expect(menuRect.right).toBeLessThanOrEqual(width);
+    const accountMenuLayer = await page.evaluate(() => {
+      const accountMenu =
+        document.querySelector<HTMLElement>('[data-account-initials]')?.parentElement;
+      const search = document.querySelector<HTMLElement>('form[role="search"]');
+      if (!accountMenu || !search)
+        throw new Error('Student mobile overlay targets are unavailable.');
+      return {
+        accountMenu: Number(getComputedStyle(accountMenu).zIndex),
+        search: Number(getComputedStyle(search).zIndex),
+      };
+    });
+    expect(accountMenuLayer.accountMenu).toBeGreaterThan(accountMenuLayer.search);
+
+    const scrollGeometry = await page.evaluate(async () => {
+      const profileElement = document.querySelector<HTMLElement>('[data-account-initials]');
+      const searchElement = document.querySelector<HTMLElement>('form[role="search"]');
+      if (!profileElement || !searchElement)
+        throw new Error('Student mobile shell targets are unavailable.');
+      window.scrollTo({ top: 320 });
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 220));
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      );
+      return {
+        profileBottom: profileElement.getBoundingClientRect().bottom,
+        searchTop: searchElement.getBoundingClientRect().top,
+        searchBackground: getComputedStyle(searchElement).backgroundColor,
+        searchBorderTop: getComputedStyle(searchElement).borderTopColor,
+        searchBorderBottom: getComputedStyle(searchElement).borderBottomColor,
+        searchShadow: getComputedStyle(searchElement).boxShadow,
+      };
+    });
+    expect(scrollGeometry.profileBottom).toBeLessThanOrEqual(0);
+    expect(scrollGeometry.searchTop).toBeCloseTo(0, 1);
+    expect(scrollGeometry.searchBackground).toBe('rgb(238, 240, 244)');
+    expect(scrollGeometry.searchBorderTop).toBe('rgb(209, 213, 219)');
+    expect(scrollGeometry.searchBorderBottom).toBe('rgb(209, 213, 219)');
+    expect(scrollGeometry.searchShadow).toBe(controlChrome.expectedShadow);
+    await expect(accountDetails).toHaveCount(0);
+    await expectNoHorizontalOverflow(page);
+
+    const terminalGeometry = await page.evaluate(async () => {
+      const main = document.querySelector<HTMLElement>('main');
+      const footer = document.querySelector<HTMLElement>('main + footer');
+      const navigation = document.querySelector<HTMLElement>('[aria-label="Student navigation"]');
+      if (!footer || !main || !navigation) {
+        throw new Error('Student mobile terminal targets are unavailable.');
+      }
+      footer.scrollIntoView({ block: 'end' });
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      );
+      return {
+        footerBottom: footer.getBoundingClientRect().bottom,
+        navigationTop: navigation.getBoundingClientRect().top,
+        paddingBottom: getComputedStyle(footer).paddingBottom,
+        terminalContentBottom: Math.max(
+          ...Array.from(footer.children, (child) => child.getBoundingClientRect().bottom),
+        ),
+      };
+    });
+    expect(terminalGeometry.paddingBottom).toBe('84px');
+    expect(terminalGeometry.footerBottom).toBeGreaterThan(terminalGeometry.navigationTop);
+    expect(terminalGeometry.terminalContentBottom).toBeLessThanOrEqual(
+      terminalGeometry.navigationTop,
+    );
+
+    const studentLinks = [
+      catalog,
+      studentNavigation.getByRole('link', { name: 'My learning' }),
+      aiChat,
+      cart,
+    ];
+    for (const [index, link] of studentLinks.entries()) {
+      await link.focus();
+      await expect(link).toBeFocused();
+      if (index < studentLinks.length - 1) {
+        await page.keyboard.press('Tab');
+        await expect(studentLinks[index + 1]).toBeFocused();
+      }
+    }
+
+    await aiChat.focus();
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL('/ai-chat');
+
+    expect(chatRequestUrls).toEqual([]);
   }
+
+  await page.setViewportSize({ width: 768, height: 720 });
+  await page.goto('/');
+  await expect(page.getByRole('navigation', { name: 'Student navigation' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Account menu for Sam User' })).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+
+  // A 195px CSS viewport models 390px at browser page zoom 200%; applying CSS zoom to
+  // documentElement does not update the viewport media queries that drive mobile reflow.
+  await page.setViewportSize({ width: 195, height: 360 });
+  await page.goto('/');
+  await page
+    .getByRole('combobox', { name: 'Search courses' })
+    .fill('Responsive search content '.repeat(12));
+  const compactProfile = page.getByRole('button', { name: 'Account menu for Sam User' });
+  const compactAccountDetails = page.getByRole('group', {
+    name: 'Account details for Sam User',
+  });
+  await compactProfile.click();
+  await expect(compactAccountDetails).toBeVisible();
+  const compactMenuRect = await compactAccountDetails.evaluate((element) =>
+    element.getBoundingClientRect().toJSON(),
+  );
+  expect(compactMenuRect.x).toBeGreaterThanOrEqual(0);
+  expect(compactMenuRect.right).toBeLessThanOrEqual(195);
+  expect(compactMenuRect.y).toBeGreaterThanOrEqual(0);
+  expect(compactMenuRect.bottom).toBeLessThanOrEqual(360);
+
+  const compactTerminalGeometry = await page.evaluate(async () => {
+    const footer = document.querySelector<HTMLElement>('main + footer');
+    const navigation = document.querySelector<HTMLElement>('[aria-label="Student navigation"]');
+    if (!footer || !navigation) {
+      throw new Error('Compact effective-200% terminal targets are unavailable.');
+    }
+    footer.scrollIntoView({ block: 'end' });
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+    );
+    return {
+      footerBottom: footer.getBoundingClientRect().bottom,
+      navigationTop: navigation.getBoundingClientRect().top,
+      terminalContentBottom: Math.max(
+        ...Array.from(footer.children, (child) => child.getBoundingClientRect().bottom),
+      ),
+    };
+  });
+  expect(compactTerminalGeometry.footerBottom).toBeGreaterThan(
+    compactTerminalGeometry.navigationTop,
+  );
+  expect(compactTerminalGeometry.terminalContentBottom).toBeLessThanOrEqual(
+    compactTerminalGeometry.navigationTop,
+  );
+
+  await page.keyboard.press('Escape');
+  await expect(compactProfile).toBeFocused();
+  const compactStudentNavigation = page.getByRole('navigation', { name: 'Student navigation' });
+  const compactStudentLinks = [
+    compactStudentNavigation.getByRole('link', { name: 'Catalog', exact: true }),
+    compactStudentNavigation.getByRole('link', { name: 'My learning' }),
+    compactStudentNavigation.getByRole('link', { name: 'AI chat', exact: true }),
+    compactStudentNavigation.getByRole('link', { name: 'Cart (0)', exact: true }),
+  ];
+  for (const [index, link] of compactStudentLinks.entries()) {
+    await link.focus();
+    await expect(link).toBeFocused();
+    if (index < compactStudentLinks.length - 1) {
+      await page.keyboard.press('Tab');
+      await expect(compactStudentLinks[index + 1]).toBeFocused();
+    }
+  }
+  await expectNoHorizontalOverflow(page);
 
   assertRuntimeClean();
 });
@@ -1679,6 +2165,163 @@ test('removes non-essential shell transitions when reduced motion is requested',
     };
   });
   expect(transitions).toEqual({ skipLink: '0s', navigationLink: '0s' });
+  await expectNoHorizontalOverflow(page);
+  assertRuntimeClean();
+});
+
+test('keeps instructor course-management content readable without student destinations', async ({
+  page,
+}) => {
+  const assertRuntimeClean = monitorRuntime(
+    page,
+    [{ method: 'GET', path: '/courses/8/enrollments?page=1&page_size=20', status: 403 }],
+    [
+      {
+        method: 'GET',
+        path: '/courses/7/enrollments?page=1&page_size=20',
+        errorText: 'net::ERR_ABORTED',
+        occurrences: 5,
+      },
+      {
+        method: 'GET',
+        path: '/courses/8/enrollments?page=1&page_size=20',
+        errorText: 'net::ERR_ABORTED',
+      },
+    ],
+  );
+  await mockAuthenticatedSession(page, 'instructor');
+  const longName = `Ada-${'LongName'.repeat(20)}`;
+  const longEmail = `${'very-long-address.'.repeat(12)}example.test`;
+  await page.route(/\/courses\/[78]\/enrollments\?page=1&page_size=20$/, async (route) => {
+    if (route.request().url().includes('/courses/8/enrollments')) {
+      await route.fulfill({
+        status: 403,
+        contentType: 'application/json',
+        body: JSON.stringify({ detail: 'Forbidden' }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        items: [
+          {
+            id: 9,
+            user_id: 12,
+            course_id: 7,
+            status: 'active',
+            created_at: '2026-07-30T00:00:00Z',
+            updated_at: '2026-07-30T01:00:00Z',
+            user: { id: 12, name: longName, surname: 'Student', email: longEmail },
+          },
+        ],
+        page: 1,
+        page_size: 20,
+        total: 1,
+        pages: 1,
+        has_next: false,
+        has_previous: false,
+      }),
+    });
+  });
+  await page.route(/\/courses$/, async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 201,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        id: 7,
+        instructor_id: 3,
+        title: 'An instructor course',
+        description: null,
+        price: '0.00',
+        currency: 'USD',
+        published_at: null,
+        created_at: '2026-08-04T00:00:00Z',
+        updated_at: '2026-08-04T00:00:00Z',
+      }),
+    });
+  });
+
+  for (const [width, expectedHeight] of [
+    [320, 208],
+    [768, 208],
+    [1024, 255.41],
+  ] as const) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto('/instructor/courses');
+    await expect(page.getByRole('heading', { level: 1, name: 'Instructor courses' })).toBeVisible();
+    const heroGeometry = await page
+      .locator('[data-part="instructor-courses-hero"]')
+      .evaluate((hero) => {
+        const page = hero.closest('article');
+        const panel = page?.querySelector('section');
+        if (!(page instanceof HTMLElement) || !(panel instanceof HTMLElement)) {
+          throw new Error('Instructor hero content order targets are unavailable');
+        }
+        return {
+          height: hero.getBoundingClientRect().height,
+          beforePanel: Boolean(
+            hero.compareDocumentPosition(panel) & Node.DOCUMENT_POSITION_FOLLOWING,
+          ),
+        };
+      });
+    expect(heroGeometry.height).toBeCloseTo(expectedHeight, 1);
+    expect(heroGeometry.beforePanel).toBe(true);
+    await expectNoHorizontalOverflow(page);
+  }
+
+  for (const width of [320, 390, 768, 1280] as const) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto('/instructor/courses/7/enrollments');
+    await expect(page.getByRole('heading', { level: 1, name: 'Course enrollments' })).toBeVisible();
+    await expect(page.getByText(longName)).toBeVisible();
+    await expect(page.getByText(longEmail)).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Cart' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Open AI assistant' })).toHaveCount(0);
+    await expect(page.getByRole('navigation', { name: 'Student navigation' })).toHaveCount(0);
+    await expectNoHorizontalOverflow(page);
+  }
+
+  await page.setViewportSize({ width: 320, height: 844 });
+  await page.goto('/instructor/courses');
+  const create = page.getByRole('button', { name: 'Create course' });
+  await expect(create).toBeVisible();
+  await page.getByRole('textbox', { name: 'Course title' }).fill('An instructor course');
+  await create.click();
+  const courseActions = page.getByRole('navigation', { name: 'New course actions' });
+  await expect(courseActions).toBeVisible();
+  const compactTargetHeights = await page.evaluate(() => {
+    const createButton = document.querySelector<HTMLButtonElement>('button[type="submit"]');
+    const courseAction = document.querySelector<HTMLElement>('[aria-label="New course actions"] a');
+    if (!createButton || !courseAction)
+      throw new Error('Instructor action targets are unavailable');
+    return {
+      create: createButton.getBoundingClientRect().height,
+      success: courseAction.getBoundingClientRect().height,
+    };
+  });
+  expect(compactTargetHeights.create).toBeGreaterThanOrEqual(44);
+  expect(compactTargetHeights.success).toBeGreaterThanOrEqual(44);
+  await expectNoHorizontalOverflow(page);
+
+  await page.setViewportSize({ width: 1280, height: 844 });
+  await page.goto('/instructor/courses/7/enrollments');
+  await page.evaluate(() => {
+    document.documentElement.style.zoom = '2';
+  });
+  await expect(page.getByText(longEmail)).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/instructor/courses/8/enrollments');
+  await expect(
+    page.getByText('You do not have permission to view these enrollments.'),
+  ).toBeVisible();
   await expectNoHorizontalOverflow(page);
   assertRuntimeClean();
 });

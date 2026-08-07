@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { requestCreateCourse } from '@features/instructor-courses';
 import { useSession } from '@features/auth-session';
 import { Button, Input, Notice } from '@shared/ui/primitives';
+import instructorCoursesHero from './assets/instructor-courses-hero-ui022.png';
 import styles from './InstructorCoursesPage.module.css';
 
 const COURSE_TITLE_MAX_LENGTH = 255;
@@ -42,9 +43,12 @@ export function InstructorCoursesPage() {
   };
   return (
     <article className={styles.page}>
-      <header>
-        <h1>Instructor courses</h1>
-        <p>Manage course creation and enrollments from one workspace.</p>
+      <header className={styles.hero} data-part="instructor-courses-hero">
+        <img className={styles.heroImage} src={instructorCoursesHero} alt="" aria-hidden="true" />
+        <div className={styles.heroContent}>
+          <h1>Instructor courses</h1>
+          <p>Create meaningful courses, share your expertise, and inspire learners to grow.</p>
+        </div>
       </header>
       <Notice tone="info" title="Course listing unavailable">
         Your backend does not currently provide an instructor-owned course list.
@@ -90,12 +94,20 @@ export function InstructorCoursesPage() {
         {create.data ? (
           <Notice tone="success" title="Course created">
             <p>{create.data.title}</p>
-            <p>
-              <Link to={`/instructor/courses/${create.data.id}/edit`}>Edit course</Link> ·{' '}
-              <Link to={`/instructor/courses/${create.data.id}/enrollments`}>
+            <nav className={styles.successActions} aria-label="New course actions">
+              <Link
+                className={styles.successAction}
+                to={`/instructor/courses/${create.data.id}/edit`}
+              >
+                Edit course
+              </Link>
+              <Link
+                className={styles.successAction}
+                to={`/instructor/courses/${create.data.id}/enrollments`}
+              >
                 Course enrollments
               </Link>
-            </p>
+            </nav>
           </Notice>
         ) : null}
       </section>

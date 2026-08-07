@@ -31,6 +31,40 @@ interface RuntimeDiagnostics {
   readonly httpFailures: string[];
 }
 
+interface RgbColor {
+  readonly red: number;
+  readonly green: number;
+  readonly blue: number;
+}
+
+interface AiHeroGeometry {
+  readonly heroWidth: number;
+  readonly corridorWidth: number;
+  readonly zoneWidth: number;
+  readonly heroCenter: number;
+  readonly heroContentRight: number;
+  readonly copyCenter: number;
+  readonly headingLeft: number;
+  readonly headingRight: number;
+  readonly headingWidth: number;
+  readonly imageWidth: number;
+  readonly imageRight: number;
+  readonly imageFit: string;
+  readonly sourceVisibility: number;
+  readonly overlay: string;
+}
+
+function expectedAiHeroImageWidth(viewportWidth: number): number {
+  // Mirrors the responsive CSS clamp coefficients in AiChatPage.module.css.
+  if (viewportWidth <= 895) {
+    return Math.min(959.88, Math.max(820.95, viewportWidth * 1.085391 - 12.6303));
+  }
+  if (viewportWidth <= 1199) {
+    return Math.min(1263, Math.max(959.88, viewportWidth * 0.997105 + 66.4737));
+  }
+  return 1263;
+}
+
 async function json(route: Route, body: unknown, status = 200) {
   await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 }
@@ -134,6 +168,22 @@ async function expectNoOverflow(page: Page) {
   expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.layoutWidth);
 }
 
+function relativeLuminance({ red, green, blue }: RgbColor) {
+  const linearize = (channel: number) => {
+    const value = channel / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  };
+
+  return 0.2126 * linearize(red) + 0.7152 * linearize(green) + 0.0722 * linearize(blue);
+}
+
+function contrastRatio(first: RgbColor, second: RgbColor) {
+  const [lighter, darker] = [relativeLuminance(first), relativeLuminance(second)].sort(
+    (left, right) => right - left,
+  );
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
 test('completes the mobile chat flow, restores focus, and preserves history after collapse', async ({
   page,
 }) => {
@@ -163,6 +213,60 @@ test('completes the mobile chat flow, restores focus, and preserves history afte
   await expect(launcher).toHaveAttribute('aria-expanded', 'true');
   await expect(launcher).toHaveAttribute('aria-controls', widgetId);
   await expect(page.getByRole('tooltip', { name: 'Open AI assistant' })).toBeHidden();
+  const invertedHeaderControl = page.getByRole('button', { name: 'Close course assistant' });
+  const input = page.getByLabel('Message the course assistant');
+  await invertedHeaderControl.focus();
+  await expect(invertedHeaderControl).toBeFocused();
+  const programmaticFocus = await invertedHeaderControl.evaluate((control) => {
+    const header = control.closest('header');
+    if (!(header instanceof HTMLElement)) throw new Error('Mini-chat header is missing.');
+    const computed = getComputedStyle(control);
+    const outlineColor = computed.outlineColor.match(/\d+/g)?.map(Number);
+    const headerColor = getComputedStyle(header).backgroundColor.match(/\d+/g)?.map(Number);
+    if (!outlineColor || !headerColor) throw new Error('Mini-chat focus colors are unavailable.');
+    return {
+      focusVisible: control.matches(':focus-visible'),
+      outlineStyle: computed.outlineStyle,
+      outlineWidth: computed.outlineWidth,
+      outline: { red: outlineColor[0], green: outlineColor[1], blue: outlineColor[2] },
+      header: { red: headerColor[0], green: headerColor[1], blue: headerColor[2] },
+      focusRing: computed.getPropertyValue('--focus-ring').trim(),
+      invertedFocusRing: computed.getPropertyValue('--focus-ring-inverted').trim(),
+    };
+  });
+  expect(programmaticFocus.focusVisible).toBe(false);
+  expect(programmaticFocus.focusRing).toBe('#ddd6fe');
+  expect(programmaticFocus.invertedFocusRing).toBe('#ddd6fe');
+  await page.keyboard.press('Tab');
+  await expect(input).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(invertedHeaderControl).toBeFocused();
+  const keyboardFocus = await invertedHeaderControl.evaluate((control) => {
+    const header = control.closest('header');
+    if (!(header instanceof HTMLElement)) throw new Error('Mini-chat header is missing.');
+    const computed = getComputedStyle(control);
+    const outlineColor = computed.outlineColor.match(/\d+/g)?.map(Number);
+    const headerColor = getComputedStyle(header).backgroundColor.match(/\d+/g)?.map(Number);
+    if (!outlineColor || !headerColor) throw new Error('Mini-chat focus colors are unavailable.');
+    return {
+      focusVisible: control.matches(':focus-visible'),
+      outlineStyle: computed.outlineStyle,
+      outlineWidth: computed.outlineWidth,
+      outline: { red: outlineColor[0], green: outlineColor[1], blue: outlineColor[2] },
+      header: { red: headerColor[0], green: headerColor[1], blue: headerColor[2] },
+      focusRing: computed.getPropertyValue('--focus-ring').trim(),
+      invertedFocusRing: computed.getPropertyValue('--focus-ring-inverted').trim(),
+    };
+  });
+  expect(keyboardFocus.focusVisible).toBe(true);
+  expect(keyboardFocus.outlineStyle).toBe('solid');
+  expect(keyboardFocus.outlineWidth).toBe('2px');
+  expect(keyboardFocus.outline).toEqual({ red: 221, green: 214, blue: 254 });
+  expect(keyboardFocus.focusRing).toBe('#ddd6fe');
+  expect(keyboardFocus.invertedFocusRing).toBe('#ddd6fe');
+  expect(contrastRatio(keyboardFocus.outline, keyboardFocus.header)).toBeGreaterThanOrEqual(3);
+  await input.focus();
+  await expect(input).toBeFocused();
   const headerTooltips = [
     ['Expand course assistant', 'Expand chat'],
     ['Conversation actions', 'Conversation actions'],
@@ -176,7 +280,6 @@ test('completes the mobile chat flow, restores focus, and preserves history afte
     await page.waitForTimeout(2_000);
     await expect(tooltip).toBeVisible();
   }
-  const input = page.getByLabel('Message the course assistant');
   await expect(input).toHaveAttribute('placeholder', 'Ask about courses, lessons, or learning…');
   await expect(input).toHaveAttribute('wrap', 'off');
   await expect(input).toBeFocused();
@@ -492,6 +595,157 @@ test('routes the authenticated workspace header to the course full-page assistan
   await expect(page).toHaveURL('/learning/enrollments/4');
   await expectNoOverflow(page);
   expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
+  expect(diagnostics.httpFailures).toEqual([]);
+});
+
+test('uses one compact Suggested Actions disclosure below 1000px without changing chat submission', async ({
+  page,
+}) => {
+  const chatRequests: ChatRequestEvidence[] = [];
+  const diagnostics = captureRuntimeDiagnostics(page);
+  const acceptedNavigationRasterAbort =
+    'GET /src/app/layouts/assets/ai-assistant-navigation-ui018-2.png net::ERR_ABORTED';
+  await installCourseChatFixture(page, chatRequests);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+
+  for (const width of [320, 390, 618, 768, 999]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/ai-chat');
+    const trigger = page.getByRole('button', { name: 'Suggested Actions' });
+    await expect(trigger).toBeVisible();
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    await expect(trigger).toHaveAttribute('aria-controls', /.+/);
+    expect((await trigger.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+    await expect(page.getByRole('heading', { name: 'Suggested Actions' })).toHaveCount(0);
+    await expectNoOverflow(page);
+  }
+
+  await page.setViewportSize({ width: 320, height: 900 });
+  await page.goto('/ai-chat');
+  const trigger = page.getByRole('button', { name: 'Suggested Actions' });
+  await trigger.focus();
+  await expect(trigger).toBeFocused();
+  expect(await trigger.evaluate((element) => element.matches(':focus-visible'))).toBe(true);
+
+  for (const [label, prompt] of [
+    ['Recommend a course', 'Recommend a course based on my learning goals.'],
+    ['Explain a concept', 'Explain a concept I am learning in simple terms.'],
+    ['Quiz me', 'Quiz me on the course material I am learning.'],
+  ] as const) {
+    await trigger.click();
+    await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    const action = page.getByRole('button', { name: label });
+    expect((await action.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+    await action.click();
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    const input = page.getByLabel('Message the course assistant');
+    await expect(input).toBeFocused();
+    await expect(input).toHaveValue(prompt);
+    expect(chatRequests).toEqual([]);
+  }
+
+  const input = page.getByLabel('Message the course assistant');
+  await input.fill(
+    'A deliberately long prompt that verifies the compact chat layout remains usable. '.repeat(8),
+  );
+  await expectNoOverflow(page);
+  expect(
+    await page.evaluate(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches),
+  ).toBe(true);
+
+  for (const width of [768, 1024, 1440, 1890, 1920, 2560, 3840]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/ai-chat');
+    const suggestedActionsTrigger = page.getByRole('button', { name: 'Suggested Actions' });
+    const sidebar = page.getByRole('heading', { name: 'Suggested Actions' });
+    if (width < 1000) {
+      await expect(suggestedActionsTrigger).toBeVisible();
+      await expect(sidebar).toHaveCount(0);
+    } else {
+      await expect(suggestedActionsTrigger).toBeHidden();
+      await expect(sidebar).toBeVisible();
+      const sidebarBox = await sidebar.locator('..').boundingBox();
+      expect(sidebarBox?.width).toBeCloseTo(300, 0);
+    }
+    const heroGeometry = await page
+      .getByRole('heading', { name: 'BETA AI Learning Assistant' })
+      .evaluate<AiHeroGeometry>((heading) => {
+        const hero = heading.closest('section');
+        const image = hero?.querySelector<HTMLImageElement>('[data-part="ai-chat-hero-image"]');
+        const description = heading.nextElementSibling;
+        if (
+          !(hero instanceof HTMLElement) ||
+          !(image instanceof HTMLElement) ||
+          !(description instanceof HTMLElement)
+        )
+          throw new Error('AI hero geometry is unavailable.');
+        const heroRect = hero.getBoundingClientRect();
+        const headingRect = heading.getBoundingClientRect();
+        const contentRect = heading.parentElement?.getBoundingClientRect();
+        const descriptionRect = description.getBoundingClientRect();
+        const imageRect = image.getBoundingClientRect();
+        if (!contentRect) throw new Error('AI hero content geometry is unavailable.');
+        const heroWidth = heroRect.width;
+        const corridorWidth = heroWidth / 2;
+        const renderedAspect = imageRect.width / imageRect.height;
+        const sourceAspect = image.naturalWidth / image.naturalHeight;
+        const imageFit = getComputedStyle(image).objectFit;
+        return {
+          heroWidth,
+          corridorWidth,
+          zoneWidth: heroWidth / 2,
+          headingLeft: headingRect.left - heroRect.left,
+          headingRight: headingRect.right - heroRect.left,
+          heroCenter: heroRect.top + heroRect.height / 2,
+          heroContentRight: contentRect.right - heroRect.left,
+          copyCenter: headingRect.top + (descriptionRect.bottom - headingRect.top) / 2,
+          headingWidth: headingRect.width,
+          imageWidth: imageRect.width,
+          imageRight: imageRect.right,
+          imageFit,
+          sourceVisibility:
+            imageFit === 'contain'
+              ? 1
+              : Math.min(renderedAspect / sourceAspect, sourceAspect / renderedAspect),
+          overlay: getComputedStyle(hero, '::after').backgroundImage,
+        };
+      });
+    expect(Math.abs(heroGeometry.copyCenter - heroGeometry.heroCenter)).toBeLessThanOrEqual(6);
+    expect(heroGeometry.heroWidth).toBeCloseTo(width, 0);
+    expect(heroGeometry.corridorWidth).toBeCloseTo(heroGeometry.zoneWidth, 0);
+    expect(heroGeometry.headingLeft).toBeGreaterThanOrEqual(0);
+    if (width >= 768 && width <= 1080) {
+      expect(heroGeometry.headingRight).toBeLessThanOrEqual(heroGeometry.heroWidth * 0.58 + 1);
+    } else {
+      expect(heroGeometry.headingRight).toBeLessThanOrEqual(heroGeometry.heroContentRight + 1);
+      expect(heroGeometry.headingWidth).toBeLessThanOrEqual(680);
+    }
+    expect(Math.abs(heroGeometry.imageWidth - expectedAiHeroImageWidth(width))).toBeLessThanOrEqual(
+      1,
+    );
+    expect(heroGeometry.imageRight).toBeGreaterThan(width / 2);
+    expect(heroGeometry.imageRight).toBeLessThanOrEqual(width + heroGeometry.imageWidth);
+    if (width >= 896) expect(heroGeometry.imageFit).toBe('contain');
+    expect(heroGeometry.sourceVisibility).toBeGreaterThanOrEqual(0.75);
+    expect(heroGeometry.overlay).toContain('46%');
+    expect(heroGeometry.overlay).toContain('62%');
+    await expectNoOverflow(page);
+  }
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/ai-chat');
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 2 });
+  expect(await page.evaluate(() => window.visualViewport?.scale ?? 1)).toBeCloseTo(2, 1);
+  await expectNoOverflow(page);
+  await cdp.detach();
+  const acceptedNavigationRasterAbortCount = diagnostics.unexpectedRuntimeFailures.filter(
+    (failure) => failure === acceptedNavigationRasterAbort,
+  ).length;
+  expect(acceptedNavigationRasterAbortCount).toBeLessThanOrEqual(2);
+  expect(diagnostics.unexpectedRuntimeFailures).toEqual(
+    Array.from({ length: acceptedNavigationRasterAbortCount }, () => acceptedNavigationRasterAbort),
+  );
   expect(diagnostics.httpFailures).toEqual([]);
 });
 

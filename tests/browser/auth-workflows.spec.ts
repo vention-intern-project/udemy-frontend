@@ -202,6 +202,13 @@ function createDeferred() {
 
 type AuthWorkflow = 'signup' | 'login' | 'forgot' | 'reset';
 type PasswordRevealCssProperty = 'color' | 'background' | 'borderColor';
+type TokenCssProperty = 'border-color' | 'color';
+
+interface AuthViewportScenario {
+  readonly label: string;
+  readonly pageScaleFactor: number;
+  readonly widths: readonly number[];
+}
 
 const workflowUi = {
   signup: {
@@ -266,6 +273,81 @@ function signupResponse(accessToken: string) {
   };
 }
 
+async function expectTokenCss(
+  locator: Locator,
+  property: TokenCssProperty,
+  token: '--action-primary-bg',
+) {
+  const expectedValue = await locator.evaluate(
+    (_element, expectation) => {
+      const probe = document.createElement('span');
+      probe.style.setProperty(expectation.property, `var(${expectation.token})`);
+      document.body.append(probe);
+      const value = getComputedStyle(probe).getPropertyValue(expectation.property);
+      probe.remove();
+      return value;
+    },
+    { property, token },
+  );
+  await expect(locator).toHaveCSS(property, expectedValue);
+}
+
+async function expectFocusedControlInVisualViewport(page: Page) {
+  const geometry = await page.evaluate(() => {
+    const active = document.activeElement;
+    const rect = active instanceof HTMLElement ? active.getBoundingClientRect() : null;
+    const viewport = window.visualViewport;
+    return {
+      bottom: rect?.bottom ?? Number.POSITIVE_INFINITY,
+      left: rect?.left ?? -1,
+      right: rect?.right ?? Number.POSITIVE_INFINITY,
+      top: rect?.top ?? -1,
+      visibleBottom: (viewport?.offsetTop ?? 0) + (viewport?.height ?? window.innerHeight),
+      visibleLeft: viewport?.offsetLeft ?? 0,
+      visibleRight: (viewport?.offsetLeft ?? 0) + (viewport?.width ?? window.innerWidth),
+      visibleTop: viewport?.offsetTop ?? 0,
+    };
+  });
+  expect(geometry.left).toBeGreaterThanOrEqual(geometry.visibleLeft);
+  expect(geometry.right).toBeLessThanOrEqual(geometry.visibleRight);
+  expect(geometry.top).toBeGreaterThanOrEqual(geometry.visibleTop);
+  expect(geometry.bottom).toBeLessThanOrEqual(geometry.visibleBottom);
+}
+
+async function expectAllMainControlsReachableInVisualViewport(page: Page) {
+  const controls = page.locator('main input, main select, main button, main a');
+  const count = await controls.count();
+  expect(count).toBeGreaterThan(0);
+
+  for (let index = 0; index < count; index += 1) {
+    const control = controls.nth(index);
+    await control.evaluate((element) =>
+      element.scrollIntoView({ behavior: 'instant', block: 'center', inline: 'center' }),
+    );
+    await control.focus();
+    await expect(control).toBeFocused();
+    await expectFocusedControlInVisualViewport(page);
+  }
+}
+
+async function expectEffectivePageScaleViewportRelation(page: Page, pageScaleFactor: number) {
+  const geometry = await page.evaluate(() => {
+    const root = document.documentElement;
+    const viewport = window.visualViewport;
+    return {
+      bodyWidth: document.body.scrollWidth,
+      documentWidth: root.scrollWidth,
+      layoutWidth: root.clientWidth,
+      scale: viewport?.scale ?? 1,
+      visualWidth: viewport?.width ?? window.innerWidth,
+    };
+  });
+  expect(geometry.scale).toBeCloseTo(pageScaleFactor, 1);
+  expect(geometry.visualWidth * geometry.scale).toBeCloseTo(geometry.layoutWidth, 0);
+  expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.layoutWidth + 0.5);
+  expect(geometry.bodyWidth).toBeLessThanOrEqual(geometry.layoutWidth + 0.5);
+}
+
 for (const width of [320, 390, 768, 1280]) {
   test(`auth panels stay physically centered and catalog stays client-centered at ${width}px`, async ({
     page,
@@ -328,13 +410,14 @@ test('uses the primary violet treatment for Login and Create account navigation 
   await page.goto('/login');
 
   for (const name of ['Forgot your password?', 'Create an account']) {
-    await expect(page.getByRole('link', { name })).toHaveCSS('color', 'rgb(109, 40, 217)');
+    await expectTokenCss(page.getByRole('link', { name }), 'color', '--action-primary-bg');
   }
 
   await page.goto('/signup');
-  await expect(page.getByRole('main').getByRole('link', { name: 'Log in' })).toHaveCSS(
+  await expectTokenCss(
+    page.getByRole('main').getByRole('link', { name: 'Log in' }),
     'color',
-    'rgb(109, 40, 217)',
+    '--action-primary-bg',
   );
 });
 
@@ -651,13 +734,14 @@ test('uses the Sort-pattern Role listbox and purple reveal states', async ({ pag
   const listbox = page.getByRole('listbox', { name: 'Role options' });
   await expect(listbox).toBeVisible();
   await expect(role).toHaveAttribute('aria-expanded', 'true');
-  await expect(chevron).toHaveCSS('color', 'rgb(109, 40, 217)');
+  await expectTokenCss(chevron, 'color', '--action-primary-bg');
   const student = listbox.getByRole('option', { name: 'Student' });
   const instructor = listbox.getByRole('option', { name: 'Instructor' });
   await expect(student).toHaveAttribute('aria-selected', 'true');
-  await expect(student.locator('[data-part="signup-role-radio"]')).toHaveCSS(
+  await expectTokenCss(
+    student.locator('[data-part="signup-role-radio"]'),
     'border-color',
-    'rgb(109, 40, 217)',
+    '--action-primary-bg',
   );
   await instructor.hover();
   await expect(instructor).toHaveCSS('background-color', 'rgb(238, 240, 244)');
@@ -1035,114 +1119,143 @@ test('reset covers missing token, safe 400/422, offline retry, pending double-su
   expect(attempts).toBe(4);
 });
 
-for (const width of [320, 390, 768, 1280]) {
-  test(`all auth workflow states reflow without clipping at ${width}px`, async ({ page }) => {
-    allowHttpFailures(
-      page,
-      { method: 'POST', path: '/signup', status: 400 },
-      { method: 'POST', path: '/login', status: 401 },
-      { method: 'POST', path: '/forgot-password', status: 422 },
-      { method: 'POST', path: '/reset-password', status: 400 },
-    );
-    allowRequestFailures(
-      page,
-      { method: 'GET', path: '/cart', errorText: 'net::ERR_ABORTED', occurrences: 2 },
-      {
-        method: 'GET',
-        path: '/enrollments/my?page=1&page_size=20',
-        errorText: 'net::ERR_ABORTED',
-        occurrences: 2,
-      },
-    );
-    await page.setViewportSize({ width, height: 800 });
-    const workflows: AuthWorkflow[] = ['signup', 'login', 'forgot', 'reset'];
-    const attempts: Record<AuthWorkflow, number> = { signup: 0, login: 0, forgot: 0, reset: 0 };
-    const errorGates: Record<AuthWorkflow, ReturnType<typeof createDeferred>> = {
-      signup: createDeferred(),
-      login: createDeferred(),
-      forgot: createDeferred(),
-      reset: createDeferred(),
-    };
+const authViewportScenarios: readonly AuthViewportScenario[] = [
+  { label: 'default scale', pageScaleFactor: 1, widths: [320, 390, 640, 768, 1280] },
+  { label: 'effective 200% page scale', pageScaleFactor: 2, widths: [1280] },
+];
 
-    await page.route('**/me', (route) => fulfillJson(route, 200, profile));
-    for (const workflow of workflows) {
-      const ui = workflowUi[workflow];
-      await page.route(`**${ui.operation}`, async (route) => {
-        if (route.request().method() !== 'POST') return route.fallback();
-        attempts[workflow] += 1;
-        if (attempts[workflow] === 1) {
-          await errorGates[workflow].promise;
-          if (workflow === 'login') {
-            await fulfillJson(route, 401, { detail: 'RESPONSIVE_LOGIN_ERROR' });
-          } else if (workflow === 'forgot') {
-            await fulfillJson(route, 422, {
-              detail: [
-                {
-                  loc: ['body', 'email'],
-                  msg: 'RESPONSIVE_FORGOT_ERROR',
-                  type: 'value_error.email',
-                },
-              ],
-            });
-          } else {
-            await fulfillJson(route, 400, { detail: `RESPONSIVE_${workflow.toUpperCase()}_ERROR` });
+for (const { label, pageScaleFactor, widths } of authViewportScenarios) {
+  for (const width of widths) {
+    test(`all auth workflow states reflow without clipping at ${width}px (${label})`, async ({
+      page,
+    }) => {
+      allowHttpFailures(
+        page,
+        { method: 'POST', path: '/signup', status: 400 },
+        { method: 'POST', path: '/login', status: 401 },
+        { method: 'POST', path: '/forgot-password', status: 422 },
+        { method: 'POST', path: '/reset-password', status: 400 },
+      );
+      allowRequestFailures(
+        page,
+        { method: 'GET', path: '/cart', errorText: 'net::ERR_ABORTED', occurrences: 2 },
+        {
+          method: 'GET',
+          path: '/enrollments/my?page=1&page_size=20',
+          errorText: 'net::ERR_ABORTED',
+          occurrences: 2,
+        },
+      );
+      await page.setViewportSize({ width, height: 800 });
+      const cdp = pageScaleFactor === 1 ? null : await page.context().newCDPSession(page);
+      const workflows: AuthWorkflow[] = ['signup', 'login', 'forgot', 'reset'];
+      const attempts: Record<AuthWorkflow, number> = { signup: 0, login: 0, forgot: 0, reset: 0 };
+      const errorGates: Record<AuthWorkflow, ReturnType<typeof createDeferred>> = {
+        signup: createDeferred(),
+        login: createDeferred(),
+        forgot: createDeferred(),
+        reset: createDeferred(),
+      };
+
+      await page.route('**/me', (route) => fulfillJson(route, 200, profile));
+      for (const workflow of workflows) {
+        const ui = workflowUi[workflow];
+        await page.route(`**${ui.operation}`, async (route) => {
+          if (route.request().method() !== 'POST') return route.fallback();
+          attempts[workflow] += 1;
+          if (attempts[workflow] === 1) {
+            await errorGates[workflow].promise;
+            if (workflow === 'login') {
+              await fulfillJson(route, 401, { detail: 'RESPONSIVE_LOGIN_ERROR' });
+            } else if (workflow === 'forgot') {
+              await fulfillJson(route, 422, {
+                detail: [
+                  {
+                    loc: ['body', 'email'],
+                    msg: 'RESPONSIVE_FORGOT_ERROR',
+                    type: 'value_error.email',
+                  },
+                ],
+              });
+            } else {
+              await fulfillJson(route, 400, {
+                detail: `RESPONSIVE_${workflow.toUpperCase()}_ERROR`,
+              });
+            }
+            return;
           }
-          return;
+          await fulfillJson(
+            route,
+            200,
+            workflow === 'signup'
+              ? signupResponse('responsive-signup-token')
+              : workflow === 'login'
+                ? { access_token: 'responsive-login-token' }
+                : { message: 'ok' },
+          );
+        });
+      }
+
+      for (const [index, workflow] of workflows.entries()) {
+        if (index > 0) await page.evaluate(() => localStorage.clear());
+        const ui = workflowUi[workflow];
+        await page.goto(ui.path);
+        if (cdp) {
+          await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor });
+          await expectEffectivePageScaleViewportRelation(page, pageScaleFactor);
+          await expectAllMainControlsReachableInVisualViewport(page);
         }
-        await fulfillJson(
-          route,
-          200,
-          workflow === 'signup'
-            ? signupResponse('responsive-signup-token')
-            : workflow === 'login'
-              ? { access_token: 'responsive-login-token' }
-              : { message: 'ok' },
-        );
-      });
-    }
 
-    for (const [index, workflow] of workflows.entries()) {
-      if (index > 0) await page.evaluate(() => localStorage.clear());
-      const ui = workflowUi[workflow];
-      await page.goto(ui.path);
-
-      await page.getByRole('button', { name: ui.idle }).press('Enter');
-      const firstInvalid =
-        workflow === 'signup' || workflow === 'login' || workflow === 'forgot'
-          ? page.getByLabel(/^Email/)
-          : page.getByLabel(/^New password/);
-      await expect(firstInvalid).toBeFocused();
-      await expect(page.getByRole('alert')).toHaveCount(0);
-      await expectNoHorizontalOverflow(page);
-
-      await fillWorkflow(page, workflow);
-      await dispatchSameTickSubmits(page);
-      await expect(page.getByRole('button', { name: ui.pending })).toBeDisabled();
-      await expect.poll(() => attempts[workflow]).toBe(1);
-      await expectNoHorizontalOverflow(page);
-
-      errorGates[workflow].resolve();
-      if (workflow === 'forgot') {
-        await expect(page.getByLabel(/^Email/)).toBeFocused();
+        const submit = page.getByRole('button', { name: ui.idle });
+        const submitBox = await requiredBoundingBox(submit);
+        expect(submitBox.width).toBeGreaterThanOrEqual(44);
+        expect(submitBox.height).toBeGreaterThanOrEqual(44);
+        await submit.press('Enter');
+        const firstInvalid =
+          workflow === 'signup' || workflow === 'login' || workflow === 'forgot'
+            ? page.getByLabel(/^Email/)
+            : page.getByLabel(/^New password/);
+        await expect(firstInvalid).toBeFocused();
+        if (cdp) {
+          await firstInvalid.evaluate((control) =>
+            control.scrollIntoView({ behavior: 'instant', block: 'center', inline: 'center' }),
+          );
+          await expectFocusedControlInVisualViewport(page);
+        }
         await expect(page.getByRole('alert')).toHaveCount(0);
-      } else {
-        await expect(page.getByRole('alert')).toBeVisible();
-      }
-      await expect(page.locator('main')).not.toContainText('RESPONSIVE_');
-      await expectNoHorizontalOverflow(page);
+        await expectNoHorizontalOverflow(page);
 
-      await page.getByRole('button', { name: ui.idle }).press('Enter');
-      if (workflow === 'signup' || workflow === 'login') {
-        await expect(page.getByRole('heading', { name: 'My learning' })).toBeVisible();
-      } else if (workflow === 'forgot') {
-        await expect(page.getByRole('status')).toContainText(
-          'If the account can use password recovery',
-        );
-      } else {
-        await expect(page.getByText('Password reset complete')).toBeVisible();
+        await fillWorkflow(page, workflow);
+        await dispatchSameTickSubmits(page);
+        await expect(page.getByRole('button', { name: ui.pending })).toBeDisabled();
+        await expect.poll(() => attempts[workflow]).toBe(1);
+        await expectNoHorizontalOverflow(page);
+
+        errorGates[workflow].resolve();
+        if (workflow === 'forgot') {
+          await expect(page.getByLabel(/^Email/)).toBeFocused();
+          await expect(page.getByRole('alert')).toHaveCount(0);
+        } else {
+          await expect(page.getByRole('alert')).toBeVisible();
+        }
+        await expect(page.locator('main')).not.toContainText('RESPONSIVE_');
+        if (cdp) await expectAllMainControlsReachableInVisualViewport(page);
+        await expectNoHorizontalOverflow(page);
+
+        await page.getByRole('button', { name: ui.idle }).press('Enter');
+        if (workflow === 'signup' || workflow === 'login') {
+          await expect(page.getByRole('heading', { name: 'My learning' })).toBeVisible();
+        } else if (workflow === 'forgot') {
+          await expect(page.getByRole('status')).toContainText(
+            'If the account can use password recovery',
+          );
+        } else {
+          await expect(page.getByText('Password reset complete')).toBeVisible();
+        }
+        expect(attempts[workflow]).toBe(2);
+        await expectNoHorizontalOverflow(page);
       }
-      expect(attempts[workflow]).toBe(2);
-      await expectNoHorizontalOverflow(page);
-    }
-  });
+      await cdp?.detach();
+    });
+  }
 }

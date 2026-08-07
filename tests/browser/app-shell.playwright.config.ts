@@ -1,7 +1,8 @@
 import { defineConfig } from '@playwright/test';
+import { resolveAppShellTestPort } from './app-shell-harness';
 
 const host = '127.0.0.1';
-const port = 4174;
+const port = resolveAppShellTestPort();
 
 export default defineConfig({
   testDir: '.',

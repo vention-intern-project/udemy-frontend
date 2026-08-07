@@ -250,7 +250,7 @@ function useLocalCourseChat(context: CourseChatContext): CourseChatWorkflow {
     activeController.current = controller;
     void requestCourseChat(session, threadId.current, message, context, controller.signal)
       .then((response) => {
-        if (!mounted.current) return;
+        if (!mounted.current || activeController.current !== controller) return;
         threadId.current = response.thread_id;
         setMessages((current) => [
           ...current,
@@ -262,12 +262,13 @@ function useLocalCourseChat(context: CourseChatContext): CourseChatWorkflow {
         ]);
       })
       .catch((reason: unknown) => {
-        if (!mounted.current) return;
+        if (!mounted.current || activeController.current !== controller) return;
         setError(errorState(reason));
       })
       .finally(() => {
-        if (activeController.current === controller) activeController.current = null;
-        if (mounted.current) setPending(false);
+        if (!mounted.current || activeController.current !== controller) return;
+        activeController.current = null;
+        setPending(false);
       });
   };
   return { draft, messages, pending, error, setDraft, submit, reset };

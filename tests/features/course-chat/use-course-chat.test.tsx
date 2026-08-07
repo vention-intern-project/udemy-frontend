@@ -227,6 +227,88 @@ describe('course chat interaction lifecycle', () => {
     expect(signal?.aborted).toBe(true);
   });
 
+  it('ignores a stale local response while the post-reset request remains pending', async () => {
+    const stale = deferred<{ thread_id: string; response: string }>();
+    const current = deferred<{ thread_id: string; response: string }>();
+    const followUp = deferred<{ thread_id: string; response: string }>();
+    requestCourseChatMock
+      .mockReturnValueOnce(stale.promise)
+      .mockReturnValueOnce(current.promise)
+      .mockReturnValueOnce(followUp.promise);
+    const { result } = renderHook(() => useCourseChat({ kind: 'course', courseId: 7 }), {
+      wrapper: sessionWrapper,
+    });
+
+    act(() => result.current.setDraft('Request A'));
+    act(() => result.current.submit());
+    act(() => result.current.reset());
+    act(() => result.current.setDraft('Request B'));
+    act(() => result.current.submit());
+    expect(requestCourseChatMock).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      stale.resolve({ thread_id: 'stale-thread', response: 'Stale response' });
+      await stale.promise;
+    });
+    expect(result.current.pending).toBe(true);
+    expect(result.current.error).toBeNull();
+    expect(result.current.messages.map(({ author, text }) => ({ author, text }))).toEqual([
+      { author: 'learner', text: 'Request B' },
+    ]);
+
+    act(() => result.current.setDraft('Blocked while B is pending'));
+    act(() => result.current.submit());
+    expect(requestCourseChatMock).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      current.resolve({ thread_id: 'current-thread', response: 'Current response' });
+      await current.promise;
+    });
+    act(() => result.current.submit());
+    expect(requestCourseChatMock).toHaveBeenCalledTimes(3);
+    expect(requestCourseChatMock.mock.calls[2]?.[1]).toBe('current-thread');
+
+    await act(async () => {
+      followUp.resolve({ thread_id: 'current-thread', response: 'Follow-up response' });
+      await followUp.promise;
+    });
+  });
+
+  it('ignores a stale local rejection and finally while the post-reset request is pending', async () => {
+    const stale = deferred<{ thread_id: string; response: string }>();
+    const current = deferred<{ thread_id: string; response: string }>();
+    requestCourseChatMock.mockReturnValueOnce(stale.promise).mockReturnValueOnce(current.promise);
+    const { result } = renderHook(() => useCourseChat({ kind: 'course', courseId: 7 }), {
+      wrapper: sessionWrapper,
+    });
+
+    act(() => result.current.setDraft('Request A'));
+    act(() => result.current.submit());
+    act(() => result.current.reset());
+    act(() => result.current.setDraft('Request B'));
+    act(() => result.current.submit());
+    expect(requestCourseChatMock).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      stale.reject(new ApiError({ kind: 'http', status: 500, message: 'Stale failure' }));
+      await stale.promise.catch(() => undefined);
+    });
+    expect(result.current.pending).toBe(true);
+    expect(result.current.error).toBeNull();
+    expect(result.current.messages.map(({ author, text }) => ({ author, text }))).toEqual([
+      { author: 'learner', text: 'Request B' },
+    ]);
+
+    act(() => result.current.setDraft('Blocked while B is pending'));
+    act(() => result.current.submit());
+    expect(requestCourseChatMock).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      current.resolve({ thread_id: 'current-thread', response: 'Current response' });
+      await current.promise;
+    });
+  });
+
   it('settles a response after the Strict Mode effect lifecycle replay', async () => {
     requestCourseChatMock.mockResolvedValueOnce({
       thread_id: 'strict-thread',

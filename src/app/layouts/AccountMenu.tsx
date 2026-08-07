@@ -28,6 +28,7 @@ export function AccountMenu({ user }: AccountMenuProps) {
   const [pinned, setPinned] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement>(null);
   const accountTriggerRef = useRef<HTMLButtonElement>(null);
+  const accountDetailsRef = useRef<HTMLDivElement>(null);
   const suppressNextAccountFocusOpenRef = useRef(false);
   const menuId = `account-menu-${useId()}`;
   const identity = `${user.name} ${user.surname}`;
@@ -38,26 +39,40 @@ export function AccountMenu({ user }: AccountMenuProps) {
   useEffect(() => {
     if (!open) return;
 
+    const dismissAccountMenu = () => {
+      setOpen(false);
+      setPinned(false);
+    };
+    const restoreAccountTriggerFocus = () => {
+      suppressNextAccountFocusOpenRef.current = true;
+      accountTriggerRef.current?.focus({ preventScroll: true });
+    };
     const closeOnOutsidePointerDown = (event: PointerEvent) => {
       if (!(event.target instanceof Node) || !accountMenuRef.current?.contains(event.target)) {
-        setOpen(false);
-        setPinned(false);
+        dismissAccountMenu();
       }
     };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        setOpen(false);
-        setPinned(false);
-        suppressNextAccountFocusOpenRef.current = true;
-        accountTriggerRef.current?.focus({ preventScroll: true });
+        dismissAccountMenu();
+        restoreAccountTriggerFocus();
       }
+    };
+    const closeOnScroll = () => {
+      const shouldRestoreTriggerFocus =
+        document.activeElement instanceof Node &&
+        Boolean(accountDetailsRef.current?.contains(document.activeElement));
+      dismissAccountMenu();
+      if (shouldRestoreTriggerFocus) restoreAccountTriggerFocus();
     };
 
     document.addEventListener('pointerdown', closeOnOutsidePointerDown);
     document.addEventListener('keydown', closeOnEscape);
+    window.addEventListener('scroll', closeOnScroll, { passive: true });
     return () => {
       document.removeEventListener('pointerdown', closeOnOutsidePointerDown);
       document.removeEventListener('keydown', closeOnEscape);
+      window.removeEventListener('scroll', closeOnScroll);
     };
   }, [open]);
 
@@ -106,6 +121,7 @@ export function AccountMenu({ user }: AccountMenuProps) {
       </button>
       {open ? (
         <div
+          ref={accountDetailsRef}
           aria-label={`Account details for ${identity}`}
           className={styles.accountMenuList}
           id={menuId}

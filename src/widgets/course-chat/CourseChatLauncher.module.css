@@ -2,7 +2,7 @@
   position: fixed;
   z-index: var(--z-overlay);
   inset-inline-end: var(--spacing-4);
-  inset-block-end: calc(var(--spacing-8) + var(--course-chat-footer-clearance, 0px));
+  inset-block-end: var(--spacing-8);
   display: grid;
   gap: var(--spacing-2);
   justify-items: end;
@@ -91,6 +91,8 @@
   display: none;
 }
 .header {
+  --focus-ring: var(--focus-ring-inverted);
+
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -234,9 +236,6 @@
   background: transparent !important;
   border: 0 !important;
   box-shadow: none !important;
-}
-.header button:focus-visible {
-  outline-color: var(--action-primary-bg);
 }
 .header button:hover:not(:disabled)::before {
   background: color-mix(in srgb, var(--mini-chat-header-bg), white 12%);

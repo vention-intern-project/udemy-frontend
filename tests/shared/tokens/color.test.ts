@@ -23,8 +23,11 @@ import {
   ACTION_SECONDARY_FG,
   ACTION_LINK,
   FOCUS_RING,
+  FOCUS_RING_INVERTED,
+  FOCUS_RING_LIGHT,
   FOCUS_RING_WIDTH,
   FOCUS_RING_OFFSET,
+  FOCUS_RING_SCRIM,
   STATE_SELECTED_BG,
   STATE_CONTROL_HIGHLIGHT,
   STATE_DISABLED_BG,
@@ -82,28 +85,28 @@ describe('Color tokens', () => {
   });
 
   describe('Action tokens', () => {
-    it('ACTION_PRIMARY_BG should be #6D28D9', () => {
-      expect(ACTION_PRIMARY_BG).toBe('#6D28D9');
+    it('ACTION_PRIMARY_BG should be #5B3FD6', () => {
+      expect(ACTION_PRIMARY_BG).toBe('#5B3FD6');
     });
 
-    it('ACTION_PRIMARY_BG_HOVER should be #5B21B6', () => {
-      expect(ACTION_PRIMARY_BG_HOVER).toBe('#5B21B6');
+    it('ACTION_PRIMARY_BG_HOVER should be #4932B6', () => {
+      expect(ACTION_PRIMARY_BG_HOVER).toBe('#4932B6');
     });
 
-    it('ACTION_PRIMARY_BG_PRESSED should be #4C1D95', () => {
-      expect(ACTION_PRIMARY_BG_PRESSED).toBe('#4C1D95');
+    it('ACTION_PRIMARY_BG_PRESSED should be #3D299B', () => {
+      expect(ACTION_PRIMARY_BG_PRESSED).toBe('#3D299B');
     });
 
     it('ACTION_PRIMARY_FG should be #FFFFFF', () => {
       expect(ACTION_PRIMARY_FG).toBe('#FFFFFF');
     });
 
-    it('ACTION_SECONDARY_BG should be #EDE9FE', () => {
-      expect(ACTION_SECONDARY_BG).toBe('#EDE9FE');
+    it('ACTION_SECONDARY_BG should be #EEEBFB', () => {
+      expect(ACTION_SECONDARY_BG).toBe('#EEEBFB');
     });
 
-    it('ACTION_SECONDARY_FG should be #4C1D95', () => {
-      expect(ACTION_SECONDARY_FG).toBe('#4C1D95');
+    it('ACTION_SECONDARY_FG should be #4B32B5', () => {
+      expect(ACTION_SECONDARY_FG).toBe('#4B32B5');
     });
 
     it('ACTION_LINK should be #1D4ED8', () => {
@@ -112,8 +115,14 @@ describe('Color tokens', () => {
   });
 
   describe('Focus token', () => {
-    it('FOCUS_RING should be the primary purple #6D28D9', () => {
-      expect(FOCUS_RING).toBe('#6D28D9');
+    it('publishes light, inverted, and scrim focus roles', () => {
+      expect(FOCUS_RING).toBe('#5B3FD6');
+      expect(FOCUS_RING_LIGHT).toBe('#5B3FD6');
+      expect(FOCUS_RING_INVERTED).toBe('#DDD6FE');
+      expect(FOCUS_RING_SCRIM).toBe('#DDD6FE');
+      expect(colorTokens['--focus-ring-light']).toBe(FOCUS_RING_LIGHT);
+      expect(colorTokens['--focus-ring-inverted']).toBe(FOCUS_RING_INVERTED);
+      expect(colorTokens['--focus-ring-scrim']).toBe(FOCUS_RING_SCRIM);
     });
 
     it('FOCUS_RING_WIDTH should be 2px', () => {

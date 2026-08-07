@@ -5,7 +5,7 @@ import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { StrictMode, useLayoutEffect, useRef, type ReactNode } from 'react';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createAppQueryClient } from '../../src/app/query';
 import { AppRouter } from '../../src/app/router';
@@ -198,6 +198,10 @@ async function fillAuthForm(workflow: AuthWorkflow, user: ReturnType<typeof user
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+});
+
+beforeEach(() => {
+  vi.stubGlobal('scrollTo', vi.fn());
 });
 
 describe('authentication pages', () => {

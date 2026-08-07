@@ -1,12 +1,25 @@
 import { expect, test, type Page, type Request, type Route } from '@playwright/test';
 
 const student = {
-  email: 'student@example.test', name: 'Sam', surname: 'Student', role: 'student',
-  birthday: null, phone_number: null, created_at: '2026-01-01T00:00:00Z',
+  email: 'student@example.test',
+  name: 'Sam',
+  surname: 'Student',
+  role: 'student',
+  birthday: null,
+  phone_number: null,
+  created_at: '2026-01-01T00:00:00Z',
 };
 const cartItem = {
-  id: 10, course_id: 7, added_at: '2026-01-01T00:00:00Z',
-  course: { id: 7, title: 'A deliberately long cart course title that must remain operable at every required viewport width', price: '19.990', currency: 'USD' },
+  id: 10,
+  course_id: 7,
+  added_at: '2026-01-01T00:00:00Z',
+  course: {
+    id: 7,
+    title:
+      'A deliberately long cart course title that must remain operable at every required viewport width',
+    price: '19.990',
+    currency: 'USD',
+  },
 };
 const exactLongTotal = '1000000000000000000000019.0001';
 
@@ -62,8 +75,14 @@ function cartRequestLabel(request: CartApiRequest): string {
 
 function trackCartRequestLifecycle(page: Page): CartRequestLifecycle {
   const lifecycle: CartRequestLifecycle = {
-    initiated: [], completed: [], logicalCompleted: [], aborted: [], deleteResponses: [],
-    responseProvenDeletes: [], toleratedDeleteAborts: [], unexpectedFailures: [],
+    initiated: [],
+    completed: [],
+    logicalCompleted: [],
+    aborted: [],
+    deleteResponses: [],
+    responseProvenDeletes: [],
+    toleratedDeleteAborts: [],
+    unexpectedFailures: [],
   };
   const responseProvenDeleteRequests = new WeakSet<Request>();
   page.on('request', (request) => {
@@ -112,15 +131,17 @@ async function expectSuccessfulDeleteLifecycle(
   expectation: SuccessfulDeleteLifecycleExpectation,
 ) {
   await expect.poll(() => lifecycle.initiated).toEqual(expectation.initiated);
-  await expect.poll(() => lifecycle.deleteResponses).toEqual([{ label: expectation.deleteLabel, status: 204 }]);
+  await expect
+    .poll(() => lifecycle.deleteResponses)
+    .toEqual([{ label: expectation.deleteLabel, status: 204 }]);
   await expect.poll(() => lifecycle.responseProvenDeletes).toEqual([expectation.deleteLabel]);
   await expect.poll(() => lifecycle.toleratedDeleteAborts).toEqual([expectation.deleteLabel]);
-  await expect.poll(() => lifecycle.logicalCompleted).toEqual([
-    'GET /cart', expectation.deleteLabel, 'GET /cart',
-  ]);
-  await expect.poll(() => lifecycle.completed.filter((label) => label === 'GET /cart')).toEqual([
-    'GET /cart', 'GET /cart',
-  ]);
+  await expect
+    .poll(() => lifecycle.logicalCompleted)
+    .toEqual(['GET /cart', expectation.deleteLabel, 'GET /cart']);
+  await expect
+    .poll(() => lifecycle.completed.filter((label) => label === 'GET /cart'))
+    .toEqual(['GET /cart', 'GET /cart']);
   expect(lifecycle.aborted.filter((label) => label === 'GET /cart')).toEqual(['GET /cart']);
   expect(lifecycle.unexpectedFailures).toEqual([]);
 }
@@ -137,11 +158,175 @@ async function routeCartApi(page: Page, handler: CartApiRouteHandler) {
 }
 
 function cart(items = [cartItem]) {
-  return { id: 1, items, total_price: items.length === 0 ? '0.00' : exactLongTotal, currency: 'USD', item_count: items.length };
+  return {
+    id: 1,
+    items,
+    total_price: items.length === 0 ? '0.00' : exactLongTotal,
+    currency: 'USD',
+    item_count: items.length,
+  };
+}
+
+function longCart() {
+  return cart(
+    Array.from({ length: 24 }, (_, index) => ({
+      ...cartItem,
+      id: index + 10,
+      course_id: index + 7,
+      course: {
+        ...cartItem.course,
+        id: index + 7,
+        title: `Long Cart course ${index + 1}: ${cartItem.course.title}`,
+      },
+    })),
+  );
 }
 
 test.describe('FE-009 cart workflow QA harness', () => {
-  test('uses authenticated fixtures for exact cart mutation, cache count, focus/status, reduced motion, and five-width diagnostics', async ({ page }, testInfo) => {
+  test('offers one mobile summary jump above Student navigation without duplicating checkout', async ({
+    page,
+  }) => {
+    await installStudent(page);
+    const consoleErrors: string[] = [];
+    let checkoutPosts = 0;
+    page.on('console', (message) => {
+      if (message.type() === 'error') consoleErrors.push(message.text());
+    });
+    await page.route('**/me', (route) => json(route, student));
+    await routeCartApi(page, async (route, request) => {
+      if (request.method === 'GET' && request.pathname === '/cart') return json(route, longCart());
+      if (request.method === 'POST' && request.pathname === '/cart/checkout') {
+        checkoutPosts += 1;
+        return json(route, { message: 'unexpected', enrolled_courses: 0 });
+      }
+      throw new Error(`Unexpected cart request ${request.method} ${request.pathname}`);
+    });
+
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.setViewportSize({ width: 390, height: 700 });
+    await page.goto('/cart');
+    const jump = page.getByRole('button', { name: 'Go to order summary', exact: true });
+    const summaryHeading = page.getByRole('heading', { name: 'Order summary', exact: true });
+    const navigation = page.getByRole('navigation', { name: 'Student navigation' });
+    await expect(jump).toHaveCount(1);
+    await expect(summaryHeading).toHaveCount(1);
+    await expect(jump).toHaveCSS('min-height', '44px');
+    const [jumpBox, navigationBox] = await Promise.all([
+      jump.boundingBox(),
+      navigation.boundingBox(),
+    ]);
+    if (!jumpBox || !navigationBox)
+      throw new Error('Summary-jump or Student-navigation geometry is unavailable.');
+    expect(jumpBox.y + jumpBox.height).toBeLessThanOrEqual(navigationBox.y);
+    const sourceOrder = await page.evaluate(() => {
+      const cartCourses = document.querySelector<HTMLElement>('[aria-label="Cart courses"]');
+      const jumpControl = Array.from(document.querySelectorAll<HTMLButtonElement>('button')).find(
+        (button) => button.textContent === 'Go to order summary',
+      );
+      const summaryHeading = Array.from(document.querySelectorAll('h2')).find(
+        (heading) => heading.textContent === 'Order summary',
+      );
+      if (!cartCourses || !jumpControl || !summaryHeading)
+        throw new Error('Cart source-order targets are unavailable.');
+      return {
+        cartCoursesBeforeJump: Boolean(
+          cartCourses.compareDocumentPosition(jumpControl) & Node.DOCUMENT_POSITION_FOLLOWING,
+        ),
+        jumpBeforeSummary: Boolean(
+          jumpControl.compareDocumentPosition(summaryHeading) & Node.DOCUMENT_POSITION_FOLLOWING,
+        ),
+      };
+    });
+    expect(sourceOrder).toEqual({ cartCoursesBeforeJump: true, jumpBeforeSummary: true });
+    const compactLayout = await page.evaluate(() => {
+      const content = document.querySelector<HTMLElement>('[aria-label="Cart courses"]')
+        ?.parentElement?.parentElement;
+      const courseList = document.querySelector<HTMLElement>(
+        '[aria-label="Cart courses"]',
+      )?.parentElement;
+      const jumpContainer = Array.from(document.querySelectorAll<HTMLButtonElement>('button')).find(
+        (button) => button.textContent === 'Go to order summary',
+      )?.parentElement;
+      const remove = document.querySelector<HTMLButtonElement>('[data-cart-remove-course-id]');
+      const item = remove?.closest<HTMLElement>('[role="listitem"]');
+      const price = Array.from(item?.querySelectorAll('p') ?? []).find(
+        (paragraph) => paragraph.textContent === 'Price',
+      );
+      if (!content || !courseList || !jumpContainer || !remove || !price)
+        throw new Error('Compact Cart layout targets are unavailable.');
+      const contentBox = content.getBoundingClientRect();
+      const listBox = courseList.getBoundingClientRect();
+      const removeBox = remove.getBoundingClientRect();
+      const priceBox = price.parentElement?.getBoundingClientRect();
+      if (!priceBox) throw new Error('Compact Cart price geometry is unavailable.');
+      return {
+        listTop: listBox.top,
+        contentTop: contentBox.top,
+        listLeft: listBox.left,
+        contentLeft: contentBox.left,
+        listWidth: listBox.width,
+        contentWidth: contentBox.width,
+        priceBeforeRemove: Boolean(
+          price.compareDocumentPosition(remove) & Node.DOCUMENT_POSITION_FOLLOWING,
+        ),
+        sameFooter:
+          price.parentElement?.parentElement === remove.parentElement?.parentElement?.parentElement,
+        priceLeft: priceBox.left,
+        removeLeft: removeBox.left,
+        removeHeight: removeBox.height,
+        removeWidth: removeBox.width,
+      };
+    });
+    expect(compactLayout.listTop).toBeCloseTo(compactLayout.contentTop, 0);
+    expect(compactLayout.listLeft).toBeCloseTo(compactLayout.contentLeft, 0);
+    expect(compactLayout.listWidth).toBeCloseTo(compactLayout.contentWidth, 0);
+    expect(compactLayout).toMatchObject({
+      priceBeforeRemove: true,
+      sameFooter: true,
+      removeHeight: 44,
+      removeWidth: 44,
+    });
+    expect(compactLayout.priceLeft).toBeLessThan(compactLayout.removeLeft);
+    await page
+      .getByRole('button', { name: /Remove Long Cart course 24/i })
+      .evaluate((element: HTMLButtonElement) => element.focus({ preventScroll: true }));
+    await page.keyboard.press('Tab');
+    await expect(jump).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(summaryHeading).toBeFocused();
+    await expect(jump).toHaveCount(0);
+    expect(checkoutPosts).toBe(0);
+
+    for (const width of [320, 390, 617, 768, 1023, 1024, 1280]) {
+      await page.setViewportSize({ width, height: 700 });
+      const geometry = await page.evaluate(() => ({
+        bodyWidth: document.body.scrollWidth,
+        clientWidth: document.documentElement.clientWidth,
+        documentWidth: document.documentElement.scrollWidth,
+      }));
+      expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.clientWidth);
+      expect(geometry.bodyWidth).toBeLessThanOrEqual(geometry.clientWidth);
+      if (width >= 1024)
+        await expect(
+          page.getByRole('button', { name: 'Go to order summary', exact: true }),
+        ).toHaveCount(0);
+    }
+    await page.evaluate(() => {
+      document.documentElement.style.zoom = '200%';
+    });
+    const zoomed = await page.evaluate(() => ({
+      bodyWidth: document.body.scrollWidth,
+      clientWidth: document.documentElement.clientWidth,
+      documentWidth: document.documentElement.scrollWidth,
+    }));
+    expect(zoomed.documentWidth).toBeLessThanOrEqual(zoomed.clientWidth);
+    expect(zoomed.bodyWidth).toBeLessThanOrEqual(zoomed.clientWidth);
+    expect(consoleErrors).toEqual([]);
+  });
+
+  test('uses authenticated fixtures for exact cart mutation, cache count, focus/status, reduced motion, and five-width diagnostics', async ({
+    page,
+  }, testInfo) => {
     await installStudent(page);
     const lifecycle = trackCartRequestLifecycle(page);
     let currentCart = cart();
@@ -166,7 +351,9 @@ test.describe('FE-009 cart workflow QA harness', () => {
 
     for (const width of [320, 390, 768, 1280, 1440]) {
       await page.setViewportSize({ width, height: 900 });
-      await expect(page.getByRole('button', { name: /remove a deliberately long cart course/i })).toBeVisible();
+      await expect(
+        page.getByRole('button', { name: /remove a deliberately long cart course/i }),
+      ).toBeVisible();
       const geometry = await page.evaluate(() => ({
         clientWidth: document.documentElement.clientWidth,
         documentWidth: document.documentElement.scrollWidth,
@@ -174,7 +361,10 @@ test.describe('FE-009 cart workflow QA harness', () => {
       }));
       expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.clientWidth);
       expect(geometry.bodyWidth).toBeLessThanOrEqual(geometry.clientWidth);
-      await testInfo.attach(`cart-${width}`, { body: await page.screenshot(), contentType: 'image/png' });
+      await testInfo.attach(`cart-${width}`, {
+        body: await page.screenshot(),
+        contentType: 'image/png',
+      });
     }
     await page.getByRole('button', { name: /remove a deliberately long cart course/i }).click();
     await expect(page.getByRole('heading', { name: 'Your cart is empty' })).toBeFocused();
@@ -184,10 +374,16 @@ test.describe('FE-009 cart workflow QA harness', () => {
       initiated: ['GET /cart', 'GET /cart', 'DELETE /cart/items/7', 'GET /cart'],
     });
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--duration-base').trim())).toBe('0ms');
+    expect(
+      await page.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue('--duration-base').trim(),
+      ),
+    ).toBe('0ms');
   });
 
-  test('keeps authenticated 403 on a safe catalog recovery action instead of a guest-route loop', async ({ page }) => {
+  test('keeps authenticated 403 on a safe catalog recovery action instead of a guest-route loop', async ({
+    page,
+  }) => {
     await installStudent(page);
     await page.route('**/me', (route) => json(route, student));
     await routeCartApi(page, async (route, request) => {
