@@ -370,7 +370,7 @@ export function CatalogPage() {
                           Sort by:
                         </span>
                         <span className={styles.sortCompact} aria-hidden="true">
-                          Sort
+                          Sort:
                         </span>
                       </span>
                       <SortControl

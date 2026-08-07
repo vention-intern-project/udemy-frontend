@@ -97,6 +97,36 @@ function supportsFinePointer(): boolean {
   );
 }
 
+function isCourseCardDisclosureAvailable(): boolean {
+  return (
+    typeof window === 'undefined' ||
+    (window.innerWidth >= 768 &&
+      (typeof window.matchMedia !== 'function' ||
+        window.matchMedia('(hover: hover) and (pointer: fine)').matches))
+  );
+}
+
+function useCourseCardDisclosureAvailability(): boolean {
+  const [isAvailable, setIsAvailable] = useState(isCourseCardDisclosureAvailable);
+
+  useEffect(() => {
+    const updateAvailability = () => setIsAvailable(isCourseCardDisclosureAvailable());
+    const finePointerQuery =
+      typeof window.matchMedia === 'function'
+        ? window.matchMedia('(hover: hover) and (pointer: fine)')
+        : null;
+    updateAvailability();
+    window.addEventListener('resize', updateAvailability);
+    finePointerQuery?.addEventListener('change', updateAvailability);
+    return () => {
+      window.removeEventListener('resize', updateAvailability);
+      finePointerQuery?.removeEventListener('change', updateAvailability);
+    };
+  }, []);
+
+  return isAvailable;
+}
+
 function courseActionVisual(presentation: CatalogCourseActionPresentation): CourseActionVisual {
   switch (presentation) {
     case 'add-to-cart':
@@ -152,6 +182,7 @@ export function CourseCard({
   action,
   onAction,
 }: CourseCardProps) {
+  const isDisclosureAvailable = useCourseCardDisclosureAvailability();
   const tooltipNotice = course.isPublished
     ? null
     : 'This course is not available for enrollment yet.';
@@ -298,7 +329,11 @@ export function CourseCard({
   const feedbackId = `catalog-course-${course.id}-action-feedback`;
   const actionVisual = courseActionVisual(action.presentation);
   const actionLabel = catalogActionLabel(action.presentation, action.label);
-  const ActionIcon = actionVisual.Icon;
+  const ActionIcon =
+    action.kind === 'button' &&
+    (action.presentation === 'add-to-cart' || action.presentation === 'remove')
+      ? null
+      : actionVisual.Icon;
   const tooltipPlacementClass =
     tooltipPlacement?.mode === 'side'
       ? tooltipPlacement.side === 'left'
@@ -315,7 +350,7 @@ export function CourseCard({
     closeTimerRef.current = null;
   }, []);
   const requestTransientPreview = useCallback(() => {
-    if (!supportsFinePointer() || hasPinnedDisclosure) return;
+    if (!isDisclosureAvailable || !supportsFinePointer() || hasPinnedDisclosure) return;
     clearCloseTimer();
     if (isDisclosureVisible || openTimerRef.current !== null) return;
     openTimerRef.current = globalThis.setTimeout(() => {
@@ -326,6 +361,7 @@ export function CourseCard({
     clearCloseTimer,
     course.id,
     hasPinnedDisclosure,
+    isDisclosureAvailable,
     isDisclosureVisible,
     onTransientDisclosurePreviewStart,
   ]);
@@ -365,8 +401,8 @@ export function CourseCard({
     requestTransientClose();
   }, [course.id, onTransientDisclosurePreviewExit, requestTransientClose]);
   const handleLinkFocus = useCallback(() => {
-    if (!hasPinnedDisclosure) onTransientDisclosurePreviewStart(course.id);
-  }, [course.id, hasPinnedDisclosure, onTransientDisclosurePreviewStart]);
+    if (isDisclosureAvailable && !hasPinnedDisclosure) onTransientDisclosurePreviewStart(course.id);
+  }, [course.id, hasPinnedDisclosure, isDisclosureAvailable, onTransientDisclosurePreviewStart]);
   const handleLinkBlur = useCallback(
     (event: FocusEvent<HTMLAnchorElement>) => {
       if (!event.currentTarget.closest('[data-course-card-id]')?.contains(event.relatedTarget))
@@ -389,6 +425,18 @@ export function CourseCard({
     },
     [clearCloseTimer, clearOpenTimer],
   );
+  useEffect(() => {
+    if (isDisclosureAvailable || !isDisclosureVisible) return;
+    onTransientDisclosurePreviewEnd(course.id);
+    if (isDisclosurePinned) onDisclosurePinToggle(course.id);
+  }, [
+    course.id,
+    isDisclosureAvailable,
+    isDisclosurePinned,
+    isDisclosureVisible,
+    onDisclosurePinToggle,
+    onTransientDisclosurePreviewEnd,
+  ]);
 
   return (
     <li className={styles.item}>
@@ -404,7 +452,9 @@ export function CourseCard({
           className={styles.link}
           to={`/courses/${course.id}`}
           aria-label={course.title}
-          aria-describedby={isDisclosureVisible ? tooltipDescriptionId : undefined}
+          aria-describedby={
+            isDisclosureAvailable && isDisclosureVisible ? tooltipDescriptionId : undefined
+          }
           onFocus={handleLinkFocus}
           onBlur={handleLinkBlur}
         >
@@ -425,11 +475,8 @@ export function CourseCard({
               </span>
             </div>
           </div>
-          <div className={styles.price} data-part="course-card-price">
-            <data value={course.price}>{formatCatalogPrice(course.price, course.currency)}</data>
-          </div>
         </Link>
-        {isDisclosureVisible ? (
+        {isDisclosureAvailable && isDisclosureVisible ? (
           <div
             ref={tooltipRef}
             className={[styles.tooltip, tooltipPlacementClass, styles.tooltipOpen].join(' ')}
@@ -452,67 +499,74 @@ export function CourseCard({
             </div>
           </div>
         ) : null}
-        <div className={styles.disclosureControl}>
-          <Button
-            id={`catalog-course-${course.id}-disclosure-trigger`}
-            type="button"
-            variant="secondary"
-            className={styles.disclosureButton}
-            aria-label="View course details"
-            aria-controls={statusExplanationId}
-            aria-describedby={isDisclosureVisible ? tooltipDescriptionId : undefined}
-            aria-expanded={isDisclosureVisible}
-            aria-pressed={isDisclosurePinned}
-            onClick={handleDisclosurePinToggle}
-          >
-            <span className={styles.disclosurePill} data-part="course-card-disclosure-pill">
-              Details
-            </span>
-          </Button>
-        </div>
-        <div className={styles.actions} data-part="course-card-actions">
-          {action.kind === 'link' && action.to ? (
-            <Link className={styles.actionLink} to={action.to}>
-              <span className={styles.actionContent} data-part="course-card-action-content">
-                {ActionIcon ? <ActionIcon size={16} aria-hidden="true" /> : null}
-                <span>{actionLabel}</span>
-              </span>
-            </Link>
-          ) : action.kind === 'status' ? (
-            <span className={styles.actionStatus} data-part="course-card-action-status">
-              <span className={styles.actionContent} data-part="course-card-action-content">
-                {ActionIcon ? <ActionIcon size={16} aria-hidden="true" /> : null}
-                <span>{actionLabel}</span>
-              </span>
-            </span>
-          ) : (
+        {isDisclosureAvailable ? (
+          <div className={styles.disclosureControl}>
             <Button
+              id={`catalog-course-${course.id}-disclosure-trigger`}
               type="button"
-              variant={actionVisual.buttonVariant}
-              disabled={action.disabled}
-              aria-busy={action.pending || undefined}
-              aria-describedby={action.feedback ? feedbackId : undefined}
-              className={[
-                styles.actionButton,
-                action.presentation === 'neutral' && styles.actionButtonNeutral,
-                action.presentation === 'remove' && styles.actionButtonRemove,
-              ]
-                .filter(Boolean)
-                .join(' ')}
-              onClick={onAction}
+              variant="secondary"
+              className={styles.disclosureButton}
+              aria-label="View course details"
+              aria-controls={statusExplanationId}
+              aria-describedby={isDisclosureVisible ? tooltipDescriptionId : undefined}
+              aria-expanded={isDisclosureVisible}
+              aria-pressed={isDisclosurePinned}
+              onClick={handleDisclosurePinToggle}
             >
-              <span className={styles.actionContent} data-part="course-card-action-content">
-                {ActionIcon ? <ActionIcon size={16} aria-hidden="true" /> : null}
-                <span>{actionLabel}</span>
+              <span className={styles.disclosurePill} data-part="course-card-disclosure-pill">
+                Details
               </span>
             </Button>
-          )}
-          {action.feedback ? (
-            <p id={feedbackId} className={styles.actionFeedback} aria-live="polite">
-              {action.feedback.message}
-            </p>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
+        <footer className={styles.footer} data-part="course-card-footer">
+          <div className={styles.price} data-part="course-card-price">
+            <data value={course.price}>{formatCatalogPrice(course.price, course.currency)}</data>
+          </div>
+          <div className={styles.actions} data-part="course-card-actions">
+            {action.kind === 'link' && action.to ? (
+              <Link className={styles.actionLink} to={action.to}>
+                <span className={styles.actionContent} data-part="course-card-action-content">
+                  {ActionIcon ? <ActionIcon size={16} aria-hidden="true" /> : null}
+                  <span>{actionLabel}</span>
+                </span>
+              </Link>
+            ) : action.kind === 'status' ? (
+              <span className={styles.actionStatus} data-part="course-card-action-status">
+                <span className={styles.actionContent} data-part="course-card-action-content">
+                  {ActionIcon ? <ActionIcon size={16} aria-hidden="true" /> : null}
+                  <span>{actionLabel}</span>
+                </span>
+              </span>
+            ) : (
+              <Button
+                type="button"
+                variant={actionVisual.buttonVariant}
+                disabled={action.disabled}
+                aria-busy={action.pending || undefined}
+                aria-describedby={action.feedback ? feedbackId : undefined}
+                className={[
+                  styles.actionButton,
+                  action.presentation === 'neutral' && styles.actionButtonNeutral,
+                  action.presentation === 'remove' && styles.actionButtonRemove,
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                onClick={onAction}
+              >
+                <span className={styles.actionContent} data-part="course-card-action-content">
+                  {ActionIcon ? <ActionIcon size={16} aria-hidden="true" /> : null}
+                  <span>{actionLabel}</span>
+                </span>
+              </Button>
+            )}
+            {action.feedback ? (
+              <p id={feedbackId} className={styles.actionFeedback} aria-live="polite">
+                {action.feedback.message}
+              </p>
+            ) : null}
+          </div>
+        </footer>
       </article>
     </li>
   );

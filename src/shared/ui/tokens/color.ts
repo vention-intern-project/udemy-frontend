@@ -30,16 +30,16 @@ export const BORDER_STRONG = '#9CA3AF' as const;
 // Action tokens
 // ---------------------------------------------------------------------------
 /** Primary CTA background — hover: ACTION_PRIMARY_BG_HOVER, pressed: ACTION_PRIMARY_BG_PRESSED */
-export const ACTION_PRIMARY_BG = '#6D28D9' as const;
-export const ACTION_PRIMARY_BG_HOVER = '#5B21B6' as const;
-export const ACTION_PRIMARY_BG_PRESSED = '#4C1D95' as const;
+export const ACTION_PRIMARY_BG = '#5B3FD6' as const;
+export const ACTION_PRIMARY_BG_HOVER = '#4932B6' as const;
+export const ACTION_PRIMARY_BG_PRESSED = '#3D299B' as const;
 export const ACTION_PRIMARY_FG = '#FFFFFF' as const;
 
 /** Secondary CTA background */
-export const ACTION_SECONDARY_BG = '#EDE9FE' as const;
-export const ACTION_SECONDARY_BG_HOVER = '#DDD6FE' as const;
-export const ACTION_SECONDARY_BG_PRESSED = '#C4B5FD' as const;
-export const ACTION_SECONDARY_FG = '#4C1D95' as const;
+export const ACTION_SECONDARY_BG = '#EEEBFB' as const;
+export const ACTION_SECONDARY_BG_HOVER = '#E3DEF8' as const;
+export const ACTION_SECONDARY_BG_PRESSED = '#D7D0F4' as const;
+export const ACTION_SECONDARY_FG = '#4B32B5' as const;
 
 /** Text links */
 export const ACTION_LINK = '#1D4ED8' as const;
@@ -48,7 +48,11 @@ export const ACTION_LINK = '#1D4ED8' as const;
 // Focus token
 // ---------------------------------------------------------------------------
 /** 2px outer ring with 2px offset — keyboard focus only */
-export const FOCUS_RING = '#6D28D9' as const;
+export const FOCUS_RING_LIGHT = '#5B3FD6' as const;
+export const FOCUS_RING_INVERTED = '#DDD6FE' as const;
+export const FOCUS_RING_SCRIM = '#DDD6FE' as const;
+/** Default focus role for light surfaces; context owners opt into inverted or scrim roles. */
+export const FOCUS_RING = FOCUS_RING_LIGHT;
 export const FOCUS_RING_WIDTH = '2px' as const;
 export const FOCUS_RING_OFFSET = '2px' as const;
 
@@ -108,6 +112,9 @@ export const colorTokens = {
   '--action-link': ACTION_LINK,
   // Focus
   '--focus-ring': FOCUS_RING,
+  '--focus-ring-light': FOCUS_RING_LIGHT,
+  '--focus-ring-inverted': FOCUS_RING_INVERTED,
+  '--focus-ring-scrim': FOCUS_RING_SCRIM,
   '--focus-ring-width': FOCUS_RING_WIDTH,
   '--focus-ring-offset': FOCUS_RING_OFFSET,
   // States

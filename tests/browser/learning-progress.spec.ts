@@ -438,6 +438,122 @@ function captureRuntimeDiagnostics(
   return diagnostics;
 }
 
+test('renders the My learning empty state within its responsive geometry', async ({ page }) => {
+  await installStudent(page);
+  const diagnostics = captureRuntimeDiagnostics(page, {
+    abortedRequests: [
+      expectedGetAbort('/enrollments/my', 5),
+      expectedGetAbort('/cart', 5),
+      expectedGetAbort('/src/app/layouts/assets/ai-assistant-navigation-ui018-2.png', 1),
+    ],
+  });
+  await page.route('**/*', async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.origin !== 'http://127.0.0.1:4179') return route.fallback();
+    if (url.pathname === '/me') return json(route, student);
+    if (url.pathname === '/enrollments/my')
+      return json(route, {
+        items: [],
+        page: 1,
+        page_size: 20,
+        total: 0,
+        pages: 0,
+        has_next: false,
+        has_previous: false,
+      });
+    if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/'))
+      throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
+    return route.fallback();
+  });
+
+  for (const width of [320, 390, 768, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/learning');
+    const heading = page.getByRole('heading', { name: 'Start your learning journey' });
+    const image = page
+      .getByRole('region', { name: 'Start your learning journey' })
+      .locator('img[aria-hidden="true"]');
+    const browseCourses = page.getByRole('link', { name: 'Browse courses' });
+    await expect(heading).toBeVisible();
+    await expect(image).toHaveAttribute('alt', '');
+    await expect(image).toHaveAttribute('src', /my-learning-empty-state-ui022\.png/);
+    await expect(browseCourses).toHaveAttribute('href', '/');
+    const geometry = await page.evaluate(() => {
+      const heading = document.querySelector('#learning-empty-heading');
+      const emptyState = heading?.closest('section');
+      const image = emptyState?.querySelector('img[aria-hidden="true"]');
+      if (
+        !(image instanceof HTMLImageElement) ||
+        !(heading instanceof HTMLElement) ||
+        !(emptyState instanceof HTMLElement)
+      )
+        throw new Error('My learning empty-state elements are missing.');
+      const imageRect = image.getBoundingClientRect();
+      const headingRect = heading.getBoundingClientRect();
+      const emptyStateRect = emptyState.getBoundingClientRect();
+      const style = getComputedStyle(image);
+      const emptyStateStyle = getComputedStyle(emptyState);
+      return {
+        imageWidth: imageRect.width,
+        imageHeight: imageRect.height,
+        imageLeft: imageRect.left,
+        imageRight: imageRect.right,
+        imageTop: imageRect.top,
+        imageCenter: imageRect.left + imageRect.width / 2,
+        headingTop: headingRect.top,
+        headingLeft: headingRect.left,
+        emptyStateLeft: emptyStateRect.left,
+        emptyStateRight: emptyStateRect.right,
+        columnGap: Number.parseFloat(emptyStateStyle.columnGap),
+        objectFit: style.objectFit,
+        objectPosition: style.objectPosition,
+        documentWidth: document.documentElement.scrollWidth,
+        bodyWidth: document.body.scrollWidth,
+        layoutWidth: document.documentElement.clientWidth,
+      };
+    });
+    const expectedImageSize = width < 768 ? Math.min(width - 32, 400) : width >= 1120 ? 520 : 400;
+    expect(geometry.imageWidth).toBeCloseTo(expectedImageSize, 0);
+    expect(geometry.imageHeight).toBeCloseTo(expectedImageSize, 0);
+    expect(geometry.objectFit).toBe('contain');
+    expect(geometry.objectPosition).toBe('50% 50%');
+    expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.layoutWidth);
+    expect(geometry.bodyWidth).toBeLessThanOrEqual(geometry.layoutWidth);
+    if (width < 768) {
+      expect(geometry.headingTop).toBeLessThan(geometry.imageTop);
+    } else {
+      const illustrationColumnRight = geometry.emptyStateLeft + expectedImageSize;
+      expect(geometry.imageLeft).toBeGreaterThanOrEqual(geometry.emptyStateLeft - 0.5);
+      expect(geometry.imageRight).toBeLessThanOrEqual(illustrationColumnRight + 0.5);
+      expect(geometry.imageCenter).toBeCloseTo(geometry.emptyStateLeft + expectedImageSize / 2, 0);
+      expect(geometry.headingLeft).toBeGreaterThanOrEqual(
+        illustrationColumnRight + geometry.columnGap - 0.5,
+      );
+      expect(geometry.headingLeft).toBeLessThanOrEqual(geometry.emptyStateRight + 0.5);
+    }
+    await tabTo(page, browseCourses);
+    await expect(browseCourses).toBeFocused();
+  }
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/learning');
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 2 });
+  const scaleGeometry = await page.evaluate(() => ({
+    scale: window.visualViewport?.scale ?? 1,
+    documentWidth: document.documentElement.scrollWidth,
+    bodyWidth: document.body.scrollWidth,
+    layoutWidth: document.documentElement.clientWidth,
+  }));
+  expect(scaleGeometry.scale).toBeCloseTo(2, 1);
+  expect(scaleGeometry.documentWidth).toBeLessThanOrEqual(scaleGeometry.layoutWidth);
+  expect(scaleGeometry.bodyWidth).toBeLessThanOrEqual(scaleGeometry.layoutWidth);
+  await cdp.detach();
+  expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
+  expect(diagnostics.httpFailures).toEqual([]);
+});
+
 test('keeps aggregate progress separate from fresh lesson state, dedupes action, and never requests media', async ({
   page,
 }) => {

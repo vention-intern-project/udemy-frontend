@@ -43,6 +43,23 @@ interface ChatMessageBubbleProps {
 }
 
 const AUTO_SCROLL_BOTTOM_THRESHOLD_PX = 24;
+const COMPACT_VIEWPORT_QUERY = '(max-width: 999px)';
+
+function isOutsideVisibleViewport(input: HTMLTextAreaElement) {
+  const inputRect = input.getBoundingClientRect();
+  const viewport = globalThis.visualViewport;
+  const left = viewport?.offsetLeft ?? 0;
+  const top = viewport?.offsetTop ?? 0;
+  const right = left + (viewport?.width ?? document.documentElement.clientWidth);
+  const bottom = top + (viewport?.height ?? document.documentElement.clientHeight);
+
+  return (
+    inputRect.right <= left ||
+    inputRect.left >= right ||
+    inputRect.bottom <= top ||
+    inputRect.top >= bottom
+  );
+}
 
 function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
   const isLearner = message.author === 'learner';
@@ -130,6 +147,23 @@ export function CourseChatContent({
   useLayoutEffect(() => {
     if (focusRequest > 0) focusComposerAtEnd();
   }, [focusComposerAtEnd, focusRequest]);
+  useEffect(() => {
+    if (
+      focusRequest === 0 ||
+      compact ||
+      !globalThis.matchMedia?.(COMPACT_VIEWPORT_QUERY).matches ||
+      typeof globalThis.requestAnimationFrame !== 'function'
+    )
+      return undefined;
+
+    const frame = globalThis.requestAnimationFrame(() => {
+      const input = inputRef.current;
+      if (input !== null && isOutsideVisibleViewport(input)) {
+        input.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
+      }
+    });
+    return () => globalThis.cancelAnimationFrame(frame);
+  }, [compact, focusRequest]);
   const inlineResponseFailure = chat.error === 'response_failed';
   const feedback = chat.error === null || inlineResponseFailure ? null : errorCopy(chat.error);
   const hasComposerAction = chat.draft.trim() !== '';

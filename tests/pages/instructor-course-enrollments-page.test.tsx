@@ -92,6 +92,26 @@ describe('InstructorCourseEnrollmentsPage', () => {
     expect(await screen.findByText(label)).toBeTruthy();
   });
 
+  it('preserves full long learner content in the populated roster', async () => {
+    const longName = `Ada-${'LongName'.repeat(20)}`;
+    const longEmail = `${'very-long-address.'.repeat(12)}example.test`;
+    const request: ApiClient['request'] = async (options) => {
+      if (options.path === '/me') return decode(options, instructor);
+      return decode(options, {
+        ...roster,
+        items: [
+          {
+            ...roster.items[0],
+            user: { ...roster.items[0].user, name: longName, email: longEmail },
+          },
+        ],
+      });
+    };
+    await renderPage(request);
+    expect(await screen.findByText(`${longName} Student`)).toBeTruthy();
+    expect(screen.getByText(longEmail)).toBeTruthy();
+  });
+
   it('rejects an oversized course ID locally without an API-013 request', async () => {
     const rosterRequests: ApiRequestOptions[] = [];
     const request: ApiClient['request'] = async (options) => {

@@ -103,6 +103,13 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
     >
       <fieldset className={styles.priceRange}>
         <legend className={styles.legend}>Price range</legend>
+        <span
+          className={styles.priceLabel}
+          data-part="catalog-filter-price-label"
+          aria-hidden="true"
+        >
+          Price:
+        </span>
         <Input
           label={
             <>

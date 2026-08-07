@@ -1034,7 +1034,12 @@ describe('CatalogPage public URL and pagination behavior', () => {
     if (!tooltip) throw new Error('Open card popover is required.');
     const tooltipContent = tooltip.querySelector('[data-part="course-card-tooltip-content"]');
     if (!tooltipContent) throw new Error('Open card tooltip reading surface is required.');
-    expect(price.compareDocumentPosition(tooltip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    if (!reactCard) throw new Error('React card is required.');
+    const footer = reactCard.querySelector('[data-part="course-card-footer"]');
+    expect(footer?.contains(price)).toBe(true);
+    expect(footer?.contains(reactCard.querySelector('[data-part="course-card-actions"]'))).toBe(
+      true,
+    );
     expect(tooltip?.getAttribute('role')).toBe('tooltip');
     expect(tooltip.getAttribute('aria-label')).toBeNull();
     expect(tooltip.getAttribute('aria-labelledby')).toBeTruthy();
@@ -1503,7 +1508,8 @@ describe('CatalogPage public URL and pagination behavior', () => {
     const visualPriceLabel = priceRange.querySelector('[data-part="catalog-filter-price-label"]');
     expect(semanticLegend?.textContent).toBe('Price range');
     expect(semanticLegend?.getAttribute('class')).toBeTruthy();
-    expect(visualPriceLabel).toBeNull();
+    expect(visualPriceLabel?.textContent).toBe('Price:');
+    expect(visualPriceLabel?.getAttribute('aria-hidden')).toBe('true');
     const minimum = screen.getByLabelText('Min price') as HTMLInputElement;
     const maximum = screen.getByLabelText('Max price') as HTMLInputElement;
     expect(screen.getByRole('spinbutton', { name: 'Min price' })).toBe(minimum);
@@ -1525,7 +1531,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
     const sortTrigger = screen.getByRole('button', { name: 'Sort by: Newest' });
     expect(sortTrigger.getAttribute('data-part')).toBe('catalog-sort-trigger');
     expect(sortTrigger.getAttribute('aria-controls')).toBe(null);
-    expect(screen.getByText('Sort', { exact: true }).getAttribute('aria-hidden')).toBe('true');
+    expect(screen.getByText('Sort:', { exact: true }).getAttribute('aria-hidden')).toBe('true');
     const toolbarControls = document.querySelector('[data-part="catalog-toolbar-controls"]');
     expect(toolbarControls).toBeTruthy();
     expect(within(toolbarControls as HTMLElement).queryByRole('combobox')).toBeNull();

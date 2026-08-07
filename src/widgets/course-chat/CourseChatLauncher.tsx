@@ -1,5 +1,5 @@
 import { MessageCircleMore, MoreVertical, Square, Trash2, X } from 'lucide-react';
-import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import { useCourseChat, type CourseAssistantContext } from '@features/course-chat';
@@ -18,47 +18,13 @@ export function CourseChatLauncher({ assistant }: CourseChatLauncherProps) {
   const widgetId = useId();
   const [open, setOpen] = useState(false);
   const [interactionMounted, setInteractionMounted] = useState(false);
-  const rootRef = useRef<HTMLElement>(null);
   const launcherRef = useRef<HTMLButtonElement>(null);
-  useLayoutEffect(() => {
-    const root = rootRef.current;
-    const footer = document.querySelector('footer');
-    if (root === null || footer === null) return undefined;
-
-    let frame = 0;
-    const applyFooterClearance = () => {
-      const clearance = Math.max(0, window.innerHeight - footer.getBoundingClientRect().top);
-      root.style.setProperty('--course-chat-footer-clearance', `${clearance}px`);
-    };
-    const updateFooterClearance = () => {
-      if (frame !== 0) return;
-      frame = window.requestAnimationFrame(() => {
-        frame = 0;
-        applyFooterClearance();
-      });
-    };
-    const observer =
-      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updateFooterClearance);
-    observer?.observe(footer);
-    if (footer.parentElement !== null) observer?.observe(footer.parentElement);
-    window.addEventListener('scroll', updateFooterClearance, { passive: true });
-    window.addEventListener('resize', updateFooterClearance);
-    applyFooterClearance();
-
-    return () => {
-      window.cancelAnimationFrame(frame);
-      window.removeEventListener('scroll', updateFooterClearance);
-      window.removeEventListener('resize', updateFooterClearance);
-      observer?.disconnect();
-      root.style.removeProperty('--course-chat-footer-clearance');
-    };
-  }, []);
   const close = (restoreFocus = true) => {
     setOpen(false);
     if (restoreFocus) launcherRef.current?.focus();
   };
   return (
-    <aside ref={rootRef} className={styles.root} aria-label="Course assistant">
+    <aside className={styles.root} aria-label="Course assistant">
       {interactionMounted ? (
         <CourseChatLauncherInteraction
           assistant={assistant}

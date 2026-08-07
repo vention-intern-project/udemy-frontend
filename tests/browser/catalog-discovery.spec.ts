@@ -41,12 +41,20 @@ function permittedCourse(title = 'React') {
 }
 
 function expectedCatalogHeroHeight(viewportWidth: number): number {
-  return Math.max(192, Math.min(viewportWidth * 0.28, 288));
+  if (viewportWidth <= 767) return 208;
+  if (viewportWidth >= 1100) return 288;
+  return Math.max(208, Math.min(viewportWidth * 0.22, 320));
 }
 
 interface CatalogBrowserMonitor {
   (): void;
   allowRequestFailure(identity: RequestFailureIdentity, occurrences?: number): void;
+}
+
+interface ScreenshotPixelProbe {
+  expected: number[];
+  samples: number[][];
+  junctionSamples: number[][];
 }
 
 async function monitor(page: Page): Promise<CatalogBrowserMonitor> {
@@ -168,7 +176,8 @@ test('renders a semantic full-width catalog hero at scrollable physical client e
     contentType: 'image/png',
   });
 
-  for (const width of [320, 768, 1280, 1440, 640]) {
+  let previousLeftExtension = 0;
+  for (const width of [320, 390, 640, 768, 1280, 1440, 1600, 1960, 1961, 2200, 2560, 3840]) {
     await page.setViewportSize({ width, height: 900 });
     await expect(heading).toBeVisible();
     const geometry = await page.evaluate(() => {
@@ -190,6 +199,12 @@ test('renders a semantic full-width catalog hero at scrollable physical client e
         titleClientWidth: title.clientWidth,
         titleScrollWidth: title.scrollWidth,
         titleHeight: titleRect.height,
+        heroBackgroundPosition: getComputedStyle(hero).backgroundPosition,
+        heroBackgroundRepeat: getComputedStyle(hero).backgroundRepeat,
+        heroBackgroundSize: getComputedStyle(hero).backgroundSize,
+        heroArtworkDisplay: getComputedStyle(hero, '::before').display,
+        heroArtworkImage: getComputedStyle(hero, '::before').backgroundImage,
+        heroArtworkSize: getComputedStyle(hero, '::before').backgroundSize,
         documentWidth: document.documentElement.scrollWidth,
         documentHeight: document.documentElement.scrollHeight,
         bodyWidth: document.body.scrollWidth,
@@ -209,6 +224,105 @@ test('renders a semantic full-width catalog hero at scrollable physical client e
     expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.clientWidth);
     expect(geometry.bodyWidth).toBeLessThanOrEqual(geometry.clientWidth);
     expect(geometry.documentHeight).toBeGreaterThan(geometry.clientHeight);
+    if (geometry.clientWidth > 1960 && geometry.heroBackgroundSize.includes(',')) {
+      const backgroundLayers = geometry.heroBackgroundSize.split(',').map((layer) => layer.trim());
+      expect(backgroundLayers).toHaveLength(2);
+      expect(backgroundLayers[0]).toBe('100% 100%');
+      expect(backgroundLayers[1]).toBe('1960px');
+      expect(geometry.heroBackgroundPosition).toContain('100% 50%');
+      expect(geometry.heroBackgroundRepeat).toBe('no-repeat, no-repeat');
+
+      const leftExtension = geometry.clientWidth - 1960;
+      expect(leftExtension).toBeGreaterThan(previousLeftExtension);
+      previousLeftExtension = leftExtension;
+
+      const heroScreenshot = await page.locator('[data-part="catalog-hero"]').screenshot({
+        animations: 'disabled',
+      });
+      const extensionPixels = await page.evaluate<
+        ScreenshotPixelProbe,
+        { imageBase64: string; extensionX: number; junctionX: number }
+      >(
+        async ({ imageBase64, extensionX, junctionX }) => {
+          const image = new Image();
+          image.src = `data:image/png;base64,${imageBase64}`;
+          await image.decode();
+          const canvas = document.createElement('canvas');
+          canvas.width = image.naturalWidth;
+          canvas.height = image.naturalHeight;
+          const context = canvas.getContext('2d');
+          if (!context) throw new Error('Catalog hero screenshot pixel probe is unavailable.');
+          context.drawImage(image, 0, 0);
+
+          const hero = document.querySelector<HTMLElement>('[data-part="catalog-hero"]');
+          if (!hero) throw new Error('Catalog hero pixel target is missing.');
+          const expectedCanvas = document.createElement('canvas');
+          expectedCanvas.width = 1;
+          expectedCanvas.height = 1;
+          const expectedContext = expectedCanvas.getContext('2d');
+          if (!expectedContext)
+            throw new Error('Catalog hero expected pixel probe is unavailable.');
+          expectedContext.fillStyle = getComputedStyle(hero).backgroundColor;
+          expectedContext.fillRect(0, 0, 1, 1);
+
+          const screenshotX = (x: number) =>
+            Math.min(
+              image.naturalWidth - 1,
+              Math.max(0, Math.floor((x / window.innerWidth) * image.naturalWidth)),
+            );
+          const sampleRows = [0.2, 0.5, 0.8].map((ratio) =>
+            Math.min(image.naturalHeight - 1, Math.floor(image.naturalHeight * ratio)),
+          );
+          const junctionRows = [0.05, 0.95].map((ratio) =>
+            Math.min(image.naturalHeight - 1, Math.floor(image.naturalHeight * ratio)),
+          );
+          return {
+            expected: Array.from(expectedContext.getImageData(0, 0, 1, 1).data),
+            samples: sampleRows.map((y) =>
+              Array.from(context.getImageData(screenshotX(extensionX), y, 1, 1).data),
+            ),
+            junctionSamples: junctionRows.flatMap((y) => [
+              Array.from(context.getImageData(screenshotX(junctionX - 1), y, 1, 1).data),
+              Array.from(context.getImageData(screenshotX(junctionX), y, 1, 1).data),
+            ]),
+          };
+        },
+        {
+          imageBase64: heroScreenshot.toString('base64'),
+          extensionX: 0,
+          junctionX: leftExtension,
+        },
+      );
+      expect(
+        extensionPixels.samples.every((sample) =>
+          sample.every(
+            (channel, index) => Math.abs(channel - (extensionPixels.expected[index] ?? 0)) <= 1,
+          ),
+        ),
+      ).toBe(true);
+      // The intended dark overlay can blend the image edge into the neutral base,
+      // but adjacent pixels at the 1960px junction must not form a visible hard seam.
+      const maxJunctionChannelDelta = 32;
+      for (let index = 0; index < extensionPixels.junctionSamples.length; index += 2) {
+        const leftPixel = extensionPixels.junctionSamples[index];
+        const rightPixel = extensionPixels.junctionSamples[index + 1];
+        expect(leftPixel).toBeDefined();
+        expect(rightPixel).toBeDefined();
+        expect(
+          leftPixel?.every(
+            (channel, channelIndex) =>
+              Math.abs(channel - (rightPixel?.[channelIndex] ?? 0)) <= maxJunctionChannelDelta,
+          ),
+        ).toBe(true);
+      }
+    } else if (geometry.clientWidth <= 895) {
+      expect(geometry.heroArtworkDisplay).toBe('none');
+      expect(geometry.heroBackgroundSize).toBe('auto');
+    } else {
+      expect(geometry.heroArtworkDisplay).toBe('block');
+      expect(geometry.heroArtworkImage).toContain('catalog-hero-ui025.png');
+      expect(geometry.heroArtworkSize).not.toBe('auto');
+    }
     await testInfo.attach(`catalog-hero-scrollable-client-edge-${width}`, {
       body: await page.screenshot({ fullPage: false }),
       contentType: 'image/png',
@@ -247,7 +361,7 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
     }
   });
   const longTitle =
-    'A deliberately long course title that overflows the available card heading width and must remain accessible in full';
+    'A deliberately long course title that overflows the available card heading width and must remain accessible in full while demonstrating that compact CourseCards retain a stable two-line title region across intermediate and near-breakpoint viewport widths without collisions or focus loss';
   const courses = [
     {
       ...permittedCourse('React'),
@@ -339,7 +453,7 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
   await expect(page.getByRole('tooltip')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'View course details' })).toHaveCount(5);
 
-  for (const width of [320, 390, 768, 1100, 1280, 1440]) {
+  for (const width of [320, 390, 617, 767, 768, 1100, 1280, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     const gridColumnCount = await page
       .locator('[data-part="catalog-result-list"]')
@@ -353,6 +467,8 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
         const preview = card.querySelector<HTMLElement>('[data-part="course-card-preview"]');
         const body = card.querySelector<HTMLElement>('[data-part="course-card-body"]');
         const price = card.querySelector<HTMLElement>('[data-part="course-card-price"]');
+        const footer = card.querySelector<HTMLElement>('[data-part="course-card-footer"]');
+        const discoveryLayout = card.closest<HTMLElement>('[data-part="catalog-discovery-layout"]');
         const link = card.querySelector<HTMLElement>('a[href^="/courses/"]');
         const title = card.querySelector<HTMLElement>('h3');
         const meta = card.querySelector<HTMLElement>('[data-part="course-card-metadata"]');
@@ -362,12 +478,24 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
         const action = card.querySelector<HTMLElement>(
           '[data-part="course-card-actions"] > :first-child',
         );
-        if (!preview || !body || !price || !link || !title || !meta || !separator || !action)
+        if (
+          !preview ||
+          !body ||
+          !price ||
+          !footer ||
+          !discoveryLayout ||
+          !link ||
+          !title ||
+          !meta ||
+          !separator ||
+          !action
+        )
           throw new Error('Catalog card geometry targets are missing.');
         const bodyStyle = getComputedStyle(body);
         const titleStyle = getComputedStyle(title);
         const metaStyle = getComputedStyle(meta);
         const priceStyle = getComputedStyle(price);
+        const footerStyle = getComputedStyle(footer);
         const actionControl = action.matches('a, button')
           ? action
           : action.querySelector<HTMLElement>('button');
@@ -381,8 +509,11 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
         const separatorStyle = getComputedStyle(separator);
         return {
           height: rect.height,
+          discoveryLayoutInlineSize: discoveryLayout.getBoundingClientRect().width,
           previewWidth: preview.getBoundingClientRect().width,
           previewHeight: preview.getBoundingClientRect().height,
+          previewRight: preview.getBoundingClientRect().right,
+          bodyContentLeft: titleRect.left,
           bodyTop: body.getBoundingClientRect().top,
           priceBottom: priceRect.bottom,
           bodyGap: bodyStyle.rowGap,
@@ -424,9 +555,15 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
           actionLeft: actionRect.left,
           priceRight: priceRect.right,
           priceTextRight: price.querySelector<HTMLElement>('data')!.getBoundingClientRect().right,
-          linkBottom: link.getBoundingClientRect().bottom,
+          priceActionGap:
+            actionRect.left -
+            price.querySelector<HTMLElement>('data')!.getBoundingClientRect().right,
+          footerPaddingInlineEnd: footerStyle.paddingInlineEnd,
+          footerPaddingBlockEnd: footerStyle.paddingBlockEnd,
+          footerBottom: footer.getBoundingClientRect().bottom,
           cardBottom: rect.bottom,
-          priceIsLastLinkChild: link.lastElementChild === price,
+          footerContainsPrice: footer.contains(price),
+          footerContainsAction: footer.contains(action),
         };
       }),
     );
@@ -434,12 +571,32 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
     expect(
       geometry.every((card) => Math.abs(card.previewWidth / card.previewHeight - 16 / 9) <= 0.02),
     ).toBe(true);
+    if (width < 768) {
+      const discoveryLayoutInlineSize = geometry[0]?.discoveryLayoutInlineSize;
+      if (discoveryLayoutInlineSize === undefined)
+        throw new Error('Catalog discovery container geometry is missing.');
+      const usesWideCompactSlot = discoveryLayoutInlineSize >= 544;
+      if (width === 320 || width === 390) expect(usesWideCompactSlot).toBe(false);
+      if (width === 767) expect(usesWideCompactSlot).toBe(true);
+      const expectedPreviewWidth = usesWideCompactSlot ? 160 : 128;
+      const expectedPreviewHeight = usesWideCompactSlot ? 90 : 72;
+      expect(
+        geometry.every(
+          (card) =>
+            Math.abs(card.discoveryLayoutInlineSize - discoveryLayoutInlineSize) <= 0.5 &&
+            Math.abs(card.previewWidth - expectedPreviewWidth) <= 0.5 &&
+            Math.abs(card.previewHeight - expectedPreviewHeight) <= 0.5,
+        ),
+      ).toBe(true);
+    }
     expect(
       geometry.every((card) => card.titleFontSize === '16px' && card.titleLineHeight === '24px'),
     ).toBe(true);
     expect(
-      geometry.every(
-        (card) => Math.abs(card.titleHeight - 48) <= 0.5 && card.titleMinHeight === '48px',
+      geometry.every((card) =>
+        width < 768
+          ? Math.abs(card.titleHeight - 48) <= 0.5 && card.titleMinHeight === '48px'
+          : Math.abs(card.titleHeight - 48) <= 0.5 && card.titleMinHeight === '48px',
       ),
     ).toBe(true);
     expect(
@@ -447,26 +604,29 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
         (card) => card.metadataFontSize === '13px' && card.metadataLineHeight === '18px',
       ),
     ).toBe(true);
+    if (width < 768) {
+      expect(geometry.every((card) => card.priceActionGap >= 31)).toBe(true);
+    }
     expect(
       geometry.every((card) => card.priceFontSize === '16px' && card.priceLineHeight === '24px'),
     ).toBe(true);
     expect(
-      geometry.every(
-        (card) =>
-          card.bodyPadding === '12px' &&
-          card.pricePaddingBlockStart === '12px' &&
-          card.pricePaddingBlockEnd === '12px',
-      ),
+      geometry.every((card) => card.bodyPadding === (width < 768 ? '12px 12px 12px 0px' : '12px')),
     ).toBe(true);
     expect(
       geometry.every(
         (card) =>
-          card.bodyGap === '8px' &&
+          card.bodyGap === (width < 768 ? '12px' : '8px') &&
           card.metadataDisplay === 'flex' &&
-          card.metadataWhiteSpace === 'nowrap' &&
-          card.lessonWhiteSpace === 'nowrap' &&
-          card.metadataHeight <= 18.5 &&
+          (width < 768
+            ? card.metadataWhiteSpace === 'normal' && card.lessonWhiteSpace === 'normal'
+            : card.metadataWhiteSpace === 'nowrap' && card.lessonWhiteSpace === 'nowrap') &&
           card.metadataScrollHeight >= card.metadataClientHeight,
+      ),
+    ).toBe(true);
+    expect(
+      geometry.every(
+        (card) => width >= 768 || Math.abs(card.bodyContentLeft - card.previewRight - 12) <= 1,
       ),
     ).toBe(true);
     expect(
@@ -476,7 +636,7 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
           Math.abs(card.separatorHeight - 18) <= 0.5 &&
           card.separatorMarginInlineStart === '12px' &&
           card.separatorMarginInlineEnd === '12px' &&
-          card.separatorCentreDelta <= 0.5,
+          (width < 768 || card.separatorCentreDelta <= 0.5),
       ),
     ).toBe(true);
     const firstRow = geometry.slice(
@@ -495,25 +655,26 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
             !card.actionDisabled &&
             card.actionMinHeight === '44px' &&
             card.actionHeight >= 44 &&
-            card.actionPaddingInlineStart === '12px' &&
-            card.actionPaddingInlineEnd === '12px' &&
+            card.actionPaddingInlineStart === (width < 768 ? '8px' : '12px') &&
+            card.actionPaddingInlineEnd === (width < 768 ? '8px' : '12px') &&
             card.actionFontSize === '16px') ||
             (card.actionTagName === 'BUTTON' &&
               card.actionDisabled &&
               card.actionMinHeight === '44px' &&
               card.actionHeight >= 44 &&
-              card.actionPaddingInlineStart === '12px' &&
-              card.actionPaddingInlineEnd === '12px' &&
+              card.actionPaddingInlineStart === (width < 768 ? '8px' : '12px') &&
+              card.actionPaddingInlineEnd === (width < 768 ? '8px' : '12px') &&
               card.actionFontSize === '14px')),
       ),
     ).toBe(true);
     expect(
       geometry.every(
         (card) =>
-          Math.abs(card.priceBottom - card.actionBottom) <= 1 &&
-          Math.abs(card.priceBottom - card.linkBottom) <= 1 &&
-          Math.abs(card.priceBottom - card.cardBottom) <= 1 &&
-          card.priceIsLastLinkChild,
+          Math.abs(card.footerBottom - card.cardBottom) <= 1 &&
+          card.footerPaddingInlineEnd === '12px' &&
+          card.footerPaddingBlockEnd === (width < 768 ? '8px' : '12px') &&
+          card.footerContainsPrice &&
+          card.footerContainsAction,
       ),
     ).toBe(true);
     expect(
@@ -523,6 +684,45 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
           document.body.scrollWidth <= document.documentElement.clientWidth,
       ),
     ).toBe(true);
+    if (width === 617 || width === 767) {
+      const compactLongTitle = page.getByRole('link', { name: longTitle });
+      await expect(compactLongTitle).toBeVisible();
+      const compactLongTitleGeometry = await compactLongTitle
+        .getByRole('heading', { level: 3 })
+        .evaluate((title) => {
+          const style = getComputedStyle(title);
+          const lineHeight = Number.parseFloat(style.lineHeight);
+          return {
+            display: style.display,
+            lineClamp: style.webkitLineClamp,
+            boxOrient: style.webkitBoxOrient,
+            overflowY: style.overflowY,
+            lineHeight,
+            height: title.getBoundingClientRect().height,
+            clientHeight: title.clientHeight,
+            scrollHeight: title.scrollHeight,
+          };
+        });
+      expect(compactLongTitleGeometry.display).toBe('flow-root');
+      expect(compactLongTitleGeometry.lineClamp).toBe('2');
+      expect(compactLongTitleGeometry.boxOrient).toBe('vertical');
+      expect(compactLongTitleGeometry.overflowY).toBe('hidden');
+      expect(compactLongTitleGeometry.height).toBeLessThanOrEqual(
+        compactLongTitleGeometry.lineHeight * 2 + 1,
+      );
+      expect(compactLongTitleGeometry.scrollHeight).toBeGreaterThan(
+        compactLongTitleGeometry.clientHeight,
+      );
+      await reactLink.focus();
+      await expect(reactLink).toBeFocused();
+      expect(await reactLink.evaluate((element) => element.matches(':focus-visible'))).toBe(true);
+      await page.keyboard.press('Tab');
+      const typeScriptLink = page.getByRole('link', { name: 'TypeScript' });
+      await expect(typeScriptLink).toBeFocused();
+      expect(await typeScriptLink.evaluate((element) => element.matches(':focus-visible'))).toBe(
+        true,
+      );
+    }
   }
 
   const longTitleLink = page.getByRole('link', { name: longTitle });
@@ -657,11 +857,20 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
       throw new Error('Adjacent catalog card is required for the pointer seam scenario.');
     const sourceRect = card.getBoundingClientRect();
     const neighborRect = neighbor.getBoundingClientRect();
-    return {
-      sourceX: sourceRect.right - 2,
-      neighborX: neighborRect.left + 2,
-      y: Math.max(sourceRect.top, neighborRect.top) + 24,
-    };
+    const sourceX = sourceRect.right - 2;
+    const neighborX = neighborRect.left + 2;
+    const y = [24, sourceRect.height / 2, sourceRect.height - 24]
+      .map((offset) => Math.max(sourceRect.top, neighborRect.top) + offset)
+      .find(
+        (candidateY) =>
+          document.elementFromPoint(sourceX, candidateY)?.closest('[data-course-card-id]') ===
+            card &&
+          document.elementFromPoint(neighborX, candidateY)?.closest('[data-course-card-id]') ===
+            neighbor,
+      );
+    if (y === undefined)
+      throw new Error('Catalog pointer seam is obscured by the active disclosure surface.');
+    return { sourceX, neighborX, y };
   });
   await page.mouse.move(seam.sourceX, seam.y);
   await page.mouse.move(seam.neighborX, seam.y, { steps: 8 });
@@ -745,44 +954,47 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
         Math.abs(action.inlineGap - 6) <= 0.5,
     ),
   ).toBe(true);
-  await expect(draftButton).toHaveCSS('background-color', 'rgb(109, 40, 217)');
+  await expect(draftButton).toHaveCSS('background-color', 'rgb(91, 63, 214)');
   await expect(draftButton).toHaveCSS('color', 'rgb(255, 255, 255)');
-  await expect(freeLink).toHaveCSS('background-color', 'rgb(109, 40, 217)');
+  await expect(freeLink).toHaveCSS('background-color', 'rgb(91, 63, 214)');
   await expect(freeLink).toHaveCSS('color', 'rgb(255, 255, 255)');
   await expect(freeLink).toHaveCSS('border-top-left-radius', '8px');
   await expect(paidLink).toHaveCSS('border-top-left-radius', '8px');
-  const actionGeometry = await Promise.all([reactCard.boundingBox(), draftButton.boundingBox()]);
+  const actionGeometry = await Promise.all([
+    reactCard.locator('[data-part="course-card-footer"]').boundingBox(),
+    draftButton.boundingBox(),
+  ]);
   expect(actionGeometry[0]).not.toBeNull();
   expect(actionGeometry[1]).not.toBeNull();
   expect(
     Math.abs(
       actionGeometry[1]!.x +
         actionGeometry[1]!.width -
-        (actionGeometry[0]!.x + actionGeometry[0]!.width),
+        (actionGeometry[0]!.x + actionGeometry[0]!.width) +
+        12,
     ),
-  ).toBeLessThanOrEqual(1);
+  ).toBeLessThanOrEqual(0.5);
   expect(
     Math.abs(
       actionGeometry[1]!.y +
         actionGeometry[1]!.height -
-        (actionGeometry[0]!.y + actionGeometry[0]!.height),
+        (actionGeometry[0]!.y + actionGeometry[0]!.height) +
+        12,
     ),
-  ).toBeLessThanOrEqual(1);
+  ).toBeLessThanOrEqual(0.5);
   const actionRadii = await Promise.all([
     reactCard.evaluate((card) => getComputedStyle(card).borderBottomRightRadius),
     draftButton.evaluate((button) => getComputedStyle(button).borderBottomRightRadius),
   ]);
-  expect(
-    Math.abs(Number.parseFloat(actionRadii[0]) - Number.parseFloat(actionRadii[1])),
-  ).toBeLessThanOrEqual(1);
+  expect(actionRadii[1]).toBe('8px');
   await page.keyboard.press('Tab');
   await expect(draftButton).not.toBeFocused();
   await draftButton.evaluate((button) => (button as HTMLButtonElement).click());
   expect(forbiddenMutationRequests).toEqual([]);
 
   await reactLink.focus();
-  await page.setViewportSize({ width: 320, height: 900 });
-  await expect(reactTooltip).toHaveAttribute('data-placement', 'bottom');
+  await page.setViewportSize({ width: 768, height: 900 });
+  await expect(reactTooltip).toHaveAttribute('data-placement', 'right');
   expect(
     await reactTooltip.evaluate((tooltip) => tooltip.parentElement?.getAttribute('data-part')),
   ).toBe('course-card');
@@ -791,7 +1003,7 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
     content: getComputedStyle(tooltip, '::before').content,
   }));
   expect(bottomConnector.content).toBe('""');
-  expect(bottomConnector.borderBottomWidth).toBe('9px');
+  expect(bottomConnector.borderBottomWidth).toBe('8px');
   await expect(reactTooltip).toBeVisible();
   const narrowPlacement = await reactTooltip.evaluate((tooltip) => ({
     left: tooltip.getBoundingClientRect().left,
@@ -1058,8 +1270,11 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
   await next.focus();
   expect(await next.evaluate((button) => button.matches(':focus-visible'))).toBe(true);
   await expect(next).toBeEnabled();
-  await next.click();
+  await page.evaluate(() => window.scrollTo(0, 180));
+  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+  await next.evaluate((button) => (button as HTMLButtonElement).click());
   await expect(page).toHaveURL(/page=2/);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
   await expect(next).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Go to page 2' })).toHaveCount(0);
   await expect(previous).toBeEnabled();
@@ -1907,7 +2122,7 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
     'aria-activedescendant',
     (await lowToHighOption.getAttribute('id')) ?? '',
   );
-  const purple = 'rgb(109, 40, 217)';
+  const purple = 'rgb(91, 63, 214)';
   for (const { target, expectsBorder } of [
     { target: filters.getByLabel('Min price'), expectsBorder: false },
     { target: filters.getByLabel('Max price'), expectsBorder: false },
@@ -2187,16 +2402,49 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
         document.body.scrollWidth <= document.documentElement.clientWidth,
     ),
   ).toBe(true);
+  const compactPriceLabel = filters.locator('[data-part="catalog-filter-price-label"]');
+  const compactSortLabel = sortLabel.locator('[class*="sortCompact"]');
+  await expect(compactPriceLabel).toHaveText('Price:');
+  await expect(compactPriceLabel).toHaveAttribute('aria-hidden', 'true');
+  await expect(compactSortLabel).toHaveText('Sort:');
+  const compactLabelParity = await Promise.all(
+    [compactPriceLabel, compactSortLabel].map((label) =>
+      label.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          color: style.color,
+          fontSize: style.fontSize,
+          fontWeight: style.fontWeight,
+          lineHeight: style.lineHeight,
+        };
+      }),
+    ),
+  );
+  expect(compactLabelParity[0]).toEqual(compactLabelParity[1]);
+  const mobilePriceLabels = await Promise.all(
+    [filters.getByText('Min', { exact: true }), filters.getByText('Max', { exact: true })].map(
+      async (label) => {
+        const box = await label.boundingBox();
+        return {
+          box,
+          clip: await label.evaluate((element) => getComputedStyle(element).clip),
+          position: await label.evaluate((element) => getComputedStyle(element).position),
+        };
+      },
+    ),
+  );
+  for (const label of mobilePriceLabels) {
+    expect(label.box?.width).toBeGreaterThan(1);
+    expect(label.box?.height).toBeGreaterThan(1);
+    expect(label.clip).toBe('auto');
+    expect(label.position).not.toBe('absolute');
+  }
   await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toHaveCount(0);
-  const mobileMenu = page.getByRole('button', { name: 'Open navigation' });
-  await mobileMenu.click();
-  const mobileNavigation = page.getByRole('navigation', { name: 'Mobile navigation' });
-  await expect(mobileNavigation.getByRole('link', { name: 'Catalog' })).toBeVisible();
-  await expect(mobileNavigation.getByRole('link', { name: 'Log in' })).toBeVisible();
-  await expect(mobileNavigation.getByRole('link', { name: 'Sign up' })).toBeVisible();
-  await page.keyboard.press('Escape');
-  await expect(mobileNavigation).toHaveCount(0);
-  await expect(mobileMenu).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Open navigation' })).toHaveCount(0);
+  const anonymousNavigation = page.getByRole('navigation', { name: 'Anonymous navigation' });
+  await expect(anonymousNavigation.getByRole('link', { name: 'Catalog' })).toBeVisible();
+  await expect(anonymousNavigation.getByRole('link', { name: 'Log in' })).toBeVisible();
+  await expect(anonymousNavigation.getByRole('link', { name: 'Sign up' })).toBeVisible();
   await sortTrigger.focus();
   await expect(sortTrigger).toBeFocused();
   const mobileToolbarGeometry = await Promise.all([
@@ -2276,8 +2524,10 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
       first.y < second.y ||
       (Math.abs(first.y - second.y) <= 1 && first.x + first.width <= second.x + 1);
     expect(comesBefore(responsiveToolbarGeometry[1]!, responsiveToolbarGeometry[2]!)).toBe(true);
+    const responsiveVisiblePriceLabel =
+      width === 768 ? priceLabel : filters.locator('[data-part="catalog-filter-price-label"]');
     const responsivePriceGeometry = await Promise.all([
-      priceLabel.boundingBox(),
+      responsiveVisiblePriceLabel.boundingBox(),
       filters.getByLabel('Min price').boundingBox(),
       filters.getByLabel('Max price').boundingBox(),
       sortTrigger.boundingBox(),
@@ -2297,11 +2547,12 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
       expect(Math.abs(responsivePriceGeometry[1]!.width - 120)).toBeLessThanOrEqual(1);
       expect(Math.abs(responsivePriceGeometry[3]!.width - 148)).toBeLessThanOrEqual(1);
     } else {
-      expect(responsivePriceGeometry[0]!.width).toBeLessThanOrEqual(1);
-      expect(responsivePriceGeometry[0]!.height).toBeLessThanOrEqual(1);
+      expect(responsivePriceGeometry[0]!.width).toBeGreaterThan(1);
+      expect(responsivePriceGeometry[0]!.height).toBeGreaterThan(1);
       expect(
         Math.abs(responsivePriceGeometry[1]!.y - responsivePriceGeometry[2]!.y),
       ).toBeLessThanOrEqual(1);
+      expect(responsivePriceGeometry[0]!.y).toBeLessThan(responsivePriceGeometry[1]!.y);
       expect(responsivePriceGeometry[1]!.x).toBeLessThan(responsivePriceGeometry[2]!.x);
       expect(responsivePriceGeometry[1]!.width).toBeGreaterThanOrEqual(128);
       expect(responsivePriceGeometry[2]!.width).toBeGreaterThanOrEqual(128);
@@ -2613,7 +2864,7 @@ test('contains a right-exhausted left course tooltip without horizontal document
   const cards = page.locator('[data-part="course-card"]');
   const recordedGeometry: string[] = [];
   await expect(cards).toHaveCount(4);
-  for (const width of [1280, 1100, 768, 640, 390, 320]) {
+  for (const width of [1280, 1100, 768]) {
     if (await page.getByRole('tooltip').count()) {
       await page.keyboard.press('Escape');
       await expect(page.getByRole('tooltip')).toHaveCount(0);
@@ -2752,8 +3003,7 @@ test('contains a right-exhausted left course tooltip without horizontal document
         ancestors,
       };
     });
-    if (width >= 768) expect(geometry.placement).toBe('left');
-    else expect(geometry.placement).toBe('bottom');
+    expect(geometry.placement).toBe('left');
     expect(geometry.tooltip.rect.left).toBeGreaterThanOrEqual(12);
     expect(geometry.tooltip.rect.right).toBeLessThanOrEqual(geometry.clientWidth - 12);
     // The placement shell deliberately leaves its 9px outer connector border outside the reading box.
@@ -2961,7 +3211,7 @@ test('renders the DD-174 quiet cart state and Details disclosure without changin
     });
   });
 
-  await page.setViewportSize({ width: 390, height: 900 });
+  await page.setViewportSize({ width: 1024, height: 900 });
   await page.goto('/');
   const card = page
     .locator('[data-part="course-card"]')
@@ -2999,14 +3249,14 @@ test('renders the DD-174 quiet cart state and Details disclosure without changin
   await button.hover();
   const hovered = await readPillState();
   expect(hovered.background).toBe('rgb(255, 255, 255)');
-  expect(hovered.border).toBe('rgb(109, 40, 217)');
+  expect(hovered.border).toBe('rgb(91, 63, 214)');
   expect(hovered.color).toBe('rgb(17, 24, 39)');
 
   await button.click();
   await expect(button).toHaveAttribute('aria-pressed', 'true');
   const pinned = await readPillState();
   expect(pinned.background).toBe('rgb(255, 255, 255)');
-  expect(pinned.border).toBe('rgb(109, 40, 217)');
+  expect(pinned.border).toBe('rgb(91, 63, 214)');
   expect(pinned.color).toBe('rgb(17, 24, 39)');
 
   await page.keyboard.press('Shift+Tab');
@@ -3014,7 +3264,7 @@ test('renders the DD-174 quiet cart state and Details disclosure without changin
   await expect(button).toBeFocused();
   const focused = await readPillState();
   expect(focused.outlineWidth).toBe('2px');
-  expect(focused.outlineColor).toBe('rgb(109, 40, 217)');
+  expect(focused.outlineColor).toBe('rgb(91, 63, 214)');
   expect(
     await page.evaluate(
       () =>
@@ -3153,6 +3403,7 @@ test('renders the DD-045 CourseCard action and status system without changing ac
         { ...permittedCourse('Free course'), id: 8, price: '0.00' },
         { ...permittedCourse('Enrolled course'), id: 9, price: '9.99' },
         { ...permittedCourse('Remove course'), id: 10, price: '9.99' },
+        { ...permittedCourse('Draft course'), id: 11, published_at: null },
       ]),
     });
   });
@@ -3166,19 +3417,63 @@ test('renders the DD-045 CourseCard action and status system without changing ac
   const enroll = cardFor('Free course').getByRole('button', { name: 'Enroll free' });
   const enrolled = cardFor('Enrolled course').locator('[data-part="course-card-action-status"]');
   const remove = cardFor('Remove course').getByRole('button', { name: 'Remove' });
+  const unpublished = cardFor('Draft course').getByRole('button', { name: 'Not published' });
   await expect(add).toBeVisible();
   await expect(enroll).toBeVisible();
   await expect(enrolled).toHaveText('Enrolled');
   await expect(remove).toBeVisible();
+  await expect(unpublished).toBeDisabled();
   await expect(enrolled.locator('button, a')).toHaveCount(0);
   expect(await enrolled.evaluate((element) => element.tabIndex)).toBe(-1);
 
+  const requiredActionLabels = [
+    [add, 'Add to cart'],
+    [enroll, 'Enroll free'],
+    [enrolled, 'Enrolled'],
+    [remove, 'Remove'],
+    [unpublished, 'Not published'],
+  ] as const;
+  for (const width of [320, 390, 768]) {
+    await page.setViewportSize({ width, height: 900 });
+    const labels = await Promise.all(
+      requiredActionLabels.map(async ([control, expectedText]) => ({
+        expectedText,
+        ...(await control.evaluate((element) => {
+          const label = element.querySelector<HTMLElement>(
+            '[data-part="course-card-action-content"] span',
+          );
+          if (!label) throw new Error('CourseCard action label is missing.');
+          return {
+            text: label.textContent,
+            clientWidth: label.clientWidth,
+            scrollWidth: label.scrollWidth,
+          };
+        })),
+      })),
+    );
+    expect(
+      labels.every(
+        (label) =>
+          label.text === label.expectedText &&
+          label.clientWidth > 0 &&
+          label.scrollWidth <= label.clientWidth,
+      ),
+    ).toBe(true);
+    expect(
+      await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth <= document.documentElement.clientWidth &&
+          document.body.scrollWidth <= document.documentElement.clientWidth,
+      ),
+    ).toBe(true);
+  }
+
   const expectedIcons = [
-    [add, 'lucide-shopping-cart'],
     [enroll, 'lucide-user-plus'],
     [enrolled, 'lucide-circle-check'],
-    [remove, 'lucide-trash-2'],
   ] as const;
+  await expect(add.locator('svg')).toHaveCount(0);
+  await expect(remove.locator('svg')).toHaveCount(0);
   for (const [control, iconClass] of expectedIcons) {
     const icon = control.locator('svg');
     await expect(icon).toHaveClass(new RegExp(iconClass));
@@ -3231,31 +3526,31 @@ test('renders the DD-045 CourseCard action and status system without changing ac
     ),
   );
   expect(styles[0]).toMatchObject({
-    background: 'rgb(109, 40, 217)',
+    background: 'rgb(91, 63, 214)',
     color: 'rgb(255, 255, 255)',
     contentGap: '6px',
     lineHeight: '20px',
     whiteSpace: 'nowrap',
   });
   expect(styles[1]).toMatchObject({
-    background: 'rgb(109, 40, 217)',
+    background: 'rgb(91, 63, 214)',
     color: 'rgb(255, 255, 255)',
     contentGap: '6px',
     lineHeight: '20px',
     whiteSpace: 'nowrap',
   });
   expect(styles[2]).toMatchObject({
-    background: 'rgb(237, 233, 254)',
-    color: 'rgb(76, 29, 149)',
-    border: 'rgb(221, 214, 254)',
+    background: 'rgb(238, 235, 251)',
+    color: 'rgb(75, 50, 181)',
+    border: 'rgb(227, 222, 248)',
     contentGap: '6px',
     lineHeight: '20px',
     whiteSpace: 'nowrap',
   });
   expect(styles[3]).toMatchObject({
     background: 'rgb(255, 255, 255)',
-    color: 'rgb(76, 29, 149)',
-    border: 'rgb(76, 29, 149)',
+    color: 'rgb(75, 50, 181)',
+    border: 'rgb(75, 50, 181)',
     contentGap: '6px',
     lineHeight: '20px',
     whiteSpace: 'nowrap',
@@ -3267,12 +3562,15 @@ test('renders the DD-045 CourseCard action and status system without changing ac
     ),
   ).toBe(true);
   expect(styles[2].borderTopLeftRadius).toBe('8px');
-  expect(styles.every((control) => control.iconTransform === 'none')).toBe(true);
+  const iconStyles = [styles[1], styles[2]];
+  expect(iconStyles.every((control) => control.iconTransform === 'none')).toBe(true);
   expect(
-    styles.every((control) => control.inlineGap !== null && Math.abs(control.inlineGap - 6) <= 0.5),
+    iconStyles.every(
+      (control) => control.inlineGap !== null && Math.abs(control.inlineGap - 6) <= 0.5,
+    ),
   ).toBe(true);
   expect(
-    styles.every(
+    iconStyles.every(
       (control) => control.iconTextCentreDelta !== null && control.iconTextCentreDelta <= 1,
     ),
   ).toBe(true);
@@ -3290,6 +3588,23 @@ test('renders the DD-045 CourseCard action and status system without changing ac
     1,
   );
   expect(mutationRequests).toEqual(['POST /cart/items']);
+  for (const width of [320, 390, 768]) {
+    await page.setViewportSize({ width, height: 900 });
+    const pendingLabel = await adding.evaluate((element) => {
+      const label = element.querySelector<HTMLElement>(
+        '[data-part="course-card-action-content"] span',
+      );
+      if (!label) throw new Error('CourseCard pending action label is missing.');
+      return {
+        text: label.textContent,
+        clientWidth: label.clientWidth,
+        scrollWidth: label.scrollWidth,
+      };
+    });
+    expect(pendingLabel.text).toBe('Adding…');
+    expect(pendingLabel.clientWidth).toBeGreaterThan(0);
+    expect(pendingLabel.scrollWidth).toBeLessThanOrEqual(pendingLabel.clientWidth);
+  }
   releaseAddRequest();
   const added = cardFor('Add course').getByRole('button', { name: 'Remove' });
   await expect(added).toBeVisible();
@@ -3298,7 +3613,7 @@ test('renders the DD-045 CourseCard action and status system without changing ac
     1,
   );
   await remove.hover();
-  await expect(remove).toHaveCSS('background-color', 'rgb(221, 214, 254)');
+  await expect(remove).toHaveCSS('background-color', 'rgb(227, 222, 248)');
   await enrolled.click({ force: true });
   expect(mutationRequests).toEqual(['POST /cart/items']);
 
@@ -3316,8 +3631,10 @@ test('renders the DD-045 CourseCard action and status system without changing ac
         const controlRect = control.getBoundingClientRect();
         return {
           priceLeft: priceRect.left,
+          priceTop: priceRect.top,
           priceBottom: priceRect.bottom,
           controlRight: controlRect.right,
+          controlTop: controlRect.top,
           controlBottom: controlRect.bottom,
           height: controlRect.height,
           documentWidth: document.documentElement.scrollWidth,
@@ -3331,7 +3648,11 @@ test('renders the DD-045 CourseCard action and status system without changing ac
         (entry) =>
           entry.height >= 44 &&
           entry.priceLeft <= entry.controlRight &&
-          Math.abs(entry.priceBottom - entry.controlBottom) <= 1,
+          Math.abs(
+            entry.priceTop +
+              (entry.priceBottom - entry.priceTop) / 2 -
+              (entry.controlTop + (entry.controlBottom - entry.controlTop) / 2),
+          ) <= 1,
       ),
     ).toBe(true);
     expect(
@@ -3349,16 +3670,27 @@ test('renders the DD-045 CourseCard action and status system without changing ac
     .evaluateAll((controls) =>
       controls.map((control) => {
         const rect = control.getBoundingClientRect();
-        const icon = control.querySelector('svg');
+        const label = control.querySelector<HTMLElement>(
+          '[data-part="course-card-action-content"] span',
+        );
         return {
           height: rect.height,
           width: rect.width,
-          hasIcon: icon?.parentElement?.firstElementChild === icon,
+          labelText: label?.textContent ?? null,
+          labelClientWidth: label?.clientWidth ?? 0,
+          labelScrollWidth: label?.scrollWidth ?? 0,
         };
       }),
     );
   expect(
-    zoomGeometry.every((control) => control.height >= 88 && control.width > 0 && control.hasIcon),
+    zoomGeometry.every(
+      (control) =>
+        control.height >= 88 &&
+        control.width > 0 &&
+        control.labelText !== null &&
+        control.labelClientWidth > 0 &&
+        control.labelScrollWidth <= control.labelClientWidth,
+    ),
   ).toBe(true);
   await page.evaluate(() => {
     document.documentElement.style.zoom = '';
@@ -3602,12 +3934,14 @@ test('A124 keeps one delayed, hoverable and pinnable controlled popover with a c
   const connector = await edgePopover.evaluate((element) => {
     const card = element.closest<HTMLElement>('[data-part="course-card"]');
     if (!card) throw new Error('Popover active card is missing.');
+    const link = card.querySelector<HTMLElement>('a[href^="/courses/"]');
+    if (!link) throw new Error('Popover anchor link is missing.');
     const popoverRect = element.getBoundingClientRect();
-    const cardRect = card.getBoundingClientRect();
+    const linkRect = link.getBoundingClientRect();
     const before = getComputedStyle(element, '::before');
     const after = getComputedStyle(element, '::after');
     const connectorOffset = Number.parseFloat(before.top);
-    const expectedOffset = cardRect.top + cardRect.height / 2 - popoverRect.top;
+    const expectedOffset = linkRect.top + linkRect.height / 2 - popoverRect.top;
     return {
       placement: element.getAttribute('data-placement'),
       popover: popoverRect.toJSON(),
@@ -3643,7 +3977,9 @@ test('A124 keeps one delayed, hoverable and pinnable controlled popover with a c
   assertClean();
 });
 
-test('A124 uses the explicit trigger only for coarse-pointer input', async ({ page }) => {
+test('Keeps the labelled whole-card route and omits Details for compact or coarse input', async ({
+  page,
+}) => {
   const assertClean = await monitor(page);
   assertClean.allowRequestFailure({
     method: 'GET',
@@ -3683,15 +4019,79 @@ test('A124 uses the explicit trigger only for coarse-pointer input', async ({ pa
   });
   await page.setViewportSize({ width: 390, height: 900 });
   await page.goto('/');
+  for (const width of [390, 768, 1024]) {
+    await page.setViewportSize({ width, height: 900 });
+    const card = page.locator('[data-part="course-card"]');
+    await expect(card.getByRole('link', { name: 'Touch course' })).toHaveAttribute(
+      'href',
+      '/courses/7',
+    );
+    await expect(card.getByRole('button', { name: 'View course details' })).toHaveCount(0);
+    await card.hover();
+    await page.waitForTimeout(320);
+    await expect(page.getByRole('tooltip')).toHaveCount(0);
+  }
+  await page.setViewportSize({ width: 617, height: 900 });
+  const intermediateGeometry = await page.evaluate(() => {
+    const hero = document.querySelector<HTMLElement>('[data-part="catalog-hero"]');
+    const copy = hero?.querySelector<HTMLElement>('div');
+    const min = document.querySelector<HTMLInputElement>('input[name="min_price"]');
+    const max = document.querySelector<HTMLInputElement>('input[name="max_price"]');
+    const sort = document.querySelector<HTMLElement>('[data-part="catalog-sort-trigger"]');
+    if (!hero || !copy || !min || !max || !sort)
+      throw new Error('Intermediate Catalog geometry targets are missing.');
+    const heroRect = hero.getBoundingClientRect();
+    const copyRect = copy.getBoundingClientRect();
+    const minRect = min.getBoundingClientRect();
+    const maxRect = max.getBoundingClientRect();
+    const sortRect = sort.getBoundingClientRect();
+    return {
+      heroCentreDelta: Math.abs(
+        heroRect.top + heroRect.height / 2 - (copyRect.top + copyRect.height / 2),
+      ),
+      min: minRect.toJSON(),
+      max: maxRect.toJSON(),
+      sort: sortRect.toJSON(),
+    };
+  });
+  expect(intermediateGeometry.heroCentreDelta).toBeLessThanOrEqual(1);
+  expect(Math.abs(intermediateGeometry.min.width - 120)).toBeLessThanOrEqual(1);
+  expect(Math.abs(intermediateGeometry.max.width - 120)).toBeLessThanOrEqual(1);
+  expect(Math.abs(intermediateGeometry.sort.width - 148)).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(intermediateGeometry.min.top - intermediateGeometry.sort.top),
+  ).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(intermediateGeometry.max.top - intermediateGeometry.sort.top),
+  ).toBeLessThanOrEqual(1);
+  assertClean();
+});
+
+test('Keeps compact fine-pointer hover and focus free of dangling disclosure ARIA', async ({
+  page,
+}) => {
+  const assertClean = await monitor(page);
+  assertClean.allowRequestFailure({
+    method: 'GET',
+    path: '/courses?page=1&page_size=20&sort=created_at',
+    errorText: 'net::ERR_ABORTED',
+  });
+  await page.route('**/courses**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: response([{ ...permittedCourse('Fine compact course'), id: 12 }]),
+    });
+  });
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.goto('/');
   const card = page.locator('[data-part="course-card"]');
-  const trigger = card.getByRole('button', { name: 'View course details' });
-  await card.hover();
+  const link = card.getByRole('link', { name: 'Fine compact course' });
+  await link.focus();
+  await link.hover();
   await page.waitForTimeout(320);
+  await expect(card.getByRole('button', { name: 'View course details' })).toHaveCount(0);
   await expect(page.getByRole('tooltip')).toHaveCount(0);
-  await trigger.click();
-  await expect(page.getByRole('tooltip', { name: 'Course description: Touch course' })).toHaveCount(
-    1,
-  );
-  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  await expect(link).not.toHaveAttribute('aria-describedby');
   assertClean();
 });

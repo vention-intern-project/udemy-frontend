@@ -1,6 +1,8 @@
 import { createServer } from 'vite';
+import { resolveAppShellTestPort } from './app-shell-harness';
 
 export default async function startAppShellServer() {
+  const port = resolveAppShellTestPort();
   const server = await createServer({
     clearScreen: false,
     logLevel: 'warn',
@@ -9,7 +11,7 @@ export default async function startAppShellServer() {
     optimizeDeps: { noDiscovery: true, include: ['react', 'react-dom/client'] },
     server: {
       host: '127.0.0.1',
-      port: 4174,
+      port,
       strictPort: true,
     },
   });

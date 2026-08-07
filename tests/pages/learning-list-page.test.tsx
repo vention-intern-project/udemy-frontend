@@ -3,7 +3,7 @@
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import userEvent from '@testing-library/user-event';
 
 import { createAppQueryClient } from '../../src/app/query';
@@ -73,7 +73,14 @@ const emptyEnrollments = {
   has_previous: false,
 };
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
+
+beforeEach(() => {
+  vi.stubGlobal('scrollTo', vi.fn());
+});
 
 function tokenStore(): AccessTokenStore {
   return { get: () => 'student-token', set: () => {}, clear: () => {} };
@@ -187,6 +194,7 @@ describe('LearningListPage', () => {
     ).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Browse courses' }).getAttribute('href')).toBe('/');
     const illustration = screen.getByAltText('');
+    expect(illustration.getAttribute('src')).toContain('my-learning-empty-state-ui022.png');
     expect(illustration.getAttribute('aria-hidden')).toBe('true');
     expect(screen.queryByText('0 enrollments · Page 1 of 1')).toBeNull();
   });

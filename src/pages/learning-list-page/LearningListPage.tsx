@@ -14,7 +14,7 @@ import {
   SkeletonGroup,
 } from '@shared/ui/primitives';
 
-import emptyStateIllustration from './assets/my-learning-empty-state.png';
+import emptyStateIllustration from './assets/my-learning-empty-state-ui022.png';
 import styles from './LearningListPage.module.css';
 
 function parsePage(value: string | null): number {
@@ -134,7 +134,7 @@ export function LearningListPage() {
   const result = enrollments.data;
   if (result.items.length === 0) {
     return (
-      <article className={styles.page}>
+      <article className={[styles.page, styles.emptyPage].join(' ')}>
         <header className={styles.pageHeader}>
           <h1 tabIndex={-1} ref={headingRef}>
             My learning

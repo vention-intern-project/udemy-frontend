@@ -105,6 +105,7 @@ async function renderCart(request: ApiClient['request']) {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -147,6 +148,83 @@ async function removeCourseAndExpectFocus(courseId: number, expectedActionName: 
 }
 
 describe('CartPage', () => {
+  it('uses the no-observer fallback to expose one mobile summary jump without checkout', async () => {
+    const originalInnerHeight = window.innerHeight;
+    const originalInnerWidth = window.innerWidth;
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 800 });
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
+    vi.stubGlobal('IntersectionObserver', undefined);
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn((query: string) => ({
+        matches: query === '(max-width: 1023px)',
+        media: query,
+        onchange: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    );
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/cart' && options.method === 'GET')
+        return decode(options, cartWithItems);
+      if (options.path === '/cart/checkout') throw new Error('Checkout must not run');
+      throw new Error(`Unexpected request ${options.method} ${options.path}`);
+    };
+
+    await renderCart(request);
+    const summaryHeading = await screen.findByRole('heading', { name: 'Order summary' });
+    Object.defineProperty(summaryHeading, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({
+        bottom: 1024,
+        height: 24,
+        left: 0,
+        right: 0,
+        toJSON: () => ({}),
+        top: 1000,
+        width: 200,
+        x: 0,
+        y: 1000,
+      }),
+    });
+    fireEvent.scroll(window);
+
+    const jump = await screen.findByRole('button', { name: 'Go to order summary' });
+    expect(screen.getAllByRole('heading', { name: 'Order summary' })).toHaveLength(1);
+    const cartCourses = screen.getByRole('list', { name: 'Cart courses' });
+    expect(
+      cartCourses.compareDocumentPosition(jump) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    const user = userEvent.setup();
+    screen.getByRole('button', { name: 'Remove Second course' }).focus();
+    await interact(() => user.tab());
+    expect(jump).toBe(document.activeElement);
+    await interact(() => user.tab());
+    expect(screen.getByRole('button', { name: 'Mock checkout' })).toBe(document.activeElement);
+    fireEvent.click(jump);
+    expect(summaryHeading).toBe(document.activeElement);
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' });
+    expect(screen.getByRole('button', { name: 'Mock checkout' })).toBeTruthy();
+
+    Object.defineProperty(window, 'innerHeight', {
+      configurable: true,
+      value: originalInnerHeight,
+    });
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalInnerWidth });
+  });
+
   it('submits one labelled mock checkout, requires explicit cart recovery after an unknown result, and never reports payment success', async () => {
     let checkoutCalls = 0;
     let rejectCheckout: ((reason?: unknown) => void) | undefined;
@@ -407,6 +485,16 @@ describe('CartPage', () => {
         .getByRole('button', { name: 'Remove Long accessible course title' })
         .querySelector('svg'),
     ).toBeTruthy();
+    const cartItem = screen
+      .getByRole('link', { name: 'Long accessible course title' })
+      .closest<HTMLElement>('[role="listitem"]');
+    if (!cartItem) throw new Error('Long-title Cart item is unavailable.');
+    const price = within(cartItem).getByText('Price', { selector: 'p' });
+    const remove = screen.getByRole('button', { name: 'Remove Long accessible course title' });
+    expect(price.parentElement?.parentElement).toBe(
+      remove.parentElement?.parentElement?.parentElement,
+    );
+    expect(price.compareDocumentPosition(remove) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const summary = screen.getByLabelText('Cart total');
     expect(within(summary).getByRole('heading', { name: 'Order summary' })).toBeTruthy();
     expect(within(summary).getByText('Total')).toBeTruthy();

@@ -35,6 +35,24 @@ interface CheckoutFeedbackNoticeProps {
   onRecoverCheckout(): void;
 }
 
+interface SummaryJumpState {
+  readonly isBelowViewport: boolean;
+  readonly isMobile: boolean;
+}
+
+const mobileSummaryQuery = '(max-width: 1023px)';
+
+function getSummaryJumpState(summaryHeading: HTMLElement): SummaryJumpState {
+  const navigation = document.querySelector<HTMLElement>('[aria-label="Student navigation"]');
+  const visibleViewportBottom = navigation?.getBoundingClientRect().top ?? window.innerHeight;
+  const summaryBounds = summaryHeading.getBoundingClientRect();
+
+  return {
+    isBelowViewport: summaryBounds.top >= visibleViewportBottom,
+    isMobile: window.matchMedia?.(mobileSummaryQuery).matches ?? false,
+  };
+}
+
 function CheckoutFeedbackNotice({
   feedback,
   pending,
@@ -148,11 +166,13 @@ export function CartPage() {
   const [clearOpen, setClearOpen] = useState(false);
   const [removeFocusTarget, setRemoveFocusTarget] = useState<RemoveFocusTarget | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const summaryHeadingRef = useRef<HTMLHeadingElement>(null);
   const removeActionRefs = useRef(new Map<number, HTMLDivElement>());
   const recoveryFocusPendingRef = useRef(false);
   const recoveryRetryPendingRef = useRef(false);
   const [recoveryFailure, setRecoveryFailure] = useState<CartFailureState | null>(null);
   const [isRecoveryRetrying, setIsRecoveryRetrying] = useState(false);
+  const [isSummaryJumpVisible, setIsSummaryJumpVisible] = useState(false);
   const checkoutNoticeRef = useRef<HTMLDivElement>(null);
   const statusMessage = mutationStatusMessage(feedback?.success, feedback?.kind);
   const currentCart = cart.data;
@@ -199,6 +219,48 @@ export function CartPage() {
   useEffect(() => {
     if (checkout.feedback !== null && !checkout.pending) checkoutNoticeRef.current?.focus();
   }, [checkout.feedback, checkout.pending]);
+
+  useEffect(() => {
+    const summaryHeading = summaryHeadingRef.current;
+    if (!summaryHeading || !currentCart || currentCart.items.length === 0) {
+      setIsSummaryJumpVisible(false);
+      return;
+    }
+
+    const updateSummaryJumpVisibility = () => {
+      const state = getSummaryJumpState(summaryHeading);
+      setIsSummaryJumpVisible(state.isMobile && state.isBelowViewport);
+    };
+    const mobileMedia = window.matchMedia?.(mobileSummaryQuery);
+    const observer =
+      typeof IntersectionObserver === 'undefined'
+        ? null
+        : new IntersectionObserver(updateSummaryJumpVisibility, { threshold: 0 });
+
+    observer?.observe(summaryHeading);
+    updateSummaryJumpVisibility();
+    window.addEventListener('scroll', updateSummaryJumpVisibility, { passive: true });
+    window.addEventListener('resize', updateSummaryJumpVisibility);
+    mobileMedia?.addEventListener('change', updateSummaryJumpVisibility);
+
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('scroll', updateSummaryJumpVisibility);
+      window.removeEventListener('resize', updateSummaryJumpVisibility);
+      mobileMedia?.removeEventListener('change', updateSummaryJumpVisibility);
+    };
+  }, [currentCart]);
+
+  const focusOrderSummary = () => {
+    const summaryHeading = summaryHeadingRef.current;
+    if (!summaryHeading) return;
+
+    summaryHeading.focus({ preventScroll: true });
+    summaryHeading.scrollIntoView?.({
+      behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+      block: 'start',
+    });
+  };
 
   if (!cart.data && checkout.feedback?.kind === 'unauthorized') {
     return (
@@ -364,43 +426,54 @@ export function CartPage() {
                     </Link>
                   </h2>
                 </div>
-                <div className={styles.price}>
-                  <p className={styles.label}>Price</p>
-                  <p>
-                    {item.course.currency} {item.course.price}
-                  </p>
-                </div>
-                <div
-                  className={styles.removeAction}
-                  ref={(node) => {
-                    if (node) removeActionRefs.current.set(item.courseId, node);
-                    else removeActionRefs.current.delete(item.courseId);
-                  }}
-                >
-                  <Button
-                    variant="ghost"
-                    className={styles.removeButton}
-                    aria-label={
-                      isPendingRemove(item.courseId) ? undefined : `Remove ${item.course.title}`
-                    }
-                    data-cart-remove-course-id={item.courseId}
-                    onClick={() => {
-                      setRemoveFocusTarget({ removedCourseId: item.courseId, index });
-                      remove(item.courseId);
+                <div className={styles.itemFooter}>
+                  <div className={styles.price}>
+                    <p className={styles.label}>Price</p>
+                    <p>
+                      {item.course.currency} {item.course.price}
+                    </p>
+                  </div>
+                  <div
+                    className={styles.removeAction}
+                    ref={(node) => {
+                      if (node) removeActionRefs.current.set(item.courseId, node);
+                      else removeActionRefs.current.delete(item.courseId);
                     }}
-                    disabled={isBusy}
-                    state={isPendingRemove(item.courseId) ? 'loading' : 'idle'}
-                    loadingLabel="Removing…"
                   >
-                    <Trash2 size={20} aria-hidden="true" />
-                  </Button>
+                    <Button
+                      variant="ghost"
+                      className={styles.removeButton}
+                      aria-label={
+                        isPendingRemove(item.courseId) ? undefined : `Remove ${item.course.title}`
+                      }
+                      data-cart-remove-course-id={item.courseId}
+                      onClick={() => {
+                        setRemoveFocusTarget({ removedCourseId: item.courseId, index });
+                        remove(item.courseId);
+                      }}
+                      disabled={isBusy}
+                      state={isPendingRemove(item.courseId) ? 'loading' : 'idle'}
+                      loadingLabel="Removing…"
+                    >
+                      <Trash2 size={20} aria-hidden="true" />
+                    </Button>
+                  </div>
                 </div>
               </section>
             ))}
           </div>
         </div>
+        {isSummaryJumpVisible ? (
+          <div className={styles.summaryJump}>
+            <Button variant="secondary" onClick={focusOrderSummary}>
+              Go to order summary
+            </Button>
+          </div>
+        ) : null}
         <aside className={styles.summary} aria-label="Cart total">
-          <h2 className={styles.summaryHeading}>Order summary</h2>
+          <h2 className={styles.summaryHeading} ref={summaryHeadingRef} tabIndex={-1}>
+            Order summary
+          </h2>
           <hr className={styles.summaryDivider} />
           <span className={styles.label}>Total</span>
           {canDisplayTotal ? (

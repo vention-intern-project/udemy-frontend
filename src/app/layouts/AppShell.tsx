@@ -8,8 +8,16 @@ import {
   type MouseEvent,
 } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ShoppingCart } from 'lucide-react';
-import { Link, matchPath, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Bot, GraduationCap, LibraryBig, LogIn, ShoppingCart, UserPlus } from 'lucide-react';
+import {
+  Link,
+  matchPath,
+  NavLink,
+  Outlet,
+  useLocation,
+  useNavigate,
+  useNavigationType,
+} from 'react-router-dom';
 
 import type { Cart } from '@entities/cart';
 import { useSession, type SessionState } from '@features/auth-session';
@@ -24,26 +32,40 @@ import {
 import { Input, VisuallyHidden } from '@shared/ui/primitives';
 import { useDensityMode } from '@shared/ui/theme';
 import { CourseChatLauncher } from '@widgets/course-chat';
-import assistantIcon from './assets/ai-assistant-navigation-icon.png';
+import aiAssistantNavigationMark from './assets/ai-assistant-navigation-ui018-2.png';
+import learnHubBookMark from './assets/learnhub-book-ui018.png';
 import { AccountMenu } from './AccountMenu';
 import { APP_ROUTE_BY_ID, densityForPath, routeForPath } from '../router/route-registry';
 import styles from './AppShell.module.css';
 
-type NavigationItemVariant = 'browse-link' | 'signup-primary';
+type NavigationItemVariant = 'browse-link' | 'login-secondary' | 'signup-primary';
 type NavigationItemDesktopGroup = 'auth-actions';
 type MobileMenuFocusTarget = 'trigger' | 'main';
+
+const STUDENT_MOBILE_QUERY = '(max-width: 767px)';
+
+function catalogPageForLocation(pathname: string, search: string): number | null {
+  if (pathname !== APP_ROUTE_BY_ID['PAGE-001'].path) return null;
+  return parseCatalogQuery(new URLSearchParams(search)).page;
+}
 
 interface NavigationItem {
   label: string;
   to: string;
   end?: boolean;
   desktopGroup?: NavigationItemDesktopGroup;
+  primaryNavigationIndicator?: boolean;
   variant?: NavigationItemVariant;
 }
 
 interface CartPresentation {
   accessibleName: string;
   badge: string | null;
+}
+
+interface ScrollPosition {
+  left: number;
+  top: number;
 }
 
 export function presentCart(itemCount: number | undefined): CartPresentation {
@@ -55,10 +77,12 @@ export function presentCart(itemCount: number | undefined): CartPresentation {
 interface NavigationLinksProps {
   items: readonly NavigationItem[];
   onNavigate?: (to: string) => void;
+  showPrimaryNavigationIndicator?: boolean;
 }
 
 const NAVIGATION_VARIANT_CLASS: Record<NavigationItemVariant, string> = {
   'browse-link': styles.navLinkBrowse,
+  'login-secondary': styles.navLinkLogin,
   'signup-primary': styles.navLinkSignup,
 };
 
@@ -68,8 +92,20 @@ function navigationForSession(
 ): NavigationItem[] {
   if (status.status !== 'authenticated') {
     return [
-      { label: 'Catalog', to: '/', end: true, variant: 'browse-link' },
-      { label: 'Log in', to: '/login', end: true, desktopGroup: 'auth-actions' },
+      {
+        label: 'Catalog',
+        to: '/',
+        end: true,
+        primaryNavigationIndicator: true,
+        variant: 'browse-link',
+      },
+      {
+        label: 'Log in',
+        to: '/login',
+        end: true,
+        desktopGroup: 'auth-actions',
+        variant: 'login-secondary',
+      },
       {
         label: 'Sign up',
         to: '/signup',
@@ -81,12 +117,25 @@ function navigationForSession(
   }
   if (status.user.role === 'student') {
     return [
-      { label: 'Catalog', to: '/', end: true, variant: 'browse-link' },
-      { label: 'My learning', to: '/learning', end: true },
+      {
+        label: 'Catalog',
+        to: '/',
+        end: true,
+        primaryNavigationIndicator: true,
+        variant: 'browse-link',
+      },
+      { label: 'My learning', to: '/learning', end: true, primaryNavigationIndicator: true },
     ];
   }
   if (status.user.role === 'instructor') {
-    const items: NavigationItem[] = [{ label: 'My courses', to: '/instructor/courses', end: true }];
+    const items: NavigationItem[] = [
+      {
+        label: 'My courses',
+        to: '/instructor/courses',
+        end: true,
+        primaryNavigationIndicator: true,
+      },
+    ];
     if (selectedCourseId) {
       items.push({
         label: 'Course enrollments',
@@ -114,7 +163,7 @@ function CartNavigationLink({ itemCount }: CartNavigationLinkProps) {
       end
       to="/cart"
     >
-      <ShoppingCart aria-hidden="true" focusable="false" size={24} strokeWidth={2} />
+      <ShoppingCart aria-hidden="true" focusable="false" size={28} strokeWidth={1.6} />
       {presentation.badge ? <span className={styles.cartBadge}>{presentation.badge}</span> : null}
     </NavLink>
   );
@@ -138,12 +187,74 @@ function AiAssistantNavigationLink() {
       state={location.pathname === assistantPath ? undefined : { returnTo }}
       to={assistantPath}
     >
-      <img src={assistantIcon} alt="" aria-hidden="true" />
+      <img
+        alt=""
+        aria-hidden="true"
+        className={styles.aiAssistantMark}
+        src={aiAssistantNavigationMark}
+      />
     </NavLink>
   );
 }
 
-function NavigationLinks({ items, onNavigate }: NavigationLinksProps) {
+function StudentMobileNavigation({ itemCount }: CartNavigationLinkProps) {
+  const cartPresentation = presentCart(itemCount);
+  return (
+    <nav className={styles.studentMobileNavigation} aria-label="Student navigation">
+      <NavLink className={styles.studentMobileNavigationLink} end to="/">
+        <LibraryBig aria-hidden="true" focusable="false" size={20} />
+        <span>Catalog</span>
+      </NavLink>
+      <NavLink className={styles.studentMobileNavigationLink} end to="/learning">
+        <GraduationCap aria-hidden="true" focusable="false" size={20} />
+        <span>My learning</span>
+      </NavLink>
+      <NavLink className={styles.studentMobileNavigationLink} end to="/ai-chat">
+        <Bot aria-hidden="true" focusable="false" size={20} />
+        <span>AI chat</span>
+      </NavLink>
+      <NavLink
+        aria-label={cartPresentation.accessibleName}
+        className={styles.studentMobileNavigationLink}
+        end
+        to="/cart"
+      >
+        <span className={styles.studentMobileCartIcon}>
+          <ShoppingCart aria-hidden="true" focusable="false" size={20} />
+          {cartPresentation.badge ? (
+            <span className={styles.studentMobileCartBadge}>{cartPresentation.badge}</span>
+          ) : null}
+        </span>
+        <span>Cart</span>
+      </NavLink>
+    </nav>
+  );
+}
+
+function AnonymousMobileNavigation() {
+  return (
+    <nav className={styles.anonymousMobileNavigation} aria-label="Anonymous navigation">
+      <NavLink className={styles.anonymousMobileNavigationLink} end to="/">
+        <LibraryBig aria-hidden="true" focusable="false" size={20} />
+        <span>Catalog</span>
+      </NavLink>
+      <NavLink className={styles.anonymousMobileNavigationLink} end to="/login">
+        <LogIn aria-hidden="true" focusable="false" size={20} />
+        <span>Log in</span>
+      </NavLink>
+      <NavLink className={styles.anonymousMobileNavigationLink} end to="/signup">
+        <UserPlus aria-hidden="true" focusable="false" size={20} />
+        <span>Sign up</span>
+      </NavLink>
+    </nav>
+  );
+}
+
+function NavigationLinks({
+  items,
+  onNavigate,
+  showPrimaryNavigationIndicator = false,
+}: NavigationLinksProps) {
   return (
     <ul className={styles.navList}>
       {items.map((item) => (
@@ -154,6 +265,9 @@ function NavigationLinks({ items, onNavigate }: NavigationLinksProps) {
               [
                 styles.navLink,
                 isActive ? styles.navLinkActive : null,
+                showPrimaryNavigationIndicator && item.primaryNavigationIndicator
+                  ? styles.navLinkPrimary
+                  : null,
                 item.variant ? NAVIGATION_VARIANT_CLASS[item.variant] : null,
               ]
                 .filter(Boolean)
@@ -200,7 +314,10 @@ export function AppShell() {
   const { densityMode, setDensityMode } = useDensityMode();
   const location = useLocation();
   const navigate = useNavigate();
+  const navigationType = useNavigationType();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [isStudentMobileViewport, setIsStudentMobileViewport] = useState(false);
+  const [isMobileCatalogScrolled, setIsMobileCatalogScrolled] = useState(false);
   const catalogQuery = useMemo(
     () => parseCatalogQuery(new URLSearchParams(location.search)),
     [location.search],
@@ -219,6 +336,8 @@ export function AppShell() {
   const catalogSearchListboxId = `catalog-search-history-${useId()}`;
   const currentLocation = `${location.pathname}${location.search}${location.hash}`;
   const previousLocationRef = useRef(currentLocation);
+  const previousScrollLocationRef = useRef(location);
+  const entryScrollPositionsRef = useRef(new Map<string, ScrollPosition>());
   const routeFocusIdentity = `${location.pathname}${location.search}`;
   const previousRouteFocusIdentityRef = useRef(routeFocusIdentity);
   const courseRouteMatch = [APP_ROUTE_BY_ID['PAGE-011'].path, APP_ROUTE_BY_ID['PAGE-012'].path]
@@ -247,6 +366,35 @@ export function AppShell() {
   const catalogDesktopPrimaryNavigation = isAnonymous ? desktopPrimaryNavigation : navigation;
   const catalogDesktopAccountNavigation = isAnonymous ? desktopAuthActions : [];
   const routeDensityMode = densityForPath(location.pathname);
+  const isStudentMobile =
+    isStudentMobileViewport && state.status === 'authenticated' && state.user.role === 'student';
+  const isAnonymousMobile = isStudentMobileViewport && isAnonymous;
+  const showHeaderCart = hasCartNavigation && !(isAnonymous && isStudentMobileViewport);
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return undefined;
+    const mediaQuery = window.matchMedia(STUDENT_MOBILE_QUERY);
+    const updateViewport = () => setIsStudentMobileViewport(mediaQuery.matches);
+    updateViewport();
+    mediaQuery.addEventListener('change', updateViewport);
+    return () => mediaQuery.removeEventListener('change', updateViewport);
+  }, []);
+
+  useEffect(() => {
+    if (isAnonymousMobile) setMobileOpen(false);
+  }, [isAnonymousMobile]);
+
+  useEffect(() => {
+    if (!isCatalogRoute || !isStudentMobileViewport) {
+      setIsMobileCatalogScrolled(false);
+      return undefined;
+    }
+
+    const updateMobileCatalogScrollState = () => setIsMobileCatalogScrolled(window.scrollY > 0);
+    updateMobileCatalogScrollState();
+    window.addEventListener('scroll', updateMobileCatalogScrollState, { passive: true });
+    return () => window.removeEventListener('scroll', updateMobileCatalogScrollState);
+  }, [isCatalogRoute, isStudentMobileViewport]);
 
   useLayoutEffect(() => {
     if (densityMode !== routeDensityMode) setDensityMode(routeDensityMode);
@@ -295,6 +443,58 @@ export function AppShell() {
     if (!isCatalogRoute) return;
     setCatalogSearchHistory(readCatalogSearchHistory());
   }, [isCatalogRoute]);
+
+  useEffect(() => {
+    const rememberCurrentPosition = () => {
+      entryScrollPositionsRef.current.set(location.key, {
+        left: window.scrollX,
+        top: window.scrollY,
+      });
+    };
+
+    rememberCurrentPosition();
+    window.addEventListener('scroll', rememberCurrentPosition, { passive: true });
+    return () => window.removeEventListener('scroll', rememberCurrentPosition);
+  }, [location.key]);
+
+  useEffect(() => {
+    const previousLocation = previousScrollLocationRef.current;
+    if (previousLocation.key === location.key) return;
+
+    if (navigationType !== 'POP') {
+      entryScrollPositionsRef.current.set(previousLocation.key, {
+        left: window.scrollX,
+        top: window.scrollY,
+      });
+    }
+
+    const pathnameChanged = previousLocation.pathname !== location.pathname;
+    const previousCatalogPage = catalogPageForLocation(
+      previousLocation.pathname,
+      previousLocation.search,
+    );
+    const currentCatalogPage = catalogPageForLocation(location.pathname, location.search);
+    const catalogPageChanged =
+      previousCatalogPage !== null &&
+      currentCatalogPage !== null &&
+      previousCatalogPage !== currentCatalogPage;
+    if (location.hash) {
+      let targetId = location.hash.slice(1);
+      try {
+        targetId = decodeURIComponent(targetId);
+      } catch {
+        // Preserve malformed fragment navigation without letting it interrupt route restoration.
+      }
+      document.getElementById(targetId)?.scrollIntoView?.();
+    } else if ((pathnameChanged || catalogPageChanged) && navigationType === 'POP') {
+      const position = entryScrollPositionsRef.current.get(location.key);
+      window.scrollTo(position?.left ?? 0, position?.top ?? 0);
+    } else if (pathnameChanged || catalogPageChanged) {
+      window.scrollTo(0, 0);
+    }
+
+    previousScrollLocationRef.current = location;
+  }, [location, navigationType]);
 
   useEffect(() => {
     if (previousLocationRef.current !== currentLocation) {
@@ -402,6 +602,9 @@ export function AppShell() {
           isAnonymous ? styles.headerAnonymous : null,
           hasCatalogSearch ? styles.headerWithCatalogSearch : styles.headerWithoutCatalogSearch,
           isAnonymousCatalogRoute ? styles.headerAnonymousCatalog : null,
+          isStudentMobile ? styles.headerStudentMobile : null,
+          isAnonymousMobile ? styles.headerAnonymousMobile : null,
+          isMobileCatalogScrolled ? styles.headerMobileSearchDetached : null,
         ]
           .filter(Boolean)
           .join(' ')}
@@ -410,48 +613,33 @@ export function AppShell() {
         <div className={styles.headerInner}>
           <div className={styles.headerCatalogStart}>
             <Link className={styles.brand} to="/" aria-label="LearnHub home">
-              <svg
-                aria-hidden="true"
-                className={styles.brandMark}
-                focusable="false"
-                viewBox="0 0 32 32"
-              >
-                <rect
-                  className={styles.brandMarkOutline}
-                  x="2"
-                  y="2"
-                  width="28"
-                  height="28"
-                  rx="6"
-                />
-                <path
-                  className={styles.brandMarkBook}
-                  d="M5.5 8.5c3.4.6 6.3 1.8 9.5 3.7v13.2c-3.2-1.9-6.4-3-9.5-3.4V8.5Zm21 0c-3.4.6-6.3 1.8-9.5 3.7v13.2c3.2-1.9 6.4-3 9.5-3.4V8.5Z"
-                />
-              </svg>
+              <img alt="" aria-hidden="true" className={styles.brandMark} src={learnHubBookMark} />
               <span className={styles.brandWordmark}>LearnHub</span>
             </Link>
-            <nav
-              className={
-                hasDesktopAuthActions && !isAnonymous
-                  ? [styles.navDesktop, styles.navDesktopSplit].join(' ')
-                  : styles.navDesktop
-              }
-              aria-label="Primary navigation"
-            >
-              <NavigationLinks
-                items={
-                  isAnonymousCatalogRoute
-                    ? catalogDesktopPrimaryNavigation
-                    : desktopPrimaryNavigation
+            {!isStudentMobile ? (
+              <nav
+                className={
+                  hasDesktopAuthActions && !isAnonymous
+                    ? [styles.navDesktop, styles.navDesktopSplit].join(' ')
+                    : styles.navDesktop
                 }
-              />
-              {hasDesktopAuthActions && !isAnonymous ? (
-                <div className={styles.navAuthActions}>
-                  <NavigationLinks items={desktopAuthActions} />
-                </div>
-              ) : null}
-            </nav>
+                aria-label="Primary navigation"
+              >
+                <NavigationLinks
+                  items={
+                    isAnonymousCatalogRoute
+                      ? catalogDesktopPrimaryNavigation
+                      : desktopPrimaryNavigation
+                  }
+                  showPrimaryNavigationIndicator
+                />
+                {hasDesktopAuthActions && !isAnonymous ? (
+                  <div className={styles.navAuthActions}>
+                    <NavigationLinks items={desktopAuthActions} />
+                  </div>
+                ) : null}
+              </nav>
+            ) : null}
           </div>
           {hasCatalogSearch ? (
             <form
@@ -562,36 +750,40 @@ export function AppShell() {
             </form>
           ) : null}
           <div className={styles.headerCatalogEnd}>
-            {state.status === 'authenticated' && state.user.role === 'student' ? (
+            {isStudentMobile ? <AccountMenu user={state.user} /> : null}
+            {isStudentMobile ? null : state.status === 'authenticated' &&
+              state.user.role === 'student' ? (
               <div className={styles.headerCartAccountGroup}>
                 <AiAssistantNavigationLink />
                 <div className={styles.account}>
                   <AccountMenu user={state.user} />
-                  <button
-                    ref={menuButtonRef}
-                    className={styles.menuButton}
-                    type="button"
-                    aria-expanded={mobileOpen}
-                    aria-controls="mobile-navigation"
-                    onClick={() => setMobileOpen((open) => !open)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Escape' && mobileOpen) {
-                        event.preventDefault();
-                        closeMobileMenu('trigger');
-                      }
-                    }}
-                  >
-                    <span aria-hidden="true">Menu</span>
-                    <VisuallyHidden>
-                      {mobileOpen ? 'Close navigation' : 'Open navigation'}
-                    </VisuallyHidden>
-                  </button>
+                  {!isAnonymousMobile ? (
+                    <button
+                      ref={menuButtonRef}
+                      className={styles.menuButton}
+                      type="button"
+                      aria-expanded={mobileOpen}
+                      aria-controls="mobile-navigation"
+                      onClick={() => setMobileOpen((open) => !open)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Escape' && mobileOpen) {
+                          event.preventDefault();
+                          closeMobileMenu('trigger');
+                        }
+                      }}
+                    >
+                      <span aria-hidden="true">Menu</span>
+                      <VisuallyHidden>
+                        {mobileOpen ? 'Close navigation' : 'Open navigation'}
+                      </VisuallyHidden>
+                    </button>
+                  ) : null}
                 </div>
                 <CartNavigationLink itemCount={cart.data?.itemCount} />
               </div>
             ) : (
               <>
-                {hasCartNavigation ? <CartNavigationLink itemCount={cart.data?.itemCount} /> : null}
+                {showHeaderCart ? <CartNavigationLink itemCount={cart.data?.itemCount} /> : null}
                 {isAnonymous ? (
                   <nav
                     className={[styles.navDesktop, styles.navCatalogAccount].join(' ')}
@@ -610,31 +802,33 @@ export function AppShell() {
                   }
                 >
                   {state.status === 'authenticated' ? <AccountMenu user={state.user} /> : null}
-                  <button
-                    ref={menuButtonRef}
-                    className={styles.menuButton}
-                    type="button"
-                    aria-expanded={mobileOpen}
-                    aria-controls="mobile-navigation"
-                    onClick={() => setMobileOpen((open) => !open)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Escape' && mobileOpen) {
-                        event.preventDefault();
-                        closeMobileMenu('trigger');
-                      }
-                    }}
-                  >
-                    <span aria-hidden="true">Menu</span>
-                    <VisuallyHidden>
-                      {mobileOpen ? 'Close navigation' : 'Open navigation'}
-                    </VisuallyHidden>
-                  </button>
+                  {!isAnonymousMobile ? (
+                    <button
+                      ref={menuButtonRef}
+                      className={styles.menuButton}
+                      type="button"
+                      aria-expanded={mobileOpen}
+                      aria-controls="mobile-navigation"
+                      onClick={() => setMobileOpen((open) => !open)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Escape' && mobileOpen) {
+                          event.preventDefault();
+                          closeMobileMenu('trigger');
+                        }
+                      }}
+                    >
+                      <span aria-hidden="true">Menu</span>
+                      <VisuallyHidden>
+                        {mobileOpen ? 'Close navigation' : 'Open navigation'}
+                      </VisuallyHidden>
+                    </button>
+                  ) : null}
                 </div>
               </>
             )}
           </div>
         </div>
-        {mobileOpen ? (
+        {mobileOpen && !isAnonymousMobile ? (
           <nav
             id="mobile-navigation"
             className={styles.navMobile}
@@ -673,8 +867,12 @@ export function AppShell() {
         <span>Accessible learning, built for every role.</span>
       </footer>
       {hasGlobalAssistant && globalAssistant !== null ? (
-        <CourseChatLauncher assistant={globalAssistant} />
+        !isStudentMobile ? (
+          <CourseChatLauncher assistant={globalAssistant} />
+        ) : null
       ) : null}
+      {isStudentMobile ? <StudentMobileNavigation itemCount={cart.data?.itemCount} /> : null}
+      {isAnonymousMobile ? <AnonymousMobileNavigation /> : null}
     </div>
   );
 }

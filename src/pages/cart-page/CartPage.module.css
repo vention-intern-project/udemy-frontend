@@ -64,6 +64,19 @@
   min-width: 0;
   align-items: start;
 }
+.summaryJump {
+  position: sticky;
+  z-index: 1;
+  top: calc(
+    100vh - var(--student-mobile-bottom-nav-inset, 0px) - var(--control-height-md) -
+      var(--spacing-3)
+  );
+  justify-self: end;
+  min-width: 0;
+}
+.summaryJump button {
+  min-height: var(--control-height-md);
+}
 .courseList {
   min-width: 0;
 }
@@ -124,6 +137,13 @@
 .price,
 .removeAction {
   min-width: 0;
+}
+.itemFooter {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--control-height-md);
+  gap: var(--spacing-3);
+  min-width: 0;
+  align-items: end;
 }
 .courseLink {
   display: -webkit-box;
@@ -244,6 +264,28 @@
   outline: var(--focus-ring-width) solid var(--focus-ring);
   outline-offset: var(--focus-ring-offset);
 }
+@media (max-width: 1023px) {
+  .summaryJump {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .courseList {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .summary {
+    grid-row: 2;
+  }
+  .toolbar {
+    justify-content: space-between;
+  }
+  .clearCartButton {
+    margin-inline-start: auto;
+  }
+  .summaryHeading {
+    scroll-margin-block-start: calc(var(--layout-header-height) + var(--spacing-4));
+  }
+}
 @media (min-width: 768px) {
   .header h1 {
     font-size: 36px;
@@ -254,6 +296,9 @@
   .header,
   .content {
     grid-template-columns: minmax(0, 1fr) minmax(16rem, 20rem);
+  }
+  .summaryJump {
+    display: none;
   }
   .eyebrow,
   .toolbar {
@@ -270,6 +315,9 @@
         --control-height-md
       );
     align-items: center;
+  }
+  .itemFooter {
+    display: contents;
   }
   .removeAction {
     justify-items: end;

@@ -3,6 +3,7 @@
 }
 
 .card {
+  position: relative;
   display: grid;
   height: 100%;
   min-width: 0;
@@ -13,12 +14,8 @@
 }
 
 .link {
-  position: relative;
   display: grid;
-  grid-row: 1;
-  grid-column: 1;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  height: 100%;
   min-width: 0;
   color: var(--text-primary);
   text-decoration: none;
@@ -105,9 +102,6 @@
 
 .price {
   min-width: 0;
-  margin-top: auto;
-  padding: var(--spacing-3);
-  padding-inline-end: 8rem;
   overflow: hidden;
   color: var(--text-primary);
   font-size: var(--type-body-md-size);
@@ -115,17 +109,21 @@
   line-height: var(--type-body-md-lh);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.footer {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  min-width: 0;
+  margin-top: auto;
+  padding: var(--spacing-3);
   border-top: var(--border-width) solid var(--border-default);
 }
 
 .actions {
-  position: relative;
-  z-index: 1;
   display: flex;
-  grid-row: 1;
-  grid-column: 1;
-  align-self: end;
-  justify-self: end;
   padding: 0;
 }
 
@@ -140,9 +138,7 @@
   font-weight: var(--font-weight-semibold);
   text-decoration: none;
   background: var(--action-primary-bg);
-  border-top-left-radius: var(--radius-md);
-  border-top-right-radius: 0;
-  border-bottom-right-radius: calc(var(--radius-lg) - var(--border-width));
+  border-radius: var(--radius-md);
 }
 
 .actionLink:focus-visible {
@@ -152,7 +148,7 @@
 
 .actionFeedback {
   position: absolute;
-  right: 0;
+  right: var(--spacing-3);
   bottom: calc(100% + var(--spacing-2));
   max-width: min(20rem, calc(100vw - (2 * var(--spacing-3))));
   margin: 0;
@@ -168,11 +164,11 @@
 .disclosureControl {
   z-index: 1;
   display: flex;
-  grid-row: 1;
-  grid-column: 1;
-  align-self: start;
-  justify-self: start;
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
   margin: var(--spacing-3);
+  scroll-margin-block-start: calc(var(--layout-header-height) + var(--spacing-3));
 }
 
 .disclosureButton {
@@ -232,9 +228,7 @@
   min-height: var(--control-height-md);
   padding-inline: var(--spacing-3);
   white-space: nowrap;
-  border-top-right-radius: 0;
-  border-bottom-right-radius: calc(var(--radius-lg) - var(--border-width));
-  border-bottom-left-radius: 0;
+  border-radius: var(--radius-md);
 }
 
 .actionButton:disabled {
@@ -242,6 +236,10 @@
   background: var(--action-primary-bg);
   border-color: var(--action-primary-bg);
   cursor: not-allowed;
+}
+
+.actionButton[aria-busy='true']:disabled {
+  cursor: default;
 }
 
 .actionButtonRemove {
@@ -280,10 +278,7 @@
   color: var(--action-secondary-fg);
   background: var(--action-secondary-bg);
   border: var(--border-width) solid var(--action-secondary-bg-hover);
-  border-top-left-radius: var(--radius-md);
-  border-top-right-radius: 0;
-  border-bottom-right-radius: calc(var(--radius-lg) - var(--border-width));
-  border-bottom-left-radius: 0;
+  border-radius: var(--radius-md);
   font-size: var(--type-button-size);
   font-weight: var(--type-button-weight);
   line-height: var(--type-button-lh);
@@ -423,4 +418,80 @@
 
 .tooltipOpen {
   opacity: 1;
+}
+
+@media (max-width: 767px) {
+  .link {
+    grid-template-columns: minmax(0, min(8rem, 45%)) minmax(0, 1fr);
+    grid-template-rows: auto;
+    column-gap: var(--spacing-3);
+    align-items: start;
+  }
+
+  .preview {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: start;
+    min-block-size: auto;
+    border-radius: calc(var(--radius-lg) - var(--border-width));
+  }
+
+  .body {
+    grid-column: 2;
+    grid-row: 1;
+    padding-inline-start: 0;
+    gap: var(--spacing-3);
+  }
+
+  .title {
+    min-height: 48px;
+  }
+
+  .metadata {
+    flex-wrap: wrap;
+    white-space: normal;
+  }
+
+  .lessonCount {
+    white-space: normal;
+  }
+
+  .footer {
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: var(--spacing-8);
+    padding-block: var(--spacing-2);
+  }
+
+  .price {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .actionLink,
+  .actionButton,
+  .actionStatus {
+    inline-size: 7.5rem;
+    padding-inline: var(--spacing-2);
+  }
+
+  @container (min-width: 34rem) {
+    .link {
+      grid-template-columns: minmax(0, 10rem) minmax(0, 1fr);
+    }
+  }
+}
+
+@media (max-width: 223px) {
+  .preview {
+    align-self: start;
+    min-block-size: auto;
+  }
+
+  .lessonCount {
+    flex: 0 1 auto;
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+  }
 }

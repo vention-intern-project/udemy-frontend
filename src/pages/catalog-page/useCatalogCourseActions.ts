@@ -30,7 +30,7 @@ export interface CatalogCourseActionAttempt {
 
 export interface CatalogCourseActionFeedback {
   message: string;
-  tone: 'error' | 'success';
+  tone: 'error';
 }
 
 export type CatalogCourseActionPresentation =
@@ -228,21 +228,12 @@ export function useCatalogCourseActions(courses: readonly CatalogCourse[]) {
           : attempt.action === 'remove'
             ? 'eligible'
             : 'already-in-cart';
-      const message =
-        attempt.action === 'enroll'
-          ? 'You are enrolled in this course.'
-          : attempt.action === 'remove'
-            ? 'The course was removed from your cart.'
-            : 'The course is in your cart.';
       setOverrideByIdentity((current) =>
         new Map(current).set(attempt.identity, {
           courseId: attempt.courseId,
           preflight,
           reconcileWithPreflight: true,
         }),
-      );
-      setFeedbackByIdentity((current) =>
-        new Map(current).set(attempt.identity, { message, tone: 'success' }),
       );
     },
     onError: async (error, attempt) => {

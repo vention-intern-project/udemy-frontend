@@ -29,22 +29,25 @@
   --border-strong: #9ca3af;
 
   /* Action — Primary */
-  --action-primary-bg: #6d28d9;
-  --action-primary-bg-hover: #5b21b6;
-  --action-primary-bg-pressed: #4c1d95;
+  --action-primary-bg: #5b3fd6;
+  --action-primary-bg-hover: #4932b6;
+  --action-primary-bg-pressed: #3d299b;
   --action-primary-fg: #ffffff;
 
   /* Action — Secondary */
-  --action-secondary-bg: #ede9fe;
-  --action-secondary-bg-hover: #ddd6fe;
-  --action-secondary-bg-pressed: #c4b5fd;
-  --action-secondary-fg: #4c1d95;
+  --action-secondary-bg: #eeebfb;
+  --action-secondary-bg-hover: #e3def8;
+  --action-secondary-bg-pressed: #d7d0f4;
+  --action-secondary-fg: #4b32b5;
 
   /* Action — Link */
   --action-link: #1d4ed8;
 
   /* Focus ring — keyboard only */
-  --focus-ring: #6d28d9;
+  --focus-ring: #5b3fd6;
+  --focus-ring-light: #5b3fd6;
+  --focus-ring-inverted: #ddd6fe;
+  --focus-ring-scrim: #ddd6fe;
   --focus-ring-width: 2px;
   --focus-ring-offset: 2px;
 

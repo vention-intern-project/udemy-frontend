@@ -72,6 +72,19 @@ describe('InstructorCoursesPage', () => {
     };
     await renderPage({ request });
     const user = userEvent.setup();
+    const hero = document.querySelector('[data-part="instructor-courses-hero"]');
+    const heroImage = hero?.querySelector('img');
+    expect(hero).toBeTruthy();
+    expect(heroImage?.getAttribute('src')).toContain('instructor-courses-hero-ui022');
+    expect(heroImage?.getAttribute('alt')).toBe('');
+    expect(heroImage?.getAttribute('aria-hidden')).toBe('true');
+    expect(screen.getByRole('heading', { name: 'Instructor courses' })).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Create meaningful courses, share your expertise, and inspire learners to grow.',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText('Course listing unavailable')).toBeTruthy();
     const title = await screen.findByRole('textbox', { name: 'Course title' });
     await act(async () => {
       await user.type(title, 'A'.repeat(255));
@@ -79,6 +92,13 @@ describe('InstructorCoursesPage', () => {
     });
     await waitFor(() => expect(createRequests).toHaveLength(1));
     expect(createRequests[0]?.body).toEqual({ title: 'A'.repeat(255) });
+    expect(await screen.findByRole('navigation', { name: 'New course actions' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Edit course' }).getAttribute('href')).toBe(
+      '/instructor/courses/7/edit',
+    );
+    expect(screen.getByRole('link', { name: 'Course enrollments' }).getAttribute('href')).toBe(
+      '/instructor/courses/7/enrollments',
+    );
   });
 
   it('blocks an oversized or whitespace-only title locally and returns keyboard focus to the field', async () => {

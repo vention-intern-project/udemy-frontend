@@ -195,7 +195,8 @@ async function captureLayout(page: Page): Promise<LayoutGeometry> {
     const main = document.querySelector('main');
     const panel =
       document.querySelector('[data-part="catalog-discovery-layout"]') ??
-      main?.querySelector(':scope > section[aria-labelledby]');
+      main?.querySelector(':scope > section[aria-labelledby]') ??
+      main?.firstElementChild;
     if (!header || !main || !panel) throw new Error('Layout geometry targets are unavailable');
     const panelStyle = getComputedStyle(panel);
     const mainStyle = getComputedStyle(main);
