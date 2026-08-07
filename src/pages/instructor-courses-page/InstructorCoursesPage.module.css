@@ -104,11 +104,47 @@
 .hero .heroContent p {
   color: inherit;
 }
-.panel {
+.panel,
+.collection {
   padding: var(--spacing-4);
   border: var(--border-width) solid var(--border-default);
   border-radius: var(--radius-lg);
   background: var(--color-surface);
+}
+.collection,
+.courseList,
+.courseRow,
+.courseRow > div {
+  display: grid;
+  gap: var(--spacing-4);
+  min-width: 0;
+}
+.courseList {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.courseRow {
+  padding-block-end: var(--spacing-4);
+  border-block-end: var(--border-width) solid var(--border-default);
+}
+.courseRow:last-child {
+  padding-block-end: 0;
+  border-block-end: 0;
+}
+.courseRow h3,
+.courseRow p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.courseRow span {
+  color: var(--text-secondary);
+}
+.courseActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+  align-items: center;
 }
 .successActions {
   display: flex;
@@ -132,6 +168,10 @@
   .heroContent {
     padding-inline: var(--gutter-desktop);
   }
+  .courseRow {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
 }
 @media (min-width: 1200px) {
   .hero {
@@ -139,10 +179,12 @@
   }
 }
 @media (max-width: 479px) {
-  .panel {
+  .panel,
+  .collection {
     padding: var(--spacing-3);
   }
   .form > button,
+  .courseActions,
   .successAction {
     width: 100%;
   }

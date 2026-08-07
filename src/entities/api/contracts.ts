@@ -88,4 +88,5 @@ export interface SelectedApiContractMap {
   'API-032': { input: { path: PathLesson; body: FormData }; response: LessonDto };
   'API-033': { input: { body: UserRegisterDto }; response: RegisterResponseDto };
   'API-034': { input: { body: MockPaymentCompletionRequestDto }; response: MockPaymentCompleteDto };
+  'API-035': { input: { query: PageQueryDto }; response: CourseListDto };
 }

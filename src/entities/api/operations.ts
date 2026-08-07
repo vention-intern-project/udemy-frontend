@@ -32,7 +32,8 @@ export type SelectedApiOperationId =
   | 'API-031'
   | 'API-032'
   | 'API-033'
-  | 'API-034';
+  | 'API-034'
+  | 'API-035';
 
 export interface ApiOperationDefinition {
   id: SelectedApiOperationId;
@@ -360,6 +361,16 @@ export const API_OPERATION_BY_ID = {
     retry: 'never',
     mutationDedupe: 'supported',
     requestMode: 'json',
+    responseMode: 'json',
+    assumptionTags: [],
+  },
+  'API-035': {
+    id: 'API-035',
+    method: 'GET',
+    path: '/courses/my',
+    retry: 'safe_read',
+    mutationDedupe: 'not_applicable',
+    requestMode: 'query',
     responseMode: 'json',
     assumptionTags: [],
   },
