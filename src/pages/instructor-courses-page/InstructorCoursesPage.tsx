@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 
@@ -36,6 +36,7 @@ function collectionFailure(error: unknown): string {
 
 export function InstructorCoursesPage() {
   const session = useSession();
+  const queryClient = useQueryClient();
   const [params, setParams] = useSearchParams();
   const [title, setTitle] = useState('');
   const [titleError, setTitleError] = useState<string | null>(null);
@@ -49,6 +50,10 @@ export function InstructorCoursesPage() {
   });
   const create = useMutation({
     mutationFn: () => requestCreateCourse(session, { title: title.trim() }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: ['instructor-courses', session.cacheEpoch ?? null],
+      }),
   });
   useEffect(() => {
     if (create.isError) failureSummaryRef.current?.focus({ preventScroll: true });
@@ -89,7 +94,17 @@ export function InstructorCoursesPage() {
         {collection.isError ? (
           <Notice tone="error" title="Course list unavailable">
             <p>{collectionFailure(collection.error)}</p>
-            <Button type="button" variant="secondary" onClick={() => void collection.refetch()}>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                if (collection.error instanceof ApiError && collection.error.status === 422) {
+                  setParams({});
+                  return;
+                }
+                void collection.refetch();
+              }}
+            >
               Try again
             </Button>
           </Notice>

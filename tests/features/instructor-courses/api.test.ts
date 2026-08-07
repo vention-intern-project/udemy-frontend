@@ -118,6 +118,7 @@ describe('instructor course API', () => {
 
   it.each([
     ['malformed pagination', instructorCourseList({ pages: 0 })],
+    ['a short page that contradicts its total', instructorCourseList({ total: 2 })],
     [
       'duplicate course identities',
       instructorCourseList({

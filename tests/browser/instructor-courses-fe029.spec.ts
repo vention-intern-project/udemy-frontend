@@ -24,6 +24,11 @@ const course = {
 };
 
 const pageTwoCourse = { ...course, id: 18, title: 'Second instructor course' };
+const firstPageCourses = Array.from({ length: 20 }, (_, index) => ({
+  ...course,
+  id: index === 0 ? course.id : index + 100,
+  title: index === 0 ? course.title : `Instructor course ${index + 1}`,
+}));
 
 interface CollectionFailureScenario {
   readonly status: 401 | 403 | 422;
@@ -151,7 +156,7 @@ test('uses only the authenticated collection query, paginates, and preserves sta
     expect(request.headers().authorization).toBe('Bearer fe029-fixture-token');
     collectionQueries.push(url.search);
     if (url.search === '?page=1&page_size=20') {
-      await fulfillJson(route, 200, collectionResponse([course], 1, 21, 2));
+      await fulfillJson(route, 200, collectionResponse(firstPageCourses, 1, 21, 2));
       return;
     }
     if (url.search === '?page=2&page_size=20') {
@@ -163,17 +168,17 @@ test('uses only the authenticated collection query, paginates, and preserves sta
 
   await page.goto('/instructor/courses');
   await expect(page.getByRole('heading', { level: 2, name: 'Your courses' })).toBeFocused();
-  await expect(page.getByRole('link', { name: 'Edit course' })).toHaveAttribute(
+  const firstCourseActions = page.getByRole('navigation', { name: `${course.title} actions` });
+  await expect(firstCourseActions.getByRole('link', { name: 'Edit course' })).toHaveAttribute(
     'href',
     '/instructor/courses/17/edit',
   );
-  await expect(page.getByRole('link', { name: 'Course enrollments' })).toHaveAttribute(
-    'href',
-    '/instructor/courses/17/enrollments',
-  );
-  await page.getByRole('link', { name: 'Edit course' }).focus();
+  await expect(
+    firstCourseActions.getByRole('link', { name: 'Course enrollments' }),
+  ).toHaveAttribute('href', '/instructor/courses/17/enrollments');
+  await firstCourseActions.getByRole('link', { name: 'Edit course' }).focus();
   await page.keyboard.press('Tab');
-  await expect(page.getByRole('link', { name: 'Course enrollments' })).toBeFocused();
+  await expect(firstCourseActions.getByRole('link', { name: 'Course enrollments' })).toBeFocused();
   await page.getByRole('button', { name: 'Go to page 2' }).press('Enter');
   await expect(page).toHaveURL(/\/instructor\/courses\?page=2$/);
   await expect(page.getByText(pageTwoCourse.title)).toBeVisible();

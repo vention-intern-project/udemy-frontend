@@ -2,7 +2,7 @@
 import { QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createAppQueryClient } from '../../src/app/query';
@@ -66,19 +66,26 @@ async function renderPage(
   client: ApiClient,
   store: AccessTokenStore = tokenStore,
   includeSessionReplacementControl = false,
+  initialEntry = '/',
 ) {
   await act(async () => {
     render(
       <QueryClientProvider client={createAppQueryClient()}>
         <SessionProvider client={client} tokenStore={store}>
-          <MemoryRouter>
+          <MemoryRouter initialEntries={[initialEntry]}>
             {includeSessionReplacementControl ? <SessionReplacementControl /> : null}
+            <LocationDisplay />
             <InstructorCoursesPage />
           </MemoryRouter>
         </SessionProvider>
       </QueryClientProvider>,
     );
   });
+}
+
+function LocationDisplay() {
+  const location = useLocation();
+  return <output data-testid="location">{location.search}</output>;
 }
 
 function SessionReplacementControl() {
@@ -168,11 +175,22 @@ describe('InstructorCoursesPage', () => {
         .getByRole('link', { name: 'Course enrollments' })
         .getAttribute('href'),
     ).toBe('/instructor/courses/7/enrollments');
+    await waitFor(() => expect(collectionRequests).toHaveLength(3));
   });
 
   it('requests page two through the public pagination control with only the verified query fields', async () => {
     const collectionRequests: ApiRequestOptions[] = [];
-    const firstPage = { ...courseList, total: 21, pages: 2, has_next: true };
+    const firstPage = {
+      ...courseList,
+      items: Array.from({ length: 20 }, (_, index) => ({
+        ...courseList.items[0],
+        id: index + 1,
+        title: index === 0 ? 'Verified collection course' : `Instructor course ${index + 1}`,
+      })),
+      total: 21,
+      pages: 2,
+      has_next: true,
+    };
     const secondPage = {
       ...firstPage,
       items: [{ ...courseList.items[0], id: 18, title: 'Second instructor course' }],
@@ -308,6 +326,31 @@ describe('InstructorCoursesPage', () => {
       await userEvent.setup().keyboard('{Enter}');
     });
     expect(await screen.findByText('Verified collection course')).toBeTruthy();
+  });
+
+  it('resets an unaddressable 422 collection page to page one before retrying', async () => {
+    const collectionRequests: ApiRequestOptions[] = [];
+    const request: ApiClient['request'] = async (options) => {
+      if (options.path === '/me') return decode(options, instructor);
+      collectionRequests.push(options);
+      if (options.query?.page === 9)
+        throw new ApiError({ kind: 'validation', status: 422, message: 'private' });
+      return decode(options, courseList);
+    };
+    await renderPage({ request }, tokenStore, false, '/?page=9');
+    expect(
+      await screen.findByText('The requested course page is not valid. Try another page.'),
+    ).toBeTruthy();
+    await act(async () => {
+      await userEvent.setup().click(screen.getByRole('button', { name: 'Try again' }));
+    });
+    expect(await screen.findByText('Verified collection course')).toBeTruthy();
+    expect(screen.getByTestId('location').textContent).toBe('');
+    expect(collectionRequests[collectionRequests.length - 1]?.query).toEqual({
+      page: 1,
+      page_size: 20,
+    });
+    expect(collectionRequests.filter((request) => request.query?.page === 1)).toHaveLength(1);
   });
 
   it('does not project a deferred old-session collection after the session cache epoch changes', async () => {

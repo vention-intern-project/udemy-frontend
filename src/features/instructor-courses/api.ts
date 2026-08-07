@@ -82,7 +82,7 @@ export function decodeInstructorCourseCollection(
   if (
     response.pages !== expectedPages ||
     response.page > Math.max(1, response.pages) ||
-    response.items.length > Math.min(response.page_size, remainingItems) ||
+    response.items.length !== Math.min(response.page_size, remainingItems) ||
     response.has_next !== response.page < response.pages ||
     response.has_previous !== response.page > 1
   ) {
