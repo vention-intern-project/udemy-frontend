@@ -293,7 +293,7 @@ describe('CartPage', () => {
       fireEvent.resize(window);
       fireEvent.scroll(window);
       expect(requestAnimationFrame).toHaveBeenCalledTimes(1);
-      expect(frameCallbacks).toHaveLength(1);
+      expect(frameCallbacks.size).toBe(1);
       const firstFrame = frameCallbacks.get(1);
       if (!firstFrame) throw new Error('Expected the summary visibility frame.');
       frameCallbacks.delete(1);
@@ -318,7 +318,7 @@ describe('CartPage', () => {
         });
       });
       await waitFor(() => expect(cancelAnimationFrame).toHaveBeenCalledWith(2));
-      expect(frameCallbacks).toHaveLength(0);
+      expect(frameCallbacks.size).toBe(0);
 
       summaryTop = 80;
       fireEvent.resize(window);
@@ -338,7 +338,7 @@ describe('CartPage', () => {
       expect(frameCallbacks.has(4)).toBe(true);
       cleanup();
       expect(cancelAnimationFrame).toHaveBeenCalledWith(4);
-      expect(frameCallbacks).toHaveLength(0);
+      expect(frameCallbacks.size).toBe(0);
     } finally {
       if (originalSummaryBounds)
         Object.defineProperty(
