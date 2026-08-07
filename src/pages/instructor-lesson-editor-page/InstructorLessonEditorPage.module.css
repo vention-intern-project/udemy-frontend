@@ -1,0 +1,52 @@
+.page,
+.panel,
+.form {
+  display: grid;
+  gap: var(--spacing-4);
+  min-width: 0;
+}
+.page {
+  max-width: var(--container-max-workspace);
+  margin-inline: auto;
+}
+.header {
+  display: flex;
+  gap: var(--spacing-3);
+  align-items: center;
+  justify-content: space-between;
+}
+.header h1,
+.header p,
+.panel h2 {
+  margin: 0;
+}
+.eyebrow {
+  color: var(--text-secondary);
+}
+.panel {
+  padding: var(--density-card-inner);
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+.backLink {
+  display: inline-flex;
+  min-height: var(--control-height-md);
+  align-items: center;
+  color: var(--action-link);
+}
+.checkbox {
+  display: flex;
+  gap: var(--spacing-2);
+  align-items: center;
+  min-height: var(--control-height-md);
+}
+.fieldError {
+  color: var(--state-error-fg);
+}
+@media (max-width: 767px) {
+  .header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

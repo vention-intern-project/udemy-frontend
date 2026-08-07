@@ -1,0 +1,76 @@
+.page,
+.panel,
+.form,
+.lessonList {
+  display: grid;
+  gap: var(--spacing-4);
+  min-width: 0;
+}
+.page {
+  max-width: var(--container-max-workspace);
+  margin-inline: auto;
+}
+.header,
+.lessonRow,
+.actions,
+.fieldRow {
+  display: flex;
+  gap: var(--spacing-3);
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+}
+.header h1,
+.header p,
+.panel h2,
+.lessonRow h3,
+.lessonRow p {
+  margin: 0;
+}
+.eyebrow,
+.lessonRow p {
+  color: var(--text-secondary);
+}
+.panel {
+  padding: var(--density-card-inner);
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+.lessonList {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.lessonRow {
+  padding-block: var(--spacing-3);
+  border-block-start: var(--border-width) solid var(--border-default);
+}
+.backLink {
+  display: inline-flex;
+  min-height: var(--control-height-md);
+  align-items: center;
+  color: var(--action-link);
+  overflow-wrap: anywhere;
+}
+.checkbox {
+  display: flex;
+  gap: var(--spacing-2);
+  align-items: center;
+  min-height: var(--control-height-md);
+}
+.fieldError {
+  color: var(--state-error-fg);
+}
+@media (max-width: 767px) {
+  .header,
+  .lessonRow,
+  .actions,
+  .fieldRow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .actions > * {
+    width: 100%;
+  }
+}
