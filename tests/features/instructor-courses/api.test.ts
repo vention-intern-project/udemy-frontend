@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   decodeCourseEnrollmentList,
+  decodeInstructorCourseCollection,
   requestCourseEnrollments,
   requestCreateCourse,
+  requestInstructorCourses,
 } from '@features/instructor-courses';
 import type { ApiRequestOptions } from '@shared/api';
 import { createApiClient } from '@shared/api';
@@ -44,6 +46,32 @@ function roster(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function instructorCourseList(overrides: Record<string, unknown> = {}) {
+  return {
+    items: [
+      {
+        id: 17,
+        title: 'Instructor course',
+        description: 'Returned by the authenticated instructor collection.',
+        price: '0.00',
+        currency: 'USD',
+        published_at: null,
+        created_at: '2026-07-30T00:00:00Z',
+        updated_at: '2026-07-30T00:00:00Z',
+        instructor: { id: 3, name: 'Ada', surname: 'Lovelace' },
+        lessons: [{ id: 1, title: 'Introduction' }],
+      },
+    ],
+    page: 1,
+    page_size: 20,
+    total: 1,
+    pages: 1,
+    has_next: false,
+    has_previous: false,
+    ...overrides,
+  };
+}
+
 function decoderFaithfulSession(response: unknown): SessionContextValue {
   return {
     requestRequired: async <TResponse, TBody>(options: ApiRequestOptions<TBody, TResponse>) => {
@@ -54,6 +82,58 @@ function decoderFaithfulSession(response: unknown): SessionContextValue {
 }
 
 describe('instructor course API', () => {
+  it('uses API-035 with the exact instructor collection path, pagination, signal, and decoder-faithful result', async () => {
+    const signal = new AbortController().signal;
+    const requestRequired = vi.fn(decoderFaithfulSession(instructorCourseList()).requestRequired);
+
+    await expect(
+      requestInstructorCourses({ requestRequired } as unknown as SessionContextValue, 1, signal),
+    ).resolves.toEqual({
+      items: [
+        {
+          id: 17,
+          title: 'Instructor course',
+          description: 'Returned by the authenticated instructor collection.',
+          lessonCount: 1,
+        },
+      ],
+      page: 1,
+      pageSize: 20,
+      total: 1,
+      pages: 1,
+      hasNext: false,
+      hasPrevious: false,
+    });
+
+    expect(requestRequired).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: 'GET',
+        path: '/courses/my',
+        query: { page: 1, page_size: 20 },
+        signal,
+        decode: expect.any(Function),
+      }),
+    );
+  });
+
+  it.each([
+    ['malformed pagination', instructorCourseList({ pages: 0 })],
+    [
+      'duplicate course identities',
+      instructorCourseList({
+        total: 2,
+        items: [
+          instructorCourseList().items[0],
+          { ...(instructorCourseList().items[0] as Record<string, unknown>) },
+        ],
+      }),
+    ],
+    ['an unexpected response page', instructorCourseList()],
+  ])('rejects instructor collection responses with %s', (_scenario, response) => {
+    const expectedPage = _scenario === 'an unexpected response page' ? 2 : undefined;
+    expect(() => decodeInstructorCourseCollection(response, expectedPage)).toThrow(TypeError);
+  });
+
   it('decodes a complete verified roster row and binds it to the requested course', () => {
     expect(decodeCourseEnrollmentList(roster(), 7)).toEqual({
       items: [

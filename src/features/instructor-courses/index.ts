@@ -1,2 +1,15 @@
-export { decodeCourseEnrollmentList, requestCourseEnrollments, requestCreateCourse } from './api';
-export type { CourseEnrollment, CourseEnrollmentList, CourseEnrollmentStudent } from './api';
+export {
+  decodeCourseEnrollmentList,
+  decodeInstructorCourseCollection,
+  INSTRUCTOR_COURSE_PAGE_SIZE,
+  requestCourseEnrollments,
+  requestCreateCourse,
+  requestInstructorCourses,
+} from './api';
+export type {
+  CourseEnrollment,
+  CourseEnrollmentList,
+  CourseEnrollmentStudent,
+  InstructorCourseCollection,
+  InstructorCourseCollectionItem,
+} from './api';

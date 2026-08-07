@@ -1,5 +1,5 @@
-import type { Course, CourseDto } from '@entities/course';
-import { mapCourseDto } from '@entities/course';
+import type { Course, CourseDto, CourseListDto } from '@entities/course';
+import { decodeCourseListDto, mapCourseDto } from '@entities/course';
 import {
   mapEnrollmentStatusDto,
   type CourseEnrollmentDto,
@@ -16,6 +16,24 @@ import {
 } from '@shared/api';
 
 const ROSTER_PAGE_SIZE = 20;
+export const INSTRUCTOR_COURSE_PAGE_SIZE = 20;
+
+export interface InstructorCourseCollectionItem {
+  readonly id: number;
+  readonly title: string;
+  readonly description: string | null;
+  readonly lessonCount: number;
+}
+
+export interface InstructorCourseCollection {
+  readonly items: readonly InstructorCourseCollectionItem[];
+  readonly page: number;
+  readonly pageSize: number;
+  readonly total: number;
+  readonly pages: number;
+  readonly hasNext: boolean;
+  readonly hasPrevious: boolean;
+}
 
 export interface CourseEnrollmentStudent {
   id: number;
@@ -46,6 +64,50 @@ export interface CourseEnrollmentList {
 
 export interface CreateCourseInput {
   readonly title: string;
+}
+
+export function decodeInstructorCourseCollection(
+  value: unknown,
+  expectedPage?: number,
+): InstructorCourseCollection {
+  const response: CourseListDto = decodeCourseListDto(value);
+  if (
+    response.page_size !== INSTRUCTOR_COURSE_PAGE_SIZE ||
+    (expectedPage !== undefined && response.page !== expectedPage)
+  ) {
+    throw new TypeError('Invalid instructor course cursor');
+  }
+  const expectedPages = response.total === 0 ? 0 : Math.ceil(response.total / response.page_size);
+  const remainingItems = Math.max(0, response.total - (response.page - 1) * response.page_size);
+  if (
+    response.pages !== expectedPages ||
+    response.page > Math.max(1, response.pages) ||
+    response.items.length > Math.min(response.page_size, remainingItems) ||
+    response.has_next !== response.page < response.pages ||
+    response.has_previous !== response.page > 1
+  ) {
+    throw new TypeError('Invalid instructor course pagination');
+  }
+  const ids = new Set<number>();
+  const items = response.items.map((item): InstructorCourseCollectionItem => {
+    if (ids.has(item.id)) throw new TypeError('Invalid instructor course identity');
+    ids.add(item.id);
+    return {
+      id: item.id,
+      title: item.title,
+      description: item.description,
+      lessonCount: item.lessons.length,
+    };
+  });
+  return {
+    items,
+    page: response.page,
+    pageSize: response.page_size,
+    total: response.total,
+    pages: response.pages,
+    hasNext: response.has_next,
+    hasPrevious: response.has_previous,
+  };
 }
 
 function decodeCourse(value: unknown): CourseDto {
@@ -176,5 +238,18 @@ export function requestCourseEnrollments(
     query: { page, page_size: ROSTER_PAGE_SIZE },
     signal,
     decode: (value) => decodeCourseEnrollmentList(value, courseId, page),
+  });
+}
+
+export function requestInstructorCourses(
+  session: SessionContextValue,
+  page: number,
+  signal: AbortSignal,
+): Promise<InstructorCourseCollection> {
+  return requestOperation<InstructorCourseCollection>(session, 'API-035', {
+    path: '/courses/my',
+    query: { page, page_size: INSTRUCTOR_COURSE_PAGE_SIZE },
+    signal,
+    decode: (value) => decodeInstructorCourseCollection(value, page),
   });
 }
