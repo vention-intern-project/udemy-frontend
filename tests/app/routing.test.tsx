@@ -44,45 +44,58 @@ function clientFor(role: UserRoleDto): ApiClient {
       options: ApiRequestOptions<TBody, TResponse>,
     ): Promise<TResponse> => {
       const value: unknown =
-        options.path === '/enrollments/my'
+        options.path === '/courses/42'
           ? {
-              items: [],
-              page: 1,
-              page_size: 20,
-              total: 0,
-              pages: 0,
-              has_next: false,
-              has_previous: false,
+              id: 42,
+              title: 'Editor course',
+              description: null,
+              price: '0.00',
+              currency: 'USD',
+              published_at: null,
+              created_at: '2026-07-20T00:00:00Z',
+              updated_at: '2026-07-20T00:00:00Z',
+              instructor: { id: 3, name: 'Indira', surname: 'User' },
+              lessons: [],
             }
-          : options.path.startsWith('/enrollments/')
+          : options.path === '/enrollments/my'
             ? {
-                id: 42,
-                user_id: 1,
-                course_id: 7,
-                status: 'active',
-                created_at: '2026-07-01T00:00:00Z',
-                updated_at: '2026-07-01T00:00:00Z',
-                course: {
-                  id: 7,
-                  title: 'Learning details',
-                  description: null,
-                  price: '0.00',
-                  currency: 'USD',
-                },
+                items: [],
+                page: 1,
+                page_size: 20,
+                total: 0,
+                pages: 0,
+                has_next: false,
+                has_previous: false,
               }
-            : options.path === '/courses/7/progress'
-              ? { course_id: 7, completed_lessons: 0, total_lessons: 0, progress_percentage: 0 }
-              : options.path === '/courses/7/lessons'
-                ? {
-                    items: [],
-                    page: 1,
-                    page_size: 100,
-                    total: 0,
-                    pages: 0,
-                    has_next: false,
-                    has_previous: false,
-                  }
-                : profile(role);
+            : options.path.startsWith('/enrollments/')
+              ? {
+                  id: 42,
+                  user_id: 1,
+                  course_id: 7,
+                  status: 'active',
+                  created_at: '2026-07-01T00:00:00Z',
+                  updated_at: '2026-07-01T00:00:00Z',
+                  course: {
+                    id: 7,
+                    title: 'Learning details',
+                    description: null,
+                    price: '0.00',
+                    currency: 'USD',
+                  },
+                }
+              : options.path === '/courses/7/progress'
+                ? { course_id: 7, completed_lessons: 0, total_lessons: 0, progress_percentage: 0 }
+                : options.path === '/courses/7/lessons'
+                  ? {
+                      items: [],
+                      page: 1,
+                      page_size: 100,
+                      total: 0,
+                      pages: 0,
+                      has_next: false,
+                      has_previous: false,
+                    }
+                  : profile(role);
       return 'decode' in options && options.decode ? options.decode(value) : (value as TResponse);
     },
   };
