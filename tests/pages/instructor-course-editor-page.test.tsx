@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClientProvider } from '@tanstack/react-query';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -175,6 +175,67 @@ describe('InstructorCourseEditorPage', () => {
     expect(courseTitle.getAttribute('aria-describedby')).toContain('error');
     await waitFor(() => expect(document.activeElement).toBe(courseTitle));
     expect(screen.queryByText('PRIVATE_COURSE_TITLE_DETAIL')).toBeNull();
+  });
+
+  it('preserves unsaved course edits when a course refetch returns the same identity', async () => {
+    let courseRequestCount = 0;
+    const request: ApiClient['request'] = async (options) => {
+      if (options.path === '/me') return decode(options, instructor);
+      if (options.path === '/courses/7' && options.method === 'GET') {
+        courseRequestCount += 1;
+        return decode(options, { ...course, title: `Server course ${courseRequestCount}` });
+      }
+      if (options.path === '/courses/7/lessons' && options.method === 'POST') {
+        return decode(options, { ...course.lessons[0], id: 9, title: 'New lesson' });
+      }
+      throw new Error(`Unexpected request: ${options.method} ${options.path}`);
+    };
+    await renderPage({ request });
+    const user = userEvent.setup();
+    const courseTitle = await screen.findByRole('textbox', { name: 'Course title' });
+    await act(async () => {
+      await user.clear(courseTitle);
+      await user.type(courseTitle, 'Unsaved instructor edit');
+      await user.type(screen.getByRole('textbox', { name: 'Lesson title' }), 'New lesson');
+      await user.click(screen.getByRole('button', { name: 'Create lesson' }));
+    });
+
+    await waitFor(() => expect(courseRequestCount).toBeGreaterThan(1));
+    expect((courseTitle as HTMLInputElement).value).toBe('Unsaved instructor edit');
+  });
+
+  it('clears a failed delete mutation when cancelling or selecting a new target', async () => {
+    const request: ApiClient['request'] = async (options) => {
+      if (options.path === '/me') return decode(options, instructor);
+      if (options.path === '/courses/7' && options.method === 'GET') return decode(options, course);
+      if (options.method === 'DELETE') {
+        throw new ApiError({ kind: 'not_found', status: 404, message: 'PRIVATE_DELETE_DETAIL' });
+      }
+      throw new Error(`Unexpected request: ${options.method} ${options.path}`);
+    };
+    await renderPage({ request });
+    const user = userEvent.setup();
+    await screen.findByRole('heading', { name: 'Edit course' });
+
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Delete lesson' }));
+    });
+    const deleteLessonDialog = await screen.findByRole('dialog', { name: 'Delete this lesson?' });
+    await act(async () => {
+      await user.click(
+        within(deleteLessonDialog).getByRole('button', {
+          name: 'Delete lesson',
+        }),
+      );
+    });
+    expect(await screen.findByText('This course or lesson is no longer available.')).toBeTruthy();
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Cancel' }));
+      await user.click(screen.getByRole('button', { name: 'Delete course' }));
+    });
+
+    expect(await screen.findByRole('dialog', { name: 'Delete this course?' })).toBeTruthy();
+    expect(screen.queryByText('This course or lesson is no longer available.')).toBeNull();
   });
 
   it('maps a verified create-lesson publication 422 issue to the checkbox and focuses it', async () => {

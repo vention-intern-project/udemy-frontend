@@ -3,12 +3,13 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   createInstructorLesson,
   deleteInstructorLesson,
+  mapInstructorEditorFormFailure,
   requestInstructorEditorCourse,
   updateInstructorCourse,
   uploadInstructorLessonFile,
 } from '../../../src/features/instructor-course-editor';
 import type { SessionContextValue } from '../../../src/features/auth-session';
-import type { ApiRequestOptions } from '../../../src/shared/api';
+import { ApiError, type ApiRequestOptions } from '../../../src/shared/api';
 
 const course = {
   id: 7,
@@ -86,6 +87,35 @@ function asSessionRequest(
 }
 
 describe('instructor course editor API', () => {
+  it('does not map a hostile inherited 422 field location', () => {
+    const failure = mapInstructorEditorFormFailure(
+      new ApiError({
+        kind: 'validation',
+        status: 422,
+        message: 'PRIVATE_CONSTRUCTOR_DETAIL',
+        issues: [
+          {
+            location: ['body', 'constructor'],
+            message: 'PRIVATE_CONSTRUCTOR_DETAIL',
+            type: 'missing',
+          },
+        ],
+      }),
+      {
+        action: 'save this course',
+        unauthorized: 'Sign in again before continuing.',
+        forbidden: 'You do not have permission to change this course.',
+        notFound: 'This course is no longer available.',
+      },
+      { title: { field: 'title', label: 'Course title' } },
+    );
+
+    expect(failure).toEqual({
+      fields: {},
+      summary: 'We could not process this form. Check your details and try again.',
+    });
+  });
+
   it('uses the registered course CRUD and lesson-create contracts with only verified fields', async () => {
     const request = vi.fn(async (options: ApiRequestOptions) => {
       if (options.path === '/courses/7' && options.method === 'GET') return decode(options, course);

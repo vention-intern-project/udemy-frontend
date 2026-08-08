@@ -47,7 +47,10 @@ export function mapInstructorEditorFormFailure(
   if (error instanceof ApiError && error.status === 422) {
     const mappedFields: Record<string, string> = {};
     error.issues.forEach((issue) => {
-      const definition = fields[String(issue.location[issue.location.length - 1])];
+      const fieldName = String(issue.location[issue.location.length - 1]);
+      const definition = Object.prototype.hasOwnProperty.call(fields, fieldName)
+        ? fields[fieldName]
+        : undefined;
       if (definition && !mappedFields[definition.field]) {
         mappedFields[definition.field] = safeFieldMessage(definition.label, issue.type);
       }
