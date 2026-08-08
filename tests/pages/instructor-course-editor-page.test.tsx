@@ -240,11 +240,14 @@ describe('InstructorCourseEditorPage', () => {
     expect((courseTitle as HTMLInputElement).value).toBe('Submitted course title');
 
     await act(async () => {
-      resolveUpdate(course);
+      resolveUpdate({ ...course, title: 'Submitted course title' });
       await updateResponse;
     });
     await waitFor(() => {
       expect((courseTitle as HTMLInputElement).disabled).toBe(false);
+      expect((description as HTMLTextAreaElement).disabled).toBe(false);
+      expect((price as HTMLInputElement).disabled).toBe(false);
+      expect((currency as HTMLInputElement).disabled).toBe(false);
       expect((courseTitle as HTMLInputElement).value).toBe('Submitted course title');
     });
   });
