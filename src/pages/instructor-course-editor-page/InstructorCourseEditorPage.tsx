@@ -93,6 +93,7 @@ export function InstructorCourseEditorPage() {
   const [courseFieldErrors, setCourseFieldErrors] = useState<CourseFieldErrors>({});
   const [lessonFieldErrors, setLessonFieldErrors] = useState<LessonFieldErrors>({});
   const [deleteTarget, setDeleteTarget] = useState<InstructorEditorLesson | 'course' | null>(null);
+  const initializedCourseIdRef = useRef<number | null>(null);
   const courseTitleRef = useRef<HTMLInputElement>(null);
   const courseDescriptionRef = useRef<HTMLTextAreaElement>(null);
   const coursePriceRef = useRef<HTMLInputElement>(null);
@@ -110,7 +111,10 @@ export function InstructorCourseEditorPage() {
     enabled: courseId !== null,
   });
   useEffect(() => {
-    if (course.data) setCourseForm(initialCourseForm(course.data));
+    if (course.data && initializedCourseIdRef.current !== course.data.id) {
+      initializedCourseIdRef.current = course.data.id;
+      setCourseForm(initialCourseForm(course.data));
+    }
   }, [course.data]);
 
   const refreshCourse = () =>
@@ -129,9 +133,11 @@ export function InstructorCourseEditorPage() {
       if (courseId === null || courseForm === null) throw new Error('Course form is unavailable');
       return updateInstructorCourse(session, courseId, courseForm);
     },
-    onSuccess: async () => {
+    onSuccess: async (updatedCourse) => {
       setCourseError(null);
       setCourseFieldErrors({});
+      initializedCourseIdRef.current = updatedCourse.id;
+      setCourseForm(initialCourseForm(updatedCourse));
       await Promise.all([refreshCourse(), refreshCollection()]);
     },
     onError: (error) => {
@@ -305,6 +311,7 @@ export function InstructorCourseEditorPage() {
             required
             value={courseForm.title}
             error={courseFieldErrors.title}
+            disabled={updateCourse.isPending}
             onChange={(event) => setCourseForm({ ...courseForm, title: event.target.value })}
           />
           <Textarea
@@ -313,6 +320,7 @@ export function InstructorCourseEditorPage() {
             name="description"
             value={courseForm.description}
             error={courseFieldErrors.description}
+            disabled={updateCourse.isPending}
             onChange={(event) => setCourseForm({ ...courseForm, description: event.target.value })}
           />
           <div className={styles.fieldRow}>
@@ -325,6 +333,7 @@ export function InstructorCourseEditorPage() {
               step="0.01"
               value={courseForm.price}
               error={courseFieldErrors.price}
+              disabled={updateCourse.isPending}
               onChange={(event) => setCourseForm({ ...courseForm, price: event.target.value })}
             />
             <Input
@@ -335,6 +344,7 @@ export function InstructorCourseEditorPage() {
               maxLength={3}
               value={courseForm.currency}
               error={courseFieldErrors.currency}
+              disabled={updateCourse.isPending}
               onChange={(event) => setCourseForm({ ...courseForm, currency: event.target.value })}
             />
           </div>
@@ -355,7 +365,10 @@ export function InstructorCourseEditorPage() {
               type="button"
               variant="destructive"
               disabled={updateCourse.isPending || createLesson.isPending}
-              onClick={() => setDeleteTarget('course')}
+              onClick={() => {
+                remove.reset();
+                setDeleteTarget('course');
+              }}
             >
               Delete course
             </Button>
@@ -384,7 +397,10 @@ export function InstructorCourseEditorPage() {
                     type="button"
                     variant="destructive"
                     disabled={remove.isPending}
-                    onClick={() => setDeleteTarget(lesson)}
+                    onClick={() => {
+                      remove.reset();
+                      setDeleteTarget(lesson);
+                    }}
                   >
                     Delete lesson
                   </Button>
@@ -489,7 +505,10 @@ export function InstructorCourseEditorPage() {
             : undefined
         }
         onCancel={() => {
-          if (!remove.isPending) setDeleteTarget(null);
+          if (!remove.isPending) {
+            remove.reset();
+            setDeleteTarget(null);
+          }
         }}
         onConfirm={() => remove.mutate()}
       />
