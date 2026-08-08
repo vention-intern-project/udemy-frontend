@@ -950,6 +950,7 @@ test('preserves same-path query scroll and navigates a hash target in Chromium',
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(beforeHashScroll);
   await expect(page.locator('#main-content')).toBeInViewport();
   await expect(page.locator('#main-content')).toBeFocused();
+  await expect(page.locator('#main-content')).toHaveCSS('outline-style', 'solid');
   await expectNoHorizontalOverflow(page);
   assertRuntimeClean();
 });
