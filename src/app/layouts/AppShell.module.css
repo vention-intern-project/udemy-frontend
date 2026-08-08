@@ -658,10 +658,6 @@
   place-items: start center;
 }
 
-.main:focus {
-  outline: none;
-}
-
 .footer {
   display: flex;
   flex-wrap: wrap;
