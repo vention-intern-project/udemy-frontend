@@ -311,6 +311,7 @@ export function InstructorCourseEditorPage() {
             required
             value={courseForm.title}
             error={courseFieldErrors.title}
+            disabled={updateCourse.isPending}
             onChange={(event) => setCourseForm({ ...courseForm, title: event.target.value })}
           />
           <Textarea
@@ -319,6 +320,7 @@ export function InstructorCourseEditorPage() {
             name="description"
             value={courseForm.description}
             error={courseFieldErrors.description}
+            disabled={updateCourse.isPending}
             onChange={(event) => setCourseForm({ ...courseForm, description: event.target.value })}
           />
           <div className={styles.fieldRow}>
@@ -331,6 +333,7 @@ export function InstructorCourseEditorPage() {
               step="0.01"
               value={courseForm.price}
               error={courseFieldErrors.price}
+              disabled={updateCourse.isPending}
               onChange={(event) => setCourseForm({ ...courseForm, price: event.target.value })}
             />
             <Input
@@ -341,6 +344,7 @@ export function InstructorCourseEditorPage() {
               maxLength={3}
               value={courseForm.currency}
               error={courseFieldErrors.currency}
+              disabled={updateCourse.isPending}
               onChange={(event) => setCourseForm({ ...courseForm, currency: event.target.value })}
             />
           </div>

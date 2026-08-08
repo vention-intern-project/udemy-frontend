@@ -204,6 +204,51 @@ describe('InstructorCourseEditorPage', () => {
     expect((courseTitle as HTMLInputElement).value).toBe('Unsaved instructor edit');
   });
 
+  it('locks all course inputs for the full pending-save duration', async () => {
+    let resolveUpdate: (updatedCourse: typeof course) => void = () => {};
+    const updateResponse = new Promise<typeof course>((resolve) => {
+      resolveUpdate = resolve;
+    });
+    const request: ApiClient['request'] = async (options) => {
+      if (options.path === '/me') return decode(options, instructor);
+      if (options.path === '/courses/7' && options.method === 'GET') return decode(options, course);
+      if (options.path === '/courses/7' && options.method === 'PATCH') {
+        return decode(options, await updateResponse);
+      }
+      throw new Error(`Unexpected request: ${options.method} ${options.path}`);
+    };
+    await renderPage({ request });
+    const user = userEvent.setup();
+    const courseTitle = await screen.findByRole('textbox', { name: 'Course title' });
+    const description = screen.getAllByRole('textbox', { name: 'Description' })[0]!;
+    const price = screen.getByRole('spinbutton', { name: 'Price' });
+    const currency = screen.getByRole('textbox', { name: 'Currency' });
+
+    await act(async () => {
+      await user.clear(courseTitle);
+      await user.type(courseTitle, 'Submitted course title');
+      await user.click(screen.getByRole('button', { name: 'Save course' }));
+    });
+
+    await waitFor(() => {
+      expect((courseTitle as HTMLInputElement).disabled).toBe(true);
+      expect((description as HTMLTextAreaElement).disabled).toBe(true);
+      expect((price as HTMLInputElement).disabled).toBe(true);
+      expect((currency as HTMLInputElement).disabled).toBe(true);
+    });
+    await user.type(courseTitle, ' post-submit edit');
+    expect((courseTitle as HTMLInputElement).value).toBe('Submitted course title');
+
+    await act(async () => {
+      resolveUpdate(course);
+      await updateResponse;
+    });
+    await waitFor(() => {
+      expect((courseTitle as HTMLInputElement).disabled).toBe(false);
+      expect((courseTitle as HTMLInputElement).value).toBe('Submitted course title');
+    });
+  });
+
   it('clears a failed delete mutation when cancelling or selecting a new target', async () => {
     const request: ApiClient['request'] = async (options) => {
       if (options.path === '/me') return decode(options, instructor);
