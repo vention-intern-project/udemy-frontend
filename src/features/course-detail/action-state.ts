@@ -17,9 +17,14 @@ export type CoursePreflightState =
 
 interface CourseLoginActionState {
   kind: 'login';
-  helper: string;
+  helper: CourseLoginHelper;
   label: 'Enroll for free' | 'Add to cart';
   to: string;
+}
+
+interface CourseLoginHelper {
+  readonly linkText: 'Sign in';
+  readonly guidance: 'to enroll for free.' | 'to add this course to your cart.';
 }
 
 export type CoursePrimaryActionState =
@@ -117,13 +122,13 @@ export function coursePrimaryAction({
     return price === 'free'
       ? {
           kind: 'login',
-          helper: 'Sign in to enroll for free.',
+          helper: { linkText: 'Sign in', guidance: 'to enroll for free.' },
           label: 'Enroll for free',
           to: `/login?returnTo=${encodeURIComponent(`/courses/${course.id}`)}`,
         }
       : {
           kind: 'login',
-          helper: 'Sign in to add this course to your cart.',
+          helper: { linkText: 'Sign in', guidance: 'to add this course to your cart.' },
           label: 'Add to cart',
           to: `/login?returnTo=${encodeURIComponent(`/courses/${course.id}`)}`,
         };

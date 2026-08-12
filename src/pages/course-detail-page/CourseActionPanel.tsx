@@ -110,11 +110,9 @@ export function CourseActionPanel({
         <div className={styles.guestAction}>
           <p className={styles.guestHelper}>
             <Link className={styles.actionLink} to={action.to}>
-              Sign in
+              {action.helper.linkText}
             </Link>{' '}
-            {action.label === 'Enroll for free'
-              ? 'to enroll for free.'
-              : 'to add this course to your cart.'}
+            {action.helper.guidance}
           </p>
           <Button className={styles.guestUnavailableAction} fullWidth disabled>
             {action.label}

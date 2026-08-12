@@ -900,6 +900,11 @@ test('preserves keyboard access and reflow without horizontal overflow', async (
   await page.goto('/courses/7');
 
   await expect(page.getByText('Sign in to add this course to your cart.')).toBeVisible();
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('link', { name: 'Skip to main content' })).toBeFocused();
+  await page.keyboard.press('Tab');
+  expect(await page.evaluate(() => document.activeElement?.matches(':focus-visible'))).toBe(true);
+
   const signIn = page.getByRole('link', { name: 'Sign in' });
   await expect(signIn.locator('xpath=ancestor::p')).toHaveText(
     'Sign in to add this course to your cart.',
@@ -949,10 +954,6 @@ test('preserves keyboard access and reflow without horizontal overflow', async (
     });
   }
 
-  await page.keyboard.press('Tab');
-  await expect(page.getByRole('link', { name: 'Skip to main content' })).toBeFocused();
-  await page.keyboard.press('Tab');
-  expect(await page.evaluate(() => document.activeElement?.matches(':focus-visible'))).toBe(true);
   await page.emulateMedia({ reducedMotion: 'reduce' });
   expect(
     await page.evaluate(() =>

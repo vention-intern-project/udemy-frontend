@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { ChevronLeft } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 
@@ -7,6 +7,7 @@ import { useSession } from '@features/auth-session';
 import { learningFailure, useLearningList } from '@features/learning-progress';
 import {
   Button,
+  activateContextualNavigationOnSpace,
   ContextualNavigationLink,
   Notice,
   Pagination,
@@ -21,20 +22,6 @@ function parsePage(value: string | null): number {
   return value !== null && /^[1-9]\d*$/.test(value) && Number.isSafeInteger(Number(value))
     ? Number(value)
     : 1;
-}
-
-function activateContextualReturnOnSpace(event: KeyboardEvent<HTMLAnchorElement>) {
-  if (
-    ![' ', 'Space', 'Spacebar'].includes(event.key) ||
-    event.altKey ||
-    event.ctrlKey ||
-    event.metaKey ||
-    event.shiftKey
-  )
-    return;
-
-  event.preventDefault();
-  event.currentTarget.click();
 }
 
 function enrollmentStatusLabel(status: EnrollmentStatus): string {
@@ -178,20 +165,20 @@ export function LearningListPage() {
   return (
     <article className={styles.page}>
       <header className={styles.pageHeader}>
-        <div className={styles.returnPath}>
+        <nav className={styles.returnPath} aria-label="Breadcrumb">
           <ContextualNavigationLink
             className={styles.backLink}
             to="/"
-            onKeyDown={activateContextualReturnOnSpace}
+            onKeyDown={activateContextualNavigationOnSpace}
           >
             <ChevronLeft size={20} aria-hidden="true" />
             <span>Catalog</span>
           </ContextualNavigationLink>
-          <div className={styles.returnCurrent}>
+          <div className={styles.returnCurrent} aria-current="page">
             <span aria-hidden="true">/</span>
             <span>My learning</span>
           </div>
-        </div>
+        </nav>
         <div className={styles.headingContent}>
           <h1 tabIndex={-1} ref={headingRef}>
             My learning

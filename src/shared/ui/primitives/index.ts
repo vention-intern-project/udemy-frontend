@@ -1,6 +1,9 @@
 export { Button } from './Button';
 export type { AsyncState, ButtonProps, ButtonSize, ButtonVariant } from './Button';
-export { ContextualNavigationLink } from './ContextualNavigationLink';
+export {
+  activateContextualNavigationOnSpace,
+  ContextualNavigationLink,
+} from './ContextualNavigationLink';
 export type { ContextualNavigationLinkProps } from './ContextualNavigationLink';
 export { DestructiveConfirmation } from './DestructiveConfirmation';
 export type { DestructiveConfirmationProps } from './DestructiveConfirmation';

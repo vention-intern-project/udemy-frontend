@@ -6,6 +6,7 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppShell, presentCart } from '../../src/app/layouts/AppShell';
+import { AppRouter } from '../../src/app/router/AppRouter';
 import { SessionProvider, type AccessTokenStore } from '../../src/features/auth-session';
 import type { ApiClient, ApiRequestOptions } from '../../src/shared/api';
 import { ThemeProvider } from '../../src/shared/ui/theme';
@@ -68,6 +69,22 @@ function renderShell(client: ApiClient, token: string | null, path = '/') {
   return queryClient;
 }
 
+function renderRouter(client: ApiClient, token: string | null, path: string) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider initialDensityMode="marketplace">
+        <SessionProvider client={client} tokenStore={tokenStore(token)}>
+          <MemoryRouter initialEntries={[path]}>
+            <AppRouter />
+          </MemoryRouter>
+        </SessionProvider>
+      </ThemeProvider>
+    </QueryClientProvider>,
+  );
+  return queryClient;
+}
+
 function LocationStateProbe() {
   const location = useLocation();
   return <output aria-label="location state">{JSON.stringify(location.state)}</output>;
@@ -83,22 +100,44 @@ function stubCompactViewport(matches = true) {
 
 describe('AppShell student cart query and presentation', () => {
   it('keeps Instructor courses active beside LearnHub and styles Create course as the active header action', async () => {
-    const request = vi.fn(authenticatedClient('instructor').request);
-    renderShell(
+    const request = vi.fn(
+      async <TResponse, TBody>(options: ApiRequestOptions<TBody, TResponse>) => {
+        if (options.path === '/me')
+          return options.decode?.({
+            email: 'instructor@example.test',
+            name: 'instructor',
+            surname: 'User',
+            role: 'instructor',
+            birthday: null,
+            phone_number: null,
+            created_at: '2026-01-01T00:00:00Z',
+          }) as TResponse;
+        if (options.path === '/courses/my')
+          return options.decode?.({
+            items: [],
+            page: 1,
+            page_size: 20,
+            total: 0,
+            pages: 1,
+            has_next: false,
+            has_previous: false,
+          }) as TResponse;
+        throw new Error(`Unexpected request ${options.path}`);
+      },
+    );
+    renderRouter(
       { request: request as ApiClient['request'] },
       'instructor-token',
       '/instructor/courses?source=header#creation',
     );
 
     const routeLink = await screen.findByRole('link', { name: 'Instructor courses' });
-    const createAction = screen.getByRole('button', { name: 'Create course' });
-    const titleTarget = document.createElement('input');
-    const scrollIntoView = vi.fn();
-    titleTarget.id = 'instructor-course-title';
-    titleTarget.scrollIntoView = scrollIntoView;
-    document.body.append(titleTarget);
-    const user = userEvent.setup();
     const header = document.querySelector<HTMLElement>('[data-app-shell-header]');
+    const createAction = within(header!).getByRole('button', { name: 'Create course' });
+    const titleTarget = screen.getByRole('textbox', { name: 'Course title' });
+    const scrollIntoView = vi.fn();
+    titleTarget.scrollIntoView = scrollIntoView;
+    const user = userEvent.setup();
 
     expect(routeLink.getAttribute('href')).toBe('/instructor/courses');
     expect(routeLink.getAttribute('aria-current')).toBe('page');
@@ -112,8 +151,7 @@ describe('AppShell student cart query and presentation', () => {
     });
     expect(document.activeElement).toBe(titleTarget);
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' });
-    expect(request.mock.calls.map(([options]) => options.path)).toEqual(['/me']);
-    titleTarget.remove();
+    expect(request.mock.calls.map(([options]) => options.path)).toEqual(['/me', '/courses/my']);
   });
 
   it.each(['/instructor/courses/7/edit', '/instructor/courses/7/enrollments'])(

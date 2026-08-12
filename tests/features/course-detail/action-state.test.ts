@@ -46,7 +46,7 @@ describe('course primary action matrix', () => {
       }),
     ).toEqual({
       kind: 'login',
-      helper: 'Sign in to enroll for free.',
+      helper: { linkText: 'Sign in', guidance: 'to enroll for free.' },
       label: 'Enroll for free',
       to: '/login?returnTo=%2Fcourses%2F7',
     });
@@ -58,7 +58,7 @@ describe('course primary action matrix', () => {
       }),
     ).toEqual({
       kind: 'login',
-      helper: 'Sign in to add this course to your cart.',
+      helper: { linkText: 'Sign in', guidance: 'to add this course to your cart.' },
       label: 'Add to cart',
       to: '/login?returnTo=%2Fcourses%2F7',
     });

@@ -222,7 +222,10 @@ describe('LearningListPage', () => {
 
     expect(await screen.findByText('1 enrollment · Page 1 of 1')).toBeTruthy();
     const browseCourses = screen.getByRole('link', { name: 'Catalog' });
+    const breadcrumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
     expect(browseCourses.getAttribute('href')).toBe('/');
+    expect(breadcrumb.contains(browseCourses)).toBe(true);
+    expect(breadcrumb.querySelector('[aria-current="page"]')?.textContent).toContain('My learning');
     expect(browseCourses.querySelector('svg')).toBeTruthy();
     expect(
       browseCourses.compareDocumentPosition(screen.getByRole('heading', { name: 'My learning' })) &

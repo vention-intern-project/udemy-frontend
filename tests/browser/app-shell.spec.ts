@@ -2342,8 +2342,9 @@ test('keeps instructor course-management content readable without student destin
         method: 'GET',
         path: '/courses/7/enrollments?page=1&page_size=20',
         errorText: 'net::ERR_ABORTED',
-        occurrences: 5,
+        occurrences: 6,
       },
+      { ...INSTRUCTOR_COURSE_COLLECTION_STRICT_MODE_ABORT, occurrences: 7 },
       {
         method: 'GET',
         path: '/courses/8/enrollments?page=1&page_size=20',
@@ -2352,6 +2353,7 @@ test('keeps instructor course-management content readable without student destin
     ],
   );
   await mockAuthenticatedSession(page, 'instructor');
+  await mockInstructorCourseCollection(page);
   const longName = `Ada-${'LongName'.repeat(20)}`;
   const longEmail = `${'very-long-address.'.repeat(12)}example.test`;
   await page.route(/\/courses\/[78]\/enrollments\?page=1&page_size=20$/, async (route) => {

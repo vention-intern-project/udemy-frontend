@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Link, matchPath, type To, useLocation } from 'react-router-dom';
 import { ChevronLeft, ShieldX, Trash2 } from 'lucide-react';
 
@@ -12,6 +12,7 @@ import {
   Notice,
   Skeleton,
   SkeletonGroup,
+  activateContextualNavigationOnSpace,
   ContextualNavigationLink,
   VisuallyHidden,
 } from '@shared/ui/primitives';
@@ -73,20 +74,6 @@ const cartReturnRoutes: readonly CartReturnRoute[] = [
   { path: '/instructor/courses/:courseId/enrollments', label: 'Course enrollments' },
   { path: '/instructor/lessons/:lessonId/edit', label: 'Edit lesson' },
 ];
-
-function activateContextualReturnOnSpace(event: KeyboardEvent<HTMLAnchorElement>) {
-  if (
-    ![' ', 'Space', 'Spacebar'].includes(event.key) ||
-    event.altKey ||
-    event.ctrlKey ||
-    event.metaKey ||
-    event.shiftKey
-  )
-    return;
-
-  event.preventDefault();
-  event.currentTarget.click();
-}
 
 function cartReturnTarget(state: unknown): CartReturnTarget {
   const candidate = (state as CartNavigationState | null)?.returnTo;
@@ -449,11 +436,11 @@ export function CartPage() {
         {statusMessage}
       </VisuallyHidden>
       <header className={styles.header}>
-        <div className={styles.returnPath}>
+        <nav className={styles.returnPath} aria-label="Breadcrumb">
           <ContextualNavigationLink
             className={styles.returnLink}
             to={returnTarget.to}
-            onKeyDown={activateContextualReturnOnSpace}
+            onKeyDown={activateContextualNavigationOnSpace}
           >
             <ChevronLeft size={20} aria-hidden="true" />
             <span>{returnTarget.label}</span>
@@ -461,8 +448,10 @@ export function CartPage() {
           <span className={styles.returnCurrent} aria-hidden="true">
             /
           </span>
-          <span className={styles.returnCurrent}>Cart</span>
-        </div>
+          <span className={styles.returnCurrent} aria-current="page">
+            Cart
+          </span>
+        </nav>
         <div className={styles.toolbar}>
           <div className={styles.titleRow}>
             <h1 ref={headingRef} tabIndex={-1}>

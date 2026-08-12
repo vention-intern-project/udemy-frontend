@@ -213,10 +213,13 @@ describe('CartPage', () => {
       await renderCart(request, entry);
 
       const source = await screen.findByRole('link', { name: expectedLabel });
+      const breadcrumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
       expect(source.getAttribute('href')).toBe(expectedHref);
+      expect(breadcrumb.contains(source)).toBe(true);
       expect(source.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
       expect(screen.getByText('/', { selector: 'span' })).toBeTruthy();
       expect(screen.getByText('Cart', { selector: 'span' })).toBeTruthy();
+      expect(screen.getByText('Cart', { selector: '[aria-current="page"]' })).toBeTruthy();
       expect(
         source.compareDocumentPosition(screen.getByRole('heading', { name: 'Cart' })) &
           Node.DOCUMENT_POSITION_FOLLOWING,

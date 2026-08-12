@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { ContextualNavigationLink } from '../../../src/shared/ui/primitives';
+import {
+  activateContextualNavigationOnSpace,
+  ContextualNavigationLink,
+} from '../../../src/shared/ui/primitives';
 
 afterEach(cleanup);
 
@@ -22,5 +25,27 @@ describe('ContextualNavigationLink', () => {
     expect(link.getAttribute('href')).toBe('/learning');
     expect(link.classList.contains('page-placement')).toBe(true);
     expect(link.classList.length).toBeGreaterThan(1);
+  });
+
+  it('activates only unmodified Space through the existing link click path', () => {
+    const onClick = vi.fn();
+    render(
+      <MemoryRouter>
+        <ContextualNavigationLink
+          to="/learning"
+          onClick={onClick}
+          onKeyDown={activateContextualNavigationOnSpace}
+        >
+          Back to my learning
+        </ContextualNavigationLink>
+      </MemoryRouter>,
+    );
+
+    const link = screen.getByRole('link', { name: 'Back to my learning' });
+    fireEvent.keyDown(link, { key: 'Space', code: 'Space' });
+    expect(onClick).toHaveBeenCalledTimes(1);
+
+    fireEvent.keyDown(link, { key: ' ', shiftKey: true });
+    expect(onClick).toHaveBeenCalledTimes(1);
   });
 });

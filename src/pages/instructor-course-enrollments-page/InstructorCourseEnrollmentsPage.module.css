@@ -7,18 +7,15 @@
 }
 .page {
   align-content: start;
-  width: 100vw;
+  width: 100%;
   min-block-size: calc(100vh - var(--layout-header-height));
   box-sizing: border-box;
   margin-block-start: calc(-1 * var(--spacing-8));
-  margin-inline: calc(50% - 50vw);
-  padding: var(--spacing-8)
-    max(
-      var(--gutter-mobile),
-      calc((100vw - var(--container-max-standard)) / 2 + var(--gutter-desktop))
-    )
-    var(--spacing-16);
+  margin-inline: 0;
+  padding: var(--spacing-8) 0 var(--spacing-16);
   background: #f4f1ff;
+  box-shadow: 0 0 0 100vmax #f4f1ff;
+  clip-path: inset(0 -100vmax);
 }
 .breadcrumb {
   display: flex;
