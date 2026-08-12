@@ -166,6 +166,8 @@ function FocusNavigationProbe() {
 
 interface RenderAppOptions {
   readonly focusNavigationProbe?: boolean;
+  readonly initialEntries?: string[];
+  readonly initialIndex?: number;
 }
 
 function headerSemanticOrder(header: HTMLElement): string[] {
@@ -182,27 +184,31 @@ function headerSemanticOrder(header: HTMLElement): string[] {
 }
 
 function renderApp(path: string, role?: UserRoleDto, options: RenderAppOptions = {}) {
-  const request = vi.fn(async () => profile(role ?? 'student'));
-  const client = role ? clientFor(role) : ({ request } as ApiClient);
+  const request = vi.fn(role ? clientFor(role).request : async () => profile('student'));
+  const client = { request } as ApiClient;
   const initialPathname = new URL(path, 'https://learnhub.test').pathname;
-  return render(
-    <QueryClientProvider client={createAppQueryClient()}>
-      <ThemeProvider initialDensityMode={densityForPath(initialPathname)}>
-        <SessionProvider client={client} tokenStore={store(role ? 'token' : null)}>
-          <MemoryRouter
-            initialEntries={[path]}
-            future={{ v7_relativeSplatPath: true, v7_startTransition: true }}
-          >
-            <ApplicationTitleBoundary>
-              <AppRouter />
-            </ApplicationTitleBoundary>
-            <LocationProbe />
-            {options.focusNavigationProbe ? <FocusNavigationProbe /> : null}
-          </MemoryRouter>
-        </SessionProvider>
-      </ThemeProvider>
-    </QueryClientProvider>,
-  );
+  return {
+    request,
+    ...render(
+      <QueryClientProvider client={createAppQueryClient()}>
+        <ThemeProvider initialDensityMode={densityForPath(initialPathname)}>
+          <SessionProvider client={client} tokenStore={store(role ? 'token' : null)}>
+            <MemoryRouter
+              initialEntries={options.initialEntries ?? [path]}
+              initialIndex={options.initialIndex}
+              future={{ v7_relativeSplatPath: true, v7_startTransition: true }}
+            >
+              <ApplicationTitleBoundary>
+                <AppRouter />
+              </ApplicationTitleBoundary>
+              <LocationProbe />
+              {options.focusNavigationProbe ? <FocusNavigationProbe /> : null}
+            </MemoryRouter>
+          </SessionProvider>
+        </ThemeProvider>
+      </QueryClientProvider>,
+    ),
+  };
 }
 
 afterEach(() => {
@@ -263,7 +269,7 @@ describe('application routing and guards', () => {
       </QueryClientProvider>,
     );
 
-    const login = await screen.findByRole('link', { name: 'Log in to enroll free' });
+    const login = await screen.findByRole('link', { name: 'Sign in' });
     expect(login.getAttribute('href')).toBe('/login?returnTo=%2Fcourses%2F7');
     await act(async () => {
       await userEvent.setup().click(login);
@@ -312,6 +318,28 @@ describe('application routing and guards', () => {
     expect(screen.getByLabelText('current location').textContent).toBe(
       '/login?returnTo=%2Fcart%3Fcoupon%3DSAVE%23summary',
     );
+  });
+
+  it('keeps the public Catalog route, query, and hash available to an Instructor', async () => {
+    const { request } = renderApp('/?search_query=React#catalog', 'instructor', {
+      focusNavigationProbe: true,
+      initialEntries: ['/instructor/courses', '/?search_query=React#catalog'],
+      initialIndex: 1,
+    });
+
+    await screen.findByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' });
+    expect(screen.getByLabelText('current location').textContent).toBe(
+      '/?search_query=React#catalog',
+    );
+    const requestedPaths = request.mock.calls.map(([options]) => options.path);
+    expect(requestedPaths).toContain('/me');
+    expect(requestedPaths).toContain('/courses');
+
+    await act(async () => {
+      await userEvent.setup().click(screen.getByRole('button', { name: 'Navigate back' }));
+    });
+
+    expect(screen.getByLabelText('current location').textContent).toBe('/instructor/courses');
   });
 
   it('routes an anonymous AppShell Cart action through the protected login return', async () => {
@@ -478,9 +506,9 @@ describe('application routing and guards', () => {
     [
       '/instructor/courses',
       'instructor' as const,
-      'My courses',
+      'Instructor courses',
       'Indira User',
-      ['LearnHub home', 'My courses', 'Account menu for Indira User'],
+      ['LearnHub home', 'Instructor courses', 'Account menu for Indira User'],
     ],
   ])(
     'uses the D04 desktop header order and account-menu trigger for %s',
@@ -621,38 +649,24 @@ describe('application routing and guards', () => {
     renderApp('/instructor/courses', 'instructor');
     await screen.findByRole('heading', { level: 1, name: 'Instructor courses' });
     const navigation = screen.getByRole('navigation', { name: 'Primary navigation' });
-    expect(within(navigation).getByRole('link', { name: 'My courses' })).toBeTruthy();
+    expect(within(navigation).getByRole('link', { name: 'Instructor courses' })).toBeTruthy();
     expect(within(navigation).queryByRole('link', { name: 'Course enrollments' })).toBe(null);
     expect(within(navigation).queryByRole('link', { name: 'Cart' })).toBe(null);
     expect(within(navigation).queryByRole('link', { name: 'My learning' })).toBe(null);
   });
 
-  it('shows course enrollments only for an instructor with a selected course', async () => {
+  it('does not expose course enrollments in instructor header navigation on editor routes', async () => {
     renderApp('/instructor/courses/42/edit', 'instructor');
     await screen.findByRole('heading', { level: 1, name: 'Edit course' });
     const navigation = screen.getByRole('navigation', { name: 'Primary navigation' });
-    const enrollments = within(navigation).getByRole('link', { name: 'Course enrollments' });
-    expect(enrollments.getAttribute('href')).toBe('/instructor/courses/42/enrollments');
-    expect(
-      within(navigation).getByRole('link', { name: 'My courses' }).getAttribute('aria-current'),
-    ).toBe(null);
-    expect(enrollments.getAttribute('aria-current')).toBe(null);
-    expect(navigation.querySelectorAll('[aria-current="page"]')).toHaveLength(0);
+    expect(within(navigation).queryByRole('link', { name: 'Course enrollments' })).toBe(null);
   });
 
-  it('marks only the contextual course enrollments leaf as current on PAGE-012', async () => {
+  it('does not expose course enrollments in instructor header navigation on roster routes', async () => {
     renderApp('/instructor/courses/42/enrollments', 'instructor');
     await screen.findByRole('heading', { level: 1, name: 'Course enrollments' });
     const navigation = screen.getByRole('navigation', { name: 'Primary navigation' });
-    expect(
-      within(navigation).getByRole('link', { name: 'My courses' }).getAttribute('aria-current'),
-    ).toBe(null);
-    expect(
-      within(navigation)
-        .getByRole('link', { name: 'Course enrollments' })
-        .getAttribute('aria-current'),
-    ).toBe('page');
-    expect(navigation.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
+    expect(within(navigation).queryByRole('link', { name: 'Course enrollments' })).toBe(null);
   });
 
   it('does not expose contextual instructor navigation to a student', async () => {
@@ -921,7 +935,7 @@ describe('application routing and guards', () => {
     });
     const currentRouteLink = within(
       screen.getByRole('navigation', { name: 'Mobile navigation' }),
-    ).getByRole('link', { name: 'My courses' });
+    ).getByRole('link', { name: 'Instructor courses' });
     await act(async () => {
       await user.click(currentRouteLink);
     });

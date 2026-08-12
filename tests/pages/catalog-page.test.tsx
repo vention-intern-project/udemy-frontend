@@ -1135,10 +1135,12 @@ describe('CatalogPage public URL and pagination behavior', () => {
     );
     expect(freePrice?.value).toBe('0.00');
     expect(freePrice?.textContent).toBe('FREE');
-    const freeLogin = within(freeCard as HTMLElement).getByRole('link', { name: 'Enroll free' });
+    const freeLogin = within(freeCard as HTMLElement).getByRole('link', {
+      name: 'Enroll for free',
+    });
     expect(freeLogin.getAttribute('href')).toBe('/login?returnTo=%2Fcourses%2F8');
     expect(freeLogin.closest('[data-part="course-card-actions"]')).toBeTruthy();
-    expect(freeLogin.querySelector('.lucide-user-plus')).toBeTruthy();
+    expect(freeLogin.querySelector('svg')).toBeNull();
     const draftFreeCard = screen.getByRole('link', { name: 'Draft free' }).closest('article');
     const draftFreePrice = draftFreeCard?.querySelector<HTMLDataElement>(
       '[data-part="course-card-price"] data',
@@ -1159,7 +1161,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
     });
     expect(paidLogin.getAttribute('href')).toBe('/login?returnTo=%2Fcourses%2F10');
     expect(paidLogin.closest('[data-part="course-card-actions"]')).toBeTruthy();
-    expect(paidLogin.querySelector('.lucide-shopping-cart')).toBeTruthy();
+    expect(paidLogin.querySelector('svg')).toBeNull();
     const pluralResultHeading = screen.getByRole('heading', { level: 2, name: 'Found 5 courses' });
     expect(pluralResultHeading.textContent).toBe('Found 5 courses');
     expect(pluralResultHeading.firstChild?.textContent).toBe('Found ');

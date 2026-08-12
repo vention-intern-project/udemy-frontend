@@ -3,7 +3,7 @@ import { cartWorkflowOrigin } from './cart-workflow-server';
 
 export default defineConfig({
   testDir: '.',
-  testMatch: 'cart-workflow.spec.ts',
+  testMatch: 'uifd-003.spec.ts',
   fullyParallel: false,
   forbidOnly: true,
   retries: 0,
@@ -11,7 +11,7 @@ export default defineConfig({
   globalSetup: './cart-workflow-server.ts',
   timeout: 30_000,
   expect: { timeout: 5_000 },
-  outputDir: '../../test-results/playwright-fe009',
+  outputDir: '../../test-results/playwright-uifd-003',
   reporter: 'line',
   use: {
     baseURL: cartWorkflowOrigin,

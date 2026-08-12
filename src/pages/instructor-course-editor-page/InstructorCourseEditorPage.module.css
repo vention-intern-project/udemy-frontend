@@ -7,8 +7,58 @@
   min-width: 0;
 }
 .page {
-  max-width: var(--container-max-workspace);
-  margin-inline: auto;
+  align-content: start;
+  width: 100vw;
+  min-block-size: calc(100vh - var(--layout-header-height));
+  box-sizing: border-box;
+  margin-block-start: calc(-1 * var(--spacing-8));
+  margin-inline: calc(50% - 50vw);
+  padding: var(--spacing-8)
+    max(
+      var(--gutter-mobile),
+      calc((100vw - var(--container-max-standard)) / 2 + var(--gutter-desktop))
+    )
+    var(--spacing-16);
+  background: #f4f1ff;
+}
+.breadcrumb {
+  display: flex;
+  gap: var(--spacing-1);
+  align-items: center;
+  min-width: 0;
+  color: var(--text-primary);
+  font-size: var(--type-body-md-size);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--type-body-md-lh);
+}
+.breadcrumbLink {
+  display: inline-flex;
+  min-height: var(--control-height-md);
+  align-items: center;
+  gap: var(--spacing-1);
+  padding-inline: 0;
+  color: var(--action-primary-bg);
+  background: transparent;
+  font: inherit;
+  text-decoration: none;
+}
+.breadcrumbLink:visited,
+.breadcrumbLink:focus-visible {
+  color: var(--action-primary-bg);
+  background: transparent;
+}
+.breadcrumbLink:hover,
+.breadcrumbLink:active {
+  color: var(--action-primary-bg-hover);
+  background: transparent;
+  text-decoration: underline;
+}
+.breadcrumbLink svg {
+  flex: none;
+}
+.breadcrumbCurrent {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .header,
 .lessonRow,
@@ -27,7 +77,6 @@
 .lessonRow p {
   margin: 0;
 }
-.eyebrow,
 .lessonRow p {
   color: var(--text-secondary);
 }

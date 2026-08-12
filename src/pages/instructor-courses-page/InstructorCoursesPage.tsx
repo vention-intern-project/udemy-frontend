@@ -6,7 +6,6 @@ import { requestCreateCourse, requestInstructorCourses } from '@features/instruc
 import { useSession } from '@features/auth-session';
 import { ApiError } from '@shared/api';
 import { Button, Input, Notice, Pagination, Skeleton, SkeletonGroup } from '@shared/ui/primitives';
-import instructorCoursesHero from './assets/instructor-courses-hero-ui022.png';
 import styles from './InstructorCoursesPage.module.css';
 
 const COURSE_TITLE_MAX_LENGTH = 255;
@@ -75,13 +74,7 @@ export function InstructorCoursesPage() {
   };
   return (
     <article className={styles.page}>
-      <header className={styles.hero} data-part="instructor-courses-hero">
-        <img className={styles.heroImage} src={instructorCoursesHero} alt="" aria-hidden="true" />
-        <div className={styles.heroContent}>
-          <h1>Instructor courses</h1>
-          <p>Create meaningful courses, share your expertise, and inspire learners to grow.</p>
-        </div>
-      </header>
+      <h1 className={styles.pageTitle}>Instructor courses</h1>
       <section className={styles.collection} aria-labelledby="your-courses-heading">
         <h2 id="your-courses-heading" ref={collectionHeadingRef} tabIndex={-1}>
           Your courses
@@ -149,6 +142,7 @@ export function InstructorCoursesPage() {
                 hasNext={collection.data.hasNext}
                 hasPrevious={collection.data.hasPrevious}
                 label="Your courses pagination"
+                directionDisplay="arrows"
                 onPageChange={(nextPage) =>
                   setParams(nextPage === 1 ? {} : { page: String(nextPage) })
                 }
@@ -162,6 +156,7 @@ export function InstructorCoursesPage() {
         <form onSubmit={submit} className={styles.form}>
           <Input
             ref={titleRef}
+            id="instructor-course-title"
             name="title"
             label="Course title"
             value={title}

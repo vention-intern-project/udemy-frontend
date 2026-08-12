@@ -134,12 +134,24 @@ function PaymentFeedbackNotice({ feedback }: PaymentFeedbackNoticeProps) {
   return null;
 }
 
-function LearningReturnLink() {
+interface LearningReturnLinkProps {
+  readonly currentCourseTitle?: string;
+}
+
+function LearningReturnLink({ currentCourseTitle }: LearningReturnLinkProps) {
   return (
-    <ContextualNavigationLink className={styles.backLink} to="/learning">
-      <ChevronLeft size={18} aria-hidden="true" />
-      <span>My learning</span>
-    </ContextualNavigationLink>
+    <nav className={styles.breadcrumb} aria-label="Breadcrumb">
+      <ContextualNavigationLink className={styles.backLink} to="/learning">
+        <ChevronLeft size={18} aria-hidden="true" />
+        <span>My learning</span>
+      </ContextualNavigationLink>
+      {currentCourseTitle ? (
+        <>
+          <span aria-hidden="true">/</span>
+          <span aria-current="page">{currentCourseTitle}</span>
+        </>
+      ) : null}
+    </nav>
   );
 }
 
@@ -282,7 +294,7 @@ export function LearningDetailPage() {
   return (
     <article className={styles.page} aria-busy={checkout.pending}>
       <div className={styles.readingContent}>
-        <LearningReturnLink />
+        <LearningReturnLink currentCourseTitle={enrollment.course.title} />
         <header className={styles.header}>
           <p className={`${styles.status} ${styles[`status${enrollment.status}`]}`}>
             {enrollment.status === 'active'
@@ -296,9 +308,11 @@ export function LearningDetailPage() {
           </h1>
           <p>{enrollment.course.description ?? 'No course description is available.'}</p>
         </header>
-        <div ref={paymentNoticeRef} tabIndex={-1}>
-          <PaymentFeedbackNotice feedback={checkout.feedback} />
-        </div>
+        {checkout.feedback !== null ? (
+          <div ref={paymentNoticeRef} tabIndex={-1}>
+            <PaymentFeedbackNotice feedback={checkout.feedback} />
+          </div>
+        ) : null}
         {available ? (
           <>
             <div

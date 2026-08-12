@@ -125,27 +125,36 @@
   line-height: var(--type-numeric-emphasis-lh);
 }
 
-.primaryLink {
-  display: inline-flex;
-  min-height: var(--control-height-md);
-  align-items: center;
-  justify-content: center;
-  padding: 0 var(--spacing-4);
-  border-radius: var(--radius-md);
-  background: var(--action-primary-bg);
-  color: var(--action-primary-fg);
+.guestAction {
+  display: grid;
+  gap: var(--spacing-3);
+}
+
+.guestHelper {
+  margin: 0;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.guestUnavailableAction:disabled {
+  color: var(--state-disabled-text);
+  background: var(--state-disabled-bg);
+  border-color: var(--state-disabled-bg);
+  cursor: not-allowed;
+}
+
+.actionLink {
+  color: var(--action-primary-bg);
   font-size: var(--type-button-size);
   font-weight: var(--type-button-weight);
   line-height: var(--type-button-lh);
-  text-align: center;
-  text-decoration: none;
 }
 
-.primaryLink:hover {
-  background: var(--action-primary-bg-hover);
+.actionLink:hover {
+  color: var(--action-primary-bg-hover);
 }
 
-.primaryLink:focus-visible {
+.actionLink:focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring);
   outline-offset: var(--focus-ring-offset);
 }

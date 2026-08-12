@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft, CircleHelp, Compass, Medal, MoreVertical, Trash2, X } from 'lucide-react';
 
@@ -63,7 +63,9 @@ function CourseAiChatPage({ enrollmentId }: CourseAiChatPageProps) {
       <section className={styles.state}>
         <h1>Course assistant unavailable</h1>
         <p>This assistant is unavailable for this course.</p>
-        <ContextualNavigationLink to="/learning">Return to my learning</ContextualNavigationLink>
+        <ContextualNavigationLink className={styles.unavailableReturnLink} to="/learning">
+          Return to my learning
+        </ContextualNavigationLink>
       </section>
     );
   const enrollment = workspace.enrollment.data;
@@ -72,7 +74,10 @@ function CourseAiChatPage({ enrollmentId }: CourseAiChatPageProps) {
       <section className={styles.state}>
         <h1>Course assistant unavailable</h1>
         <p>This assistant is unavailable for this course.</p>
-        <ContextualNavigationLink to={`/learning/enrollments/${enrollment.id}`}>
+        <ContextualNavigationLink
+          className={styles.unavailableReturnLink}
+          to={`/learning/enrollments/${enrollment.id}`}
+        >
           Return to learning workspace
         </ContextualNavigationLink>
       </section>
@@ -94,7 +99,9 @@ function InvalidCourseAiChatPage() {
     <section className={styles.state} aria-labelledby="invalid-course-assistant-route-title">
       <h1 id="invalid-course-assistant-route-title">Invalid course assistant address</h1>
       <p>Return to my learning and choose a course to open its assistant.</p>
-      <ContextualNavigationLink to="/learning">Return to my learning</ContextualNavigationLink>
+      <ContextualNavigationLink className={styles.unavailableReturnLink} to="/learning">
+        Return to my learning
+      </ContextualNavigationLink>
     </section>
   );
 }
@@ -231,6 +238,7 @@ function AssistantPageLayout({ context, backTo }: AssistantPageLayoutProps) {
   const [isCompactSuggestedActionsOpen, setIsCompactSuggestedActionsOpen] = useState(false);
   const [composerFocusRequest, setComposerFocusRequest] = useState(0);
   const actionTriggerId = useId();
+  const actionMenuRef = useRef<HTMLSpanElement>(null);
   const isUnavailable = chat.error === 'temporarily_unavailable' || chat.error === 'unavailable';
   const isAvailable =
     !isUnavailable && chat.messages.some((message) => message.author === 'assistant');
@@ -246,6 +254,19 @@ function AssistantPageLayout({ context, backTo }: AssistantPageLayoutProps) {
     : isUnavailable
       ? 'Assistant unavailable'
       : 'Assistant availability unknown';
+
+  useEffect(() => {
+    if (!isActionMenuOpen) return undefined;
+
+    const dismissOutsideActionMenu = (event: MouseEvent) => {
+      if (event.target instanceof Node && actionMenuRef.current?.contains(event.target)) return;
+      setIsActionMenuOpen(false);
+    };
+
+    document.addEventListener('mousedown', dismissOutsideActionMenu);
+    return () => document.removeEventListener('mousedown', dismissOutsideActionMenu);
+  }, [isActionMenuOpen]);
+
   return (
     <article className={styles.page}>
       <section className={styles.hero} aria-labelledby="ai-chat-hero-title">
@@ -291,7 +312,7 @@ function AssistantPageLayout({ context, backTo }: AssistantPageLayoutProps) {
               </span>
             </div>
             <div className={styles.chatFrameActions}>
-              <span className={styles.actionMenu}>
+              <span ref={actionMenuRef} className={styles.actionMenu}>
                 <Button
                   variant="ghost"
                   id={actionTriggerId}

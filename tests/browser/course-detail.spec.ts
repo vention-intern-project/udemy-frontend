@@ -309,7 +309,7 @@ test('clears a genuine invalid bearer after 401 and performs public metadata rea
   });
 
   await page.goto('/courses/7?fixture=invalid-bearer-redacted');
-  await expect(page.getByRole('link', { name: 'Log in to add to cart' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Sign in' })).toBeVisible();
   expect(bootstrap401).toBe(1);
   expect([...new Set(publicCoursePaths)]).toEqual(['/courses/7', '/courses/7/lessons']);
   expect(await page.evaluate(() => localStorage.getItem('learnhub.access-token'))).toBeNull();
@@ -674,7 +674,7 @@ for (const scenario of [
     name: 'mutation 401',
     status: 401,
     detail: 'Could not validate credentials',
-    expected: 'Log in to enroll free',
+    expected: 'Sign in',
     role: 'link',
     price: '0.00',
     mutationPath: '**/enrollments',
@@ -855,6 +855,36 @@ test('keeps only offline/server mutation failure retryable', async ({ page }) =>
   diagnostics.assertClean();
 });
 
+test('renders the free guest unavailable action in the neutral disabled CTA family', async ({
+  page,
+}) => {
+  const diagnostics = await installDiagnostics(page);
+  await page.route('**/courses/7**', async (route) => {
+    if (isDocumentNavigation(route)) {
+      await route.fallback();
+      return;
+    }
+    const path = new URL(route.request().url()).pathname;
+    await json(route, path.endsWith('/lessons') ? outline(null) : { ...detail, price: '0.00' });
+  });
+
+  await page.goto('/courses/7?guest=free');
+
+  await expect(page.getByText('Sign in to enroll for free.')).toBeVisible();
+  const signIn = page.getByRole('link', { name: 'Sign in' });
+  await expect(signIn).toHaveAttribute('href', '/login?returnTo=%2Fcourses%2F7');
+  await expect(signIn.locator('xpath=ancestor::p')).toHaveText('Sign in to enroll for free.');
+  await expect(signIn).toHaveCSS('color', 'rgb(91, 63, 214)');
+  await signIn.hover();
+  await expect(signIn).toHaveCSS('color', 'rgb(73, 50, 182)');
+  const guestUnavailableAction = page.getByRole('button', { name: 'Enroll for free' });
+  await expect(guestUnavailableAction).toBeDisabled();
+  await expect(guestUnavailableAction.locator('svg')).toHaveCount(0);
+  await expect(guestUnavailableAction).toHaveCSS('background-color', 'rgb(229, 231, 235)');
+  await expect(guestUnavailableAction).toHaveCSS('color', 'rgb(156, 163, 175)');
+  diagnostics.assertClean();
+});
+
 test('preserves keyboard access and reflow without horizontal overflow', async ({
   page,
 }, testInfo) => {
@@ -869,9 +899,43 @@ test('preserves keyboard access and reflow without horizontal overflow', async (
   });
   await page.goto('/courses/7');
 
+  await expect(page.getByText('Sign in to add this course to your cart.')).toBeVisible();
+  const signIn = page.getByRole('link', { name: 'Sign in' });
+  await expect(signIn.locator('xpath=ancestor::p')).toHaveText(
+    'Sign in to add this course to your cart.',
+  );
+  await expect(signIn).toHaveCSS('color', 'rgb(91, 63, 214)');
+  await signIn.hover();
+  await expect(signIn).toHaveCSS('color', 'rgb(73, 50, 182)');
+  await signIn.focus();
+  await expect(signIn).toBeFocused();
+  expect(await signIn.evaluate((link) => link.matches(':focus-visible'))).toBe(true);
+  const guestUnavailableAction = page.getByRole('button', { name: 'Add to cart' });
+  await expect(guestUnavailableAction).toBeDisabled();
+  await expect(guestUnavailableAction.locator('svg')).toHaveCount(0);
+  expect(
+    await guestUnavailableAction.evaluate((button) => {
+      const styles = getComputedStyle(button);
+      return {
+        background: styles.backgroundColor,
+        borderRadius: styles.borderRadius,
+        color: styles.color,
+        cursor: styles.cursor,
+        minHeight: styles.minHeight,
+      };
+    }),
+  ).toEqual({
+    background: 'rgb(229, 231, 235)',
+    borderRadius: '8px',
+    color: 'rgb(156, 163, 175)',
+    cursor: 'not-allowed',
+    minHeight: '44px',
+  });
+  await guestUnavailableAction.hover();
+  await expect(guestUnavailableAction).toHaveCSS('background-color', 'rgb(229, 231, 235)');
   for (const width of [320, 390, 768, 1280, 1440, 640]) {
     await page.setViewportSize({ width, height: 900 });
-    await expect(page.getByRole('link', { name: 'Log in to add to cart' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Sign in' })).toBeVisible();
     const geometry = await page.evaluate(() => ({
       clientWidth: document.documentElement.clientWidth,
       documentWidth: document.documentElement.scrollWidth,

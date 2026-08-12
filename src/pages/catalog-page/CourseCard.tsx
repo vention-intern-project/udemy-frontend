@@ -328,10 +328,14 @@ export function CourseCard({
         : undefined;
   const feedbackId = `catalog-course-${course.id}-action-feedback`;
   const actionVisual = courseActionVisual(action.presentation);
-  const actionLabel = catalogActionLabel(action.presentation, action.label);
+  const actionLabel =
+    action.kind === 'link' && action.presentation === 'enroll-free'
+      ? 'Enroll for free'
+      : catalogActionLabel(action.presentation, action.label);
   const ActionIcon =
-    action.kind === 'button' &&
-    (action.presentation === 'add-to-cart' || action.presentation === 'remove')
+    action.kind === 'link' ||
+    (action.kind === 'button' &&
+      (action.presentation === 'add-to-cart' || action.presentation === 'remove'))
       ? null
       : actionVisual.Icon;
   const tooltipPlacementClass =

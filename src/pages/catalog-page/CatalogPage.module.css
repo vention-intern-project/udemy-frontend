@@ -63,7 +63,8 @@
   }
 
   .hero h1 {
-    font-size: clamp(2rem, 10vw, 2.25rem);
+    font-size: 28px;
+    line-height: 36px;
   }
 }
 
@@ -284,9 +285,19 @@
 }
 
 @media (max-width: 895px) {
-  .hero::before,
   .hero::after {
     display: none;
+  }
+
+  .hero::before {
+    z-index: 0;
+    display: block;
+    background-image: url('/src/pages/catalog-page/assets/catalog-hero-mobile-stars-lines-uifd001.png');
+    background-position: center;
+    background-size: cover;
+    filter: none;
+    opacity: 0.5;
+    pointer-events: none;
   }
 }
 

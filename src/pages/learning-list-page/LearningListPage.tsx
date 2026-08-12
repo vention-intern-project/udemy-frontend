@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { type KeyboardEvent, useEffect, useRef } from 'react';
 import { ChevronLeft } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 
@@ -21,6 +21,20 @@ function parsePage(value: string | null): number {
   return value !== null && /^[1-9]\d*$/.test(value) && Number.isSafeInteger(Number(value))
     ? Number(value)
     : 1;
+}
+
+function activateContextualReturnOnSpace(event: KeyboardEvent<HTMLAnchorElement>) {
+  if (
+    ![' ', 'Space', 'Spacebar'].includes(event.key) ||
+    event.altKey ||
+    event.ctrlKey ||
+    event.metaKey ||
+    event.shiftKey
+  )
+    return;
+
+  event.preventDefault();
+  event.currentTarget.click();
 }
 
 function enrollmentStatusLabel(status: EnrollmentStatus): string {
@@ -164,10 +178,20 @@ export function LearningListPage() {
   return (
     <article className={styles.page}>
       <header className={styles.pageHeader}>
-        <ContextualNavigationLink className={styles.backLink} to="/">
-          <ChevronLeft size={18} aria-hidden="true" />
-          <span>Browse courses</span>
-        </ContextualNavigationLink>
+        <div className={styles.returnPath}>
+          <ContextualNavigationLink
+            className={styles.backLink}
+            to="/"
+            onKeyDown={activateContextualReturnOnSpace}
+          >
+            <ChevronLeft size={20} aria-hidden="true" />
+            <span>Catalog</span>
+          </ContextualNavigationLink>
+          <div className={styles.returnCurrent}>
+            <span aria-hidden="true">/</span>
+            <span>My learning</span>
+          </div>
+        </div>
         <div className={styles.headingContent}>
           <h1 tabIndex={-1} ref={headingRef}>
             My learning
@@ -191,7 +215,7 @@ export function LearningListPage() {
               ) : null}
             </div>
             <Link className={styles.workspaceAction} to={`/learning/enrollments/${enrollment.id}`}>
-              Open learning workspace
+              Open course
             </Link>
           </li>
         ))}

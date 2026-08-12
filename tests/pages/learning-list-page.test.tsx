@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -98,6 +98,7 @@ function LocationProbe() {
   return (
     <>
       <output aria-label="Current location">{location.search}</output>
+      <div aria-label="Current route">{`${location.pathname}${location.search}${location.hash}`}</div>
       <button type="button" onClick={() => navigate(-1)}>
         History back
       </button>
@@ -220,7 +221,7 @@ describe('LearningListPage', () => {
     await renderPage(request, '/learning');
 
     expect(await screen.findByText('1 enrollment · Page 1 of 1')).toBeTruthy();
-    const browseCourses = screen.getByRole('link', { name: 'Browse courses' });
+    const browseCourses = screen.getByRole('link', { name: 'Catalog' });
     expect(browseCourses.getAttribute('href')).toBe('/');
     expect(browseCourses.querySelector('svg')).toBeTruthy();
     expect(
@@ -232,7 +233,7 @@ describe('LearningListPage', () => {
     expect(
       courseTitle.compareDocumentPosition(enrollmentStatus) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Open learning workspace' }).getAttribute('href')).toBe(
+    expect(screen.getByRole('link', { name: 'Open course' }).getAttribute('href')).toBe(
       '/learning/enrollments/5',
     );
     expect(screen.queryByRole('heading', { name: 'Start your learning journey' })).toBeNull();
@@ -240,6 +241,44 @@ describe('LearningListPage', () => {
     expect(screen.queryByText('0%')).toBeNull();
     expect(screen.queryByText(/instructor/i)).toBeNull();
     expect(screen.queryByText(/lessons completed/i)).toBeNull();
+  });
+
+  it('activates the resolved Catalog source through the Router click path on unmodified Space', async () => {
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/enrollments/my') return decode(options, enrollments);
+      throw new Error(`Unexpected request ${options.path}`);
+    };
+    await renderPage(request, '/learning?page=2#courses');
+    const user = userEvent.setup();
+    const source = await screen.findByRole('link', { name: 'Catalog' });
+
+    source.focus();
+    expect(source).toBe(document.activeElement);
+    await act(async () => {
+      await user.keyboard(' ');
+    });
+
+    await waitFor(() => expect(screen.getByLabelText('Current route').textContent).toBe('/'));
+  });
+
+  it('accepts the Chromium Space-key alias on the resolved Catalog source', async () => {
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/enrollments/my') return decode(options, enrollments);
+      throw new Error(`Unexpected request ${options.path}`);
+    };
+    await renderPage(request, '/learning?page=2#courses');
+    const source = await screen.findByRole('link', { name: 'Catalog' });
+
+    source.focus();
+    fireEvent.keyDown(source, { key: 'Space', code: 'Space' });
+
+    await waitFor(() => expect(screen.getByLabelText('Current route').textContent).toBe('/'));
   });
 
   it('preserves API-021 server order, totals, status, and page cursor', async () => {
@@ -444,7 +483,7 @@ describe('LearningListPage', () => {
     );
     expect(requestedPages).toEqual([1, 2, 1]);
 
-    const workspaceLink = screen.getByRole('link', { name: 'Open learning workspace' });
+    const workspaceLink = screen.getByRole('link', { name: 'Open course' });
     workspaceLink.focus();
     holdBackgroundRefresh = true;
     let refresh: Promise<void> | undefined;

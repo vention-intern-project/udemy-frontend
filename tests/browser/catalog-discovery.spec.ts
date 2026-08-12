@@ -177,7 +177,9 @@ test('renders a semantic full-width catalog hero at scrollable physical client e
   });
 
   let previousLeftExtension = 0;
-  for (const width of [320, 390, 640, 768, 1280, 1440, 1600, 1960, 1961, 2200, 2560, 3840]) {
+  for (const width of [
+    320, 390, 640, 767, 768, 894, 895, 896, 897, 1280, 1440, 1600, 1960, 1961, 2200, 2560, 3840,
+  ]) {
     await page.setViewportSize({ width, height: 900 });
     await expect(heading).toBeVisible();
     const geometry = await page.evaluate(() => {
@@ -199,12 +201,15 @@ test('renders a semantic full-width catalog hero at scrollable physical client e
         titleClientWidth: title.clientWidth,
         titleScrollWidth: title.scrollWidth,
         titleHeight: titleRect.height,
+        titleFontSize: getComputedStyle(title).fontSize,
+        titleLineHeight: getComputedStyle(title).lineHeight,
         heroBackgroundPosition: getComputedStyle(hero).backgroundPosition,
         heroBackgroundRepeat: getComputedStyle(hero).backgroundRepeat,
         heroBackgroundSize: getComputedStyle(hero).backgroundSize,
         heroArtworkDisplay: getComputedStyle(hero, '::before').display,
         heroArtworkImage: getComputedStyle(hero, '::before').backgroundImage,
         heroArtworkSize: getComputedStyle(hero, '::before').backgroundSize,
+        heroArtworkOpacity: getComputedStyle(hero, '::before').opacity,
         documentWidth: document.documentElement.scrollWidth,
         documentHeight: document.documentElement.scrollHeight,
         bodyWidth: document.body.scrollWidth,
@@ -221,6 +226,10 @@ test('renders a semantic full-width catalog hero at scrollable physical client e
     expect(geometry.titleLeft).toBeGreaterThanOrEqual(0);
     expect(geometry.titleScrollWidth).toBeLessThanOrEqual(geometry.titleClientWidth);
     expect(geometry.titleHeight).toBeGreaterThan(0);
+    if (geometry.clientWidth <= 767) {
+      expect(geometry.titleFontSize).toBe('28px');
+      expect(geometry.titleLineHeight).toBe('36px');
+    }
     expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.clientWidth);
     expect(geometry.bodyWidth).toBeLessThanOrEqual(geometry.clientWidth);
     expect(geometry.documentHeight).toBeGreaterThan(geometry.clientHeight);
@@ -316,7 +325,9 @@ test('renders a semantic full-width catalog hero at scrollable physical client e
         ).toBe(true);
       }
     } else if (geometry.clientWidth <= 895) {
-      expect(geometry.heroArtworkDisplay).toBe('none');
+      expect(geometry.heroArtworkDisplay).toBe('block');
+      expect(geometry.heroArtworkImage).toContain('catalog-hero-mobile-stars-lines-uifd001.png');
+      expect(geometry.heroArtworkOpacity).toBe('0.5');
       expect(geometry.heroBackgroundSize).toBe('auto');
     } else {
       expect(geometry.heroArtworkDisplay).toBe('block');
@@ -905,7 +916,7 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
   await expect(page.getByRole('heading', { level: 3, name: 'React' })).toBeVisible();
 
   const draftButton = reactCard.getByRole('button', { name: 'Not published' });
-  const freeLink = publishedCard.getByRole('link', { name: 'Enroll free' });
+  const freeLink = publishedCard.getByRole('link', { name: 'Enroll for free' });
   const draftFreeButton = page
     .locator('[data-part="course-card"]')
     .filter({ has: page.getByRole('heading', { level: 3, name: 'Draft free' }) })
@@ -920,8 +931,8 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
   await expect(draftFreeButton.locator('svg')).toHaveCount(0);
   await expect(freeLink).toHaveAttribute('href', '/login?returnTo=%2Fcourses%2F8');
   await expect(paidLink).toHaveAttribute('href', '/login?returnTo=%2Fcourses%2F11');
-  await expect(freeLink.locator('svg.lucide-user-plus')).toHaveCount(1);
-  await expect(paidLink.locator('svg.lucide-shopping-cart')).toHaveCount(1);
+  await expect(freeLink.locator('svg')).toHaveCount(0);
+  await expect(paidLink.locator('svg')).toHaveCount(0);
   const anonymousActionGeometry = await Promise.all(
     [freeLink, paidLink].map((action) =>
       action.evaluate((element) => {
@@ -936,7 +947,7 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
         return {
           height: rect.height,
           width: rect.width,
-          gap: content ? getComputedStyle(content).gap : null,
+          hasIcon: icon !== null,
           inlineGap: iconRect && labelRect ? labelRect.left - iconRect.right : null,
         };
       }),
@@ -947,9 +958,8 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
       (action) =>
         action.height >= 44 &&
         Math.abs(action.width - 120) <= 0.5 &&
-        action.gap === '6px' &&
-        action.inlineGap !== null &&
-        Math.abs(action.inlineGap - 6) <= 0.5,
+        !action.hasIcon &&
+        action.inlineGap === null,
     ),
   ).toBe(true);
   await expect(draftButton).toHaveCSS('background-color', 'rgb(91, 63, 214)');

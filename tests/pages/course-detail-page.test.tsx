@@ -202,13 +202,59 @@ describe('CourseDetailPage', () => {
     expect(screen.getByText('Ada Lovelace')).toBeTruthy();
     expect(document.querySelector('data')?.textContent).toBe('USD 0.00');
     expect(screen.getByText('1', { selector: 'dd' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Log in to enroll free' }).getAttribute('href')).toBe(
-      '/login?returnTo=%2Fcourses%2F7',
-    );
+    const signIn = await screen.findByRole('link', { name: 'Sign in' });
+    expect(signIn.getAttribute('href')).toBe('/login?returnTo=%2Fcourses%2F7');
+    expect(signIn.closest('p')?.textContent).toBe('Sign in to enroll for free.');
+    expect(
+      (screen.getByRole('button', { name: 'Enroll for free' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
     expect(document.body.textContent).not.toContain('/media/lessons/');
     expect(document.querySelector('audio, video, source, [download]')).toBeNull();
     expect(screen.queryByRole('button', { name: /play|download/i })).toBeNull();
   });
+
+  it('renders paid guest guidance without a preflight or mutation request', async () => {
+    const paths: string[] = [];
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      paths.push(options.path);
+      if (options.path === '/courses/7') return decode(options, { ...course, price: '19.99' });
+      if (options.path === '/courses/7/lessons') return decode(options, outline(null));
+      throw new Error(`Unexpected request ${options.path}`);
+    };
+    renderPage(request);
+
+    const signIn = await screen.findByRole('link', { name: 'Sign in' });
+    expect(signIn.getAttribute('href')).toBe('/login?returnTo=%2Fcourses%2F7');
+    expect(signIn.closest('p')?.textContent).toBe('Sign in to add this course to your cart.');
+    const button = screen.getByRole('button', { name: 'Add to cart' }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    fireEvent.click(button);
+    expect(paths).toEqual(['/courses/7', '/courses/7/lessons']);
+  });
+
+  it.each([
+    ['0.00', 'Enroll for free'],
+    ['19.99', 'Add to cart'],
+  ])(
+    'marks the %s guest unavailable action for the local disabled CTA treatment',
+    async (price, label) => {
+      const request: ApiClient['request'] = async <TResponse, TBody>(
+        options: ApiRequestOptions<TBody, TResponse>,
+      ) => {
+        if (options.path === '/courses/7') return decode(options, { ...course, price });
+        if (options.path === '/courses/7/lessons') return decode(options, outline(null));
+        throw new Error(`Unexpected request ${options.path}`);
+      };
+
+      renderPage(request);
+
+      const action = (await screen.findByRole('button', { name: label })) as HTMLButtonElement;
+      expect(action.disabled).toBe(true);
+      expect(action.className).toContain('guestUnavailableAction');
+    },
+  );
 
   it('clears a genuine invalid bearer after 401 before rendering public redacted metadata', async () => {
     const tokenStore = store('invalid-bearer');
@@ -229,7 +275,7 @@ describe('CourseDetailPage', () => {
     };
     renderPage(request, 'invalid-bearer', '/courses/7', { tokenStore });
 
-    expect(await screen.findByRole('link', { name: 'Log in to enroll free' })).toBeTruthy();
+    expect(await screen.findByRole('link', { name: 'Sign in' })).toBeTruthy();
     expect(tokenStore.get()).toBeNull();
     expect(authPolicies).toContain(undefined);
     expect(authPolicies.filter((policy) => policy === 'optional')).toHaveLength(2);
@@ -644,7 +690,7 @@ describe('CourseDetailPage', () => {
         status: 401,
         message: 'Could not validate credentials',
       }),
-      'Log in to enroll free',
+      'Sign in',
       1,
     ],
     [
@@ -708,7 +754,7 @@ describe('CourseDetailPage', () => {
         await user.click(enroll);
       });
       const resultingAction = await screen.findByRole(
-        expectedLabel.startsWith('Log in') ? 'link' : 'button',
+        expectedLabel === 'Sign in' ? 'link' : 'button',
         { name: expectedLabel },
       );
       if (expectedLabel === 'Action unavailable' && resultingAction instanceof HTMLButtonElement)
@@ -1103,12 +1149,12 @@ describe('CourseDetailPage', () => {
     await act(async () => {
       await user.click(screen.getByRole('button', { name: 'Clear session' }));
     });
-    expect(await screen.findByRole('link', { name: 'Log in to enroll free' })).toBeTruthy();
+    expect(await screen.findByRole('link', { name: 'Sign in' })).toBeTruthy();
     resolveEnrollment?.();
     await waitFor(() =>
       expect(screen.queryByText('You are now enrolled in this course.')).toBeNull(),
     );
-    expect(screen.getByRole('link', { name: 'Log in to enroll free' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Sign in' })).toBeTruthy();
   });
 
   it('rejects invalid route IDs without a request', async () => {

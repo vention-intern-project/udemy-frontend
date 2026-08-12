@@ -372,6 +372,25 @@ test('uses authenticated course PATCH and lesson POST contracts, including safe 
   expect(state.requests.filter((request) => request.method() === 'POST')).toHaveLength(2);
 });
 
+test('returns from the editor through the contextual Instructor courses link without a mutation', async ({
+  page,
+}) => {
+  const state = createFixtureState();
+  await installInstructorFixture(page, state);
+  await page.goto(`/instructor/courses/${courseId}/edit`, { waitUntil: 'commit' });
+
+  const returnLink = page
+    .getByRole('navigation', { name: 'Breadcrumb' })
+    .getByRole('link', { name: 'Instructor courses' });
+  await expect(returnLink).toHaveAttribute('href', '/instructor/courses');
+  await returnLink.focus();
+  await expect(returnLink).toBeFocused();
+  await page.keyboard.press('Enter');
+
+  await expect(page).toHaveURL('/instructor/courses');
+  expect(state.requests.filter((request) => request.method() !== 'GET')).toEqual([]);
+});
+
 test('confirms named destructive actions and restores keyboard focus on cancel', async ({
   page,
 }) => {
