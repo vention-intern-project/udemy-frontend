@@ -1168,6 +1168,10 @@ test('keeps the native completion action truthful and single-request while pendi
     abortedRequests: [expectedGetAbort('/enrollments/4', 1)],
   });
   let completionRequests = 0;
+  let settleProgress: (() => void) | undefined;
+  const progress = new Promise<void>((resolve) => {
+    settleProgress = resolve;
+  });
   let settleCompletion: (() => void) | undefined;
   const completion = new Promise<void>((resolve) => {
     settleCompletion = resolve;
@@ -1180,13 +1184,15 @@ test('keeps the native completion action truthful and single-request while pendi
       throw new Error('Media must not be requested by the pending-control scenario');
     if (url.pathname === '/me') return json(route, student);
     if (url.pathname === '/enrollments/4') return json(route, enrollment);
-    if (url.pathname === '/courses/7/progress')
+    if (url.pathname === '/courses/7/progress') {
+      await progress;
       return json(route, {
         course_id: 7,
         completed_lessons: 0,
         total_lessons: 1,
         progress_percentage: 0,
       });
+    }
     if (url.pathname === '/courses/7/lessons' && request.method() === 'GET')
       return json(route, {
         items: [
@@ -1238,6 +1244,10 @@ test('keeps the native completion action truthful and single-request while pendi
   await page.keyboard.press('Enter');
   await page.keyboard.press(' ');
   await expect.poll(() => completionRequests).toBe(1);
+
+  settleProgress?.();
+  await expect(page.getByRole('progressbar')).toBeVisible();
+  await expect(action).toHaveAccessibleName('Updating…');
 
   settleCompletion?.();
   await expect(page.getByText('Completed', { exact: true })).toBeVisible();

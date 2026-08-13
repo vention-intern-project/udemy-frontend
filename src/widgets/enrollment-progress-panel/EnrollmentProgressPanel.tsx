@@ -9,6 +9,7 @@ import { Button, Notice, Skeleton, SkeletonGroup } from '@shared/ui/primitives';
 import styles from './EnrollmentProgressPanel.module.css';
 
 export interface EnrollmentProgressPanelProps {
+  readonly courseId: number;
   readonly progress: CourseProgress | undefined;
   readonly progressError: unknown;
   readonly progressLoading: boolean;
@@ -36,12 +37,12 @@ function setLessonCompletion(
 }
 
 interface LessonCompletionFocusIntent {
-  readonly courseId: number | undefined;
+  readonly courseId: number;
   pendingObserved: boolean;
 }
 
 interface LessonCompletionActionProps {
-  readonly courseId: number | undefined;
+  readonly courseId: number;
   readonly lessonId: number;
   readonly markComplete: boolean;
   readonly pending: boolean;
@@ -105,6 +106,7 @@ function LessonCompletionAction({
 }
 
 export function EnrollmentProgressPanel({
+  courseId,
   progress,
   progressError,
   progressLoading,
@@ -116,7 +118,6 @@ export function EnrollmentProgressPanel({
   onSetCompletion,
   onRetry,
 }: EnrollmentProgressPanelProps) {
-  const courseId = progress?.courseId;
   const progressFailed = progressError !== null && progressError !== undefined;
   const outlineFailed = outlineError !== null && outlineError !== undefined;
   if (progressFailed && outlineFailed) {

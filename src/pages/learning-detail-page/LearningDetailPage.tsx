@@ -333,6 +333,7 @@ export function LearningDetailPage() {
               ) : null}
             </div>
             <EnrollmentProgressPanel
+              courseId={enrollment.courseId}
               progress={workspace.progress.data}
               progressError={workspace.progress.error}
               progressLoading={workspace.progress.isPending}

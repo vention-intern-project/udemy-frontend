@@ -933,6 +933,49 @@ describe('LearningDetailPage', () => {
     expect(screen.getByRole('button', { name: 'Mark incomplete' })).toBe(document.activeElement);
   });
 
+  it('restores completion focus when outline arrives before progress resolves during the pending action', async () => {
+    let resolveProgress: ((value: unknown) => void) | undefined;
+    const progress = new Promise<unknown>((resolve) => {
+      resolveProgress = resolve;
+    });
+    let resolveCompletion: ((value: unknown) => void) | undefined;
+    const completion = new Promise<unknown>((resolve) => {
+      resolveCompletion = resolve;
+    });
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/enrollments/4') return decode(options, activeEnrollment);
+      if (options.path === '/courses/7/progress') return decode(options, await progress);
+      if (options.path === '/courses/7/lessons') return decode(options, oneLessonOutline);
+      if (options.path === '/courses/7/lessons/12/complete')
+        return decode(options, await completion);
+      throw new Error(`Unexpected request ${options.path}`);
+    };
+    await renderPage(request);
+    const user = userEvent.setup();
+    const action = await screen.findByRole('button', { name: 'Mark complete' });
+    await act(async () => {
+      await user.click(action);
+    });
+    expect((action as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => {
+      resolveProgress?.({
+        course_id: 7,
+        completed_lessons: 0,
+        total_lessons: 1,
+        progress_percentage: 0,
+      });
+    });
+    expect(screen.getByRole('button', { name: 'Updating…' })).toBeTruthy();
+    await act(async () => {
+      resolveCompletion?.({ lesson_id: 12, completed: true, completed_at: '2026-08-14T00:00:00Z' });
+    });
+    await waitFor(() => expect(screen.getByText('Completed')).toBeTruthy());
+    expect(screen.getByRole('button', { name: 'Mark incomplete' })).toBe(document.activeElement);
+  });
+
   it('keeps one stable polite success slot through the accepted lifetime and opacity exit without moving focus', async () => {
     const request: ApiClient['request'] = async <TResponse, TBody>(
       options: ApiRequestOptions<TBody, TResponse>,
