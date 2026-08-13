@@ -349,6 +349,49 @@ describe('InstructorCourseEditorPage', () => {
     expect(screen.queryByText('This course or lesson is no longer available.')).toBeNull();
   });
 
+  it.each([
+    {
+      openDelete: 'Delete course',
+      dialogName: 'Delete this course?',
+      expectedPendingLabel: 'Deleting course...',
+    },
+    {
+      openDelete: 'Delete lesson',
+      dialogName: 'Delete this lesson?',
+      expectedPendingLabel: 'Deleting lesson...',
+    },
+  ])(
+    'uses $expectedPendingLabel while the confirmed delete remains pending',
+    async ({ openDelete, dialogName, expectedPendingLabel }) => {
+      const request: ApiClient['request'] = async (options) => {
+        if (options.path === '/me') return decode(options, instructor);
+        if (options.path === '/courses/7' && options.method === 'GET')
+          return decode(options, course);
+        if (options.method === 'DELETE') return new Promise(() => {});
+        throw new Error(`Unexpected request: ${options.method} ${options.path}`);
+      };
+      await renderPage({ request });
+      const user = userEvent.setup();
+
+      const deleteAction = await screen.findByRole('button', { name: openDelete });
+      await act(async () => {
+        await user.click(deleteAction);
+      });
+      const dialog = screen.getByRole('dialog', { name: dialogName });
+      const confirmation = within(dialog).getByRole('button', { name: openDelete });
+      await act(async () => {
+        await user.click(confirmation);
+      });
+
+      await waitFor(() => {
+        const confirmation = screen.getByRole('button', { name: expectedPendingLabel });
+        expect((confirmation as HTMLButtonElement).disabled).toBe(true);
+        expect(confirmation.getAttribute('aria-busy')).toBe('true');
+        expect(screen.getByRole('status').textContent).toContain(expectedPendingLabel);
+      });
+    },
+  );
+
   it('maps a verified create-lesson publication 422 issue to the checkbox and focuses it', async () => {
     const request: ApiClient['request'] = async (options) => {
       if (options.path === '/me') return decode(options, instructor);

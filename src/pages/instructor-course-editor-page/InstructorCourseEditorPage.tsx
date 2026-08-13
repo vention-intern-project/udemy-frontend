@@ -515,6 +515,7 @@ export function InstructorCourseEditorPage() {
         }
         confirmLabel={deletingCourse ? 'Delete course' : 'Delete lesson'}
         confirming={remove.isPending}
+        pendingLabel={deletingCourse ? 'Deleting course...' : 'Deleting lesson...'}
         error={
           remove.isError
             ? mapInstructorEditorFormFailure(

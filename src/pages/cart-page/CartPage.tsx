@@ -586,6 +586,7 @@ export function CartPage() {
         description="This removes every course from your cart. You can add courses again from the catalog."
         confirmLabel="Clear cart"
         confirming={isPendingClear()}
+        pendingLabel="Clearing cart..."
         error={clearFailure?.message}
         onCancel={() => {
           if (!isBusy) setClearOpen(false);

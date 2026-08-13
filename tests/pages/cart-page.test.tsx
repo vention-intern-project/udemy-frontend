@@ -1075,6 +1075,39 @@ describe('CartPage', () => {
     expect(reads).toBe(2);
   });
 
+  it('uses a truthful pending label while the confirmed cart clear is in flight', async () => {
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/cart' && options.method === 'GET')
+        return decode(options, cartWithItems);
+      if (options.path === '/cart' && options.method === 'DELETE') return new Promise(() => {});
+      throw new Error(`Unexpected request ${options.method} ${options.path}`);
+    };
+    await renderCart(request);
+    const user = userEvent.setup();
+    const clear = await screen.findByRole('button', { name: 'Clear cart' });
+
+    await interact(() => user.click(clear));
+    await interact(() =>
+      user.click(
+        within(screen.getByRole('dialog', { name: 'Clear cart?' })).getByRole('button', {
+          name: 'Clear cart',
+        }),
+      ),
+    );
+
+    await waitFor(() => {
+      const confirmation = screen.getByRole('button', { name: 'Clearing cart...' });
+      expect((confirmation as HTMLButtonElement).disabled).toBe(true);
+      expect(confirmation.getAttribute('aria-busy')).toBe('true');
+      expect(
+        within(screen.getByRole('dialog', { name: 'Clear cart?' })).getByRole('status').textContent,
+      ).toContain('Clearing cart...');
+    });
+  });
+
   it('keeps retained cart content recoverable when post-remove revalidation fails', async () => {
     let reads = 0;
     const request: ApiClient['request'] = async <TResponse, TBody>(

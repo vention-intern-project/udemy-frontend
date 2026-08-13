@@ -323,7 +323,7 @@ test('keeps destructive confirmation modal while pending and announces one recov
   await expect(cancel).toBeDisabled();
   const pendingConfirm = dialog.locator('button[data-state="loading"]');
   await expect(pendingConfirm).toBeDisabled();
-  await expect(dialog.getByRole('status')).toHaveText('Destructive action in progress');
+  await expect(dialog.getByRole('status')).toHaveText('Working...');
 
   const backdrop = page.locator('[data-part="backdrop"]');
   await backdrop.click({ position: { x: 2, y: 2 } });
