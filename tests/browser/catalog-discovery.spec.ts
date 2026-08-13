@@ -1580,16 +1580,25 @@ test('keeps Catalog result geometry stable while changed Sort and price requests
   });
 
   before = await prepareRefresh('top');
+  const priceUrlBeforeApply = before.url;
+  const requestCountBeforePriceApply = requests.length;
   await minimum.fill('10');
-  await maximum.click();
+  await maximum.focus();
+  await expect(maximum).toBeFocused();
+  await expect(page).toHaveURL(priceUrlBeforeApply);
+  expect(requests).toHaveLength(requestCountBeforePriceApply);
+  expect(releaseDeferredResponse).toBeNull();
+
+  await trigger.focus();
+  await expect(trigger).toBeFocused();
   during = await captureDeferredRefresh();
   after = await settleRefresh();
   records.push({
     after,
     before,
     during,
-    focusTarget: { name: 'max_price' },
-    name: 'Min price blur at top',
+    focusTarget: { dataPart: 'catalog-sort-trigger' },
+    name: 'Min price fieldset exit at top',
     requestCount: requests.length,
   });
 
@@ -2373,27 +2382,19 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   await expect(headerSearch).toHaveValue('JavaScript');
   const minimum = filters.getByLabel('Min price');
   const maximum = filters.getByLabel('Max price');
+  const priceUrlBeforeApply = page.url();
+  const requestCountBeforePriceApply = requests.length;
   await minimum.fill('10');
   await minimum.press('Tab');
-  await expect(page).toHaveURL(/search_query=JavaScript&min_price=10&sort=title/);
   await expect(maximum).toBeFocused();
-  await expect
-    .poll(
-      () =>
-        requests.filter((requestUrl) => {
-          const url = new URL(requestUrl);
-          return (
-            url.pathname === '/courses' &&
-            url.search === '?page=1&page_size=20&search_query=JavaScript&min_price=10&sort=title'
-          );
-        }).length,
-    )
-    .toBe(1);
+  await expect(page).toHaveURL(priceUrlBeforeApply);
+  expect(requests).toHaveLength(requestCountBeforePriceApply);
 
   await maximum.fill('20');
   await maximum.press('Tab');
   await expect(page).toHaveURL(/search_query=JavaScript&min_price=10&max_price=20&sort=title/);
   await expect(sortTrigger).toBeFocused();
+  await expect.poll(() => requests.length).toBe(requestCountBeforePriceApply + 1);
   await expect
     .poll(
       () =>
@@ -2782,7 +2783,7 @@ test('canonicalizes an inverted range and honors server-false pagination availab
   assertClean();
 });
 
-test('shows linked invalid-price validation on blur, then submits a corrected value without duplicate requests', async ({
+test('keeps an inverted price range invalid, then submits a corrected value without duplicate requests', async ({
   page,
 }) => {
   const assertClean = await monitor(page);
@@ -2801,13 +2802,29 @@ test('shows linked invalid-price validation on blur, then submits a corrected va
     });
   });
 
+  await page.setViewportSize({ width: 320, height: 740 });
   await page.goto('/');
+  expect(await page.evaluate(() => window.innerWidth)).toBe(320);
   await expect(page.getByRole('link', { name: 'React' })).toBeVisible();
   const requestCountBeforeInvalidSubmit = requests.length;
   const minimum = page.getByLabel('Min price');
   const maximum = page.getByLabel('Max price');
+  await expect(page.getByRole('group', { name: 'Price range' })).toBeVisible();
+  await expect(minimum).toHaveAccessibleName('Min price');
+  await expect(maximum).toHaveAccessibleName('Max price');
   await minimum.fill('-1');
-  await maximum.focus();
+  await page.keyboard.press('Tab');
+  await expect(maximum).toBeFocused();
+
+  await expect(page).toHaveURL('/');
+  expect(requests).toHaveLength(requestCountBeforeInvalidSubmit);
+
+  await page.keyboard.press('Shift+Tab');
+  await expect(minimum).toBeFocused();
+  await expect(page).toHaveURL('/');
+  expect(requests).toHaveLength(requestCountBeforeInvalidSubmit);
+
+  await minimum.press('Enter');
 
   await expect(page.getByText('Enter a non-negative price.')).toBeVisible();
   await expect(minimum).toHaveAttribute('aria-invalid', 'true');
@@ -2828,23 +2845,33 @@ test('shows linked invalid-price validation on blur, then submits a corrected va
 
   const requestCountBeforeInvertedSubmit = requests.length;
   await maximum.fill('3');
-  await minimum.focus();
+  await page.keyboard.press('Shift+Tab');
+  await expect(minimum).toBeFocused();
 
-  await expect(page.getByText('Maximum price must be at least the minimum price.')).toHaveCount(0);
-  await expect(maximum).not.toHaveAttribute('aria-invalid', 'true');
-  await expect(page).toHaveURL('/?min_price=5&max_price=5');
-  await expect.poll(() => requests.length).toBe(requestCountBeforeInvertedSubmit + 1);
-  const normalizedRequest = requests[requests.length - 1];
-  expect(normalizedRequest).toContain('min_price=5');
-  expect(normalizedRequest).toContain('max_price=5');
+  await expect(page).toHaveURL('/?min_price=5');
+  expect(requests).toHaveLength(requestCountBeforeInvertedSubmit);
+
+  await minimum.press('Enter');
+  await expect(page.getByText('Maximum price must be at least the minimum price.')).toBeVisible();
+  await expect(maximum).toHaveAttribute('aria-invalid', 'true');
+  await expect(maximum).toHaveAttribute('aria-describedby', /-error/);
+  await expect(page).toHaveURL('/?min_price=5');
+  expect(requests).toHaveLength(requestCountBeforeInvertedSubmit);
 
   await maximum.fill('15');
   await maximum.press('Enter');
   await expect(page).toHaveURL('/?min_price=5&max_price=15');
-  await expect.poll(() => requests.length).toBe(requestCountBeforeInvertedSubmit + 2);
+  await expect.poll(() => requests.length).toBe(requestCountBeforeInvertedSubmit + 1);
   const recoveredRequest = requests[requests.length - 1];
   expect(recoveredRequest).toContain('min_price=5');
   expect(recoveredRequest).toContain('max_price=15');
+  expect(
+    await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth <= document.documentElement.clientWidth &&
+        document.body.scrollWidth <= document.documentElement.clientWidth,
+    ),
+  ).toBe(true);
   assertClean();
 });
 

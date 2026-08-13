@@ -1945,6 +1945,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
     await act(async () => {
       await user.type(screen.getByLabelText('Min price'), '5');
       await user.click(screen.getByLabelText('Max price'));
+      await user.tab();
     });
     await waitFor(() =>
       expect(screen.getByLabelText('catalog location').textContent).toBe(
@@ -2062,7 +2063,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(trigger).toBe(document.activeElement);
   });
 
-  it('shows linked negative-price validation on blur without changing the URL or requesting, then applies a corrected value', async () => {
+  it('shows linked negative-price validation on Enter without changing the URL or requesting, then applies a corrected value', async () => {
     const user = userEvent.setup();
     const requests: ApiRequestOptions[] = [];
     const request: ApiClient['request'] = async <TResponse,>(options: ApiRequestOptions) => {
@@ -2075,7 +2076,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
     const minimum = screen.getByLabelText('Min price') as HTMLInputElement;
     await act(async () => {
       await user.type(minimum, '-1');
-      await user.tab();
+      await user.keyboard('{Enter}');
     });
 
     await screen.findByText('Enter a non-negative price.');
@@ -2087,7 +2088,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
     await act(async () => {
       await user.clear(minimum);
       await user.type(minimum, '5');
-      await user.tab();
+      await user.keyboard('{Enter}');
     });
     await waitFor(() =>
       expect(screen.getByLabelText('catalog location').textContent).toBe('/?min_price=5'),
@@ -2104,7 +2105,46 @@ describe('CatalogPage public URL and pagination behavior', () => {
     );
   });
 
-  it('clamps an inverted range to Min price, then applies Enter once and clears to a max-only range', async () => {
+  it('waits for price-range exit before applying a completed Min and Max draft once', async () => {
+    const user = userEvent.setup();
+    const requests: ApiRequestOptions[] = [];
+    const request: ApiClient['request'] = async <TResponse,>(options: ApiRequestOptions) => {
+      requests.push(options);
+      return response() as TResponse;
+    };
+    renderCatalog(request, ['/?page=3']);
+
+    await screen.findByRole('link', { name: 'React' });
+    const minimum = screen.getByLabelText('Min price');
+    const maximum = screen.getByLabelText('Max price');
+    await act(async () => {
+      await user.type(minimum, '5');
+      await user.click(maximum);
+    });
+    expect(maximum).toBe(document.activeElement);
+    expect(screen.getByLabelText('catalog location').textContent).toBe('/?page=3');
+    expect(requests).toHaveLength(1);
+
+    await act(async () => {
+      await user.type(maximum, '25');
+      await user.click(minimum);
+    });
+    expect(minimum).toBe(document.activeElement);
+    expect(screen.getByLabelText('catalog location').textContent).toBe('/?page=3');
+    expect(requests).toHaveLength(1);
+
+    await act(async () => {
+      await user.click(screen.getByRole('contentinfo'));
+    });
+    await waitFor(() =>
+      expect(screen.getByLabelText('catalog location').textContent).toBe(
+        '/?min_price=5&max_price=25',
+      ),
+    );
+    await waitFor(() => expect(requests).toHaveLength(2));
+  });
+
+  it('keeps an inverted range invalid until a corrected Enter applies once', async () => {
     const user = userEvent.setup();
     const requests: ApiRequestOptions[] = [];
     const request: ApiClient['request'] = async <TResponse,>(options: ApiRequestOptions) => {
@@ -2121,23 +2161,25 @@ describe('CatalogPage public URL and pagination behavior', () => {
       await user.type(minimum, '10');
       await user.click(maximum);
     });
-    await waitFor(() =>
-      expect(screen.getByLabelText('catalog location').textContent).toBe('/?min_price=10'),
-    );
-    await waitFor(() => expect(requests).toHaveLength(2));
+    expect(screen.getByLabelText('catalog location').textContent).toBe('/');
+    expect(requests).toHaveLength(1);
 
     await act(async () => {
       await user.type(maximum, '5');
-      await user.tab();
+      await user.click(minimum);
     });
-    await waitFor(() =>
-      expect(screen.getByLabelText('catalog location').textContent).toBe(
-        '/?min_price=10&max_price=10',
-      ),
-    );
-    await waitFor(() => expect(maximum.value).toBe('10'));
-    expect(maximum.getAttribute('aria-invalid')).toBeNull();
-    expect(requests).toHaveLength(3);
+    expect(screen.queryByText('Maximum price must be at least the minimum price.')).toBeNull();
+    expect(screen.getByLabelText('catalog location').textContent).toBe('/');
+    expect(requests).toHaveLength(1);
+
+    await act(async () => {
+      await user.keyboard('{Enter}');
+    });
+    await screen.findByText('Maximum price must be at least the minimum price.');
+    expect(maximum.getAttribute('aria-invalid')).toBe('true');
+    expect(maximum.getAttribute('aria-describedby')).toContain('-error');
+    expect(screen.getByLabelText('catalog location').textContent).toBe('/');
+    expect(requests).toHaveLength(1);
 
     await act(async () => {
       await user.clear(maximum);
@@ -2149,29 +2191,12 @@ describe('CatalogPage public URL and pagination behavior', () => {
         '/?min_price=10&max_price=15',
       ),
     );
-    await waitFor(() => expect(requests).toHaveLength(4));
+    await waitFor(() => expect(requests).toHaveLength(2));
     await act(async () => {
       await user.tab();
     });
     await new Promise((resolve) => window.setTimeout(resolve, 0));
-    expect(requests).toHaveLength(4);
-
-    await act(async () => {
-      await user.clear(minimum);
-      await user.click(maximum);
-    });
-    await waitFor(() =>
-      expect(screen.getByLabelText('catalog location').textContent).toBe('/?max_price=15'),
-    );
-    await waitFor(() => expect(requests).toHaveLength(5));
-    expect(requests[4]?.query).toEqual({
-      search_query: undefined,
-      min_price: undefined,
-      max_price: 15,
-      sort: 'created_at',
-      page: 1,
-      page_size: 20,
-    });
+    expect(requests).toHaveLength(2);
   });
 
   it('does not navigate for a normalized no-op and removes a cleared bound while preserving search and sort', async () => {
@@ -2203,6 +2228,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
       await user.clear(minimum);
       await user.type(minimum, '7');
       await user.click(maximum);
+      await user.keyboard('{Enter}');
     });
     await waitFor(() =>
       expect(screen.getByLabelText('catalog location').textContent).toBe(
