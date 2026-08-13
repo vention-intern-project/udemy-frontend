@@ -87,12 +87,17 @@ function decode<TResponse, TBody>(
 interface DetailHarnessOptions {
   readonly initialEntry?: string;
   readonly queryClient?: QueryClient;
+  readonly sameCourseRouteChange?: boolean;
   readonly sessionChange?: boolean;
   readonly routeChange?: boolean;
   readonly store?: AccessTokenStore;
 }
 
-function DetailHarnessControls({ routeChange, sessionChange }: DetailHarnessOptions) {
+function DetailHarnessControls({
+  routeChange,
+  sameCourseRouteChange,
+  sessionChange,
+}: DetailHarnessOptions) {
   const navigate = useNavigate();
   const session = useSession();
   return (
@@ -100,6 +105,11 @@ function DetailHarnessControls({ routeChange, sessionChange }: DetailHarnessOpti
       {routeChange ? (
         <button type="button" onClick={() => navigate('/learning/enrollments/5')}>
           Open workspace 5
+        </button>
+      ) : null}
+      {sameCourseRouteChange ? (
+        <button type="button" onClick={() => navigate('/learning/enrollments/5')}>
+          Open same-course workspace
         </button>
       ) : null}
       {sessionChange ? (
@@ -1751,6 +1761,55 @@ describe('LearningDetailPage', () => {
     expect(screen.queryByText('Lesson marked complete.')).toBeNull();
     expect(document.activeElement).toBe(routeSentinel);
     routeSentinel.remove();
+  });
+
+  it('does not restore stale completion focus into a same-course replacement workspace', async () => {
+    let resolveCompletion: ((value: unknown) => void) | undefined;
+    const completion = new Promise<unknown>((resolve) => {
+      resolveCompletion = resolve;
+    });
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/enrollments/4') return decode(options, activeEnrollment);
+      if (options.path === '/enrollments/5')
+        return decode(options, {
+          ...activeEnrollment,
+          id: 5,
+          course: { ...activeEnrollment.course, title: 'Replacement workspace' },
+        });
+      if (options.path === '/courses/7/progress')
+        return decode(options, {
+          course_id: 7,
+          completed_lessons: 0,
+          total_lessons: 1,
+          progress_percentage: 0,
+        });
+      if (options.path === '/courses/7/lessons') return decode(options, oneLessonOutline);
+      if (options.path === '/courses/7/lessons/12/complete')
+        return decode(options, await completion);
+      throw new Error(`Unexpected request ${options.path}`);
+    };
+    await renderPage(request, { sameCourseRouteChange: true });
+    const user = userEvent.setup();
+    const markComplete = await screen.findByRole('button', { name: 'Mark complete' });
+    await act(async () => {
+      await user.click(markComplete);
+    });
+    document.body.tabIndex = -1;
+    document.body.focus();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Open same-course workspace' }));
+    });
+    await screen.findByRole('heading', { name: 'Replacement workspace' });
+    expect(document.activeElement).toBe(document.body);
+    await act(async () => {
+      resolveCompletion?.({ lesson_id: 12, completed: true, completed_at: '2026-08-14T00:00:00Z' });
+    });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Mark complete' })).toBeTruthy());
+    expect(document.activeElement).toBe(document.body);
+    document.body.removeAttribute('tabindex');
   });
 
   it('keeps a late mutation error out of a replacement session subject', async () => {

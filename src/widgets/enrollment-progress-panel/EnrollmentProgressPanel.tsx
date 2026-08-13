@@ -9,7 +9,7 @@ import { Button, Notice, Skeleton, SkeletonGroup } from '@shared/ui/primitives';
 import styles from './EnrollmentProgressPanel.module.css';
 
 export interface EnrollmentProgressPanelProps {
-  readonly courseId: number;
+  readonly workspaceIdentity: string;
   readonly progress: CourseProgress | undefined;
   readonly progressError: unknown;
   readonly progressLoading: boolean;
@@ -37,12 +37,12 @@ function setLessonCompletion(
 }
 
 interface LessonCompletionFocusIntent {
-  readonly courseId: number;
+  readonly workspaceIdentity: string;
   pendingObserved: boolean;
 }
 
 interface LessonCompletionActionProps {
-  readonly courseId: number;
+  readonly workspaceIdentity: string;
   readonly lessonId: number;
   readonly markComplete: boolean;
   readonly pending: boolean;
@@ -50,7 +50,7 @@ interface LessonCompletionActionProps {
 }
 
 function LessonCompletionAction({
-  courseId,
+  workspaceIdentity,
   lessonId,
   markComplete,
   pending,
@@ -62,7 +62,7 @@ function LessonCompletionAction({
   useEffect(() => {
     const focusIntent = focusIntentRef.current;
     if (focusIntent === null) return;
-    if (focusIntent.courseId !== courseId) {
+    if (focusIntent.workspaceIdentity !== workspaceIdentity) {
       focusIntentRef.current = null;
       return;
     }
@@ -82,11 +82,11 @@ function LessonCompletionAction({
         activeElement?.tagName === 'MAIN')
     )
       action.focus();
-  }, [actionId, courseId, pending]);
+  }, [actionId, pending, workspaceIdentity]);
 
   const handleClick = () => {
     if (pending) return;
-    focusIntentRef.current = { courseId, pendingObserved: false };
+    focusIntentRef.current = { workspaceIdentity, pendingObserved: false };
     setLessonCompletion(pending, lessonId, markComplete, onSetCompletion);
   };
 
@@ -106,7 +106,7 @@ function LessonCompletionAction({
 }
 
 export function EnrollmentProgressPanel({
-  courseId,
+  workspaceIdentity,
   progress,
   progressError,
   progressLoading,
@@ -219,7 +219,7 @@ export function EnrollmentProgressPanel({
                       </p>
                     </div>
                     <LessonCompletionAction
-                      courseId={courseId}
+                      workspaceIdentity={workspaceIdentity}
                       lessonId={lesson.id}
                       markComplete={markComplete}
                       pending={pending}
