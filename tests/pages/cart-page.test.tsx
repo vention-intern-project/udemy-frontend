@@ -2,7 +2,7 @@
 
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createAppQueryClient } from '../../src/app/query';
@@ -81,6 +81,13 @@ function tokenStore(token = 'student-token'): AccessTokenStore {
   };
 }
 
+interface CartRouteEntry {
+  readonly pathname: string;
+  readonly state?: unknown;
+}
+
+type CartInitialEntry = string | CartRouteEntry;
+
 function decode<TResponse, TBody>(
   options: ApiRequestOptions<TBody, TResponse>,
   value: unknown,
@@ -88,13 +95,24 @@ function decode<TResponse, TBody>(
   return options.decode ? options.decode(value) : (value as TResponse);
 }
 
-async function renderCart(request: ApiClient['request']) {
+function LocationProbe() {
+  const location = useLocation();
+  return (
+    <div aria-label="Current route">{`${location.pathname}${location.search}${location.hash}`}</div>
+  );
+}
+
+async function renderCart(request: ApiClient['request'], initialEntry: CartInitialEntry = '/cart') {
   const queryClient = createAppQueryClient();
   await act(async () => {
     render(
       <QueryClientProvider client={queryClient}>
         <SessionProvider client={{ request }} tokenStore={tokenStore()}>
-          <MemoryRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+          <MemoryRouter
+            future={{ v7_relativeSplatPath: true, v7_startTransition: true }}
+            initialEntries={[initialEntry]}
+          >
+            <LocationProbe />
             <CartPage />
           </MemoryRouter>
         </SessionProvider>
@@ -149,6 +167,139 @@ async function removeCourseAndExpectFocus(courseId: number, expectedActionName: 
 }
 
 describe('CartPage', () => {
+  it.each([
+    {
+      entry: { pathname: '/cart', state: { returnTo: '/learning?page=2#courses' } },
+      expectedLabel: 'My learning',
+      expectedHref: '/learning?page=2#courses',
+    },
+    {
+      entry: { pathname: '/cart', state: { returnTo: '/' } },
+      expectedLabel: 'Catalog',
+      expectedHref: '/',
+    },
+    {
+      entry: { pathname: '/cart', state: { returnTo: '/courses/7?tab=outline#lessons' } },
+      expectedLabel: 'Course details',
+      expectedHref: '/courses/7?tab=outline#lessons',
+    },
+    {
+      entry: { pathname: '/cart', state: { returnTo: '/instructor/courses/7/edit' } },
+      expectedLabel: 'Edit course',
+      expectedHref: '/instructor/courses/7/edit',
+    },
+    {
+      entry: { pathname: '/cart', state: { returnTo: 'https://outside.example/cart' } },
+      expectedLabel: 'Catalog',
+      expectedHref: '/',
+    },
+    {
+      entry: { pathname: '/cart', state: { returnTo: '/cart?coupon=SAVE' } },
+      expectedLabel: 'Catalog',
+      expectedHref: '/',
+    },
+  ])(
+    'renders only the safe source return link for resolved Cart state',
+    async ({ entry, expectedLabel, expectedHref }) => {
+      const request: ApiClient['request'] = async <TResponse, TBody>(
+        options: ApiRequestOptions<TBody, TResponse>,
+      ) => {
+        if (options.path === '/me') return decode(options, student);
+        if (options.path === '/cart' && options.method === 'GET')
+          return decode(options, cartWithItems);
+        throw new Error(`Unexpected request ${options.method} ${options.path}`);
+      };
+
+      await renderCart(request, entry);
+
+      const source = await screen.findByRole('link', { name: expectedLabel });
+      const breadcrumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
+      expect(source.getAttribute('href')).toBe(expectedHref);
+      expect(breadcrumb.contains(source)).toBe(true);
+      expect(source.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
+      expect(screen.getByText('/', { selector: 'span' })).toBeTruthy();
+      expect(screen.getByText('Cart', { selector: 'span' })).toBeTruthy();
+      expect(screen.getByText('Cart', { selector: '[aria-current="page"]' })).toBeTruthy();
+      expect(
+        source.compareDocumentPosition(screen.getByRole('heading', { name: 'Cart' })) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    },
+  );
+
+  it.each(['pointer', 'Enter', 'Space'])(
+    'uses the existing Router click path for the safe My learning return on %s',
+    async (activation) => {
+      const request: ApiClient['request'] = async <TResponse, TBody>(
+        options: ApiRequestOptions<TBody, TResponse>,
+      ) => {
+        if (options.path === '/me') return decode(options, student);
+        if (options.path === '/cart' && options.method === 'GET')
+          return decode(options, cartWithItems);
+        throw new Error(`Unexpected request ${options.method} ${options.path}`);
+      };
+      await renderCart(request, {
+        pathname: '/cart',
+        state: { returnTo: '/learning?page=2#courses' },
+      });
+      const user = userEvent.setup();
+      const source = await screen.findByRole('link', { name: 'My learning' });
+
+      source.focus();
+      expect(source).toBe(document.activeElement);
+      if (activation === 'pointer') await interact(() => user.click(source));
+      if (activation === 'Enter') await interact(() => user.keyboard('{Enter}'));
+      if (activation === 'Space') await interact(() => user.keyboard(' '));
+
+      await waitFor(() =>
+        expect(screen.getByLabelText('Current route').textContent).toBe('/learning?page=2#courses'),
+      );
+    },
+  );
+
+  it('activates the non-self Catalog fallback through the Router click path on unmodified Space', async () => {
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/cart' && options.method === 'GET')
+        return decode(options, cartWithItems);
+      throw new Error(`Unexpected request ${options.method} ${options.path}`);
+    };
+    await renderCart(request, { pathname: '/cart', state: { returnTo: '/cart?coupon=SAVE' } });
+    const user = userEvent.setup();
+    const source = await screen.findByRole('link', { name: 'Catalog' });
+
+    source.focus();
+    expect(source).toBe(document.activeElement);
+    await interact(() => user.keyboard(' '));
+
+    await waitFor(() => expect(screen.getByLabelText('Current route').textContent).toBe('/'));
+  });
+
+  it('accepts Chromium Space-key aliases without changing the safe return target', async () => {
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/cart' && options.method === 'GET')
+        return decode(options, cartWithItems);
+      throw new Error(`Unexpected request ${options.method} ${options.path}`);
+    };
+    await renderCart(request, {
+      pathname: '/cart',
+      state: { returnTo: '/learning?page=2#courses' },
+    });
+    const source = await screen.findByRole('link', { name: 'My learning' });
+
+    source.focus();
+    fireEvent.keyDown(source, { key: 'Space', code: 'Space' });
+
+    await waitFor(() =>
+      expect(screen.getByLabelText('Current route').textContent).toBe('/learning?page=2#courses'),
+    );
+  });
+
   it('uses the no-observer fallback to expose one mobile summary jump without checkout', async () => {
     const originalInnerHeight = Object.getOwnPropertyDescriptor(window, 'innerHeight');
     const originalInnerWidth = Object.getOwnPropertyDescriptor(window, 'innerWidth');
@@ -591,9 +742,7 @@ describe('CartPage', () => {
     };
     await renderCart(request);
 
-    const workspace = await screen.findByText('Student workspace');
-    expect(workspace.tagName).toBe('P');
-    expect(workspace.querySelector('svg.lucide-chevron-right')).toBeTruthy();
+    expect(screen.queryByText('Student workspace')).toBeNull();
     expect(await screen.findByText('2 courses')).toBeTruthy();
     expect(screen.queryByText('2 courses in cart')).toBeNull();
     expect(screen.queryByText('Courses')).toBeNull();
@@ -820,9 +969,12 @@ describe('CartPage', () => {
     await interact(() => user.click(remove));
     await waitFor(() => expect(removeRequests).toBe(1));
     expect(screen.getByRole('article').getAttribute('aria-busy')).toBe('true');
-    expect((screen.getByRole('button', { name: 'Removing…' }) as HTMLButtonElement).disabled).toBe(
-      true,
-    );
+    const pendingRemoveAction = screen.getByRole('button', {
+      name: 'Remove Long accessible course title',
+    });
+    expect((pendingRemoveAction as HTMLButtonElement).disabled).toBe(false);
+    expect(pendingRemoveAction.getAttribute('aria-busy')).toBeNull();
+    expect(pendingRemoveAction.querySelector('[data-part="spinner"]')).toBeNull();
     expect((screen.getByRole('button', { name: 'Clear cart' }) as HTMLButtonElement).disabled).toBe(
       true,
     );

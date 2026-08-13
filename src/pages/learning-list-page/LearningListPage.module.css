@@ -34,25 +34,53 @@
 .backLink {
   display: inline-flex;
   width: fit-content;
+  min-height: var(--control-height-md);
   justify-self: start;
   align-items: center;
   gap: var(--spacing-1);
   padding-inline: 0;
   color: var(--action-primary-bg);
-  font-weight: var(--font-weight-regular);
+  font-size: var(--type-body-md-size);
+  font-weight: 500;
+  line-height: var(--type-body-md-lh);
   text-decoration: none;
+}
+
+.returnPath {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  min-width: 0;
 }
 
 .backLink:visited {
   color: var(--action-primary-bg);
 }
 
-.backLink:hover,
-.backLink:active,
 .backLink:focus-visible {
   color: var(--action-primary-bg);
   background: transparent;
+}
+
+.backLink:hover,
+.backLink:active {
+  color: var(--action-primary-bg-hover);
+  background: transparent;
   text-decoration: underline;
+}
+
+.backLink svg {
+  flex: none;
+}
+
+.returnCurrent {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-1);
+  color: var(--text-secondary);
+  font-size: var(--type-body-md-size);
+  font-weight: 500;
+  line-height: var(--type-body-md-lh);
 }
 
 .summary,

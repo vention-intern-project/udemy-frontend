@@ -349,6 +349,10 @@ test.describe('FE-009 cart workflow QA harness', () => {
     await expect.poll(() => lifecycle.aborted).toEqual(['GET /cart']);
     expect(lifecycle.initiated).toEqual(['GET /cart', 'GET /cart']);
 
+    const courseLink = page.getByRole('link', { name: cartItem.course.title, exact: true });
+    await courseLink.hover();
+    await expect(courseLink).toHaveCSS('color', 'rgb(91, 63, 214)');
+
     for (const width of [320, 390, 768, 1280, 1440]) {
       await page.setViewportSize({ width, height: 900 });
       await expect(
@@ -379,6 +383,55 @@ test.describe('FE-009 cart workflow QA harness', () => {
         getComputedStyle(document.documentElement).getPropertyValue('--duration-base').trim(),
       ),
     ).toBe('0ms');
+  });
+
+  test('keeps the initiating remove control visually unchanged without a loading spinner while its DELETE request is pending', async ({
+    page,
+  }) => {
+    await installStudent(page);
+    let resolveDelete: (() => void) | undefined;
+    const pendingDelete = new Promise<void>((resolve) => {
+      resolveDelete = resolve;
+    });
+    let currentCart = cart();
+    await page.route('**/me', (route) => json(route, student));
+    await routeCartApi(page, async (route, request) => {
+      const requestLabel = cartRequestLabel(request);
+      if (requestLabel === 'GET /cart') return json(route, currentCart);
+      if (requestLabel === 'DELETE /cart/items/7') {
+        await pendingDelete;
+        currentCart = cart([]);
+        return route.fulfill({ status: 204 });
+      }
+      throw new Error(`Unexpected cart request ${requestLabel}`);
+    });
+
+    await page.setViewportSize({ width: 390, height: 900 });
+    await page.goto('/cart');
+    const remove = page.getByRole('button', {
+      name: /remove a deliberately long cart course/i,
+    });
+    const idleBox = await remove.boundingBox();
+    if (!idleBox) throw new Error('Idle Cart remove-control geometry is unavailable.');
+
+    await remove.click();
+    await expect(remove).toBeEnabled();
+    await expect(remove).not.toHaveAttribute('aria-busy', 'true');
+    await expect(remove.locator('[data-part="spinner"]')).toHaveCount(0);
+    const pendingBox = await remove.boundingBox();
+    if (!pendingBox) throw new Error('Pending Cart remove-control geometry is unavailable.');
+    expect(pendingBox).toEqual(idleBox);
+
+    const geometry = await page.evaluate(() => ({
+      bodyWidth: document.body.scrollWidth,
+      clientWidth: document.documentElement.clientWidth,
+      documentWidth: document.documentElement.scrollWidth,
+    }));
+    expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.clientWidth);
+    expect(geometry.bodyWidth).toBeLessThanOrEqual(geometry.clientWidth);
+
+    resolveDelete?.();
+    await expect(page.getByRole('heading', { name: 'Your cart is empty' })).toBeFocused();
   });
 
   test('keeps authenticated 403 on a safe catalog recovery action instead of a guest-route loop', async ({

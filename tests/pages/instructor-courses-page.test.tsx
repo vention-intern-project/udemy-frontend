@@ -130,18 +130,14 @@ describe('InstructorCoursesPage', () => {
     };
     await renderPage({ request });
     const user = userEvent.setup();
-    const hero = document.querySelector('[data-part="instructor-courses-hero"]');
-    const heroImage = hero?.querySelector('img');
-    expect(hero).toBeTruthy();
-    expect(heroImage?.getAttribute('src')).toContain('instructor-courses-hero-ui022');
-    expect(heroImage?.getAttribute('alt')).toBe('');
-    expect(heroImage?.getAttribute('aria-hidden')).toBe('true');
-    expect(screen.getByRole('heading', { name: 'Instructor courses' })).toBeTruthy();
+    expect(document.querySelector('[data-part="instructor-courses-hero"]')).toBeNull();
+    const pageTitle = screen.getByRole('heading', { level: 1, name: 'Instructor courses' });
+    expect(pageTitle.className).toContain('pageTitle');
     expect(
-      screen.getByText(
+      screen.queryByText(
         'Create meaningful courses, share your expertise, and inspire learners to grow.',
       ),
-    ).toBeTruthy();
+    ).toBeNull();
     expect(await screen.findByText('Verified collection course')).toBeTruthy();
     const collectionActions = screen.getByRole('navigation', {
       name: 'Verified collection course actions',
@@ -160,6 +156,7 @@ describe('InstructorCoursesPage', () => {
       { page: 1, page_size: 20 },
     ]);
     const title = await screen.findByRole('textbox', { name: 'Course title' });
+    expect(title.id).toBe('instructor-course-title');
     await act(async () => {
       await user.type(title, 'A'.repeat(255));
       await user.click(screen.getByRole('button', { name: 'Create course' }));
@@ -178,7 +175,7 @@ describe('InstructorCoursesPage', () => {
     await waitFor(() => expect(collectionRequests).toHaveLength(3));
   });
 
-  it('requests page two through the public pagination control with only the verified query fields', async () => {
+  it('uses named arrow directions, preserves the verified query, and hides unavailable direction slots', async () => {
     const collectionRequests: ApiRequestOptions[] = [];
     const firstPage = {
       ...courseList,
@@ -207,10 +204,20 @@ describe('InstructorCoursesPage', () => {
     await renderPage({ request });
     expect(await screen.findByText('Verified collection course')).toBeTruthy();
     const user = userEvent.setup();
+    const pagination = screen.getByRole('navigation', { name: 'Your courses pagination' });
+    expect(pagination.querySelectorAll('.ui-pagination__button--direction')).toHaveLength(1);
+    expect(
+      pagination.querySelectorAll('.ui-pagination__direction-slot[aria-hidden="true"]'),
+    ).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Go to previous page' })).toBeNull();
     await act(async () => {
-      await user.click(screen.getByRole('button', { name: 'Go to page 2' }));
+      await user.click(screen.getByRole('button', { name: 'Go to next page' }));
     });
     expect(await screen.findByText('Second instructor course')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Go to next page' })).toBeNull();
+    expect(
+      pagination.querySelectorAll('.ui-pagination__direction-slot[aria-hidden="true"]'),
+    ).toHaveLength(1);
 
     const pageTwoRequests = collectionRequests.filter((request) => request.query?.page === 2);
     expect(pageTwoRequests).toHaveLength(1);

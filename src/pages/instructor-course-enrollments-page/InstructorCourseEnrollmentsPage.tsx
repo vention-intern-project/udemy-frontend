@@ -1,11 +1,19 @@
 import { useQuery } from '@tanstack/react-query';
+import { ChevronLeft } from 'lucide-react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useEffect, useRef } from 'react';
 
 import { requestCourseEnrollments } from '@features/instructor-courses';
 import type { EnrollmentStatusDto } from '@entities/enrollment';
 import { useSession } from '@features/auth-session';
-import { Button, Notice, Pagination, Skeleton, SkeletonGroup } from '@shared/ui/primitives';
+import {
+  Button,
+  ContextualNavigationLink,
+  Notice,
+  Pagination,
+  Skeleton,
+  SkeletonGroup,
+} from '@shared/ui/primitives';
 import { ApiError } from '@shared/api';
 import styles from './InstructorCourseEnrollmentsPage.module.css';
 
@@ -22,6 +30,23 @@ function failure(error: unknown): string {
     return 'You do not have permission to view these enrollments.';
   if (error instanceof ApiError && error.status === 404) return 'This course was not found.';
   return 'We could not load course enrollments. Try again.';
+}
+
+function InstructorCoursesReturnLink() {
+  return (
+    <nav className={styles.breadcrumb} aria-label="Breadcrumb">
+      <ContextualNavigationLink className={styles.breadcrumbLink} to="/instructor/courses">
+        <ChevronLeft size={20} aria-hidden="true" />
+        <span>Instructor courses</span>
+      </ContextualNavigationLink>
+      <span className={styles.breadcrumbCurrent} aria-hidden="true">
+        /
+      </span>
+      <span className={styles.breadcrumbCurrent} aria-current="page">
+        Course enrollments
+      </span>
+    </nav>
+  );
 }
 function enrollmentStatusLabel(status: EnrollmentStatusDto): string {
   switch (status) {
@@ -51,6 +76,7 @@ export function InstructorCourseEnrollmentsPage() {
   if (id === null)
     return (
       <article className={styles.page}>
+        <InstructorCoursesReturnLink />
         <h1>Course enrollments</h1>
         <Notice tone="error">This course was not found.</Notice>
       </article>
@@ -58,6 +84,7 @@ export function InstructorCourseEnrollmentsPage() {
   if (roster.isPending)
     return (
       <article className={styles.page}>
+        <InstructorCoursesReturnLink />
         <h1 ref={heading} tabIndex={-1}>
           Course enrollments
         </h1>
@@ -69,6 +96,7 @@ export function InstructorCourseEnrollmentsPage() {
   if (roster.isError)
     return (
       <article className={styles.page}>
+        <InstructorCoursesReturnLink />
         <h1 ref={heading} tabIndex={-1}>
           Course enrollments
         </h1>
@@ -89,6 +117,7 @@ export function InstructorCourseEnrollmentsPage() {
   const result = roster.data;
   return (
     <article className={styles.page}>
+      <InstructorCoursesReturnLink />
       <header>
         <h1 ref={heading} tabIndex={-1}>
           Course enrollments

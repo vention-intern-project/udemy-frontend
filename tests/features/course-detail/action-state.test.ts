@@ -37,7 +37,7 @@ const student: SessionState = {
 };
 
 describe('course primary action matrix', () => {
-  it('uses a safe internal login target for anonymous free and paid courses', () => {
+  it('carries exact guest guidance, disabled action labels, and a safe internal login target', () => {
     expect(
       coursePrimaryAction({
         course: publishedCourse,
@@ -46,7 +46,8 @@ describe('course primary action matrix', () => {
       }),
     ).toEqual({
       kind: 'login',
-      label: 'Log in to enroll free',
+      helper: { linkText: 'Sign in', guidance: 'to enroll for free.' },
+      label: 'Enroll for free',
       to: '/login?returnTo=%2Fcourses%2F7',
     });
     expect(
@@ -57,7 +58,8 @@ describe('course primary action matrix', () => {
       }),
     ).toEqual({
       kind: 'login',
-      label: 'Log in to add to cart',
+      helper: { linkText: 'Sign in', guidance: 'to add this course to your cart.' },
+      label: 'Add to cart',
       to: '/login?returnTo=%2Fcourses%2F7',
     });
   });

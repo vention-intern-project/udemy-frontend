@@ -107,9 +107,17 @@ export function CourseActionPanel({
         </Notice>
       ) : null}
       {action?.kind === 'login' ? (
-        <Link className={styles.primaryLink} to={action.to}>
-          {action.label}
-        </Link>
+        <div className={styles.guestAction}>
+          <p className={styles.guestHelper}>
+            <Link className={styles.actionLink} to={action.to}>
+              {action.helper.linkText}
+            </Link>{' '}
+            {action.helper.guidance}
+          </p>
+          <Button className={styles.guestUnavailableAction} fullWidth disabled>
+            {action.label}
+          </Button>
+        </div>
       ) : null}
       {action?.kind === 'enroll' || action?.kind === 'cart' ? (
         <Button

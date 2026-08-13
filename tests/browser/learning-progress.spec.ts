@@ -1712,7 +1712,10 @@ test('verifies Chromium page scale factor at 200% with overflow and focused-cont
   expect(scaleEvidence.scale).toBeCloseTo(2, 1);
   expect(scaleEvidence.visualWidth).toBeLessThan(scaleEvidence.layoutWidth);
 
-  const backLink = page.getByRole('main').getByRole('link', { name: 'My learning', exact: true });
+  const breadcrumb = page.getByRole('navigation', { name: 'Breadcrumb' });
+  const backLink = breadcrumb.getByRole('link', { name: 'My learning', exact: true });
+  await expect(backLink).toHaveAttribute('href', '/learning');
+  await expect(breadcrumb.locator('[aria-current="page"]')).toHaveText(enrollment.course.title);
   await tabTo(page, backLink);
   await expect(backLink).toBeFocused();
   const geometry = await page.evaluate(() => {

@@ -15,8 +15,20 @@ export type CoursePreflightState =
   | 'already-in-cart'
   | 'unavailable';
 
+interface CourseLoginActionState {
+  kind: 'login';
+  helper: CourseLoginHelper;
+  label: 'Enroll for free' | 'Add to cart';
+  to: string;
+}
+
+interface CourseLoginHelper {
+  readonly linkText: 'Sign in';
+  readonly guidance: 'to enroll for free.' | 'to add this course to your cart.';
+}
+
 export type CoursePrimaryActionState =
-  | { kind: 'login'; label: string; to: string }
+  | CourseLoginActionState
   | { kind: 'enroll'; label: 'Enroll free' }
   | { kind: 'cart'; label: 'Add to cart' }
   | { kind: 'disabled'; label: string };
@@ -107,12 +119,19 @@ export function coursePrimaryAction({
   const price = priceKind(course.price);
   if (price === 'invalid') return { kind: 'disabled', label: 'Action unavailable' };
   if (session.status !== 'authenticated') {
-    const label = price === 'free' ? 'Log in to enroll free' : 'Log in to add to cart';
-    return {
-      kind: 'login',
-      label,
-      to: `/login?returnTo=${encodeURIComponent(`/courses/${course.id}`)}`,
-    };
+    return price === 'free'
+      ? {
+          kind: 'login',
+          helper: { linkText: 'Sign in', guidance: 'to enroll for free.' },
+          label: 'Enroll for free',
+          to: `/login?returnTo=${encodeURIComponent(`/courses/${course.id}`)}`,
+        }
+      : {
+          kind: 'login',
+          helper: { linkText: 'Sign in', guidance: 'to add this course to your cart.' },
+          label: 'Add to cart',
+          to: `/login?returnTo=${encodeURIComponent(`/courses/${course.id}`)}`,
+        };
   }
   if (session.user.role !== 'student')
     return { kind: 'disabled', label: 'Not available for this account' };

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClientProvider } from '@tanstack/react-query';
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -121,6 +121,14 @@ describe('InstructorCourseEnrollmentsPage', () => {
     };
     await renderPage(request, null, '/instructor/courses/9007199254740992/enrollments');
     expect(await screen.findByText('This course was not found.')).toBeTruthy();
+    const breadcrumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    const returnLink = within(breadcrumb).getByRole('link', { name: 'Instructor courses' });
+    expect(returnLink.getAttribute('href')).toBe('/instructor/courses');
+    expect(
+      within(breadcrumb).getByText('Course enrollments', { selector: '[aria-current="page"]' }),
+    ).toBeTruthy();
+    returnLink.focus();
+    expect(document.activeElement).toBe(returnLink);
     expect(rosterRequests).toHaveLength(0);
   });
 

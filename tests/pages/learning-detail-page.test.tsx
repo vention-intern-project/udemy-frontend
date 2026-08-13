@@ -243,6 +243,9 @@ describe('LearningDetailPage', () => {
 
     await screen.findByRole('link', { name: 'My learning' });
     expectMyLearningReturn();
+    expect(
+      screen.getByText('Accessible progress course', { selector: '[aria-current="page"]' }),
+    ).toBeTruthy();
     expect(screen.queryByText('Media unavailable in this workspace')).toBeNull();
     expect(screen.queryByRole('button', { name: /load (video|pdf)/i })).toBeNull();
   });

@@ -6,6 +6,25 @@
   gap: var(--spacing-4);
   min-width: 0;
 }
+.state {
+  min-block-size: calc(100dvh - var(--layout-header-height));
+  align-content: center;
+  justify-items: center;
+  padding-block: var(--spacing-8);
+  text-align: center;
+}
+.unavailableReturnLink,
+.unavailableReturnLink:visited,
+.unavailableReturnLink:hover,
+.unavailableReturnLink:active {
+  padding-inline: 0;
+  color: var(--action-primary-bg);
+  background: transparent;
+  font-size: var(--type-body-md-size);
+  font-weight: 500;
+  line-height: var(--type-body-md-lh);
+  text-decoration: underline;
+}
 .page {
   --ai-chat-beta-bg: #f97316;
 }
@@ -177,12 +196,14 @@
   display: inline-flex;
   align-items: center;
   gap: var(--spacing-1);
-  min-height: 44px;
+  min-height: var(--control-height-md);
   padding-inline: 0;
   color: var(--action-primary-bg);
   background: transparent;
   border: 0;
-  font-weight: var(--font-weight-regular);
+  font-size: var(--type-body-md-size);
+  font-weight: 500;
+  line-height: var(--type-body-md-lh);
   text-decoration: none;
 }
 .returnLink:visited {
@@ -443,6 +464,17 @@
   }
 }
 @media (max-width: 767px) {
+  .hero::before {
+    position: absolute;
+    z-index: 0;
+    inset: 0;
+    background: url('/src/pages/ai-chat-page/assets/ai-chat-hero-mobile-stars-lines-uifd001.png')
+      center / cover no-repeat;
+    content: '';
+    opacity: 0.5;
+    pointer-events: none;
+  }
+
   .heroImage {
     display: none;
   }

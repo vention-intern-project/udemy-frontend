@@ -52,6 +52,7 @@ interface AiHeroGeometry {
   readonly imageFit: string;
   readonly sourceVisibility: number;
   readonly overlay: string;
+  readonly headingWhiteSpace: string;
 }
 
 function expectedAiHeroImageWidth(viewportWidth: number): number {
@@ -559,6 +560,12 @@ test('routes the authenticated workspace header to the course full-page assistan
   await fullClear.hover();
   await expect(fullClear).toHaveCSS('color', 'rgb(185, 28, 28)');
   await expect(fullClear).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await page.getByText('Course Assistant', { exact: true }).click();
+  await expect(fullClear).toHaveCount(0);
+  await expect(fullActions).toHaveAttribute('aria-expanded', 'false');
+  expect(chatRequests).toHaveLength(1);
+  await fullActions.click();
+  await expect(fullClear).toBeVisible();
   await fullClear.focus();
   await fullClear.press('Escape');
   await expect(fullClear).toHaveCount(0);
@@ -566,9 +573,11 @@ test('routes the authenticated workspace header to the course full-page assistan
   await fullActions.click();
   await page.getByRole('button', { name: 'Clear chat' }).click();
   await expect(page.getByRole('heading', { name: 'Clear this conversation?' })).toBeVisible();
-  await page.getByRole('button', { name: 'Cancel' }).click();
+  await page.locator('[data-part="backdrop"]').dispatchEvent('mousedown');
+  await expect(page.getByRole('heading', { name: 'Clear this conversation?' })).toHaveCount(0);
   await expect(fullActions).toBeFocused();
   await expect(input).toHaveValue('Keep this general draft');
+  expect(chatRequests).toHaveLength(1);
   await page.getByRole('button', { name: 'Recommend a course' }).click();
   await expect(input).toBeFocused();
   await expect(input).toHaveValue('Recommend a course based on my learning goals.');
@@ -608,7 +617,7 @@ test('uses one compact Suggested Actions disclosure below 1000px without changin
   await installCourseChatFixture(page, chatRequests);
   await page.emulateMedia({ reducedMotion: 'reduce' });
 
-  for (const width of [320, 390, 618, 768, 999]) {
+  for (const width of [320, 390, 618, 767, 768, 789, 999]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/ai-chat');
     const trigger = page.getByRole('button', { name: 'Suggested Actions' });
@@ -617,6 +626,22 @@ test('uses one compact Suggested Actions disclosure below 1000px without changin
     await expect(trigger).toHaveAttribute('aria-controls', /.+/);
     expect((await trigger.boundingBox())?.height).toBeGreaterThanOrEqual(44);
     await expect(page.getByRole('heading', { name: 'Suggested Actions' })).toHaveCount(0);
+    const heroDecoration = await page
+      .getByRole('heading', { name: 'BETA AI Learning Assistant' })
+      .evaluate((heading) => {
+        const hero = heading.closest('section');
+        if (!(hero instanceof HTMLElement)) throw new Error('AI Hero is unavailable.');
+        const decoration = getComputedStyle(hero, '::before');
+        return { backgroundImage: decoration.backgroundImage, opacity: decoration.opacity };
+      });
+    if (width <= 767) {
+      expect(heroDecoration.backgroundImage).toContain(
+        'ai-chat-hero-mobile-stars-lines-uifd001.png',
+      );
+      expect(heroDecoration.opacity).toBe('0.5');
+    } else {
+      expect(heroDecoration.backgroundImage).toBe('none');
+    }
     await expectNoOverflow(page);
   }
 
@@ -653,7 +678,7 @@ test('uses one compact Suggested Actions disclosure below 1000px without changin
     await page.evaluate(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches),
   ).toBe(true);
 
-  for (const width of [768, 1024, 1440, 1890, 1920, 2560, 3840]) {
+  for (const width of [768, 789, 1024, 1440, 1890, 1920, 2560, 3840]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/ai-chat');
     const suggestedActionsTrigger = page.getByRole('button', { name: 'Suggested Actions' });
@@ -708,6 +733,7 @@ test('uses one compact Suggested Actions disclosure below 1000px without changin
               ? 1
               : Math.min(renderedAspect / sourceAspect, sourceAspect / renderedAspect),
           overlay: getComputedStyle(hero, '::after').backgroundImage,
+          headingWhiteSpace: getComputedStyle(heading).whiteSpace,
         };
       });
     expect(Math.abs(heroGeometry.copyCenter - heroGeometry.heroCenter)).toBeLessThanOrEqual(6);
@@ -729,6 +755,7 @@ test('uses one compact Suggested Actions disclosure below 1000px without changin
     expect(heroGeometry.sourceVisibility).toBeGreaterThanOrEqual(0.75);
     expect(heroGeometry.overlay).toContain('46%');
     expect(heroGeometry.overlay).toContain('62%');
+    if (width === 789) expect(heroGeometry.headingWhiteSpace).toBe('nowrap');
     await expectNoOverflow(page);
   }
 
@@ -782,6 +809,36 @@ test('does not offer course assistant controls to guests', async ({ page }) => {
   await expect(page.getByRole('region', { name: 'AI assistant sign in guidance' })).toHaveCount(0);
   expect(chatRequests).toEqual([]);
   await expectNoOverflow(page);
+  expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
+  expect(diagnostics.httpFailures).toEqual([]);
+});
+
+test('centers unavailable course assistant guidance with an underlined violet return link', async ({
+  page,
+}) => {
+  const chatRequests: ChatRequestEvidence[] = [];
+  const diagnostics = captureRuntimeDiagnostics(page);
+  await installCourseChatFixture(page, chatRequests);
+  await page.route('**/enrollments/4', (route) =>
+    json(route, { ...enrollment, status: 'pending_payment' }),
+  );
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/learning/enrollments/4/ai-chat');
+
+  const heading = page.getByRole('heading', { name: 'Course assistant unavailable' });
+  const link = page.getByRole('link', { name: 'Return to learning workspace' });
+  await expect(heading).toBeVisible();
+  await expect(link).toHaveAttribute('href', '/learning/enrollments/4');
+  await expect(link).toHaveCSS('color', 'rgb(91, 63, 214)');
+  await expect(link).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(link).toHaveCSS('text-decoration-line', 'underline');
+  const center = await heading.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return { centerX: rect.left + rect.width / 2, viewportCenterX: window.innerWidth / 2 };
+  });
+  expect(Math.abs(center.centerX - center.viewportCenterX)).toBeLessThan(1);
+  await expectNoOverflow(page);
+  expect(chatRequests).toEqual([]);
   expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
   expect(diagnostics.httpFailures).toEqual([]);
 });

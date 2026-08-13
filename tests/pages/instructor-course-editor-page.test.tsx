@@ -57,12 +57,12 @@ function decode<TResponse, TBody>(
   return options.decode(value);
 }
 
-async function renderPage(client: ApiClient) {
+async function renderPage(client: ApiClient, initialEntry = '/instructor/courses/7/edit') {
   await act(async () => {
     render(
       <QueryClientProvider client={createAppQueryClient()}>
         <SessionProvider client={client} tokenStore={tokenStore}>
-          <MemoryRouter initialEntries={['/instructor/courses/7/edit']}>
+          <MemoryRouter initialEntries={[initialEntry]}>
             <Routes>
               <Route
                 path="/instructor/courses/:courseId/edit"
@@ -76,7 +76,61 @@ async function renderPage(client: ApiClient) {
   });
 }
 
+function expectContextualReturnBeforeEditorHeading() {
+  const breadcrumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
+  const returnLink = within(breadcrumb).getByRole('link', { name: 'Instructor courses' });
+  const heading = screen.getByRole('heading', { level: 1, name: 'Edit course' });
+
+  expect(returnLink.getAttribute('href')).toBe('/instructor/courses');
+  expect(
+    within(breadcrumb).getByText('Edit course', { selector: '[aria-current="page"]' }),
+  ).toBeTruthy();
+  expect(
+    returnLink.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+}
+
 describe('InstructorCourseEditorPage', () => {
+  it('renders the contextual return before the editor heading in invalid, loading, error, and resolved states', async () => {
+    const request: ApiClient['request'] = async (options) => {
+      if (options.path === '/me') return decode(options, instructor);
+      if (options.path === '/courses/7' && options.method === 'GET') return decode(options, course);
+      throw new Error(`Unexpected request: ${options.method} ${options.path}`);
+    };
+
+    await renderPage({ request }, '/instructor/courses/not-an-id/edit');
+    expectContextualReturnBeforeEditorHeading();
+
+    cleanup();
+    await renderPage({
+      request: async (options) => {
+        if (options.path === '/me') return decode(options, instructor);
+        if (options.path === '/courses/7' && options.method === 'GET') return new Promise(() => {});
+        throw new Error(`Unexpected request: ${options.method} ${options.path}`);
+      },
+    });
+    expect(await screen.findByLabelText('Loading course editor')).toBeTruthy();
+    expectContextualReturnBeforeEditorHeading();
+
+    cleanup();
+    await renderPage({
+      request: async (options) => {
+        if (options.path === '/me') return decode(options, instructor);
+        if (options.path === '/courses/7' && options.method === 'GET') {
+          throw new ApiError({ kind: 'not_found', status: 404, message: 'PRIVATE_LOAD_DETAIL' });
+        }
+        throw new Error(`Unexpected request: ${options.method} ${options.path}`);
+      },
+    });
+    expect(await screen.findByText('This course is no longer available.')).toBeTruthy();
+    expectContextualReturnBeforeEditorHeading();
+
+    cleanup();
+    await renderPage({ request });
+    expect(await screen.findByRole('heading', { name: 'Edit course' })).toBeTruthy();
+    expectContextualReturnBeforeEditorHeading();
+  });
+
   it('creates only verified lesson fields and returns focus after cancelling the identified delete', async () => {
     const createRequests: ApiRequestOptions[] = [];
     const request: ApiClient['request'] = async (options) => {
@@ -91,6 +145,15 @@ describe('InstructorCourseEditorPage', () => {
     await renderPage({ request });
     const user = userEvent.setup();
     expect(await screen.findByRole('heading', { name: 'Edit course' })).toBeTruthy();
+    const returnLink = within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByRole(
+      'link',
+      {
+        name: 'Instructor courses',
+      },
+    );
+    expect(returnLink.getAttribute('href')).toBe('/instructor/courses');
+    returnLink.focus();
+    expect(document.activeElement).toBe(returnLink);
 
     const deleteLesson = screen.getByRole('button', { name: 'Delete lesson' });
     await act(async () => {

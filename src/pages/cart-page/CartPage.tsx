@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { ChevronRight, ShieldX, Trash2 } from 'lucide-react';
+import { Link, matchPath, type To, useLocation } from 'react-router-dom';
+import { ChevronLeft, ShieldX, Trash2 } from 'lucide-react';
 
+import { sanitizeInternalReturnTo } from '@features/auth-session';
 import { cartFailureState, useCartWorkflow, type CartFailureState } from '@features/cart-workflow';
 import { useCheckoutCart, type CartRecovery, type CheckoutFeedback } from '@features/checkout-cart';
 import type { Cart } from '@entities/cart';
@@ -11,6 +12,8 @@ import {
   Notice,
   Skeleton,
   SkeletonGroup,
+  activateContextualNavigationOnSpace,
+  ContextualNavigationLink,
   VisuallyHidden,
 } from '@shared/ui/primitives';
 
@@ -40,7 +43,61 @@ interface SummaryJumpState {
   readonly isMobile: boolean;
 }
 
+interface CartNavigationState {
+  readonly returnTo?: unknown;
+}
+
+interface CartReturnTarget {
+  readonly label: string;
+  readonly to: To;
+}
+
+interface CartReturnRoute {
+  readonly label: string;
+  readonly path: string;
+}
+
 const mobileSummaryQuery = '(max-width: 1023px)';
+const cartReturnFallback: CartReturnTarget = { label: 'Catalog', to: '/' };
+const cartReturnRoutes: readonly CartReturnRoute[] = [
+  { path: '/courses/:courseId', label: 'Course details' },
+  { path: '/signup', label: 'Create account' },
+  { path: '/login', label: 'Log in' },
+  { path: '/forgot-password', label: 'Forgot password' },
+  { path: '/reset-password', label: 'Reset password' },
+  { path: '/learning', label: 'My learning' },
+  { path: '/learning/enrollments/:enrollmentId', label: 'Learning details' },
+  { path: '/learning/enrollments/:enrollmentId/ai-chat', label: 'Course assistant' },
+  { path: '/ai-chat', label: 'AI assistant' },
+  { path: '/instructor/courses', label: 'Instructor courses' },
+  { path: '/instructor/courses/:courseId/edit', label: 'Edit course' },
+  { path: '/instructor/courses/:courseId/enrollments', label: 'Course enrollments' },
+  { path: '/instructor/lessons/:lessonId/edit', label: 'Edit lesson' },
+];
+
+function cartReturnTarget(state: unknown): CartReturnTarget {
+  const candidate = (state as CartNavigationState | null)?.returnTo;
+  const returnTo =
+    typeof candidate === 'string'
+      ? sanitizeInternalReturnTo(candidate, globalThis.location?.origin)
+      : null;
+  if (!returnTo) return cartReturnFallback;
+
+  const url = new URL(returnTo, globalThis.location?.origin ?? 'http://localhost');
+  if (url.pathname === '/cart') return cartReturnFallback;
+
+  if (url.pathname === '/') {
+    return { label: 'Catalog', to: { pathname: url.pathname, search: url.search, hash: url.hash } };
+  }
+
+  const route = cartReturnRoutes.find(({ path }) => matchPath({ path, end: true }, url.pathname));
+  if (!route) return cartReturnFallback;
+
+  return {
+    label: route.label,
+    to: { pathname: url.pathname, search: url.search, hash: url.hash },
+  };
+}
 
 function getSummaryJumpState(summaryHeading: HTMLElement): SummaryJumpState {
   const navigation = document.querySelector<HTMLElement>('[aria-label="Student navigation"]');
@@ -160,8 +217,8 @@ function hasSingleCartCurrency(cart: Cart): boolean {
 }
 
 export function CartPage() {
-  const { cart, clear, feedback, isBusy, isPendingClear, isPendingRemove, remove, retry } =
-    useCartWorkflow();
+  const location = useLocation();
+  const { cart, clear, feedback, isBusy, isPendingClear, remove, retry } = useCartWorkflow();
   const checkout = useCheckoutCart('cart');
   const [clearOpen, setClearOpen] = useState(false);
   const [removeFocusTarget, setRemoveFocusTarget] = useState<RemoveFocusTarget | null>(null);
@@ -177,6 +234,7 @@ export function CartPage() {
   const checkoutNoticeRef = useRef<HTMLDivElement>(null);
   const statusMessage = mutationStatusMessage(feedback?.success, feedback?.kind);
   const currentCart = cart.data;
+  const returnTarget = cartReturnTarget(location.state);
   const checkoutRecovery: CartRecovery = {
     refetchCart: async (): Promise<Cart> => {
       const result = await cart.refetch({ throwOnError: true });
@@ -275,6 +333,13 @@ export function CartPage() {
     });
   };
 
+  const removeCourse = (courseId: number, index: number) => {
+    if (isBusy) return;
+
+    setRemoveFocusTarget({ removedCourseId: courseId, index });
+    remove(courseId);
+  };
+
   if (!cart.data && checkout.feedback?.kind === 'unauthorized') {
     return (
       <section className={styles.state} aria-labelledby="cart-sign-in-heading">
@@ -371,10 +436,22 @@ export function CartPage() {
         {statusMessage}
       </VisuallyHidden>
       <header className={styles.header}>
-        <p className={styles.eyebrow}>
-          Student workspace
-          <ChevronRight size={16} aria-hidden="true" />
-        </p>
+        <nav className={styles.returnPath} aria-label="Breadcrumb">
+          <ContextualNavigationLink
+            className={styles.returnLink}
+            to={returnTarget.to}
+            onKeyDown={activateContextualNavigationOnSpace}
+          >
+            <ChevronLeft size={20} aria-hidden="true" />
+            <span>{returnTarget.label}</span>
+          </ContextualNavigationLink>
+          <span className={styles.returnCurrent} aria-hidden="true">
+            /
+          </span>
+          <span className={styles.returnCurrent} aria-current="page">
+            Cart
+          </span>
+        </nav>
         <div className={styles.toolbar}>
           <div className={styles.titleRow}>
             <h1 ref={headingRef} tabIndex={-1}>
@@ -456,17 +533,9 @@ export function CartPage() {
                     <Button
                       variant="ghost"
                       className={styles.removeButton}
-                      aria-label={
-                        isPendingRemove(item.courseId) ? undefined : `Remove ${item.course.title}`
-                      }
+                      aria-label={`Remove ${item.course.title}`}
                       data-cart-remove-course-id={item.courseId}
-                      onClick={() => {
-                        setRemoveFocusTarget({ removedCourseId: item.courseId, index });
-                        remove(item.courseId);
-                      }}
-                      disabled={isBusy}
-                      state={isPendingRemove(item.courseId) ? 'loading' : 'idle'}
-                      loadingLabel="Removing…"
+                      onClick={() => removeCourse(item.courseId, index)}
                     >
                       <Trash2 size={20} aria-hidden="true" />
                     </Button>

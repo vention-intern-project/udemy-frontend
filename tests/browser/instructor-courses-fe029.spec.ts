@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Route } from '@playwright/test';
+import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
 
 const instructorProfile = {
   email: 'instructor@example.test',
@@ -33,6 +33,12 @@ const firstPageCourses = Array.from({ length: 20 }, (_, index) => ({
 interface CollectionFailureScenario {
   readonly status: 401 | 403 | 422;
   readonly message: string;
+}
+
+interface InstructorCourseHeaderActions {
+  readonly createAction: Locator;
+  readonly routeLink: Locator;
+  readonly sharesMobileActionGroup: boolean;
 }
 
 const unexpectedRuntimeErrors = new WeakMap<Page, string[]>();
@@ -79,6 +85,34 @@ async function expectNoHorizontalOverflow(page: Page) {
   expect(widths.body).toBeLessThanOrEqual(widths.client);
 }
 
+async function instructorCourseHeaderActions(
+  page: Page,
+  width: number,
+): Promise<InstructorCourseHeaderActions> {
+  if (width < 768) {
+    const menu = page.getByRole('button', { name: 'Open navigation' });
+    await menu.click();
+    const mobileNavigation = page.getByRole('navigation', { name: 'Mobile navigation' });
+    await expect(mobileNavigation).toBeVisible();
+    const actionGroup = mobileNavigation.locator('[data-part="instructor-course-actions"]');
+    return {
+      createAction: actionGroup.getByRole('button', { name: 'Create course' }),
+      routeLink: actionGroup.getByRole('link', { name: 'Instructor courses' }),
+      sharesMobileActionGroup: true,
+    };
+  }
+
+  return {
+    createAction: page
+      .getByRole('banner')
+      .getByRole('button', { name: 'Create course', exact: true }),
+    routeLink: page
+      .getByRole('navigation', { name: 'Primary navigation' })
+      .getByRole('link', { name: 'Instructor courses' }),
+    sharesMobileActionGroup: false,
+  };
+}
+
 test.beforeEach(async ({ page }) => {
   const errors: string[] = [];
   unexpectedRuntimeErrors.set(page, errors);
@@ -96,6 +130,94 @@ test.beforeEach(async ({ page }) => {
 
 test.afterEach(async ({ page }) => {
   expect(unexpectedRuntimeErrors.get(page), 'unexpected browser runtime errors').toEqual([]);
+});
+
+test('uses the unified lavender workspace canvas and preserves responsive Instructor header actions', async ({
+  page,
+}) => {
+  await page.route('**/courses/my**', async (route) => {
+    await fulfillJson(route, 200, collectionResponse(firstPageCourses, 1, 20, 1));
+  });
+
+  await page.setViewportSize({ width: 1024, height: 900 });
+  await page.goto('/instructor/courses', { waitUntil: 'domcontentloaded' });
+
+  const pageCanvas = page.locator('article');
+  const collection = page.getByRole('heading', { level: 2, name: 'Your courses' }).locator('..');
+  const headerActions = await instructorCourseHeaderActions(page, 1024);
+
+  await expect(pageCanvas).toHaveCSS('background-color', 'rgb(244, 241, 255)');
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Instructor courses', includeHidden: true }),
+  ).toHaveCount(1);
+  await expect(
+    page.getByText(
+      'Create meaningful courses, share your expertise, and inspire learners to grow.',
+    ),
+  ).toHaveCount(0);
+  await expect(collection).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+  await expect(collection).toHaveCSS('border-radius', '12px');
+  await expect(headerActions.routeLink).toHaveAttribute('aria-current', 'page');
+  await expect(headerActions.createAction).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+
+  for (const width of [320, 390, 768, 1023, 1024, 1280, 1440, 195] as const) {
+    await page.setViewportSize({ width, height: 900 });
+    if (width !== 195) {
+      await page.goto('/instructor/courses', { waitUntil: 'domcontentloaded' });
+    }
+    const responsiveHeaderActions = await instructorCourseHeaderActions(page, width);
+    await expect(responsiveHeaderActions.routeLink).toBeVisible();
+    await expect(responsiveHeaderActions.createAction).toBeVisible();
+    const [routeBox, actionBox] = await Promise.all([
+      responsiveHeaderActions.routeLink.boundingBox(),
+      responsiveHeaderActions.createAction.boundingBox(),
+    ]);
+    if (!routeBox || !actionBox)
+      throw new Error('Instructor header action geometry is unavailable');
+    expect(routeBox.height).toBeGreaterThanOrEqual(44);
+    expect(actionBox.height).toBeGreaterThanOrEqual(44);
+    expect(routeBox.x).toBeGreaterThanOrEqual(0);
+    expect(actionBox.x + actionBox.width).toBeLessThanOrEqual(width);
+    if (responsiveHeaderActions.sharesMobileActionGroup) {
+      expect(routeBox.y).toBeCloseTo(actionBox.y, 1);
+      expect(actionBox.x - (routeBox.x + routeBox.width)).toBeCloseTo(8, 1);
+    } else {
+      expect(actionBox.x).toBeGreaterThan(routeBox.x + routeBox.width);
+    }
+    const responsiveCreateAction = responsiveHeaderActions.createAction;
+    await responsiveCreateAction.focus();
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Shift+Tab');
+    await expect(responsiveCreateAction).toBeFocused();
+    expect(
+      await responsiveCreateAction.evaluate((action) => getComputedStyle(action).outlineStyle),
+    ).not.toBe('none');
+    await expectNoHorizontalOverflow(page);
+  }
+
+  const createRequests: string[] = [];
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname === '/courses' && request.method() === 'POST') {
+      createRequests.push(request.url());
+    }
+  });
+  await page.setViewportSize({ width: 1024, height: 900 });
+  await page.goto('/instructor/courses', { waitUntil: 'domcontentloaded' });
+  const createAction = (await instructorCourseHeaderActions(page, 1024)).createAction;
+  const courseTitle = page.getByRole('textbox', { name: 'Course title' });
+  await createAction.press('Enter');
+  await expect(courseTitle).toBeFocused();
+  await expect(page).toHaveURL('/instructor/courses');
+  await courseTitle.fill('Unsubmitted course title');
+  const historyLengthBeforeSpace = await page.evaluate(() => window.history.length);
+  await createAction.focus();
+  await page.keyboard.press('Space');
+  await expect(courseTitle).toBeFocused();
+  await expect(courseTitle).toHaveValue('Unsubmitted course title');
+  await expect(page).toHaveURL('/instructor/courses');
+  expect(await page.evaluate(() => window.history.length)).toBe(historyLengthBeforeSpace);
+  expect(createRequests).toEqual([]);
+  await expectNoHorizontalOverflow(page);
 });
 
 test('renders the loading skeleton before the deferred collection settles', async ({ page }) => {
@@ -179,18 +301,38 @@ test('uses only the authenticated collection query, paginates, and preserves sta
   await firstCourseActions.getByRole('link', { name: 'Edit course' }).focus();
   await page.keyboard.press('Tab');
   await expect(firstCourseActions.getByRole('link', { name: 'Course enrollments' })).toBeFocused();
-  await page.getByRole('button', { name: 'Go to page 2' }).press('Enter');
+  const pagination = page.getByRole('navigation', { name: 'Your courses pagination' });
+  await expect(pagination.getByRole('button', { name: 'Go to previous page' })).toHaveCount(0);
+  await expect(
+    pagination.locator('.ui-pagination__direction-slot[aria-hidden="true"]'),
+  ).toHaveCount(1);
+  await expect(pagination.getByRole('button', { name: 'Go to next page' })).toHaveClass(
+    /ui-pagination__button--direction/,
+  );
+  await expect(
+    pagination.getByRole('button', { name: 'Go to next page' }).locator('svg'),
+  ).toHaveAttribute('width', '20');
+  await pagination.getByRole('button', { name: 'Go to next page' }).click();
   await expect(page).toHaveURL(/\/instructor\/courses\?page=2$/);
   await expect(page.getByText(pageTwoCourse.title)).toBeVisible();
   await expect(page.getByRole('heading', { level: 2, name: 'Your courses' })).toBeFocused();
+  await expect(pagination.getByRole('button', { name: 'Go to next page' })).toHaveCount(0);
+  await expect(
+    pagination.locator('.ui-pagination__direction-slot[aria-hidden="true"]'),
+  ).toHaveCount(1);
+  await pagination.getByRole('button', { name: 'Go to previous page' }).press('Enter');
+  await expect(page).toHaveURL(/\/instructor\/courses$/);
+  await pagination.getByRole('button', { name: 'Go to next page' }).press('Space');
+  await expect(page).toHaveURL(/\/instructor\/courses\?page=2$/);
 
-  for (const width of [320, 640, 768, 1440] as const) {
+  for (const width of [320, 390, 640, 768, 1023, 1024, 1440] as const) {
     await page.setViewportSize({ width, height: 900 });
     await expect(page.getByText(pageTwoCourse.title)).toBeVisible();
+    await expect(page.locator('[data-part="instructor-courses-hero"]')).toHaveCount(0);
     await expectNoHorizontalOverflow(page);
   }
   expect(collectionQueries).toContain('?page=1&page_size=20');
-  expect(collectionQueries.filter((query) => query === '?page=2&page_size=20')).toHaveLength(1);
+  expect(collectionQueries.filter((query) => query === '?page=2&page_size=20')).toHaveLength(2);
   expect(forbiddenPublicRequests).toEqual([]);
 });
 

@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppShell, presentCart } from '../../src/app/layouts/AppShell';
+import { AppRouter } from '../../src/app/router/AppRouter';
 import { SessionProvider, type AccessTokenStore } from '../../src/features/auth-session';
 import type { ApiClient, ApiRequestOptions } from '../../src/shared/api';
 import { ThemeProvider } from '../../src/shared/ui/theme';
@@ -67,6 +69,22 @@ function renderShell(client: ApiClient, token: string | null, path = '/') {
   return queryClient;
 }
 
+function renderRouter(client: ApiClient, token: string | null, path: string) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider initialDensityMode="marketplace">
+        <SessionProvider client={client} tokenStore={tokenStore(token)}>
+          <MemoryRouter initialEntries={[path]}>
+            <AppRouter />
+          </MemoryRouter>
+        </SessionProvider>
+      </ThemeProvider>
+    </QueryClientProvider>,
+  );
+  return queryClient;
+}
+
 function LocationStateProbe() {
   const location = useLocation();
   return <output aria-label="location state">{JSON.stringify(location.state)}</output>;
@@ -81,6 +99,79 @@ function stubCompactViewport(matches = true) {
 }
 
 describe('AppShell student cart query and presentation', () => {
+  it('keeps Instructor courses active beside LearnHub and styles Create course as the active header action', async () => {
+    const request = vi.fn(
+      async <TResponse, TBody>(options: ApiRequestOptions<TBody, TResponse>) => {
+        if (options.path === '/me')
+          return options.decode?.({
+            email: 'instructor@example.test',
+            name: 'instructor',
+            surname: 'User',
+            role: 'instructor',
+            birthday: null,
+            phone_number: null,
+            created_at: '2026-01-01T00:00:00Z',
+          }) as TResponse;
+        if (options.path === '/courses/my')
+          return options.decode?.({
+            items: [],
+            page: 1,
+            page_size: 20,
+            total: 0,
+            pages: 1,
+            has_next: false,
+            has_previous: false,
+          }) as TResponse;
+        throw new Error(`Unexpected request ${options.path}`);
+      },
+    );
+    renderRouter(
+      { request: request as ApiClient['request'] },
+      'instructor-token',
+      '/instructor/courses?source=header#creation',
+    );
+
+    const routeLink = await screen.findByRole('link', { name: 'Instructor courses' });
+    const header = document.querySelector<HTMLElement>('[data-app-shell-header]');
+    const createAction = within(header!).getByRole('button', { name: 'Create course' });
+    const titleTarget = screen.getByRole('textbox', { name: 'Course title' });
+    const scrollIntoView = vi.fn();
+    titleTarget.scrollIntoView = scrollIntoView;
+    const user = userEvent.setup();
+
+    expect(routeLink.getAttribute('href')).toBe('/instructor/courses');
+    expect(routeLink.getAttribute('aria-current')).toBe('page');
+    expect(header!.contains(routeLink)).toBe(true);
+    expect(header!.contains(createAction)).toBe(true);
+    expect(createAction.className).toContain('navLink');
+    expect(createAction.className).toContain('navAction');
+
+    await act(async () => {
+      await user.click(createAction);
+    });
+    expect(document.activeElement).toBe(titleTarget);
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' });
+    expect(request.mock.calls.map(([options]) => options.path)).toEqual(['/me', '/courses/my']);
+  });
+
+  it.each(['/instructor/courses/7/edit', '/instructor/courses/7/enrollments'])(
+    'keeps Instructor courses beside LearnHub on %s',
+    async (path) => {
+      renderShell(authenticatedClient('instructor'), 'instructor-token', path);
+
+      const routeLink = await screen.findByRole('link', { name: 'Instructor courses' });
+      const header = document.querySelector<HTMLElement>('[data-app-shell-header]');
+      const headerStart = header?.querySelector<HTMLElement>('[class*="headerCatalogStart"]');
+      const headerEnd = header?.querySelector<HTMLElement>('[class*="headerCatalogEnd"]');
+
+      expect(headerStart?.contains(routeLink)).toBe(true);
+      expect(headerEnd?.contains(routeLink)).toBe(false);
+      expect(header?.className).toContain('headerInstructorCourses');
+      expect(routeLink.getAttribute('href')).toBe('/instructor/courses');
+      expect(routeLink.getAttribute('aria-current')).toBeNull();
+    },
+  );
+
   it('fetches API-002 immediately for a student through the current cache epoch and renders zero', async () => {
     const request = vi.fn(authenticatedClient('student').request);
     const client = renderShell({ request: request as ApiClient['request'] }, 'student-token');
@@ -179,6 +270,22 @@ describe('AppShell student cart query and presentation', () => {
     await waitFor(() => expect(screen.getByRole('link', { name: 'Cart (9)' })).toBeTruthy());
   });
 
+  it.each([
+    { compact: false, label: 'desktop Cart link' },
+    { compact: true, label: 'student-mobile Cart link' },
+  ])('carries the exact internal source in Router state from the $label', async ({ compact }) => {
+    if (compact) stubCompactViewport();
+    renderShell(authenticatedClient('student'), 'student-token', '/learning?page=2#courses');
+
+    const cart = await screen.findByRole('link', { name: 'Cart (0)' });
+    fireEvent.click(cart);
+
+    expect(screen.getByLabelText('location state').textContent).toBe(
+      JSON.stringify({ returnTo: '/learning?page=2#courses' }),
+    );
+    cleanup();
+  });
+
   it('keeps decorative header marks inside named links without changing Cart or Profile semantics', async () => {
     renderShell(authenticatedClient('student'), 'student-token', '/learning');
 
@@ -197,6 +304,29 @@ describe('AppShell student cart query and presentation', () => {
     expect(assistantMark?.getAttribute('src')).toContain('ai-assistant-navigation-ui018-2.png');
     expect(cart.querySelector('svg')?.getAttribute('stroke-width')).toBe('1.6');
     expect(profile.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('renders the Instructor LearnHub brand as an accessible Instructor courses home link', async () => {
+    renderShell(authenticatedClient('instructor'), 'instructor-token', '/instructor/courses');
+    const user = userEvent.setup();
+
+    await screen.findByRole('link', { name: 'Instructor courses' });
+    const header = document.querySelector<HTMLElement>('[data-app-shell-header]');
+    const brandMark = header?.querySelector<HTMLImageElement>(
+      'img[src*="learnhub-book-ui018.png"]',
+    );
+    const brand = brandMark?.parentElement;
+
+    const brandLink = screen.getByRole('link', { name: 'LearnHub home' });
+    expect(brand?.textContent?.trim()).toBe('LearnHub');
+    expect(brandLink.getAttribute('href')).toBe('/instructor/courses');
+    expect(brandMark?.getAttribute('aria-hidden')).toBe('true');
+    expect(brandMark?.getAttribute('alt')).toBe('');
+
+    await user.tab();
+    expect(document.activeElement).toBe(screen.getByRole('link', { name: 'Skip to main content' }));
+    await user.tab();
+    expect(document.activeElement).toBe(brandLink);
   });
 
   it('opens a labelled account-details popover and clears the session through Log out', async () => {

@@ -7,6 +7,7 @@ import { useSession } from '@features/auth-session';
 import { learningFailure, useLearningList } from '@features/learning-progress';
 import {
   Button,
+  activateContextualNavigationOnSpace,
   ContextualNavigationLink,
   Notice,
   Pagination,
@@ -164,10 +165,20 @@ export function LearningListPage() {
   return (
     <article className={styles.page}>
       <header className={styles.pageHeader}>
-        <ContextualNavigationLink className={styles.backLink} to="/">
-          <ChevronLeft size={18} aria-hidden="true" />
-          <span>Browse courses</span>
-        </ContextualNavigationLink>
+        <nav className={styles.returnPath} aria-label="Breadcrumb">
+          <ContextualNavigationLink
+            className={styles.backLink}
+            to="/"
+            onKeyDown={activateContextualNavigationOnSpace}
+          >
+            <ChevronLeft size={20} aria-hidden="true" />
+            <span>Catalog</span>
+          </ContextualNavigationLink>
+          <div className={styles.returnCurrent} aria-current="page">
+            <span aria-hidden="true">/</span>
+            <span>My learning</span>
+          </div>
+        </nav>
         <div className={styles.headingContent}>
           <h1 tabIndex={-1} ref={headingRef}>
             My learning
@@ -191,7 +202,7 @@ export function LearningListPage() {
               ) : null}
             </div>
             <Link className={styles.workspaceAction} to={`/learning/enrollments/${enrollment.id}`}>
-              Open learning workspace
+              Open course
             </Link>
           </li>
         ))}

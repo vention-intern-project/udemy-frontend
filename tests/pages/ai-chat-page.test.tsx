@@ -56,7 +56,12 @@ describe('AiChatPage eligibility states', () => {
   });
 
   it.each([
-    ['request error', { isPending: false, isError: true, data: undefined }],
+    [
+      'request error',
+      { isPending: false, isError: true, data: undefined },
+      'Return to my learning',
+      '/learning',
+    ],
     [
       'inactive enrollment',
       {
@@ -64,13 +69,19 @@ describe('AiChatPage eligibility states', () => {
         isError: false,
         data: { ...activeEnrollment, status: 'pending_payment' },
       },
+      'Return to learning workspace',
+      '/learning/enrollments/4',
     ],
-  ])('renders truthful non-detail unavailability for %s', (_label, enrollment) => {
-    useLearningWorkspaceMock.mockReturnValue(workspaceFor(enrollment));
-    renderPage();
-    expect(screen.getByRole('heading', { name: 'Course assistant unavailable' })).toBeTruthy();
-    expect(screen.queryByText(/backend|detail/i)).toBeNull();
-  });
+  ])(
+    'renders truthful non-detail unavailability for %s',
+    (_label, enrollment, returnLabel, returnHref) => {
+      useLearningWorkspaceMock.mockReturnValue(workspaceFor(enrollment));
+      renderPage();
+      expect(screen.getByRole('heading', { name: 'Course assistant unavailable' })).toBeTruthy();
+      expect(screen.getByRole('link', { name: returnLabel }).getAttribute('href')).toBe(returnHref);
+      expect(screen.queryByText(/backend|detail/i)).toBeNull();
+    },
+  );
 
   it('renders the chat only for the active enrollment', () => {
     useLearningWorkspaceMock.mockReturnValue(
@@ -136,6 +147,54 @@ describe('AiChatPage eligibility states', () => {
     expect(document.activeElement).toBe(
       screen.getByRole('textbox', { name: 'Message the course assistant' }),
     );
+  });
+
+  it('dismisses only the full-page action menu after an outside pointer interaction', () => {
+    useLearningWorkspaceMock.mockReturnValue(
+      workspaceFor({ isPending: false, isError: false, data: activeEnrollment }),
+    );
+    renderPage();
+
+    const trigger = screen.getByRole('button', { name: 'Conversation actions' });
+    fireEvent.click(trigger);
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByRole('button', { name: 'Clear chat' })).toBeTruthy();
+
+    fireEvent.mouseDown(screen.getByRole('heading', { name: 'BETA AI Learning Assistant' }));
+
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByRole('button', { name: 'Clear chat' })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: 'Clear this conversation?' })).toBeNull();
+  });
+
+  it('keeps action-menu interaction and non-busy confirmation backdrop cancellation non-destructive', async () => {
+    useLearningWorkspaceMock.mockReturnValue(
+      workspaceFor({ isPending: false, isError: false, data: activeEnrollment }),
+    );
+    renderPage();
+
+    const input = screen.getByRole('textbox', {
+      name: 'Message the course assistant',
+    }) as HTMLTextAreaElement;
+    const trigger = screen.getByRole('button', { name: 'Conversation actions' });
+    fireEvent.change(input, { target: { value: 'Keep this draft' } });
+    fireEvent.click(trigger);
+
+    const clear = screen.getByRole('button', { name: 'Clear chat' });
+    fireEvent.mouseDown(clear);
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(clear);
+
+    expect(screen.getByRole('dialog', { name: 'Clear this conversation?' })).toBeTruthy();
+    const backdrop = document.querySelector<HTMLElement>('[data-part="backdrop"]');
+    if (!backdrop) throw new Error('Expected clear-confirmation backdrop.');
+    fireEvent.mouseDown(backdrop);
+
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Clear this conversation?' })).toBeNull(),
+    );
+    expect(document.activeElement).toBe(trigger);
+    expect(input.value).toBe('Keep this draft');
   });
 
   it('focuses the general assistant composer after choosing any suggested action', () => {

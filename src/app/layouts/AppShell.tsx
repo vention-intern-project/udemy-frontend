@@ -44,6 +44,7 @@ type NavigationItemDesktopGroup = 'auth-actions';
 type MobileMenuFocusTarget = 'trigger' | 'main';
 
 const STUDENT_MOBILE_QUERY = '(max-width: 767px)';
+const INSTRUCTOR_COURSE_TITLE_ID = 'instructor-course-title';
 
 function catalogPageForLocation(pathname: string, search: string): number | null {
   if (pathname !== APP_ROUTE_BY_ID['PAGE-001'].path) return null;
@@ -87,10 +88,7 @@ const NAVIGATION_VARIANT_CLASS: Record<NavigationItemVariant, string> = {
   'signup-primary': styles.navLinkSignup,
 };
 
-function navigationForSession(
-  status: SessionState,
-  selectedCourseId: string | null,
-): NavigationItem[] {
+function navigationForSession(status: SessionState): NavigationItem[] {
   if (status.status !== 'authenticated') {
     return [
       {
@@ -129,28 +127,24 @@ function navigationForSession(
     ];
   }
   if (status.user.role === 'instructor') {
-    const items: NavigationItem[] = [
+    return [
       {
-        label: 'My courses',
+        label: 'Instructor courses',
         to: '/instructor/courses',
         end: true,
         primaryNavigationIndicator: true,
       },
     ];
-    if (selectedCourseId) {
-      items.push({
-        label: 'Course enrollments',
-        to: `/instructor/courses/${encodeURIComponent(selectedCourseId)}/enrollments`,
-        end: true,
-      });
-    }
-    return items;
   }
   return [];
 }
 
 interface CartNavigationLinkProps {
   itemCount: number | undefined;
+}
+
+interface CartNavigationState {
+  readonly returnTo: string;
 }
 
 interface AssistantNavigationTarget {
@@ -167,8 +161,13 @@ function assistantNavigationTarget(location: Location): AssistantNavigationTarge
   return { state: location.pathname === to ? undefined : { returnTo }, to };
 }
 
+function cartNavigationState(location: Location): CartNavigationState {
+  return { returnTo: `${location.pathname}${location.search}${location.hash}` };
+}
+
 function CartNavigationLink({ itemCount }: CartNavigationLinkProps) {
   const presentation = presentCart(itemCount);
+  const location = useLocation();
   return (
     <NavLink
       aria-label={presentation.accessibleName}
@@ -176,6 +175,7 @@ function CartNavigationLink({ itemCount }: CartNavigationLinkProps) {
         [styles.cartLink, isActive ? styles.cartLinkActive : null].filter(Boolean).join(' ')
       }
       end
+      state={cartNavigationState(location)}
       to="/cart"
     >
       <ShoppingCart aria-hidden="true" focusable="false" size={28} strokeWidth={1.6} />
@@ -209,7 +209,9 @@ function AiAssistantNavigationLink() {
 }
 
 function StudentMobileNavigation({ itemCount }: CartNavigationLinkProps) {
-  const assistantTarget = assistantNavigationTarget(useLocation());
+  const location = useLocation();
+  const assistantTarget = assistantNavigationTarget(location);
+  const cartState = cartNavigationState(location);
   const cartPresentation = presentCart(itemCount);
   return (
     <nav className={styles.studentMobileNavigation} aria-label="Student navigation">
@@ -234,6 +236,7 @@ function StudentMobileNavigation({ itemCount }: CartNavigationLinkProps) {
         aria-label={cartPresentation.accessibleName}
         className={styles.studentMobileNavigationLink}
         end
+        state={cartState}
         to="/cart"
       >
         <span className={styles.studentMobileCartIcon}>
@@ -357,14 +360,14 @@ export function AppShell() {
   const entryScrollPositionsRef = useRef(new Map<string, ScrollPosition>());
   const routeFocusIdentity = `${location.pathname}${location.search}`;
   const previousRouteFocusIdentityRef = useRef(routeFocusIdentity);
-  const courseRouteMatch = [APP_ROUTE_BY_ID['PAGE-011'].path, APP_ROUTE_BY_ID['PAGE-012'].path]
-    .map((path) => matchPath({ path, end: true }, location.pathname))
-    .find((match) => match?.params.courseId);
-  const navigation = navigationForSession(state, courseRouteMatch?.params.courseId ?? null);
+  const navigation = navigationForSession(state);
   const route = routeForPath(location.pathname);
   const layout = route?.layout ?? 'public';
   const isCatalogRoute = route?.id === 'PAGE-001';
+  const isInstructorCoursesRoute = route?.id === 'PAGE-010';
   const isAnonymous = state.status === 'anonymous';
+  const isInstructor = state.status === 'authenticated' && state.user.role === 'instructor';
+  const brandDestination = isInstructor ? '/instructor/courses' : '/';
   const hasCatalogSearch =
     isCatalogRoute ||
     (state.status === 'authenticated' && state.user.role === 'student' && layout === 'workspace');
@@ -544,6 +547,18 @@ export function AppShell() {
     });
   }
 
+  function focusInstructorCourseTitle() {
+    const titleTarget = document.getElementById(INSTRUCTOR_COURSE_TITLE_ID);
+    if (!(titleTarget instanceof HTMLInputElement)) return;
+
+    setMobileOpen(false);
+    const behavior = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+      ? 'auto'
+      : 'smooth';
+    titleTarget.scrollIntoView({ behavior, block: 'center' });
+    titleTarget.focus({ preventScroll: true });
+  }
+
   const catalogSearchMatches = useMemo(() => {
     const draft = catalogSearchDraft.trim().toLocaleLowerCase();
     return draft
@@ -618,6 +633,7 @@ export function AppShell() {
           isAnonymous ? styles.headerAnonymous : null,
           hasCatalogSearch ? styles.headerWithCatalogSearch : styles.headerWithoutCatalogSearch,
           isAnonymousCatalogRoute ? styles.headerAnonymousCatalog : null,
+          isInstructor ? styles.headerInstructorCourses : null,
           isStudentMobile ? styles.headerStudentMobile : null,
           isAnonymousMobile ? styles.headerAnonymousMobile : null,
           isMobileCatalogScrolled ? styles.headerMobileSearchDetached : null,
@@ -628,7 +644,7 @@ export function AppShell() {
       >
         <div className={styles.headerInner}>
           <div className={styles.headerCatalogStart}>
-            <Link className={styles.brand} to="/" aria-label="LearnHub home">
+            <Link className={styles.brand} to={brandDestination} aria-label="LearnHub home">
               <img alt="" aria-hidden="true" className={styles.brandMark} src={learnHubBookMark} />
               <span className={styles.brandWordmark}>LearnHub</span>
             </Link>
@@ -766,6 +782,15 @@ export function AppShell() {
             </form>
           ) : null}
           <div className={styles.headerCatalogEnd}>
+            {isInstructorCoursesRoute && !isStudentMobileViewport ? (
+              <button
+                className={[styles.navLink, styles.navLinkPrimary, styles.navAction].join(' ')}
+                type="button"
+                onClick={focusInstructorCourseTitle}
+              >
+                Create course
+              </button>
+            ) : null}
             {isStudentMobile ? <AccountMenu user={state.user} /> : null}
             {isStudentMobile ? null : state.status === 'authenticated' &&
               state.user.role === 'student' ? (
@@ -856,10 +881,28 @@ export function AppShell() {
               }
             }}
           >
-            <NavigationLinks
-              items={navigation}
-              onNavigate={(to) => closeMobileMenu(to === routeFocusIdentity ? 'trigger' : 'main')}
-            />
+            {isInstructorCoursesRoute ? (
+              <div className={styles.instructorCourseActions} data-part="instructor-course-actions">
+                <NavigationLinks
+                  items={navigation}
+                  onNavigate={(to) =>
+                    closeMobileMenu(to === routeFocusIdentity ? 'trigger' : 'main')
+                  }
+                />
+                <button
+                  className={[styles.navLink, styles.navLinkPrimary, styles.navAction].join(' ')}
+                  type="button"
+                  onClick={focusInstructorCourseTitle}
+                >
+                  Create course
+                </button>
+              </div>
+            ) : (
+              <NavigationLinks
+                items={navigation}
+                onNavigate={(to) => closeMobileMenu(to === routeFocusIdentity ? 'trigger' : 'main')}
+              />
+            )}
           </nav>
         ) : null}
       </header>

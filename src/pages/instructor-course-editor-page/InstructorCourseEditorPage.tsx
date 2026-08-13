@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { ChevronLeft } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import type { LessonType } from '@entities/course';
@@ -17,6 +18,7 @@ import {
 import { useSession } from '@features/auth-session';
 import {
   Button,
+  ContextualNavigationLink,
   DestructiveConfirmation,
   Input,
   Notice,
@@ -80,6 +82,28 @@ const INITIAL_LESSON_FORM: LessonFormState = {
   description: '',
   isPublished: false,
 };
+
+function InstructorCourseEditorHeader() {
+  return (
+    <>
+      <nav className={styles.breadcrumb} aria-label="Breadcrumb">
+        <ContextualNavigationLink className={styles.breadcrumbLink} to="/instructor/courses">
+          <ChevronLeft size={20} aria-hidden="true" />
+          <span>Instructor courses</span>
+        </ContextualNavigationLink>
+        <span className={styles.breadcrumbCurrent} aria-hidden="true">
+          /
+        </span>
+        <span className={styles.breadcrumbCurrent} aria-current="page">
+          Edit course
+        </span>
+      </nav>
+      <header className={styles.header}>
+        <h1>Edit course</h1>
+      </header>
+    </>
+  );
+}
 
 export function InstructorCourseEditorPage() {
   const courseId = positiveInteger(useParams().courseId);
@@ -220,39 +244,48 @@ export function InstructorCourseEditorPage() {
 
   if (courseId === null) {
     return (
-      <Notice tone="error" title="Course not found">
-        This course address is not valid.
-      </Notice>
+      <article className={styles.page}>
+        <InstructorCourseEditorHeader />
+        <Notice tone="error" title="Course not found">
+          This course address is not valid.
+        </Notice>
+      </article>
     );
   }
   if (course.isPending) {
     return (
-      <SkeletonGroup label="Loading course editor">
-        <Skeleton width="100%" height="320px" shape="rect" />
-      </SkeletonGroup>
+      <article className={styles.page}>
+        <InstructorCourseEditorHeader />
+        <SkeletonGroup label="Loading course editor">
+          <Skeleton width="100%" height="320px" shape="rect" />
+        </SkeletonGroup>
+      </article>
     );
   }
   if (course.isError) {
     return (
-      <Notice tone="error" title="Course editor unavailable">
-        <p>
-          {
-            mapInstructorEditorFormFailure(
-              course.error,
-              {
-                action: 'load this course',
-                unauthorized: 'Sign in again before continuing.',
-                forbidden: 'You do not have permission to change this course.',
-                notFound: 'This course is no longer available.',
-              },
-              COURSE_ERROR_FIELDS,
-            ).summary
-          }
-        </p>
-        <Button variant="secondary" onClick={() => void course.refetch()}>
-          Try again
-        </Button>
-      </Notice>
+      <article className={styles.page}>
+        <InstructorCourseEditorHeader />
+        <Notice tone="error" title="Course editor unavailable">
+          <p>
+            {
+              mapInstructorEditorFormFailure(
+                course.error,
+                {
+                  action: 'load this course',
+                  unauthorized: 'Sign in again before continuing.',
+                  forbidden: 'You do not have permission to change this course.',
+                  notFound: 'This course is no longer available.',
+                },
+                COURSE_ERROR_FIELDS,
+              ).summary
+            }
+          </p>
+          <Button variant="secondary" onClick={() => void course.refetch()}>
+            Try again
+          </Button>
+        </Notice>
+      </article>
     );
   }
   if (!course.data || !courseForm) return null;
@@ -291,15 +324,7 @@ export function InstructorCourseEditorPage() {
       className={styles.page}
       aria-busy={updateCourse.isPending || createLesson.isPending || remove.isPending}
     >
-      <header className={styles.header}>
-        <div>
-          <p className={styles.eyebrow}>Instructor workspace</p>
-          <h1>Edit course</h1>
-        </div>
-        <Link className={styles.backLink} to="/instructor/courses">
-          Back to your courses
-        </Link>
-      </header>
+      <InstructorCourseEditorHeader />
       <section className={styles.panel} aria-labelledby="course-details-heading">
         <h2 id="course-details-heading">Course details</h2>
         <form className={styles.form} onSubmit={submitCourse}>

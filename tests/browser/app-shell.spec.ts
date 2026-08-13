@@ -81,6 +81,12 @@ const ENROLLMENTS_STRICT_MODE_ABORT: RequestFailureIdentity = {
   errorText: 'net::ERR_ABORTED',
 };
 
+const INSTRUCTOR_COURSE_COLLECTION_STRICT_MODE_ABORT: RequestFailureIdentity = {
+  method: 'GET',
+  path: '/courses/my?page=1&page_size=20',
+  errorText: 'net::ERR_ABORTED',
+};
+
 const AI_ASSISTANT_NAVIGATION_RASTER_ABORT: RequestFailureIdentity = {
   method: 'GET',
   path: '/src/app/layouts/assets/ai-assistant-navigation-ui018-2.png',
@@ -251,6 +257,49 @@ async function mockStudentWorkspaceData(page: Page) {
   );
 }
 
+interface InstructorCourseCollectionFixture {
+  waitForFulfillment(): Promise<void>;
+}
+
+async function mockInstructorCourseCollection(
+  page: Page,
+): Promise<InstructorCourseCollectionFixture> {
+  let resolveFulfillment: (() => void) | null = null;
+
+  await page.route(/\/courses\/my\?page=1&page_size=20$/, async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        items: [],
+        page: 1,
+        page_size: 20,
+        total: 0,
+        pages: 0,
+        has_next: false,
+        has_previous: false,
+      }),
+    });
+    resolveFulfillment?.();
+    resolveFulfillment = null;
+  });
+
+  return {
+    waitForFulfillment() {
+      if (resolveFulfillment !== null) {
+        throw new Error('Instructor course collection fulfillment is already being observed');
+      }
+      return new Promise<void>((resolve) => {
+        resolveFulfillment = resolve;
+      });
+    },
+  };
+}
+
 async function expectNoHorizontalOverflow(page: Page) {
   const widths = await page.evaluate(() => {
     const root = document.documentElement;
@@ -384,9 +433,9 @@ async function requiredBoundingBox(locator: Locator) {
   return box!;
 }
 
-async function expectBrandComposition(brand: Locator) {
+async function expectBrandComposition(brand: Locator, accessibleName?: string) {
   await expect(brand).toBeVisible();
-  await expect(brand).toHaveAccessibleName('LearnHub home');
+  if (accessibleName !== undefined) await expect(brand).toHaveAccessibleName(accessibleName);
   await expect(brand).toHaveText('LearnHub');
 
   const metrics = await brand.evaluate((link) => {
@@ -453,6 +502,19 @@ async function expectBrandComposition(brand: Locator) {
   expect(metrics.markDisplay).toBe('block');
   expect(metrics.markObjectFit).toBe('contain');
   expect(metrics.wordmarkWeight).toBe(metrics.expectedWeight);
+}
+
+async function expectInstructorHomeBrand(page: Page) {
+  const brand = page.getByRole('link', { name: 'LearnHub home' });
+  await expectBrandComposition(brand);
+  await expect(brand).toHaveAttribute('href', '/instructor/courses');
+  await expectBrandContainedInHeader(brand);
+  await expectBrandFocusTreatment(page, brand);
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('button', { name: 'Account menu for Indira User' })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('button', { name: 'Open navigation' })).toBeFocused();
 }
 
 async function expectBrandFocusTreatment(page: Page, brand: Locator) {
@@ -741,13 +803,19 @@ async function expectAnonymousMobileNavigation(page: Page, width: MobileViewport
   await expectNoHorizontalOverflow(page);
 }
 
-async function expectInstructorDesktopHeaderNavigation(page: Page, width: DesktopViewportWidth) {
+async function expectInstructorDesktopHeaderNavigation(
+  page: Page,
+  width: DesktopViewportWidth,
+  collectionFixture: InstructorCourseCollectionFixture,
+) {
   await page.setViewportSize({ width, height: 900 });
-  await page.goto('/instructor/courses');
-  await expect(page.getByRole('heading', { level: 1, name: 'Instructor courses' })).toBeVisible();
+  await Promise.all([collectionFixture.waitForFulfillment(), page.goto('/instructor/courses')]);
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Instructor courses', includeHidden: true }),
+  ).toHaveCount(1);
 
   const navigation = page.getByRole('navigation', { name: 'Primary navigation' });
-  const instructorCourses = navigation.getByRole('link', { name: 'My courses' });
+  const instructorCourses = navigation.getByRole('link', { name: 'Instructor courses' });
   const profile = page.getByRole('button', { name: 'Account menu for Indira User' });
   await expect(navigation).toBeVisible();
   await expect(instructorCourses).toBeVisible();
@@ -886,6 +954,84 @@ test('redirects an anonymous protected route with its internal returnTo', async 
   await expect(page.getByRole('heading', { level: 1, name: 'Log in' })).toBeVisible();
   expect(new URL(page.url()).searchParams.get('returnTo')).toBe('/cart?coupon=SAVE#summary');
   await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  assertRuntimeClean();
+});
+
+test('keeps Instructor direct Catalog history navigation and its query/hash', async ({ page }) => {
+  const assertRuntimeClean = monitorRuntime(
+    page,
+    [],
+    [{ ...INSTRUCTOR_COURSE_COLLECTION_STRICT_MODE_ABORT, occurrences: 2 }],
+  );
+  await mockAuthenticatedSession(page, 'instructor');
+  const collectionFixture = await mockInstructorCourseCollection(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await Promise.all([
+    collectionFixture.waitForFulfillment(),
+    page.goto('/instructor/courses?source=history#start'),
+  ]);
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Instructor courses', includeHidden: true }),
+  ).toHaveCount(1);
+
+  await page.goto('/?search_query=React#catalog');
+  await expect(page).toHaveURL('/?search_query=React#catalog');
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' }),
+  ).toHaveCount(1);
+
+  await Promise.all([collectionFixture.waitForFulfillment(), page.goBack()]);
+  await expect(page).toHaveURL('/instructor/courses?source=history#start');
+  await page.goForward();
+  await expect(page).toHaveURL('/?search_query=React#catalog');
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' }),
+  ).toHaveCount(1);
+  await expectNoHorizontalOverflow(page);
+  assertRuntimeClean();
+});
+
+test('routes the Instructor LearnHub brand to Instructor courses with native link keyboard semantics', async ({
+  page,
+}) => {
+  const assertRuntimeClean = monitorRuntime(
+    page,
+    [],
+    [{ ...INSTRUCTOR_COURSE_COLLECTION_STRICT_MODE_ABORT, occurrences: 3 }],
+  );
+  await mockAuthenticatedSession(page, 'instructor');
+  const collectionFixture = await mockInstructorCourseCollection(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  async function openFrom(query: string) {
+    await Promise.all([
+      collectionFixture.waitForFulfillment(),
+      page.goto(`/instructor/courses?source=${query}#brand`),
+    ]);
+    const brand = page.getByRole('link', { name: 'LearnHub home' });
+    await expect(brand).toHaveAttribute('href', '/instructor/courses');
+    return brand;
+  }
+
+  const pointerBrand = await openFrom('pointer');
+  await pointerBrand.click();
+  await expect(page).toHaveURL('/instructor/courses');
+  await expect(page.locator('#main-content')).toBeFocused();
+  await page.goBack();
+  await expect(page).toHaveURL('/instructor/courses?source=pointer#brand');
+
+  const enterBrand = await openFrom('enter');
+  await enterBrand.focus();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL('/instructor/courses');
+  await expect(page.locator('#main-content')).toBeFocused();
+
+  const spaceBrand = await openFrom('space');
+  await spaceBrand.focus();
+  await page.keyboard.press('Space');
+  await expect(page).toHaveURL('/instructor/courses?source=space#brand');
+  await expect(spaceBrand).toBeFocused();
   await expectNoHorizontalOverflow(page);
   assertRuntimeClean();
 });
@@ -1074,8 +1220,8 @@ test('keeps the accepted shared-header marks and quiet desktop primary navigatio
     ariaHidden: 'true',
     alt: '',
     source: expect.stringContaining('ai-assistant-navigation-ui018-2.png'),
-    width: 44,
-    height: 44,
+    width: 40,
+    height: 40,
     display: 'block',
     objectFit: 'contain',
   });
@@ -1135,8 +1281,11 @@ test('exposes representative production tokens across marketplace and workspace 
   expect(marketplace.htmlFontFamily).toBe(expectedFontFamily);
 
   await mockAuthenticatedSession(page, 'instructor');
-  await page.goto('/instructor/courses');
-  await expect(page.getByRole('heading', { level: 1, name: 'Instructor courses' })).toBeVisible();
+  const collectionFixture = await mockInstructorCourseCollection(page);
+  await Promise.all([collectionFixture.waitForFulfillment(), page.goto('/instructor/courses')]);
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Instructor courses', includeHidden: true }),
+  ).toHaveCount(1);
 
   const workspace = await readRepresentativeTokenSnapshot(page);
   expect(workspace.density).toBe('workspace');
@@ -1157,10 +1306,15 @@ test('exposes representative production tokens across marketplace and workspace 
 test('keeps the accepted instructor navigation and initials marker at desktop widths', async ({
   page,
 }) => {
-  const assertRuntimeClean = monitorRuntime(page);
+  const assertRuntimeClean = monitorRuntime(
+    page,
+    [],
+    [{ ...INSTRUCTOR_COURSE_COLLECTION_STRICT_MODE_ABORT, occurrences: 2 }],
+  );
   await mockAuthenticatedSession(page, 'instructor');
-  await expectInstructorDesktopHeaderNavigation(page, 768);
-  await expectInstructorDesktopHeaderNavigation(page, 1280);
+  const collectionFixture = await mockInstructorCourseCollection(page);
+  await expectInstructorDesktopHeaderNavigation(page, 768, collectionFixture);
+  await expectInstructorDesktopHeaderNavigation(page, 1280, collectionFixture);
   assertRuntimeClean();
 });
 
@@ -1929,15 +2083,23 @@ test('announces a recoverable session error and retries /me', async ({ page }) =
 });
 
 test('supports keyboard-operated mobile navigation and focus restoration', async ({ page }) => {
-  const assertRuntimeClean = monitorRuntime(page);
+  const assertRuntimeClean = monitorRuntime(
+    page,
+    [],
+    [INSTRUCTOR_COURSE_COLLECTION_STRICT_MODE_ABORT],
+  );
   await mockAuthenticatedSession(page, 'instructor');
+  const collectionFixture = await mockInstructorCourseCollection(page);
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/instructor/courses#mobile-menu-focus');
-  await expect(page.getByRole('heading', { level: 1, name: 'Instructor courses' })).toBeVisible();
-  const brand = page.getByRole('link', { name: 'LearnHub home' });
+  await Promise.all([
+    collectionFixture.waitForFulfillment(),
+    page.goto('/instructor/courses#mobile-menu-focus'),
+  ]);
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Instructor courses', includeHidden: true }),
+  ).toHaveCount(1);
   const profile = page.getByRole('button', { name: 'Account menu for Indira User' });
-  await expectBrandComposition(brand);
-  await expectBrandContainedInHeader(brand);
+  await expectInstructorHomeBrand(page);
   await expect(profile).toBeVisible();
   const menu = page.getByRole('button', { name: 'Open navigation' });
   await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toBeHidden();
@@ -1951,7 +2113,7 @@ test('supports keyboard-operated mobile navigation and focus restoration', async
   await expectMobileMenuGeometry(page);
 
   await page.keyboard.press('Enter');
-  await page.getByRole('link', { name: 'My courses' }).last().focus();
+  await page.getByRole('link', { name: 'Instructor courses' }).last().focus();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('navigation', { name: 'Mobile navigation' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Open navigation' })).toBeFocused();
@@ -1959,7 +2121,7 @@ test('supports keyboard-operated mobile navigation and focus restoration', async
   await page.keyboard.press('Enter');
   const currentRouteLink = page
     .getByRole('navigation', { name: 'Mobile navigation' })
-    .getByRole('link', { name: 'My courses' });
+    .getByRole('link', { name: 'Instructor courses' });
   await expect(currentRouteLink).toHaveAttribute('aria-current', 'page');
   await currentRouteLink.focus();
   await page.keyboard.press('Enter');
@@ -1969,8 +2131,7 @@ test('supports keyboard-operated mobile navigation and focus restoration', async
   await expectNoHorizontalOverflow(page);
 
   await page.setViewportSize({ width: 320, height: 740 });
-  await expectBrandComposition(brand);
-  await expectBrandContainedInHeader(brand);
+  await expectInstructorHomeBrand(page);
   await expect(profile).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toBeHidden();
   await expectMenuAtHeaderContentEdge(page);
@@ -2002,7 +2163,7 @@ test('preserves the source mobile menu and focus for modified and new-tab activa
     }
     const navigation = page.getByRole('navigation', { name: 'Mobile navigation' });
     await expect(navigation).toBeVisible();
-    const link = navigation.getByRole('link', { name: 'My courses' });
+    const link = navigation.getByRole('link', { name: 'Instructor courses' });
     await link.focus();
     await expect(link).toBeFocused();
     return { navigation, link };
@@ -2181,8 +2342,9 @@ test('keeps instructor course-management content readable without student destin
         method: 'GET',
         path: '/courses/7/enrollments?page=1&page_size=20',
         errorText: 'net::ERR_ABORTED',
-        occurrences: 5,
+        occurrences: 6,
       },
+      { ...INSTRUCTOR_COURSE_COLLECTION_STRICT_MODE_ABORT, occurrences: 7 },
       {
         method: 'GET',
         path: '/courses/8/enrollments?page=1&page_size=20',
@@ -2191,6 +2353,7 @@ test('keeps instructor course-management content readable without student destin
     ],
   );
   await mockAuthenticatedSession(page, 'instructor');
+  await mockInstructorCourseCollection(page);
   const longName = `Ada-${'LongName'.repeat(20)}`;
   const longEmail = `${'very-long-address.'.repeat(12)}example.test`;
   await page.route(/\/courses\/[78]\/enrollments\?page=1&page_size=20$/, async (route) => {
@@ -2248,38 +2411,70 @@ test('keeps instructor course-management content readable without student destin
     });
   });
 
-  for (const [width, expectedHeight] of [
-    [320, 208],
-    [768, 208],
-    [1024, 255.41],
-  ] as const) {
+  for (const width of [320, 768, 1023, 1024] as const) {
     await page.setViewportSize({ width, height: 844 });
     await page.goto('/instructor/courses');
-    await expect(page.getByRole('heading', { level: 1, name: 'Instructor courses' })).toBeVisible();
-    const heroGeometry = await page
-      .locator('[data-part="instructor-courses-hero"]')
-      .evaluate((hero) => {
-        const page = hero.closest('article');
-        const panel = page?.querySelector('section');
-        if (!(page instanceof HTMLElement) || !(panel instanceof HTMLElement)) {
-          throw new Error('Instructor hero content order targets are unavailable');
-        }
-        return {
-          height: hero.getBoundingClientRect().height,
-          beforePanel: Boolean(
-            hero.compareDocumentPosition(panel) & Node.DOCUMENT_POSITION_FOLLOWING,
-          ),
-        };
-      });
-    expect(heroGeometry.height).toBeCloseTo(expectedHeight, 1);
-    expect(heroGeometry.beforePanel).toBe(true);
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Instructor courses', includeHidden: true }),
+    ).toHaveCount(1);
+    await expect(page.locator('[data-part="instructor-courses-hero"]')).toHaveCount(0);
     await expectNoHorizontalOverflow(page);
   }
+
+  await page.setViewportSize({ width: 1024, height: 844 });
+  await page.goto('/instructor/courses?source=header#creation');
+  const primaryNavigation = page.getByRole('navigation', { name: 'Primary navigation' });
+  const instructorCourses = primaryNavigation.getByRole('link', { name: 'Instructor courses' });
+  const headerCreate = page
+    .getByRole('banner')
+    .getByRole('button', { name: 'Create course', exact: true });
+  const profile = page.getByRole('button', { name: 'Account menu for Indira User' });
+  const createRequests: string[] = [];
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname === '/courses' && request.method() === 'POST') {
+      createRequests.push(request.url());
+    }
+  });
+  await expect(instructorCourses).toHaveAttribute('href', '/instructor/courses');
+  await expect(instructorCourses).toHaveAttribute('aria-current', 'page');
+  await expect(headerCreate).toHaveAttribute('type', 'button');
+  await expect(headerCreate).toHaveClass(/navAction/);
+  const [headerCreateBox, profileBox] = await Promise.all([
+    headerCreate.boundingBox(),
+    profile.boundingBox(),
+  ]);
+  expect(headerCreateBox).not.toBeNull();
+  expect(profileBox).not.toBeNull();
+  expect(headerCreateBox!.x + headerCreateBox!.width).toBeLessThanOrEqual(profileBox!.x);
+  await headerCreate.press('Enter');
+  const courseTitle = page.getByRole('textbox', { name: 'Course title' });
+  await expect(courseTitle).toBeFocused();
+  await expect(page).toHaveURL('/instructor/courses?source=header#creation');
+  expect(createRequests).toEqual([]);
+
+  await courseTitle.fill('Unsubmitted course title');
+  const historyLengthBeforeSpace = await page.evaluate(() => window.history.length);
+  await headerCreate.focus();
+  await page.keyboard.press('Space');
+  await expect(courseTitle).toBeFocused();
+  await expect(courseTitle).toHaveValue('Unsubmitted course title');
+  await expect(page).toHaveURL('/instructor/courses?source=header#creation');
+  expect(await page.evaluate(() => window.history.length)).toBe(historyLengthBeforeSpace);
+  expect(createRequests).toEqual([]);
+  await expectNoHorizontalOverflow(page);
 
   for (const width of [320, 390, 768, 1280] as const) {
     await page.setViewportSize({ width, height: 844 });
     await page.goto('/instructor/courses/7/enrollments');
     await expect(page.getByRole('heading', { level: 1, name: 'Course enrollments' })).toBeVisible();
+    const breadcrumb = page.getByRole('navigation', { name: 'Breadcrumb' });
+    const returnLink = breadcrumb.getByRole('link', { name: 'Instructor courses' });
+    await expect(returnLink).toHaveAttribute('href', '/instructor/courses');
+    await expect(returnLink).toBeVisible();
+    await expect(breadcrumb.locator('[aria-current="page"]')).toHaveText('Course enrollments');
+    expect(
+      await returnLink.evaluate((link) => link.getBoundingClientRect().height),
+    ).toBeGreaterThanOrEqual(44);
     await expect(page.getByText(longName)).toBeVisible();
     await expect(page.getByText(longEmail)).toBeVisible();
     await expect(page.getByRole('link', { name: 'Cart' })).toHaveCount(0);
@@ -2289,8 +2484,21 @@ test('keeps instructor course-management content readable without student destin
   }
 
   await page.setViewportSize({ width: 320, height: 844 });
+  await page.goto('/instructor/courses/7/enrollments');
+  const rosterReturnLink = page
+    .getByRole('navigation', { name: 'Breadcrumb' })
+    .getByRole('link', { name: 'Instructor courses' });
+  await rosterReturnLink.focus();
+  await expect(rosterReturnLink).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL('/instructor/courses');
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Instructor courses', includeHidden: true }),
+  ).toHaveCount(1);
+
+  await page.setViewportSize({ width: 320, height: 844 });
   await page.goto('/instructor/courses');
-  const create = page.getByRole('button', { name: 'Create course' });
+  const create = page.getByRole('button', { name: 'Create course', exact: true });
   await expect(create).toBeVisible();
   await page.getByRole('textbox', { name: 'Course title' }).fill('An instructor course');
   await create.click();
@@ -2315,6 +2523,12 @@ test('keeps instructor course-management content readable without student destin
   await page.evaluate(() => {
     document.documentElement.style.zoom = '2';
   });
+  expect(
+    await page
+      .getByRole('navigation', { name: 'Breadcrumb' })
+      .getByRole('link', { name: 'Instructor courses' })
+      .evaluate((link) => link.getBoundingClientRect().height),
+  ).toBeGreaterThanOrEqual(44);
   await expect(page.getByText(longEmail)).toBeVisible();
   await expectNoHorizontalOverflow(page);
 
