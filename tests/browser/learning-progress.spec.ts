@@ -653,7 +653,7 @@ test('keeps aggregate progress separate from fresh lesson state, dedupes action,
   await page.getByRole('button', { name: 'Mark complete' }).click();
   await expect(page.getByText('Lesson progress could not be updated. Try again.')).toBeVisible();
   await expect(page.getByText('Not completed')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Mark complete' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Mark complete' })).toBeFocused();
   await page.reload();
   await expect(page.getByText('Completion status unavailable')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Mark complete' })).toBeVisible();
@@ -1223,15 +1223,18 @@ test('keeps the native completion action truthful and single-request while pendi
   });
 
   await page.goto('/learning/enrollments/4');
-  const action = page.getByRole('button', { name: /Mark (complete|incomplete)/ });
+  const action = page.getByRole('button', { name: /Mark (complete|incomplete)|Updating…/ });
   await action.click();
   await expect.poll(() => completionRequests).toBe(1);
-  await expect(action).toBeFocused();
-  await expect(action).toHaveAttribute('aria-disabled', 'true');
+  await expect(action).not.toHaveAttribute('aria-disabled');
   await expect(action).toHaveAttribute('aria-busy', 'true');
-  await expect(action).toHaveJSProperty('disabled', false);
-  await expect(action).toHaveAccessibleName('Mark incomplete');
-  await expect(action.locator('[data-part="spinner"]')).toHaveCount(0);
+  await expect(action).toHaveJSProperty('disabled', true);
+  await expect(action).toHaveAccessibleName('Updating…');
+  await expect(action.locator('[data-part="spinner"]')).toHaveCount(1);
+  await expect(page.getByRole('status')).toHaveText('Updating lesson progress.');
+  const actionBox = await action.boundingBox();
+  if (actionBox === null) throw new Error('Pending lesson action has no pointer target');
+  await page.mouse.click(actionBox.x + actionBox.width / 2, actionBox.y + actionBox.height / 2);
   await page.keyboard.press('Enter');
   await page.keyboard.press(' ');
   await expect.poll(() => completionRequests).toBe(1);

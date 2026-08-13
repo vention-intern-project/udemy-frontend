@@ -915,11 +915,11 @@ describe('LearningDetailPage', () => {
       await user.click(action);
     });
     expect(action.getAttribute('aria-busy')).toBe('true');
-    expect(action.getAttribute('aria-disabled')).toBe('true');
-    expect((action as HTMLButtonElement).disabled).toBe(false);
-    expect(action).toBe(document.activeElement);
-    expect(action.querySelector('[data-part="spinner"]')).toBeNull();
-    expect(action.textContent).toContain('Mark incomplete');
+    expect(action.getAttribute('aria-disabled')).toBeNull();
+    expect((action as HTMLButtonElement).disabled).toBe(true);
+    expect(action.querySelector('[data-part="spinner"]')).toBeTruthy();
+    expect(action.textContent).toContain('Updating…');
+    expect(screen.getByRole('status').textContent).toBe('Updating lesson progress.');
     await act(async () => {
       await user.click(action);
       await user.keyboard('{Enter}');
@@ -930,7 +930,7 @@ describe('LearningDetailPage', () => {
       resolveCompletion?.({ lesson_id: 12, completed: true, completed_at: '2026-07-26T00:00:00Z' });
     });
     await waitFor(() => expect(screen.getByText('Completed')).toBeTruthy());
-    expect(screen.getByRole('button', { name: 'Mark incomplete' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Mark incomplete' })).toBe(document.activeElement);
   });
 
   it('keeps one stable polite success slot through the accepted lifetime and opacity exit without moving focus', async () => {
@@ -1282,7 +1282,7 @@ describe('LearningDetailPage', () => {
       await Promise.resolve();
     });
     expect(screen.getByText('Completion status unavailable')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Mark complete' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Mark complete' })).toBe(document.activeElement);
   });
 
   it('restores a known completed row when API-018 fails', async () => {
@@ -1684,6 +1684,9 @@ describe('LearningDetailPage', () => {
       await user.click(screen.getByRole('button', { name: 'Open workspace 5' }));
     });
     await screen.findByRole('heading', { name: 'Second workspace' });
+    const routeSentinel = document.createElement('button');
+    document.body.append(routeSentinel);
+    routeSentinel.focus();
     await act(async () => {
       resolveCompletion?.({ lesson_id: 12, completed: true, completed_at: '2026-07-26T00:00:00Z' });
     });
@@ -1703,6 +1706,8 @@ describe('LearningDetailPage', () => {
     });
     expect(screen.getByText('Completion status unavailable')).toBeTruthy();
     expect(screen.queryByText('Lesson marked complete.')).toBeNull();
+    expect(document.activeElement).toBe(routeSentinel);
+    routeSentinel.remove();
   });
 
   it('keeps a late mutation error out of a replacement session subject', async () => {
@@ -1773,12 +1778,17 @@ describe('LearningDetailPage', () => {
     });
     await waitFor(() => expect(profileRequests).toBe(2));
     await screen.findByText('Completion status unavailable');
+    const sessionSentinel = document.createElement('button');
+    document.body.append(sessionSentinel);
+    sessionSentinel.focus();
     await act(async () => {
       rejectCompletion?.(new ApiError({ kind: 'server', status: 500, message: 'private' }));
     });
     await waitFor(() => expect(screen.getByRole('button', { name: 'Mark complete' })).toBeTruthy());
     expect(screen.getByText('Completion status unavailable')).toBeTruthy();
     expect(screen.queryByText('Lesson progress could not be updated. Try again.')).toBeNull();
+    expect(document.activeElement).toBe(sessionSentinel);
+    sessionSentinel.remove();
   });
 
   it('restores focus after enrollment-detail retry succeeds', async () => {

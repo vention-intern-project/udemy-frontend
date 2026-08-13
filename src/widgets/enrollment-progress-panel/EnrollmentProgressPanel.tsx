@@ -1,3 +1,5 @@
+import { useEffect, useId, useRef } from 'react';
+
 import type { LessonOutline } from '@entities/course';
 import type { CourseProgress, LessonCompletionState } from '@features/learning-progress';
 import { lessonCompletionLabel } from '@features/learning-progress';
@@ -33,6 +35,75 @@ function setLessonCompletion(
   onSetCompletion(lessonId, completed);
 }
 
+interface LessonCompletionFocusIntent {
+  readonly courseId: number | undefined;
+  pendingObserved: boolean;
+}
+
+interface LessonCompletionActionProps {
+  readonly courseId: number | undefined;
+  readonly lessonId: number;
+  readonly markComplete: boolean;
+  readonly pending: boolean;
+  readonly onSetCompletion: EnrollmentProgressPanelProps['onSetCompletion'];
+}
+
+function LessonCompletionAction({
+  courseId,
+  lessonId,
+  markComplete,
+  pending,
+  onSetCompletion,
+}: LessonCompletionActionProps) {
+  const actionId = `lesson-completion-action-${useId()}`;
+  const focusIntentRef = useRef<LessonCompletionFocusIntent | null>(null);
+
+  useEffect(() => {
+    const focusIntent = focusIntentRef.current;
+    if (focusIntent === null) return;
+    if (focusIntent.courseId !== courseId) {
+      focusIntentRef.current = null;
+      return;
+    }
+    if (pending) {
+      focusIntent.pendingObserved = true;
+      return;
+    }
+    if (!focusIntent.pendingObserved) return;
+    focusIntentRef.current = null;
+    const action = document.getElementById(actionId);
+    const activeElement = document.activeElement;
+    if (
+      action instanceof HTMLButtonElement &&
+      (activeElement === action ||
+        activeElement === document.body ||
+        activeElement === document.documentElement ||
+        activeElement?.tagName === 'MAIN')
+    )
+      action.focus();
+  }, [actionId, courseId, pending]);
+
+  const handleClick = () => {
+    if (pending) return;
+    focusIntentRef.current = { courseId, pendingObserved: false };
+    setLessonCompletion(pending, lessonId, markComplete, onSetCompletion);
+  };
+
+  return (
+    <Button
+      id={actionId}
+      variant={markComplete ? 'primary' : 'secondary'}
+      state={pending ? 'loading' : 'idle'}
+      loadingLabel="Updating…"
+      statusMessage={pending ? 'Updating lesson progress.' : undefined}
+      className={`${styles.lessonCompletionAction}${markComplete ? ` ${styles.markComplete}` : ''}`}
+      onClick={handleClick}
+    >
+      {markComplete ? 'Mark complete' : 'Mark incomplete'}
+    </Button>
+  );
+}
+
 export function EnrollmentProgressPanel({
   progress,
   progressError,
@@ -45,6 +116,7 @@ export function EnrollmentProgressPanel({
   onSetCompletion,
   onRetry,
 }: EnrollmentProgressPanelProps) {
+  const courseId = progress?.courseId;
   const progressFailed = progressError !== null && progressError !== undefined;
   const outlineFailed = outlineError !== null && outlineError !== undefined;
   if (progressFailed && outlineFailed) {
@@ -145,19 +217,13 @@ export function EnrollmentProgressPanel({
                         {lessonCompletionLabel(state)}
                       </p>
                     </div>
-                    <Button
-                      variant={markComplete ? 'primary' : 'secondary'}
-                      aria-busy={pending || undefined}
-                      aria-disabled={pending || undefined}
-                      className={`${styles.lessonCompletionAction}${
-                        markComplete ? ` ${styles.markComplete}` : ''
-                      }`}
-                      onClick={() =>
-                        setLessonCompletion(pending, lesson.id, markComplete, onSetCompletion)
-                      }
-                    >
-                      {markComplete ? 'Mark complete' : 'Mark incomplete'}
-                    </Button>
+                    <LessonCompletionAction
+                      courseId={courseId}
+                      lessonId={lesson.id}
+                      markComplete={markComplete}
+                      pending={pending}
+                      onSetCompletion={onSetCompletion}
+                    />
                   </li>
                 );
               })}
