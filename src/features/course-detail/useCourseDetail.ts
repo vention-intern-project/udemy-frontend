@@ -5,6 +5,7 @@ import { queryKeys } from '@entities/api';
 import { ApiError, type SessionCacheEpoch } from '@shared/api';
 import { useSession, type SessionContextValue } from '@features/auth-session';
 import { cartQueryKey, requestCart } from '@features/cart-workflow';
+import { isCurrentCourseActionReconciliationAttempt } from '@features/course-action-reconciliation';
 
 import {
   courseMutationDisposition,
@@ -297,7 +298,13 @@ export function useCourseDetail(courseId: number | null) {
         : addCourseToCart(session, attempt.courseId),
     onSuccess: async (_data, attempt) => {
       await reconcileSuccessfulAttempt(attempt);
-      if (currentIdentityRef.current !== attempt.identity) return;
+      if (
+        !isCurrentCourseActionReconciliationAttempt({
+          attemptIdentity: attempt.identity,
+          currentIdentity: currentIdentityRef.current,
+        })
+      )
+        return;
       setServerDisposition({
         identity: attempt.identity,
         preflight: attempt.action === 'enroll' ? 'already-enrolled' : 'already-in-cart',
@@ -313,7 +320,13 @@ export function useCourseDetail(courseId: number | null) {
     onError: async (error, attempt) => {
       const disposition = courseMutationDisposition(error);
       await refreshMutationOutcome(disposition.refresh, attempt);
-      if (currentIdentityRef.current !== attempt.identity) return;
+      if (
+        !isCurrentCourseActionReconciliationAttempt({
+          attemptIdentity: attempt.identity,
+          currentIdentity: currentIdentityRef.current,
+        })
+      )
+        return;
       setMutationFeedback({ identity: attempt.identity, state: { status: 'error', disposition } });
       if (disposition.kind === 'terminal' && disposition.preflight) {
         setServerDisposition({

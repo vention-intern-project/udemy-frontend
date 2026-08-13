@@ -5,6 +5,12 @@ import { queryKeys } from '@entities/api';
 import type { CatalogCourse } from '@entities/course';
 import { useSession } from '@features/auth-session';
 import {
+  courseActionRecoveryTransition,
+  courseActionReconciliationUncertaintyMessage,
+  isCurrentCourseActionReconciliationAttempt,
+  type CourseActionRecoveryState,
+} from '@features/course-action-reconciliation';
+import {
   addCourseToCart,
   courseMutationDisposition,
   coursePrimaryAction,
@@ -30,6 +36,7 @@ export interface CatalogCourseActionAttempt {
 
 export interface CatalogCourseActionFeedback {
   message: string;
+  retryPreflight: boolean;
   tone: 'error';
 }
 
@@ -69,6 +76,7 @@ type CatalogCoursePreflightOverrideMap = ReadonlyMap<
   CourseActionIdentity,
   CatalogCoursePreflightOverride
 >;
+type CatalogCourseRecoveryMap = ReadonlyMap<CourseActionIdentity, CourseActionRecoveryState>;
 
 function catalogActionCandidate(course: CatalogCourse): CourseActionCandidate {
   return {
@@ -119,9 +127,25 @@ export function useCatalogCourseActions(courses: readonly CatalogCourse[]) {
   const [overrideByIdentity, setOverrideByIdentity] = useState<CatalogCoursePreflightOverrideMap>(
     new Map(),
   );
+  const [recoveryByIdentity, setRecoveryByIdentity] = useState<CatalogCourseRecoveryMap>(new Map());
   const lockedIdentities = useRef(new Set<CourseActionIdentity>());
+  const recoveryByIdentityRef = useRef(new Map<CourseActionIdentity, CourseActionRecoveryState>());
   const currentEpochRef = useRef<SessionCacheEpoch | null>(epoch);
   currentEpochRef.current = epoch;
+
+  const setRecoveryState = useCallback(
+    (identity: CourseActionIdentity, state: CourseActionRecoveryState) => {
+      if (state === 'idle') recoveryByIdentityRef.current.delete(identity);
+      else recoveryByIdentityRef.current.set(identity, state);
+      setRecoveryByIdentity((current) => {
+        const next = new Map(current);
+        if (state === 'idle') next.delete(identity);
+        else next.set(identity, state);
+        return next;
+      });
+    },
+    [],
+  );
 
   const cart = useQuery({
     queryKey: epoch ? cartQueryKey(epoch) : ['disabled', 'catalog-cart'],
@@ -153,20 +177,24 @@ export function useCatalogCourseActions(courses: readonly CatalogCourse[]) {
 
   useEffect(() => {
     lockedIdentities.current.clear();
+    recoveryByIdentityRef.current.clear();
     setFeedbackByIdentity(new Map());
     setOverrideByIdentity(new Map());
+    setRecoveryByIdentity(new Map());
   }, [epoch]);
 
   useEffect(() => {
     if (!preflightHasAuthoritativeResult) return;
     const reconciledIdentities = [...overrideByIdentity.entries()]
-      .filter(
-        ([, override]) =>
+      .filter(([identity, override]) => {
+        if (recoveryByIdentityRef.current.get(identity) === 'recovery-pending') return false;
+        return (
           override.reconcileWithPreflight ||
           (override.preflight === 'already-in-cart' && cartCourseIds.includes(override.courseId)) ||
           (override.preflight === 'already-enrolled' &&
-            enrolledCourseIds.includes(override.courseId)),
-      )
+            enrolledCourseIds.includes(override.courseId))
+        );
+      })
       .map(([identity]) => identity);
     if (reconciledIdentities.length === 0) return;
     setOverrideByIdentity((currentOverrides) => {
@@ -180,7 +208,19 @@ export function useCatalogCourseActions(courses: readonly CatalogCourse[]) {
       return nextFeedback;
     });
     reconciledIdentities.forEach((identity) => lockedIdentities.current.delete(identity));
-  }, [cartCourseIds, enrolledCourseIds, overrideByIdentity, preflightHasAuthoritativeResult]);
+    reconciledIdentities.forEach((identity) => recoveryByIdentityRef.current.delete(identity));
+    setRecoveryByIdentity((currentRecovery) => {
+      const nextRecovery = new Map(currentRecovery);
+      reconciledIdentities.forEach((identity) => nextRecovery.delete(identity));
+      return nextRecovery;
+    });
+  }, [
+    cartCourseIds,
+    enrolledCourseIds,
+    overrideByIdentity,
+    preflightHasAuthoritativeResult,
+    recoveryByIdentity,
+  ]);
 
   const invalidateForDisposition = useCallback(
     async (
@@ -203,6 +243,26 @@ export function useCatalogCourseActions(courses: readonly CatalogCourse[]) {
       }
     },
     [queryClient],
+  );
+
+  const fetchAuthoritativePreflight = useCallback(
+    async (attemptEpoch: SessionCacheEpoch) => {
+      const cartKey = cartQueryKey(attemptEpoch);
+      const enrollmentsKey = enrollmentQueryKey(attemptEpoch);
+      return Promise.allSettled([
+        queryClient.fetchQuery({
+          queryKey: cartKey,
+          queryFn: ({ signal }) => requestCart(session, signal),
+          staleTime: 0,
+        }),
+        queryClient.fetchQuery({
+          queryKey: enrollmentsKey,
+          queryFn: ({ signal }) => requestEnrollments(session, signal),
+          staleTime: 0,
+        }),
+      ]);
+    },
+    [queryClient, session],
   );
 
   const mutation = useMutation<void, unknown, CatalogCourseActionAttempt>({
@@ -235,6 +295,30 @@ export function useCatalogCourseActions(courses: readonly CatalogCourse[]) {
           reconcileWithPreflight: true,
         }),
       );
+      const authoritativeQueryState = queryClient.getQueryState(
+        attempt.action === 'enroll'
+          ? enrollmentQueryKey(attempt.epoch)
+          : cartQueryKey(attempt.epoch),
+      );
+      if (authoritativeQueryState?.status === 'error') {
+        if (
+          isCurrentCourseActionReconciliationAttempt({
+            attemptIdentity: attempt.identity,
+            currentIdentity: lockedIdentities.current.has(attempt.identity)
+              ? attempt.identity
+              : null,
+          })
+        )
+          lockedIdentities.current.delete(attempt.identity);
+        setFeedbackByIdentity((current) =>
+          new Map(current).set(attempt.identity, {
+            message: courseActionReconciliationUncertaintyMessage,
+            retryPreflight: true,
+            tone: 'error',
+          }),
+        );
+        setRecoveryState(attempt.identity, 'recovery-available');
+      }
     },
     onError: async (error, attempt) => {
       const disposition = courseMutationDisposition(error);
@@ -242,7 +326,11 @@ export function useCatalogCourseActions(courses: readonly CatalogCourse[]) {
       await invalidateForDisposition(disposition.refresh, attempt);
       if (currentEpochRef.current !== attempt.epoch) return;
       setFeedbackByIdentity((current) =>
-        new Map(current).set(attempt.identity, { message: disposition.message, tone: 'error' }),
+        new Map(current).set(attempt.identity, {
+          message: disposition.message,
+          retryPreflight: false,
+          tone: 'error',
+        }),
       );
       if (disposition.kind === 'terminal' && disposition.preflight) {
         const dispositionPreflight = disposition.preflight;
@@ -282,7 +370,21 @@ export function useCatalogCourseActions(courses: readonly CatalogCourse[]) {
       });
       const pending = identity !== null && lockedIdentities.current.has(identity);
       const feedback = identity ? (feedbackByIdentity.get(identity) ?? null) : null;
+      const recovery = identity ? (recoveryByIdentity.get(identity) ?? 'idle') : 'idle';
       const inCart = student && cartCourseIds.includes(course.id);
+      if (feedback?.retryPreflight) {
+        const recoveryPending = recovery === 'recovery-pending';
+        return {
+          kind: 'button',
+          label: 'Try again',
+          to: null,
+          disabled: recoveryPending,
+          pending: recoveryPending,
+          feedback,
+          inCart,
+          presentation: catalogLoginPresentation(course),
+        };
+      }
       if (primaryAction.kind === 'login') {
         return {
           kind: 'link',
@@ -374,6 +476,7 @@ export function useCatalogCourseActions(courses: readonly CatalogCourse[]) {
       feedbackByIdentity,
       overrideByIdentity,
       preflightEnabled,
+      recoveryByIdentity,
       session.state,
       student,
     ],
@@ -383,6 +486,38 @@ export function useCatalogCourseActions(courses: readonly CatalogCourse[]) {
     (course: CatalogCourse) => {
       const state = actionFor(course);
       if (state.kind !== 'button' || state.disabled || !epoch) return;
+      const identity = actionIdentity(epoch, course.id);
+      if (identity && feedbackByIdentity.get(identity)?.retryPreflight) {
+        const currentRecovery = recoveryByIdentityRef.current.get(identity) ?? 'recovery-available';
+        const nextRecovery = courseActionRecoveryTransition(currentRecovery, 'start');
+        if (nextRecovery === currentRecovery) return;
+        setRecoveryState(identity, nextRecovery);
+        void fetchAuthoritativePreflight(epoch).then((results) => {
+          if (currentEpochRef.current !== epoch) return;
+          if (recoveryByIdentityRef.current.get(identity) !== 'recovery-pending') return;
+          const recovered = results.every((result) => result.status === 'fulfilled');
+          if (!recovered) {
+            setRecoveryState(
+              identity,
+              courseActionRecoveryTransition('recovery-pending', 'failure'),
+            );
+            return;
+          }
+          lockedIdentities.current.delete(identity);
+          setFeedbackByIdentity((current) => {
+            const next = new Map(current);
+            next.delete(identity);
+            return next;
+          });
+          setOverrideByIdentity((current) => {
+            const next = new Map(current);
+            next.delete(identity);
+            return next;
+          });
+          setRecoveryState(identity, courseActionRecoveryTransition('recovery-pending', 'success'));
+        });
+        return;
+      }
       const primaryAction = coursePrimaryAction({
         course: catalogActionCandidate(course),
         session: session.state,
@@ -399,7 +534,6 @@ export function useCatalogCourseActions(courses: readonly CatalogCourse[]) {
       });
       const inCart = student && cartCourseIds.includes(course.id);
       if (!inCart && primaryAction.kind !== 'cart' && primaryAction.kind !== 'enroll') return;
-      const identity = actionIdentity(epoch, course.id);
       if (!identity || lockedIdentities.current.has(identity)) return;
       lockedIdentities.current.add(identity);
       setFeedbackByIdentity((current) => {
@@ -417,17 +551,18 @@ export function useCatalogCourseActions(courses: readonly CatalogCourse[]) {
       mutation.mutate({ identity, epoch, courseId: course.id, action });
     },
     [
+      cart,
       actionFor,
-      cart.isError,
-      cart.isPending,
       cartCourseIds,
       enrolledCourseIds,
-      enrollments.isError,
-      enrollments.isPending,
+      enrollments,
       epoch,
       mutation,
+      feedbackByIdentity,
+      fetchAuthoritativePreflight,
       preflightEnabled,
       session.state,
+      setRecoveryState,
       student,
     ],
   );
