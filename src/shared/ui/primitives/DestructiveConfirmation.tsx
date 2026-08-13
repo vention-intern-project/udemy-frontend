@@ -12,6 +12,7 @@ export interface DestructiveConfirmationProps {
   onConfirm: () => void;
   onCancel: () => void;
   confirming?: boolean;
+  pendingLabel?: ReactNode;
   error?: ReactNode;
   cancelLabel?: ReactNode;
 }
@@ -24,6 +25,7 @@ export function DestructiveConfirmation({
   onConfirm,
   onCancel,
   confirming = false,
+  pendingLabel = 'Working...',
   error,
   cancelLabel = 'Cancel',
 }: DestructiveConfirmationProps) {
@@ -40,7 +42,9 @@ export function DestructiveConfirmation({
       showCloseButton={false}
     >
       {showError ? (
-        <Notice id={errorId} tone="error" title="Unable to complete action">{error}</Notice>
+        <Notice id={errorId} tone="error" title="Unable to complete action">
+          {error}
+        </Notice>
       ) : null}
       <DialogActions>
         <Button variant="secondary" onClick={onCancel} disabled={confirming}>
@@ -49,8 +53,8 @@ export function DestructiveConfirmation({
         <Button
           variant="destructive"
           state={confirming ? 'loading' : error ? 'error' : 'idle'}
-          loadingLabel="Deleting…"
-          statusMessage={confirming ? 'Destructive action in progress' : undefined}
+          loadingLabel={pendingLabel}
+          statusMessage={confirming ? pendingLabel : undefined}
           announceStatus={!showError}
           aria-describedby={showError ? errorId : undefined}
           onClick={onConfirm}

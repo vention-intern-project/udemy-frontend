@@ -157,6 +157,16 @@ async function routeCartApi(page: Page, handler: CartApiRouteHandler) {
   });
 }
 
+async function expectNoHorizontalOverflow(page: Page): Promise<void> {
+  const widths = await page.evaluate(() => ({
+    client: document.documentElement.clientWidth,
+    document: document.documentElement.scrollWidth,
+    body: document.body.scrollWidth,
+  }));
+  expect(widths.document).toBeLessThanOrEqual(widths.client);
+  expect(widths.body).toBeLessThanOrEqual(widths.client);
+}
+
 function cart(items = [cartItem]) {
   return {
     id: 1,
@@ -475,5 +485,85 @@ test.describe('FE-009 cart workflow QA harness', () => {
       deleteLabel: 'DELETE /cart',
       initiated: ['GET /cart', 'GET /cart', 'DELETE /cart', 'GET /cart'],
     });
+  });
+
+  test('announces one pending clear across required reflow widths and prevents duplicate confirmation', async ({
+    page,
+  }) => {
+    await installStudent(page);
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    const lifecycle = trackCartRequestLifecycle(page);
+    const runtimeErrors: string[] = [];
+    page.on('pageerror', (error) => runtimeErrors.push(error.stack ?? error.message));
+    page.on('console', (message) => {
+      if (message.type() === 'error') runtimeErrors.push(message.text());
+    });
+    let resolveClear: (() => void) | undefined;
+    const pendingClear = new Promise<void>((resolve) => {
+      resolveClear = resolve;
+    });
+    let currentCart = cart();
+    let clearRequests = 0;
+    await page.route('**/me', (route) => json(route, student));
+    await routeCartApi(page, async (route, request) => {
+      const requestLabel = cartRequestLabel(request);
+      if (requestLabel === 'GET /cart') return json(route, currentCart);
+      if (requestLabel === 'DELETE /cart') {
+        clearRequests += 1;
+        await pendingClear;
+        currentCart = cart([]);
+        return route.fulfill({ status: 204 });
+      }
+      throw new Error(`Unexpected cart request ${requestLabel}`);
+    });
+
+    await page.goto('/cart');
+    const clearInvoker = page.getByRole('button', { name: 'Clear cart' }).first();
+    await clearInvoker.click();
+    const dialog = page.getByRole('dialog', { name: 'Clear cart?' });
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(clearInvoker).toBeFocused();
+
+    await clearInvoker.click();
+    await dialog.getByRole('button', { name: 'Clear cart' }).press('Enter');
+    const pendingConfirmation = dialog.getByRole('button', { name: 'Clearing cart...' });
+    await expect(pendingConfirmation).toBeDisabled();
+    await expect(pendingConfirmation).toHaveAttribute('aria-busy', 'true');
+    await expect(dialog.getByRole('status')).toHaveText('Clearing cart...');
+    await expect.poll(() => clearRequests).toBe(1);
+    await page.keyboard.press('Enter');
+    const pendingBox = await pendingConfirmation.boundingBox();
+    if (!pendingBox) throw new Error('Pending clear confirmation geometry is unavailable.');
+    await page.mouse.click(
+      pendingBox.x + pendingBox.width / 2,
+      pendingBox.y + pendingBox.height / 2,
+    );
+    await expect.poll(() => clearRequests).toBe(1);
+
+    for (const width of [320, 390, 768, 1280] as const) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(dialog).toBeVisible();
+      await expectNoHorizontalOverflow(page);
+    }
+    await page.setViewportSize({ width: 640, height: 900 });
+    await page.evaluate(() => {
+      document.documentElement.style.zoom = '2';
+    });
+    await expectNoHorizontalOverflow(page);
+    await expect(pendingConfirmation.locator('[data-part="spinner"]')).toHaveCSS(
+      'animation-name',
+      'none',
+    );
+    await page.evaluate(() => {
+      document.documentElement.style.zoom = '';
+    });
+
+    resolveClear?.();
+    await expect(page.getByRole('heading', { name: 'Your cart is empty' })).toBeFocused();
+    await expectSuccessfulDeleteLifecycle(lifecycle, {
+      deleteLabel: 'DELETE /cart',
+      initiated: ['GET /cart', 'GET /cart', 'DELETE /cart', 'GET /cart'],
+    });
+    expect(runtimeErrors).toEqual([]);
   });
 });

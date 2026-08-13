@@ -48,7 +48,25 @@ interface FixtureState {
   uploadStatus: number;
   courseDeleteStatus: number;
   lessonDeleteStatus: number;
+  courseDeleteGate?: Promise<void>;
+  lessonDeleteGate?: Promise<void>;
   readonly requests: Request[];
+}
+
+interface DeferredAction {
+  readonly promise: Promise<void>;
+  resolve: () => void;
+}
+
+function deferredAction(): DeferredAction {
+  let resolvePromise: (() => void) | undefined;
+  const promise = new Promise<void>((resolve) => {
+    resolvePromise = resolve;
+  });
+  return {
+    promise,
+    resolve: () => resolvePromise?.(),
+  };
 }
 
 const instructor: InstructorProfileFixture = {
@@ -247,6 +265,7 @@ async function installInstructorFixture(page: Page, state: FixtureState): Promis
       return;
     }
     if (path === `/courses/${courseId}/lessons/${lessonId}` && method === 'DELETE') {
+      await state.lessonDeleteGate;
       if (state.lessonDeleteStatus !== 200) {
         await fulfillJson(route, state.lessonDeleteStatus, failure(state.lessonDeleteStatus));
         return;
@@ -259,6 +278,7 @@ async function installInstructorFixture(page: Page, state: FixtureState): Promis
       return;
     }
     if (path === `/courses/${courseId}` && method === 'DELETE') {
+      await state.courseDeleteGate;
       if (state.courseDeleteStatus !== 200) {
         await fulfillJson(route, state.courseDeleteStatus, failure(state.courseDeleteStatus));
         return;
@@ -428,6 +448,83 @@ test('confirms named destructive actions and restores keyboard focus on cancel',
   await page.getByRole('button', { name: 'Delete course' }).last().click();
   await expect(page).toHaveURL(/\/instructor\/courses$/);
   expect(state.requests.filter((request) => request.method() === 'DELETE')).toHaveLength(3);
+});
+
+test('announces truthful pending course and lesson deletes without duplicate mutations', async ({
+  page,
+}) => {
+  const state = createFixtureState();
+  const lessonGate = deferredAction();
+  state.lessonDeleteGate = lessonGate.promise;
+  state.lessonDeleteStatus = 404;
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await installInstructorFixture(page, state);
+  await page.goto(`/instructor/courses/${courseId}/edit`, { waitUntil: 'commit' });
+
+  const deleteLesson = page.getByRole('button', { name: 'Delete lesson' });
+  await deleteLesson.focus();
+  await deleteLesson.press('Enter');
+  const lessonDialog = page.getByRole('dialog', { name: 'Delete this lesson?' });
+  await lessonDialog.getByRole('button', { name: 'Delete lesson' }).press('Enter');
+  const pendingLesson = lessonDialog.getByRole('button', { name: 'Deleting lesson...' });
+  await expect(pendingLesson).toBeDisabled();
+  await expect(pendingLesson).toHaveAttribute('aria-busy', 'true');
+  await expect(lessonDialog.getByRole('status')).toHaveText('Deleting lesson...');
+  await expect
+    .poll(() => state.requests.filter((request) => request.method() === 'DELETE'))
+    .toHaveLength(1);
+  await page.keyboard.press('Enter');
+  await expect
+    .poll(() => state.requests.filter((request) => request.method() === 'DELETE'))
+    .toHaveLength(1);
+
+  for (const width of [320, 390, 768, 1280] as const) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(lessonDialog).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  }
+  await page.setViewportSize({ width: 640, height: 900 });
+  await page.evaluate(() => {
+    document.documentElement.style.zoom = '2';
+  });
+  await expectNoHorizontalOverflow(page);
+  await expect(pendingLesson.locator('[data-part="spinner"]')).toHaveCSS('animation-name', 'none');
+  await page.evaluate(() => {
+    document.documentElement.style.zoom = '';
+  });
+
+  lessonGate.resolve();
+  await expect(lessonDialog.getByRole('alert')).toContainText(
+    'This course or lesson is no longer available.',
+  );
+  await lessonDialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(deleteLesson).toBeFocused();
+
+  const courseGate = deferredAction();
+  state.courseDeleteGate = courseGate.promise;
+  const deleteCourse = page.getByRole('button', { name: 'Delete course' });
+  await deleteCourse.click();
+  const courseDialog = page.getByRole('dialog', { name: 'Delete this course?' });
+  await courseDialog.getByRole('button', { name: 'Delete course' }).click();
+  const pendingCourse = courseDialog.getByRole('button', { name: 'Deleting course...' });
+  await expect(pendingCourse).toBeDisabled();
+  await expect(pendingCourse).toHaveAttribute('aria-busy', 'true');
+  await expect(courseDialog.getByRole('status')).toHaveText('Deleting course...');
+  await expect
+    .poll(() => state.requests.filter((request) => request.method() === 'DELETE'))
+    .toHaveLength(2);
+  const pendingCourseBox = await pendingCourse.boundingBox();
+  if (!pendingCourseBox) throw new Error('Pending course confirmation geometry is unavailable.');
+  await page.mouse.click(
+    pendingCourseBox.x + pendingCourseBox.width / 2,
+    pendingCourseBox.y + pendingCourseBox.height / 2,
+  );
+  await expect
+    .poll(() => state.requests.filter((request) => request.method() === 'DELETE'))
+    .toHaveLength(2);
+
+  courseGate.resolve();
+  await expect(page).toHaveURL(/\/instructor\/courses$/);
 });
 
 test('uses lesson PATCH and contract-faithful multipart upload without terminal or replacement UI', async ({

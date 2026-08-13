@@ -363,6 +363,32 @@ describe('Dialog', () => {
 });
 
 describe('DestructiveConfirmation', () => {
+  it.each([
+    { pendingLabel: undefined, expectedLabel: 'Working...' },
+    { pendingLabel: 'Removing this lesson...', expectedLabel: 'Removing this lesson...' },
+  ])(
+    'announces the $expectedLabel pending label and disables the destructive confirmation',
+    ({ pendingLabel, expectedLabel }) => {
+      render(
+        <DestructiveConfirmation
+          open
+          title="Delete this lesson?"
+          description="This action is permanent."
+          confirmLabel="Delete lesson"
+          confirming
+          pendingLabel={pendingLabel}
+          onConfirm={() => undefined}
+          onCancel={() => undefined}
+        />,
+      );
+
+      const confirmation = screen.getByRole('button', { name: expectedLabel });
+      expect((confirmation as HTMLButtonElement).disabled).toBe(true);
+      expect(confirmation.getAttribute('aria-busy')).toBe('true');
+      expect(screen.getByRole('status').textContent).toContain(expectedLabel);
+    },
+  );
+
   it('uses explicit destructive action semantics and assertive failure feedback', async () => {
     const user = userEvent.setup();
     const onConfirm = vi.fn();
