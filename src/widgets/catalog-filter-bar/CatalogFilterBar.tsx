@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type FocusEvent } from 'react';
 
 import {
   draftFromCatalogQuery,
@@ -27,6 +27,19 @@ function priceRangeMatches(left: CatalogPriceRange, right: CatalogPriceRange): b
   return left.min_price === right.min_price && left.max_price === right.max_price;
 }
 
+function hasInvertedPriceRange(draft: CatalogPriceRangeDraft): boolean {
+  if (draft.min_price.trim() === '' || draft.max_price.trim() === '') return false;
+  const minimum = Number(draft.min_price);
+  const maximum = Number(draft.max_price);
+  return (
+    Number.isFinite(minimum) &&
+    Number.isFinite(maximum) &&
+    minimum >= 0 &&
+    maximum >= 0 &&
+    maximum < minimum
+  );
+}
+
 export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
   const [draft, setDraft] = useState<CatalogPriceRangeDraft>(() =>
     priceDraftFromCatalogQuery(query),
@@ -34,6 +47,7 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
   const [errors, setErrors] = useState<CatalogFilterValidationErrors>({});
   const draftRef = useRef(draft);
   const queryRef = useRef(query);
+  const priceRangeRef = useRef<HTMLFieldSetElement | null>(null);
   const lastAppliedRangeRef = useRef<CatalogPriceRange>({
     min_price: query.min_price,
     max_price: query.max_price,
@@ -55,6 +69,10 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
   };
 
   const applyDraft = (draftToApply = draftRef.current) => {
+    if (hasInvertedPriceRange(draftToApply)) {
+      setErrors({ max_price: 'Maximum price must be at least the minimum price.' });
+      return;
+    }
     const currentQuery = queryRef.current;
     const validation = validateCatalogDraft({
       search_query: currentQuery.search_query ?? '',
@@ -87,8 +105,14 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
     });
   };
 
-  const applyOnBlur = () => {
+  const applyOnBlur = (event: FocusEvent<HTMLInputElement>) => {
+    const nextTarget = event.relatedTarget;
+    if (nextTarget instanceof Node && priceRangeRef.current?.contains(nextTarget)) return;
     applyDraft({ ...draftRef.current });
+  };
+
+  const applyOnEnter = () => {
+    applyDraft();
   };
 
   return (
@@ -101,7 +125,7 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
         applyDraft();
       }}
     >
-      <fieldset className={styles.priceRange}>
+      <fieldset ref={priceRangeRef} className={styles.priceRange}>
         <legend className={styles.legend}>Price range</legend>
         <span
           className={styles.priceLabel}
@@ -130,7 +154,7 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
           onKeyDown={(event) => {
             if (event.key === 'Enter') {
               event.preventDefault();
-              applyDraft();
+              applyOnEnter();
             }
           }}
         />
@@ -154,7 +178,7 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
           onKeyDown={(event) => {
             if (event.key === 'Enter') {
               event.preventDefault();
-              applyDraft();
+              applyOnEnter();
             }
           }}
         />
