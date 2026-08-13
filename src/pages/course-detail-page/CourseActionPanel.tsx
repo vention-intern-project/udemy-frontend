@@ -7,6 +7,7 @@ import type {
   CoursePreflightState,
   CoursePrimaryActionState,
 } from '@features/course-detail';
+import { courseActionReconciliationUncertaintyMessage } from '@features/course-action-reconciliation';
 import { Button, Notice, type AsyncState } from '@shared/ui/primitives';
 
 import styles from './CourseDetailPage.module.css';
@@ -72,7 +73,7 @@ function actionNotice(
     return {
       tone: 'error',
       title: 'Action unavailable',
-      message: 'We could not verify your enrollment or cart.',
+      message: courseActionReconciliationUncertaintyMessage,
       retryPreflight: true,
     };
   }

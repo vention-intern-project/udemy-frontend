@@ -264,8 +264,17 @@ describe('CatalogPage public URL and pagination behavior', () => {
             : options.path === '/cart'
               ? {
                   id: 1,
-                  items: [],
-                  total_price: '0.00',
+                  items: cartItemCount
+                    ? [
+                        {
+                          id: 1,
+                          course_id: 7,
+                          added_at: '2026-07-27T00:00:00Z',
+                          course: { id: 7, title: 'React', price: '9.99', currency: 'USD' },
+                        },
+                      ]
+                    : [],
+                  total_price: cartItemCount ? '9.99' : '0.00',
                   currency: 'USD',
                   item_count: cartItemCount,
                 }
@@ -854,6 +863,316 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(
       (screen.getByRole('button', { name: 'Add to cart' }) as HTMLButtonElement).disabled,
     ).toBe(false);
+  });
+
+  it('releases only the settled action after successful mutation reconciliation fails and retries preflight without replaying it', async () => {
+    let cartRequests = 0;
+    let mutationRequests = 0;
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/cart/items') {
+        mutationRequests += 1;
+        return undefined as TResponse;
+      }
+      const value =
+        options.path === '/me'
+          ? {
+              email: 'student@example.test',
+              name: 'Student',
+              surname: 'One',
+              role: 'student',
+              birthday: null,
+              phone_number: null,
+              created_at: '2026-01-01T00:00:00Z',
+            }
+          : options.path === '/courses'
+            ? response({ items: [{ ...catalogItem, published_at: '2026-07-27T00:00:00Z' }] })
+            : options.path === '/cart'
+              ? (() => {
+                  cartRequests += 1;
+                  if (cartRequests === 2)
+                    throw new ApiError({ kind: 'offline', status: null, message: 'offline' });
+                  return { id: 1, items: [], total_price: '0.00', currency: 'USD', item_count: 0 };
+                })()
+              : {
+                  items: [],
+                  page: 1,
+                  page_size: 100,
+                  total: 0,
+                  pages: 0,
+                  has_next: false,
+                  has_previous: false,
+                };
+      return options.decode ? options.decode(value) : (value as TResponse);
+    };
+    const user = userEvent.setup();
+    renderCatalog(request, ['/'], 0, 'student-token');
+
+    const initialAction = await screen.findByRole('button', { name: 'Add to cart' });
+    await act(async () => {
+      await user.click(initialAction);
+    });
+    const retry = await screen.findByRole('button', { name: 'Try again' });
+    expect((retry as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByText('We could not verify your enrollment or cart.')).toBeTruthy();
+    expect(mutationRequests).toBe(1);
+
+    await act(async () => {
+      await user.click(retry);
+      await waitFor(() => expect(cartRequests).toBe(3));
+    });
+    await screen.findByRole('button', { name: 'Add to cart' });
+    expect(mutationRequests).toBe(1);
+  });
+
+  it('keeps reconciliation recovery single-flight until both reads settle and restores or clears its current attempt', async () => {
+    let cartRequests = 0;
+    let enrollmentRequests = 0;
+    let mutationRequests = 0;
+    const firstRetryCart = deferred<unknown>();
+    const firstRetryEnrollments = deferred<unknown>();
+    const secondRetryCart = deferred<unknown>();
+    const secondRetryEnrollments = deferred<unknown>();
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/cart/items') {
+        mutationRequests += 1;
+        return undefined as TResponse;
+      }
+      const value =
+        options.path === '/me'
+          ? {
+              email: 'student@example.test',
+              name: 'Student',
+              surname: 'One',
+              role: 'student',
+              birthday: null,
+              phone_number: null,
+              created_at: '2026-01-01T00:00:00Z',
+            }
+          : options.path === '/courses'
+            ? response({ items: [{ ...catalogItem, published_at: '2026-07-27T00:00:00Z' }] })
+            : options.path === '/cart'
+              ? (() => {
+                  cartRequests += 1;
+                  if (cartRequests === 2)
+                    throw new ApiError({ kind: 'offline', status: null, message: 'offline' });
+                  if (cartRequests === 3) return firstRetryCart.promise;
+                  if (cartRequests === 4) return secondRetryCart.promise;
+                  return { id: 1, items: [], total_price: '0.00', currency: 'USD', item_count: 0 };
+                })()
+              : (() => {
+                  enrollmentRequests += 1;
+                  if (enrollmentRequests === 2) return firstRetryEnrollments.promise;
+                  if (enrollmentRequests === 3) return secondRetryEnrollments.promise;
+                  return {
+                    items: [],
+                    page: 1,
+                    page_size: 100,
+                    total: 0,
+                    pages: 0,
+                    has_next: false,
+                    has_previous: false,
+                  };
+                })();
+      return options.decode ? options.decode(await value) : (value as TResponse);
+    };
+    const user = userEvent.setup();
+    renderCatalog(request, ['/'], 0, 'student-token');
+
+    const initialAction = await screen.findByRole('button', { name: 'Add to cart' });
+    await act(async () => {
+      await user.click(initialAction);
+    });
+    const retry = await screen.findByRole('button', { name: 'Try again' });
+    await act(async () => {
+      await user.click(retry);
+    });
+    await act(async () => {
+      await user.keyboard('{Enter}');
+    });
+    await act(async () => {
+      fireEvent.click(retry);
+    });
+
+    await waitFor(() => {
+      const retryButton = screen.getByRole('button', { name: 'Try again' }) as HTMLButtonElement;
+      expect(retryButton.disabled).toBe(true);
+      expect(cartRequests).toBe(3);
+      expect(enrollmentRequests).toBe(2);
+    });
+    expect(
+      (screen.getByRole('button', { name: 'Try again' }) as HTMLButtonElement).getAttribute(
+        'aria-busy',
+      ),
+    ).toBe('true');
+    expect(mutationRequests).toBe(1);
+
+    await act(async () => {
+      firstRetryCart.reject(new ApiError({ kind: 'offline', status: null, message: 'offline' }));
+      firstRetryEnrollments.resolve({
+        items: [],
+        page: 1,
+        page_size: 100,
+        total: 0,
+        pages: 0,
+        has_next: false,
+        has_previous: false,
+      });
+      await Promise.allSettled([firstRetryCart.promise, firstRetryEnrollments.promise]);
+    });
+
+    const restoredRetry = await screen.findByRole('button', { name: 'Try again' });
+    expect((restoredRetry as HTMLButtonElement).disabled).toBe(false);
+    await act(async () => {
+      await user.click(restoredRetry);
+    });
+    await act(async () => {
+      secondRetryCart.resolve({
+        id: 1,
+        items: [],
+        total_price: '0.00',
+        currency: 'USD',
+        item_count: 0,
+      });
+      secondRetryEnrollments.resolve({
+        items: [],
+        page: 1,
+        page_size: 100,
+        total: 0,
+        pages: 0,
+        has_next: false,
+        has_previous: false,
+      });
+      await Promise.all([secondRetryCart.promise, secondRetryEnrollments.promise]);
+    });
+
+    await screen.findByRole('button', { name: 'Add to cart' });
+    expect(screen.queryByText('We could not verify your enrollment or cart.')).toBeNull();
+    expect(cartRequests).toBe(4);
+    expect(enrollmentRequests).toBe(3);
+    expect(mutationRequests).toBe(1);
+  });
+
+  it('retires a pending reconciliation recovery read when the session epoch changes', async () => {
+    const recoveryCart = deferred<unknown>();
+    const recoveryEnrollments = deferred<unknown>();
+    const sessionStore: AccessTokenStore & { value: string | null } = {
+      value: 'first-token',
+      get() {
+        return this.value;
+      },
+      set(token) {
+        this.value = token;
+      },
+      clear() {
+        this.value = null;
+      },
+    };
+    let cartRequests = 0;
+    let enrollmentRequests = 0;
+    let mutationRequests = 0;
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/cart/items') {
+        mutationRequests += 1;
+        return undefined as TResponse;
+      }
+      const value =
+        options.path === '/me'
+          ? {
+              email: 'student@example.test',
+              name: 'Student',
+              surname: 'One',
+              role: 'student',
+              birthday: null,
+              phone_number: null,
+              created_at: '2026-01-01T00:00:00Z',
+            }
+          : options.path === '/courses'
+            ? response({ items: [{ ...catalogItem, published_at: '2026-07-27T00:00:00Z' }] })
+            : options.path === '/cart'
+              ? (() => {
+                  cartRequests += 1;
+                  if (cartRequests === 2)
+                    throw new ApiError({ kind: 'offline', status: null, message: 'offline' });
+                  return cartRequests === 3
+                    ? recoveryCart.promise
+                    : { id: 1, items: [], total_price: '0.00', currency: 'USD', item_count: 0 };
+                })()
+              : (() => {
+                  enrollmentRequests += 1;
+                  return enrollmentRequests === 2
+                    ? recoveryEnrollments.promise
+                    : {
+                        items: [],
+                        page: 1,
+                        page_size: 100,
+                        total: 0,
+                        pages: 0,
+                        has_next: false,
+                        has_previous: false,
+                      };
+                })();
+      return options.decode ? options.decode(await value) : (value as TResponse);
+    };
+    const user = userEvent.setup();
+    renderCatalog(request, ['/'], 0, null, {
+      tokenStore: sessionStore,
+      withSessionSwitchControl: true,
+    });
+
+    const initialAction = await screen.findByRole('button', { name: 'Add to cart' });
+    await act(async () => {
+      await user.click(initialAction);
+    });
+    const retry = await screen.findByRole('button', { name: 'Try again' });
+    await act(async () => {
+      await user.click(retry);
+    });
+    await waitFor(() => {
+      expect(cartRequests).toBe(3);
+      expect(enrollmentRequests).toBe(2);
+    });
+
+    const switchSession = screen.getByRole('button', { name: 'Switch catalog session' });
+    await act(async () => {
+      await user.click(switchSession);
+    });
+    await waitFor(() =>
+      expect(screen.getByLabelText('catalog session status').textContent).toBe('authenticated'),
+    );
+    await screen.findByRole('button', { name: 'Add to cart' });
+
+    await act(async () => {
+      recoveryCart.resolve({
+        id: 1,
+        items: [],
+        total_price: '0.00',
+        currency: 'USD',
+        item_count: 0,
+      });
+      recoveryEnrollments.resolve({
+        items: [],
+        page: 1,
+        page_size: 100,
+        total: 0,
+        pages: 0,
+        has_next: false,
+        has_previous: false,
+      });
+      await Promise.all([recoveryCart.promise, recoveryEnrollments.promise]);
+    });
+
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    expect(screen.queryByText('We could not verify your enrollment or cart.')).toBeNull();
+    expect(
+      (screen.getByRole('button', { name: 'Add to cart' }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect(mutationRequests).toBe(1);
   });
 
   it('does not retain a prior criteria total when a changed-query request fails', async () => {

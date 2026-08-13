@@ -48,6 +48,10 @@ function expectedCatalogHeroHeight(viewportWidth: number): number {
 
 interface CatalogBrowserMonitor {
   (): void;
+  allowHttpFailure(
+    identity: { method: string; path: string; status: number },
+    occurrences?: number,
+  ): void;
   allowRequestFailure(identity: RequestFailureIdentity, occurrences?: number): void;
 }
 
@@ -96,6 +100,8 @@ async function monitor(page: Page): Promise<CatalogBrowserMonitor> {
       'expected browser request failures not observed',
     ).toEqual([]);
   }) as CatalogBrowserMonitor;
+  assertClean.allowHttpFailure = (identity, occurrences = 1) =>
+    responses.allow(identity, occurrences);
   assertClean.allowRequestFailure = (identity, occurrences = 1) =>
     requests.allow(identity, occurrences);
   return assertClean;
@@ -3703,6 +3709,174 @@ test('renders the DD-045 CourseCard action and status system without changing ac
   await page.evaluate(() => {
     document.documentElement.style.zoom = '';
   });
+  assertClean();
+});
+
+test('recovers only authoritative preflight after a successful Catalog mutation cannot be verified', async ({
+  page,
+}) => {
+  const assertClean = await monitor(page);
+  assertClean.allowHttpFailure({ method: 'GET', path: '/cart', status: 500 }, 2);
+  assertClean.allowRequestFailure({
+    method: 'GET',
+    path: '/courses?page=1&page_size=20&sort=created_at',
+    errorText: 'net::ERR_ABORTED',
+  });
+  assertClean.allowRequestFailure({ method: 'GET', path: '/cart', errorText: 'net::ERR_ABORTED' });
+  const mutationRequests: string[] = [];
+  let cartReadCount = 0;
+  let enrollmentReadCount = 0;
+  let remainingAuthoritativeCartFailures = 0;
+  let holdRecoveryReads = false;
+  const recoveryReadReleases: {
+    cart: (() => void) | null;
+    enrollments: (() => void) | null;
+  } = { cart: null, enrollments: null };
+  page.on('request', (request) => {
+    const path = new URL(request.url()).pathname;
+    if (request.method() === 'POST' || request.method() === 'DELETE')
+      mutationRequests.push(`${request.method()} ${path}`);
+  });
+  await page.addInitScript(() => localStorage.setItem('learnhub.access-token', 'student-token'));
+  await page.route('**/me', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        email: 'student@example.test',
+        name: 'Student',
+        surname: 'One',
+        role: 'student',
+        birthday: null,
+        phone_number: null,
+        created_at: '2026-01-01T00:00:00Z',
+      }),
+    });
+  });
+  await page.route('**/cart**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === '/cart/items') {
+      remainingAuthoritativeCartFailures = 2;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: 13,
+          course_id: 7,
+          added_at: '2026-01-01T00:00:00Z',
+          course: { id: 7, title: 'Recovery course', price: '9.99', currency: 'USD' },
+        }),
+      });
+      return;
+    }
+    if (path !== '/cart') {
+      await route.fallback();
+      return;
+    }
+    cartReadCount += 1;
+    if (remainingAuthoritativeCartFailures > 0) {
+      remainingAuthoritativeCartFailures -= 1;
+      await route.fulfill({ status: 500, contentType: 'application/json', body: '{}' });
+      return;
+    }
+    if (holdRecoveryReads)
+      await new Promise<void>((resolve) => {
+        recoveryReadReleases.cart = resolve;
+      });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        id: 1,
+        items: [],
+        total_price: '0.00',
+        currency: 'USD',
+        item_count: 0,
+      }),
+    });
+  });
+  await page.route('**/enrollments/my**', async (route) => {
+    enrollmentReadCount += 1;
+    if (holdRecoveryReads)
+      await new Promise<void>((resolve) => {
+        recoveryReadReleases.enrollments = resolve;
+      });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        items: [],
+        page: 1,
+        page_size: 100,
+        total: 0,
+        pages: 0,
+        has_next: false,
+        has_previous: false,
+      }),
+    });
+  });
+  await page.route('**/courses**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: response([{ ...permittedCourse('Recovery course'), id: 7, price: '9.99' }]),
+    });
+  });
+
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.goto('/');
+  const card = page
+    .locator('[data-part="course-card"]')
+    .filter({ has: page.getByRole('heading', { level: 3, name: 'Recovery course' }) });
+  const add = card.getByRole('button', { name: 'Add to cart' });
+  await expect(add).toBeVisible();
+  await add.dblclick();
+
+  const retry = card.getByRole('button', { name: 'Try again' });
+  await expect(retry).toBeEnabled();
+  await expect(card.getByText('We could not verify your enrollment or cart.')).toBeVisible();
+  expect(mutationRequests).toEqual(['POST /cart/items']);
+  await expect(card.getByRole('button', { name: 'Remove' })).toHaveCount(0);
+  await expect(card.getByText('Enrolled', { exact: true })).toHaveCount(0);
+  await retry.focus();
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Tab');
+  await expect(retry).toBeFocused();
+  expect(await retry.evaluate((element) => element.matches(':focus-visible'))).toBe(true);
+  expect(
+    await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth <= document.documentElement.clientWidth &&
+        document.body.scrollWidth <= document.documentElement.clientWidth,
+    ),
+  ).toBe(true);
+
+  const cartReadsBeforeRetry = cartReadCount;
+  const enrollmentReadsBeforeRetry = enrollmentReadCount;
+  holdRecoveryReads = true;
+  await page.keyboard.press('Enter');
+  await expect.poll(() => cartReadCount).toBe(cartReadsBeforeRetry + 1);
+  await expect.poll(() => enrollmentReadCount).toBe(enrollmentReadsBeforeRetry + 1);
+  await expect(retry).toBeDisabled();
+  await expect(retry).toHaveAttribute('aria-busy', 'true');
+  await page.keyboard.press('Enter');
+  await retry.click({ force: true });
+  await page.waitForTimeout(100);
+  expect(cartReadCount).toBe(cartReadsBeforeRetry + 1);
+  expect(enrollmentReadCount).toBe(enrollmentReadsBeforeRetry + 1);
+  const releaseRecoveryCartRead = recoveryReadReleases.cart;
+  const releaseRecoveryEnrollmentRead = recoveryReadReleases.enrollments;
+  if (!releaseRecoveryCartRead || !releaseRecoveryEnrollmentRead)
+    throw new Error('The recovery preflight reads did not reach their held responses.');
+  holdRecoveryReads = false;
+  releaseRecoveryCartRead();
+  releaseRecoveryEnrollmentRead();
+  await expect(retry).toHaveCount(0);
+  await expect(add).toBeEnabled();
+  await expect(card.getByText('We could not verify your enrollment or cart.')).toHaveCount(0);
+  await expect(card.getByRole('button', { name: 'Remove' })).toHaveCount(0);
+  await expect(card.getByText('Enrolled', { exact: true })).toHaveCount(0);
+  expect(mutationRequests).toEqual(['POST /cart/items']);
   assertClean();
 });
 
