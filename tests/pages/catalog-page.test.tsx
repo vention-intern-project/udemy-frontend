@@ -2144,7 +2144,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
     await waitFor(() => expect(requests).toHaveLength(2));
   });
 
-  it('keeps an inverted range invalid until a corrected Enter applies once', async () => {
+  it('prioritizes a negative maximum error before inverted-range validation', async () => {
     const user = userEvent.setup();
     const requests: ApiRequestOptions[] = [];
     const request: ApiClient['request'] = async <TResponse,>(options: ApiRequestOptions) => {
@@ -2158,21 +2158,28 @@ describe('CatalogPage public URL and pagination behavior', () => {
     const maximum = screen.getByLabelText('Max price') as HTMLInputElement;
 
     await act(async () => {
-      await user.type(minimum, '10');
+      await user.type(minimum, '5');
       await user.click(maximum);
     });
     expect(screen.getByLabelText('catalog location').textContent).toBe('/');
     expect(requests).toHaveLength(1);
 
     await act(async () => {
-      await user.type(maximum, '5');
-      await user.click(minimum);
+      await user.type(maximum, '-1');
+      await user.keyboard('{Enter}');
     });
+    await screen.findByText('Enter a non-negative price.');
+    expect(maximum.getAttribute('aria-invalid')).toBe('true');
+    expect(maximum.getAttribute('aria-describedby')).toContain('-error');
     expect(screen.queryByText('Maximum price must be at least the minimum price.')).toBeNull();
     expect(screen.getByLabelText('catalog location').textContent).toBe('/');
     expect(requests).toHaveLength(1);
 
     await act(async () => {
+      await user.clear(minimum);
+      await user.type(minimum, '10');
+      await user.clear(maximum);
+      await user.type(maximum, '5');
       await user.keyboard('{Enter}');
     });
     await screen.findByText('Maximum price must be at least the minimum price.');

@@ -31,7 +31,13 @@ function hasInvertedPriceRange(draft: CatalogPriceRangeDraft): boolean {
   if (draft.min_price.trim() === '' || draft.max_price.trim() === '') return false;
   const minimum = Number(draft.min_price);
   const maximum = Number(draft.max_price);
-  return Number.isFinite(minimum) && Number.isFinite(maximum) && minimum >= 0 && maximum < minimum;
+  return (
+    Number.isFinite(minimum) &&
+    Number.isFinite(maximum) &&
+    minimum >= 0 &&
+    maximum >= 0 &&
+    maximum < minimum
+  );
 }
 
 export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {

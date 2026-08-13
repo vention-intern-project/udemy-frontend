@@ -2843,6 +2843,16 @@ test('keeps an inverted price range invalid, then submits a corrected value with
   expect(correctedRequest).toContain('min_price=5');
   expect(correctedRequest).toContain('page_size=20');
 
+  const requestCountBeforeNegativeMaximum = requests.length;
+  await maximum.fill('-1');
+  await maximum.press('Enter');
+  await expect(page.getByText('Enter a non-negative price.')).toBeVisible();
+  await expect(maximum).toHaveAttribute('aria-invalid', 'true');
+  await expect(maximum).toHaveAttribute('aria-describedby', /-error/);
+  await expect(page.getByText('Maximum price must be at least the minimum price.')).toHaveCount(0);
+  await expect(page).toHaveURL('/?min_price=5');
+  expect(requests).toHaveLength(requestCountBeforeNegativeMaximum);
+
   const requestCountBeforeInvertedSubmit = requests.length;
   await maximum.fill('3');
   await page.keyboard.press('Shift+Tab');
