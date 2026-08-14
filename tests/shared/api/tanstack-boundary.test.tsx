@@ -308,6 +308,12 @@ describe('TanStack server-state boundary', () => {
       error: 'Query is required for API-008',
     },
     {
+      name: 'a null query for a query operation',
+      operationId: 'API-008' as const,
+      options: { path: '/courses', query: null },
+      error: 'Query is required for API-008',
+    },
+    {
       name: 'a query for a JSON operation',
       operationId: 'API-024' as const,
       options: { path: '/login', query: { unsupported: true }, dedupeKey: 'login:test' },
@@ -322,6 +328,12 @@ describe('TanStack server-state boundary', () => {
         dedupeKey: 'upload:test',
       },
       error: 'Multipart body does not match API-032',
+    },
+    {
+      name: 'a null body for a JSON operation',
+      operationId: 'API-024' as const,
+      options: { path: '/login', body: null, dedupeKey: 'login:test' },
+      error: 'JSON body does not match API-024',
     },
     {
       name: 'a blob response mode for a JSON operation',
@@ -349,6 +361,16 @@ describe('TanStack server-state boundary', () => {
       },
       error: 'Dedupe key is required for API-024',
     },
+    {
+      name: 'a non-string mutation dedupe key',
+      operationId: 'API-024' as const,
+      options: {
+        path: '/login',
+        body: { email: 'learner@example.test', password: 'correct horse battery staple' },
+        dedupeKey: 42,
+      },
+      error: 'Dedupe key is required for API-024',
+    },
   ])('rejects $name before dispatch', ({ operationId, options, error }) => {
     const requests = sessionRequests();
 
@@ -356,6 +378,28 @@ describe('TanStack server-state boundary', () => {
     expect(requests.requestPublic).not.toHaveBeenCalled();
     expect(requests.requestOptional).not.toHaveBeenCalled();
     expect(requests.requestRequired).not.toHaveBeenCalled();
+  });
+
+  it('dispatches a valid JSON operation when FormData is unavailable', async () => {
+    const requests = sessionRequests();
+    const formDataDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'FormData');
+    Object.defineProperty(globalThis, 'FormData', { configurable: true, value: undefined });
+
+    try {
+      await requestOperation(requests.session, 'API-024', {
+        path: '/login',
+        body: { email: 'learner@example.test', password: 'correct horse battery staple' },
+        dedupeKey: 'login:test',
+      });
+    } finally {
+      if (formDataDescriptor === undefined) {
+        Reflect.deleteProperty(globalThis, 'FormData');
+      } else {
+        Object.defineProperty(globalThis, 'FormData', formDataDescriptor);
+      }
+    }
+
+    expect(requests.requestPublic).toHaveBeenCalledTimes(1);
   });
 
   it('preserves valid multipart and binary operation dispatch', async () => {

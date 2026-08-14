@@ -29,6 +29,10 @@ function operationPathMatches(template: string, actual: string): boolean {
   );
 }
 
+function isFormData(body: unknown): body is FormData {
+  return typeof FormData !== 'undefined' && body instanceof FormData;
+}
+
 function assertOperationRequest(
   operationId: SelectedApiOperationId,
   options: ApiRequestOptions,
@@ -46,20 +50,17 @@ function assertOperationRequest(
   }
   if (operation.requestMode === 'query') {
     if (options.body !== undefined) throw new Error(`Body does not match ${operationId}`);
-    if (options.query === undefined) throw new Error(`Query is required for ${operationId}`);
+    if (options.query == null) throw new Error(`Query is required for ${operationId}`);
   } else if (options.query !== undefined) {
     throw new Error(`Query does not match ${operationId}`);
   }
   if (operation.requestMode === 'none' && options.body !== undefined) {
     throw new Error(`Body does not match ${operationId}`);
   }
-  if (
-    operation.requestMode === 'json' &&
-    (options.body === undefined || options.body instanceof FormData)
-  ) {
+  if (operation.requestMode === 'json' && (options.body == null || isFormData(options.body))) {
     throw new Error(`JSON body does not match ${operationId}`);
   }
-  if (operation.requestMode === 'multipart' && !(options.body instanceof FormData)) {
+  if (operation.requestMode === 'multipart' && !isFormData(options.body)) {
     throw new Error(`Multipart body does not match ${operationId}`);
   }
   if (
@@ -68,7 +69,10 @@ function assertOperationRequest(
   ) {
     throw new Error(`Response mode does not match ${operationId}`);
   }
-  if (operation.mutationDedupe === 'supported' && !options.dedupeKey?.trim()) {
+  if (
+    operation.mutationDedupe === 'supported' &&
+    (typeof options.dedupeKey !== 'string' || !options.dedupeKey.trim())
+  ) {
     throw new Error(`Dedupe key is required for ${operationId}`);
   }
 }
