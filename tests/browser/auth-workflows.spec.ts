@@ -144,6 +144,10 @@ function allowRequestFailures(
   );
 }
 
+function allowOptionalRequestFailure(page: Page, failure: RequestFailureIdentity) {
+  runtimeEvidence.get(page)?.requests.allowOptional(failure);
+}
+
 async function fulfillJson(route: Route, status: number, body: unknown) {
   await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 }
@@ -1146,6 +1150,14 @@ for (const { label, pageScaleFactor, widths } of authViewportScenarios) {
           occurrences: 2,
         },
       );
+      if (width === 768 && pageScaleFactor === 1) {
+        // Deliberate navigation after the successful 768px/default-scale pass can abort the in-flight decorative Learning empty-state image.
+        allowOptionalRequestFailure(page, {
+          method: 'GET',
+          path: '/src/pages/learning-list-page/assets/my-learning-empty-state-ui022.png',
+          errorText: 'net::ERR_ABORTED',
+        });
+      }
       await page.setViewportSize({ width, height: 800 });
       const cdp = pageScaleFactor === 1 ? null : await page.context().newCDPSession(page);
       const workflows: AuthWorkflow[] = ['signup', 'login', 'forgot', 'reset'];

@@ -1,0 +1,112 @@
+import { useMutation } from '@tanstack/react-query';
+import { useState, type FormEvent, type RefObject } from 'react';
+
+import { useSession } from '@features/auth-session';
+
+import { signup, type SignupInput } from './api';
+import { useAuthErrorFocus, useSubmissionAttemptLifecycle } from './AuthForm';
+import { authWorkflowMutationKeys } from './mutation-keys';
+import {
+  compactFieldErrors,
+  mapAuthFailure,
+  validateSignup,
+  type AuthFieldErrors,
+} from './validation';
+
+const INITIAL: SignupInput = {
+  email: '',
+  name: '',
+  surname: '',
+  password: '',
+  passwordConfirmation: '',
+  role: 'student',
+};
+const FIELD_ORDER = [
+  'email',
+  'name',
+  'surname',
+  'role',
+  'password',
+  'passwordConfirmation',
+] as const;
+
+interface SignupMutationVariables {
+  readonly signal: AbortSignal;
+  readonly values: SignupInput;
+}
+
+export interface SignupWorkflow {
+  readonly fieldErrors: AuthFieldErrors;
+  readonly input: SignupInput;
+  readonly isPending: boolean;
+  readonly summary: string | null;
+  readonly summaryRef: RefObject<HTMLDivElement>;
+  submit(event: FormEvent): Promise<void>;
+  update<K extends keyof SignupInput>(key: K, value: SignupInput[K]): void;
+}
+
+export function useSignupWorkflow(ownerKey: string): SignupWorkflow {
+  const session = useSession();
+  const [input, setInput] = useState(INITIAL);
+  const [fieldErrors, setFieldErrors] = useState<AuthFieldErrors>({});
+  const [summary, setSummary] = useState<string | null>(null);
+  const { ref: summaryRef, requestFocus: requestSummaryFocus } = useAuthErrorFocus(
+    summary,
+    fieldErrors,
+    FIELD_ORDER,
+  );
+  const attempts = useSubmissionAttemptLifecycle(ownerKey);
+  const mutation = useMutation({
+    mutationKey: authWorkflowMutationKeys.signup,
+    mutationFn: ({ values, signal }: SignupMutationVariables) => signup(session, values, signal),
+    gcTime: 0,
+    retry: false,
+  });
+  const update = <K extends keyof SignupInput>(key: K, value: SignupInput[K]) => {
+    setInput((current) => ({ ...current, [key]: value }));
+    setFieldErrors((current) => {
+      if (!current[key]) return current;
+      const remaining = { ...current };
+      delete remaining[key];
+      return remaining;
+    });
+    if (fieldErrors[key]) setSummary(null);
+  };
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    const attempt = attempts.begin();
+    if (!attempt) return;
+    const values = {
+      ...input,
+      email: input.email.trim(),
+      name: input.name.trim(),
+      surname: input.surname.trim(),
+    };
+    const validation = compactFieldErrors(validateSignup(values));
+    if (Object.keys(validation).length > 0) {
+      setFieldErrors(validation);
+      setSummary('Review the highlighted fields and submit again.');
+      requestSummaryFocus();
+      attempts.finish(attempt);
+      return;
+    }
+    setFieldErrors({});
+    setSummary(null);
+    try {
+      const token = await mutation.mutateAsync({ values, signal: attempt.signal });
+      if (!attempts.isCurrent(attempt)) return;
+      session.acceptAccessToken(token.accessToken);
+      if (!attempts.isCurrent(attempt)) return;
+      setInput((current) => ({ ...current, password: '', passwordConfirmation: '' }));
+    } catch (error) {
+      if (!attempts.isCurrent(attempt)) return;
+      const failure = mapAuthFailure(error, 'signup');
+      setFieldErrors(failure.fields);
+      setSummary(failure.summary);
+      requestSummaryFocus();
+    } finally {
+      if (attempts.finish(attempt)) mutation.reset();
+    }
+  }
+  return { fieldErrors, input, isPending: mutation.isPending, summary, summaryRef, submit, update };
+}

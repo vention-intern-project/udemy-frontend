@@ -24,7 +24,8 @@ import {
   type SessionContextValue,
   type SessionState,
 } from '@features/auth-session';
-import { mutationKeys, type AuthPolicy, type SessionCacheEpoch } from '@shared/api';
+import { authWorkflowMutationKeys } from '@features/auth-workflows';
+import { type AuthPolicy, type SessionCacheEpoch } from '@shared/api';
 
 function sessionCacheEpoch(value: string): SessionCacheEpoch {
   return value as SessionCacheEpoch;
@@ -106,7 +107,7 @@ describe('TanStack server-state boundary', () => {
     expect(createAppQueryClient()).not.toBe(appQueryClient);
   });
 
-  it('centralizes epoch-scoped private keys and credential-free mutation keys', () => {
+  it('keeps epoch-scoped private keys shared and auth mutation keys feature-owned', () => {
     expectTypeOf(queryKeys.private.operation).parameter(1).toEqualTypeOf<SelectedApiOperationId>();
     expect(
       queryKeys.private.operation(sessionCacheEpoch('epoch-test'), 'API-026', 'current-user'),
@@ -116,8 +117,8 @@ describe('TanStack server-state boundary', () => {
       'epoch-test',
       'API-021',
     ]);
-    expect(mutationKeys.auth.login).toEqual(['mutation', 'auth', 'login']);
-    expect(JSON.stringify({ queryKeys, mutationKeys })).not.toMatch(
+    expect(authWorkflowMutationKeys.login).toEqual(['mutation', 'auth', 'login']);
+    expect(JSON.stringify({ queryKeys, authWorkflowMutationKeys })).not.toMatch(
       /secret-token|correct horse|learner@example/,
     );
   });
