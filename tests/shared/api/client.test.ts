@@ -67,14 +67,12 @@ describe('fetch API client', () => {
   });
 
   it('suppresses stored and caller-supplied bearers for explicitly public operations', async () => {
-    const fetchMock = vi
-      .fn<FetchArguments, FetchResult>()
-      .mockResolvedValue(
-        new Response(JSON.stringify({ access_token: 'replacement' }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        }),
-      );
+    const fetchMock = vi.fn<FetchArguments, FetchResult>().mockResolvedValue(
+      new Response(JSON.stringify({ access_token: 'replacement' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
     const client = createApiClient({
       fetch: fetchMock,
       getAccessToken: () => 'existing-private-token',
@@ -158,13 +156,11 @@ describe('fetch API client', () => {
   it('notifies the session boundary on 401 and exposes a normalized error', async () => {
     const onUnauthorized = vi.fn();
     const client = createApiClient({
-      fetch: vi
-        .fn<FetchArguments, FetchResult>()
-        .mockResolvedValue(
-          new Response(JSON.stringify({ detail: 'Could not validate credentials' }), {
-            status: 401,
-          }),
-        ),
+      fetch: vi.fn<FetchArguments, FetchResult>().mockResolvedValue(
+        new Response(JSON.stringify({ detail: 'Could not validate credentials' }), {
+          status: 401,
+        }),
+      ),
       onUnauthorized,
     });
 
@@ -179,13 +175,11 @@ describe('fetch API client', () => {
 
   it('does not let a failing unauthorized callback replace the API error', async () => {
     const client = createApiClient({
-      fetch: vi
-        .fn<FetchArguments, FetchResult>()
-        .mockResolvedValue(
-          new Response(JSON.stringify({ detail: 'Could not validate credentials' }), {
-            status: 401,
-          }),
-        ),
+      fetch: vi.fn<FetchArguments, FetchResult>().mockResolvedValue(
+        new Response(JSON.stringify({ detail: 'Could not validate credentials' }), {
+          status: 401,
+        }),
+      ),
       onUnauthorized: () => {
         throw new Error('session storage unavailable');
       },
@@ -234,14 +228,12 @@ describe('fetch API client', () => {
       return { courseId: (value as TestCartItemResponse).id };
     });
     const client = createApiClient({
-      fetch: vi
-        .fn<FetchArguments, FetchResult>()
-        .mockResolvedValue(
-          new Response(JSON.stringify({ id: 7 }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        ),
+      fetch: vi.fn<FetchArguments, FetchResult>().mockResolvedValue(
+        new Response(JSON.stringify({ id: 7 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
     });
 
     await expect(
@@ -255,14 +247,12 @@ describe('fetch API client', () => {
 
   it('normalizes successful decoder failures with the HTTP status', async () => {
     const client = createApiClient({
-      fetch: vi
-        .fn<FetchArguments, FetchResult>()
-        .mockResolvedValue(
-          new Response(JSON.stringify({ role: 'owner' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        ),
+      fetch: vi.fn<FetchArguments, FetchResult>().mockResolvedValue(
+        new Response(JSON.stringify({ role: 'owner' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
     });
 
     await expect(
