@@ -71,7 +71,7 @@ export async function requestLessonOutline(
               throw new TypeError('Invalid lesson aggregate cursor');
             }
             if (decoded.pages > MAX_AGGREGATE_PAGES)
-              throw invalidSuccessResponse(new TypeError('Invalid lesson aggregate pagination'));
+              throw new TypeError('Invalid lesson aggregate pagination');
             if (expectedPages === null) {
               expectedPages = decoded.pages;
               expectedTotal = decoded.total;
@@ -146,9 +146,7 @@ export async function requestEnrollments(
               throw new TypeError('Invalid enrollment aggregate cursor');
             }
             if (decoded.pages > MAX_AGGREGATE_PAGES)
-              throw invalidSuccessResponse(
-                new TypeError('Invalid enrollment aggregate pagination'),
-              );
+              throw new TypeError('Invalid enrollment aggregate pagination');
             if (expectedPages === null) {
               expectedPages = decoded.pages;
               expectedTotal = decoded.total;

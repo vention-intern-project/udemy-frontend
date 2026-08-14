@@ -160,6 +160,24 @@ describe('pagination invariants', () => {
     expect(fetchPage).toHaveBeenNthCalledWith(2, 2);
   });
 
+  it.each([NaN, Infinity, Number.MAX_SAFE_INTEGER + 1, 1.5, 0, -1])(
+    'rejects an invalid maximum page policy %s before fetching',
+    async (maximumPages) => {
+      const fetchPage = vi.fn();
+
+      await expect(
+        collectPaginationPages({
+          context: 'test collection',
+          signal: new AbortController().signal,
+          maximumPages,
+          fetchPage,
+          identifyItem: (value: TestItem) => value.id,
+        }),
+      ).rejects.toThrow('Invalid test collection pagination');
+      expect(fetchPage).not.toHaveBeenCalled();
+    },
+  );
+
   it.each([
     ['cursor mismatch', [envelope(2, [{ id: 1 }], 1, 1)], 2],
     [
@@ -224,5 +242,31 @@ describe('pagination invariants', () => {
       }),
     ).rejects.toBe(abort);
     expect(fetchPage).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects when the signal aborts while the final page fetch is pending', async () => {
+    const controller = new AbortController();
+    let resolveFetch: ((value: PaginationEnvelope<TestItem>) => void) | undefined;
+    const fetchPage = vi.fn(
+      () =>
+        new Promise<PaginationEnvelope<TestItem>>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+
+    const collection = collectPaginationPages({
+      context: 'test collection',
+      signal: controller.signal,
+      maximumPages: 1,
+      fetchPage,
+      identifyItem: (value) => value.id,
+    });
+
+    expect(fetchPage).toHaveBeenCalledTimes(1);
+    controller.abort();
+    if (!resolveFetch) throw new TypeError('Expected the final page fetch to start');
+    resolveFetch(envelope(1, [{ id: 1 }], 1, 1));
+
+    await expect(collection).rejects.toMatchObject({ name: 'AbortError' });
   });
 });

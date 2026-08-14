@@ -216,6 +216,7 @@ describe('course-detail API trust boundaries', () => {
         1100,
         11,
       ),
+      'Invalid lesson aggregate pagination',
     ],
     [
       'enrollment aggregate',
@@ -226,10 +227,11 @@ describe('course-detail API trust boundaries', () => {
         1100,
         11,
       ),
+      'Invalid enrollment aggregate pagination',
     ],
   ] as const)(
     'stops %s at the accepted ten-page maximum with invalid success context',
-    async (_name, requestAggregate, payload) => {
+    async (_name, requestAggregate, payload, causeMessage) => {
       const fetch = vi.fn(async () => new Response(JSON.stringify(payload), { status: 200 }));
       const client = createApiClient({ baseUrl: 'https://api.example.test', fetch });
       const error = await requestAggregate(
@@ -243,6 +245,10 @@ describe('course-detail API trust boundaries', () => {
         status: 200,
         message: 'Server returned an invalid success response',
       });
+      if (!(error instanceof ApiError)) throw new TypeError('Expected ApiError');
+      expect(error.originalCause).toBeInstanceOf(TypeError);
+      expect(error.originalCause).not.toBeInstanceOf(ApiError);
+      expect(error.originalCause).toMatchObject({ message: causeMessage });
       expect(fetch).toHaveBeenCalledTimes(1);
     },
   );

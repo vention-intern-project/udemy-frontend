@@ -111,6 +111,9 @@ export function decodePaginationEnvelope<TItem>(
 export async function collectPaginationPages<TItem>(
   options: PaginationCollectorOptions<TItem>,
 ): Promise<PaginationCollection<TItem>> {
+  if (!Number.isSafeInteger(options.maximumPages) || options.maximumPages < 1)
+    throw invalidPagination(options.context);
+
   const items: TItem[] = [];
   const identities = new Set<string | number>();
   let expectedPages: number | null = null;
@@ -120,6 +123,7 @@ export async function collectPaginationPages<TItem>(
   for (let page = 1; expectedPages === null || page <= expectedPages; page += 1) {
     assertNotAborted(options.signal);
     const envelope = await options.fetchPage(page);
+    assertNotAborted(options.signal);
 
     if (envelope.page !== page) throw invalidPagination(options.context);
     if (expectedPages === null) {
