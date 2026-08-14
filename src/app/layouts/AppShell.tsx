@@ -1,18 +1,8 @@
-import {
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  useId,
-  type MouseEvent,
-} from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useId } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Bot, GraduationCap, LibraryBig, LogIn, ShoppingCart, UserPlus } from 'lucide-react';
 import {
   Link,
-  type Location,
-  matchPath,
   NavLink,
   Outlet,
   useLocation,
@@ -21,7 +11,7 @@ import {
 } from 'react-router-dom';
 
 import type { Cart } from '@entities/cart';
-import { useSession, type SessionState } from '@features/auth-session';
+import { useSession } from '@features/auth-session';
 import { cartQueryKey, requestCart } from '@features/cart-workflow';
 import {
   addCatalogSearchHistory,
@@ -36,29 +26,23 @@ import { CourseChatLauncher } from '@widgets/course-chat';
 import aiAssistantNavigationMark from './assets/ai-assistant-navigation-ui018-2.png';
 import learnHubBookMark from './assets/learnhub-book-ui018.png';
 import { AccountMenu } from './AccountMenu';
-import { APP_ROUTE_BY_ID, densityForPath, routeForPath } from '../router/route-registry';
+import {
+  assistantNavigationTarget,
+  cartNavigationState,
+  catalogPageForLocation,
+  isCurrentTabNavigation,
+  navigationForSession,
+  type NavigationItem,
+  type NavigationItemVariant,
+} from './app-shell-navigation';
+import { focusInstructorCourseTitle, scheduleAppShellFocus } from './app-shell-focus';
+import { densityForPath, routeForPath } from '../router/route-registry';
 import styles from './AppShell.module.css';
 
-type NavigationItemVariant = 'browse-link' | 'login-secondary' | 'signup-primary';
-type NavigationItemDesktopGroup = 'auth-actions';
 type MobileMenuFocusTarget = 'trigger' | 'main';
 
 const STUDENT_MOBILE_QUERY = '(max-width: 767px)';
 const INSTRUCTOR_COURSE_TITLE_ID = 'instructor-course-title';
-
-function catalogPageForLocation(pathname: string, search: string): number | null {
-  if (pathname !== APP_ROUTE_BY_ID['PAGE-001'].path) return null;
-  return parseCatalogQuery(new URLSearchParams(search)).page;
-}
-
-interface NavigationItem {
-  label: string;
-  to: string;
-  end?: boolean;
-  desktopGroup?: NavigationItemDesktopGroup;
-  primaryNavigationIndicator?: boolean;
-  variant?: NavigationItemVariant;
-}
 
 interface CartPresentation {
   accessibleName: string;
@@ -88,81 +72,8 @@ const NAVIGATION_VARIANT_CLASS: Record<NavigationItemVariant, string> = {
   'signup-primary': styles.navLinkSignup,
 };
 
-function navigationForSession(status: SessionState): NavigationItem[] {
-  if (status.status !== 'authenticated') {
-    return [
-      {
-        label: 'Catalog',
-        to: '/',
-        end: true,
-        primaryNavigationIndicator: true,
-        variant: 'browse-link',
-      },
-      {
-        label: 'Log in',
-        to: '/login',
-        end: true,
-        desktopGroup: 'auth-actions',
-        variant: 'login-secondary',
-      },
-      {
-        label: 'Sign up',
-        to: '/signup',
-        end: true,
-        desktopGroup: 'auth-actions',
-        variant: 'signup-primary',
-      },
-    ];
-  }
-  if (status.user.role === 'student') {
-    return [
-      {
-        label: 'Catalog',
-        to: '/',
-        end: true,
-        primaryNavigationIndicator: true,
-        variant: 'browse-link',
-      },
-      { label: 'My learning', to: '/learning', end: true, primaryNavigationIndicator: true },
-    ];
-  }
-  if (status.user.role === 'instructor') {
-    return [
-      {
-        label: 'Instructor courses',
-        to: '/instructor/courses',
-        end: true,
-        primaryNavigationIndicator: true,
-      },
-    ];
-  }
-  return [];
-}
-
 interface CartNavigationLinkProps {
   itemCount: number | undefined;
-}
-
-interface CartNavigationState {
-  readonly returnTo: string;
-}
-
-interface AssistantNavigationTarget {
-  state: { returnTo: string } | undefined;
-  to: string;
-}
-
-function assistantNavigationTarget(location: Location): AssistantNavigationTarget {
-  const returnTo = `${location.pathname}${location.search}${location.hash}`;
-  const enrollmentMatch = matchPath('/learning/enrollments/:enrollmentId/*', location.pathname);
-  const to = enrollmentMatch?.params.enrollmentId
-    ? `/learning/enrollments/${enrollmentMatch.params.enrollmentId}/ai-chat`
-    : '/ai-chat';
-  return { state: location.pathname === to ? undefined : { returnTo }, to };
-}
-
-function cartNavigationState(location: Location): CartNavigationState {
-  return { returnTo: `${location.pathname}${location.search}${location.hash}` };
 }
 
 function CartNavigationLink({ itemCount }: CartNavigationLinkProps) {
@@ -303,20 +214,6 @@ function NavigationLinks({
         </li>
       ))}
     </ul>
-  );
-}
-
-function isCurrentTabNavigation(event: MouseEvent<HTMLAnchorElement>): boolean {
-  const target = event.currentTarget.getAttribute('target');
-  return (
-    !event.defaultPrevented &&
-    event.button === 0 &&
-    !event.metaKey &&
-    !event.ctrlKey &&
-    !event.shiftKey &&
-    !event.altKey &&
-    (!target || target.toLowerCase() === '_self') &&
-    !event.currentTarget.hasAttribute('download')
   );
 }
 
@@ -522,41 +419,26 @@ export function AppShell() {
       const routeChanged = previousRouteFocusIdentityRef.current !== routeFocusIdentity;
       restoreCatalogSearchFocusRef.current = false;
       if (restoreCatalogSearchFocus) {
-        scheduleFocus(() => catalogSearchRef.current?.focus());
+        scheduleAppShellFocus(() => catalogSearchRef.current?.focus());
       } else if (routeChanged) {
-        scheduleFocus(() => mainRef.current?.focus({ preventScroll: true }));
+        scheduleAppShellFocus(() => mainRef.current?.focus({ preventScroll: true }));
       }
       previousLocationRef.current = currentLocation;
       previousRouteFocusIdentityRef.current = routeFocusIdentity;
     }
   }, [currentLocation, location.pathname, routeFocusIdentity]);
 
-  function scheduleFocus(focus: () => void) {
-    if (typeof globalThis.requestAnimationFrame === 'function') {
-      globalThis.requestAnimationFrame(focus);
-    } else {
-      globalThis.setTimeout(focus, 0);
-    }
-  }
-
   function closeMobileMenu(focusTarget: MobileMenuFocusTarget) {
     setMobileOpen(false);
-    scheduleFocus(() => {
+    scheduleAppShellFocus(() => {
       if (focusTarget === 'trigger') menuButtonRef.current?.focus();
       else mainRef.current?.focus();
     });
   }
 
-  function focusInstructorCourseTitle() {
-    const titleTarget = document.getElementById(INSTRUCTOR_COURSE_TITLE_ID);
-    if (!(titleTarget instanceof HTMLInputElement)) return;
-
+  function handleInstructorCourseTitleFocus() {
     setMobileOpen(false);
-    const behavior = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-      ? 'auto'
-      : 'smooth';
-    titleTarget.scrollIntoView({ behavior, block: 'center' });
-    titleTarget.focus({ preventScroll: true });
+    focusInstructorCourseTitle(INSTRUCTOR_COURSE_TITLE_ID);
   }
 
   const catalogSearchMatches = useMemo(() => {
@@ -786,7 +668,7 @@ export function AppShell() {
               <button
                 className={[styles.navLink, styles.navLinkPrimary, styles.navAction].join(' ')}
                 type="button"
-                onClick={focusInstructorCourseTitle}
+                onClick={handleInstructorCourseTitleFocus}
               >
                 Create course
               </button>
@@ -892,7 +774,7 @@ export function AppShell() {
                 <button
                   className={[styles.navLink, styles.navLinkPrimary, styles.navAction].join(' ')}
                   type="button"
-                  onClick={focusInstructorCourseTitle}
+                  onClick={handleInstructorCourseTitleFocus}
                 >
                   Create course
                 </button>

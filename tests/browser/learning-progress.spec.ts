@@ -1876,21 +1876,24 @@ test('supports keyboard traversal and restores focus after list and workspace re
   const listHeading = page.getByRole('heading', { name: 'My learning' });
   await expect(page.getByText('1 enrollment · Page 1 of 1')).toBeVisible();
   await expect(listHeading).toBeFocused();
-  const browseCourses = page.getByRole('link', { name: 'Browse courses' });
-  await expect(browseCourses).toHaveAttribute('href', '/');
-  await browseCourses.hover();
-  await expect(browseCourses).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-  const browseCoursesPosition = await browseCourses.evaluate((link) => {
+  const catalogReturn = page
+    .getByRole('navigation', { name: 'Breadcrumb' })
+    .getByRole('link', { name: 'Catalog' });
+  await expect(catalogReturn).toHaveAttribute('href', '/');
+  await catalogReturn.hover();
+  await expect(catalogReturn).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  const catalogReturnPosition = await catalogReturn.evaluate((link) => {
     const rect = link.getBoundingClientRect();
     const label = link.querySelector('span')?.getBoundingClientRect();
     const icon = link.querySelector('svg')?.getBoundingClientRect();
-    if (!label || !icon) throw new Error('Browse courses return-link content is missing.');
+    if (!label || !icon) throw new Error('Catalog return-link content is missing.');
     return {
       left: rect.left,
       top: rect.top,
       height: rect.height,
       labelTop: label.top,
       iconTop: icon.top,
+      iconHeight: icon.height,
     };
   });
 
@@ -1915,22 +1918,29 @@ test('supports keyboard traversal and restores focus after list and workspace re
       height: rect.height,
       labelTop: label.top,
       iconTop: icon.top,
+      iconHeight: icon.height,
     };
   });
-  expect(Math.abs(myLearningReturnPosition.left - browseCoursesPosition.left)).toBeLessThanOrEqual(
+  expect(Math.abs(myLearningReturnPosition.left - catalogReturnPosition.left)).toBeLessThanOrEqual(
     0.5,
   );
-  expect(Math.abs(myLearningReturnPosition.top - browseCoursesPosition.top)).toBeLessThanOrEqual(
+  expect(Math.abs(myLearningReturnPosition.top - catalogReturnPosition.top)).toBeLessThanOrEqual(
     0.5,
   );
   expect(
-    Math.abs(myLearningReturnPosition.height - browseCoursesPosition.height),
+    Math.abs(myLearningReturnPosition.height - catalogReturnPosition.height),
   ).toBeLessThanOrEqual(0.5);
   expect(
-    Math.abs(myLearningReturnPosition.labelTop - browseCoursesPosition.labelTop),
+    Math.abs(myLearningReturnPosition.labelTop - catalogReturnPosition.labelTop),
   ).toBeLessThanOrEqual(0.5);
+  expect(catalogReturnPosition.iconHeight).toBeCloseTo(20, 1);
+  expect(myLearningReturnPosition.iconHeight).toBeCloseTo(18, 1);
   expect(
-    Math.abs(myLearningReturnPosition.iconTop - browseCoursesPosition.iconTop),
+    Math.abs(
+      myLearningReturnPosition.iconTop +
+        myLearningReturnPosition.iconHeight / 2 -
+        (catalogReturnPosition.iconTop + catalogReturnPosition.iconHeight / 2),
+    ),
   ).toBeLessThanOrEqual(0.5);
   expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
   expect(diagnostics.httpFailures).toEqual([
