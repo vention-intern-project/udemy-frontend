@@ -9,45 +9,32 @@ import {
   type PointerEvent,
 } from 'react';
 import { Link } from 'react-router-dom';
-import { CircleCheck, ShoppingCart, Trash2, UserPlus, type LucideIcon } from 'lucide-react';
 
 import type { CatalogCourse } from '@entities/course';
-import { Button, type ButtonVariant } from '@shared/ui/primitives';
+import { Button } from '@shared/ui/primitives';
 
 import styles from './CourseCard.module.css';
-import type {
-  CatalogCourseActionPresentation,
-  CatalogCourseActionState,
-} from './useCatalogCourseActions';
-
-const DECIMAL_PRICE = /^(?:0|[1-9]\d*)(?:\.\d+)?$/;
-const CURRENCY_CODE = /^[A-Z]{3}$/;
-const TOOLTIP_VIEWPORT_GUTTER = 12;
-const TOOLTIP_CONNECTOR_WIDTH = 8;
-const TOOLTIP_PREFERRED_WIDTH = 320;
-const TOOLTIP_MINIMUM_WIDTH = 220;
-const DISCLOSURE_OPEN_DELAY = 280;
-const DISCLOSURE_CLOSE_DELAY = 180;
-const TOOLTIP_CONNECTOR_SAFE_INSET = 24;
-
-type TooltipPlacement =
-  | {
-      mode: 'side';
-      side: 'left' | 'right';
-      left: number;
-      top: number;
-      width: number;
-      maxHeight: number;
-      connectorOffset: number;
-    }
-  | { mode: 'bottom'; left: number; width: number; maxHeight: number; connectorOffset: number };
+import {
+  DISCLOSURE_CLOSE_DELAY,
+  DISCLOSURE_OPEN_DELAY,
+  TOOLTIP_CONNECTOR_WIDTH,
+  TOOLTIP_MINIMUM_WIDTH,
+  TOOLTIP_PREFERRED_WIDTH,
+  TOOLTIP_VIEWPORT_GUTTER,
+  clampConnectorOffset,
+  sameTooltipPlacement,
+  supportsFinePointer,
+  useCourseCardDisclosureAvailability,
+  type CourseCardTooltipPlacement,
+} from './course-card-disclosure';
+import {
+  catalogActionLabel,
+  courseActionVisual,
+  formatCatalogPrice,
+} from './course-card-presentation';
+import type { CatalogCourseActionState } from './useCatalogCourseActions';
 
 type CourseDisclosureCallback = (courseId: number) => void;
-
-interface CourseActionVisual {
-  Icon: LucideIcon | null;
-  buttonVariant: ButtonVariant;
-}
 
 interface CourseCardProps {
   course: CatalogCourse;
@@ -60,114 +47,6 @@ interface CourseCardProps {
   onDisclosurePinToggle: CourseDisclosureCallback;
   action: CatalogCourseActionState;
   onAction(): void;
-}
-
-function clampConnectorOffset(offset: number, size: number): number {
-  const safeInset = Math.min(TOOLTIP_CONNECTOR_SAFE_INSET, size / 2);
-  return Math.min(Math.max(offset, safeInset), size - safeInset);
-}
-
-function sameTooltipPlacement(current: TooltipPlacement | null, next: TooltipPlacement): boolean {
-  if (!current || current.mode !== next.mode) return false;
-  if (current.mode === 'bottom' || next.mode === 'bottom') {
-    return (
-      current.mode === 'bottom' &&
-      next.mode === 'bottom' &&
-      current.left === next.left &&
-      current.width === next.width &&
-      current.maxHeight === next.maxHeight &&
-      current.connectorOffset === next.connectorOffset
-    );
-  }
-  return (
-    current.side === next.side &&
-    current.left === next.left &&
-    current.top === next.top &&
-    current.width === next.width &&
-    current.maxHeight === next.maxHeight &&
-    current.connectorOffset === next.connectorOffset
-  );
-}
-
-function supportsFinePointer(): boolean {
-  return (
-    typeof window !== 'undefined' &&
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia('(hover: hover) and (pointer: fine)').matches
-  );
-}
-
-function isCourseCardDisclosureAvailable(): boolean {
-  return (
-    typeof window === 'undefined' ||
-    (window.innerWidth >= 768 &&
-      (typeof window.matchMedia !== 'function' ||
-        window.matchMedia('(hover: hover) and (pointer: fine)').matches))
-  );
-}
-
-function useCourseCardDisclosureAvailability(): boolean {
-  const [isAvailable, setIsAvailable] = useState(isCourseCardDisclosureAvailable);
-
-  useEffect(() => {
-    const updateAvailability = () => setIsAvailable(isCourseCardDisclosureAvailable());
-    const finePointerQuery =
-      typeof window.matchMedia === 'function'
-        ? window.matchMedia('(hover: hover) and (pointer: fine)')
-        : null;
-    updateAvailability();
-    window.addEventListener('resize', updateAvailability);
-    finePointerQuery?.addEventListener('change', updateAvailability);
-    return () => {
-      window.removeEventListener('resize', updateAvailability);
-      finePointerQuery?.removeEventListener('change', updateAvailability);
-    };
-  }, []);
-
-  return isAvailable;
-}
-
-function courseActionVisual(presentation: CatalogCourseActionPresentation): CourseActionVisual {
-  switch (presentation) {
-    case 'add-to-cart':
-      return { Icon: ShoppingCart, buttonVariant: 'primary' };
-    case 'enroll-free':
-      return { Icon: UserPlus, buttonVariant: 'primary' };
-    case 'enrolled':
-      return { Icon: CircleCheck, buttonVariant: 'secondary' };
-    case 'remove':
-      return { Icon: Trash2, buttonVariant: 'secondary' };
-    case 'neutral':
-      return { Icon: null, buttonVariant: 'primary' };
-  }
-}
-
-function catalogActionLabel(presentation: CatalogCourseActionPresentation, label: string): string {
-  if (presentation === 'add-to-cart' && label === 'Log in to add to cart') return 'Add to cart';
-  if (presentation === 'enroll-free' && label === 'Log in to enroll free') return 'Enroll free';
-  return presentation === 'neutral' && label === 'Course is not published'
-    ? 'Not published'
-    : label;
-}
-
-function formatCatalogPrice(price: string, currency: string): string {
-  if (!DECIMAL_PRICE.test(price) || !CURRENCY_CODE.test(currency)) return 'Price unavailable';
-  if (/^0(?:\.0+)?$/.test(price)) return 'FREE';
-  try {
-    const currencyMarker = new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency,
-      currencyDisplay: 'narrowSymbol',
-    })
-      .formatToParts(0)
-      .find((part) => part.type === 'currency')?.value;
-    if (!currencyMarker) return 'Price unavailable';
-    return /^[\p{L}]+$/u.test(currencyMarker)
-      ? `${currencyMarker}\u00A0${price}`
-      : `${currencyMarker}${price}`;
-  } catch {
-    return 'Price unavailable';
-  }
 }
 
 export function CourseCard({
@@ -194,7 +73,7 @@ export function CourseCard({
   const tooltipRef = useRef<HTMLDivElement>(null);
   const openTimerRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null);
   const closeTimerRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null);
-  const [tooltipPlacement, setTooltipPlacement] = useState<TooltipPlacement | null>(null);
+  const [tooltipPlacement, setTooltipPlacement] = useState<CourseCardTooltipPlacement | null>(null);
   const tooltipPlacementMode = tooltipPlacement?.mode;
   const tooltipPlacementWidth = tooltipPlacement?.width;
 
@@ -232,7 +111,7 @@ export function CourseCard({
       availableSide - TOOLTIP_CONNECTOR_WIDTH - TOOLTIP_VIEWPORT_GUTTER,
     );
     const linkCenterX = linkLeft + linkRect.width / coordinateScale / 2;
-    const makeBottomPlacement = (): TooltipPlacement => {
+    const makeBottomPlacement = (): CourseCardTooltipPlacement => {
       const bottomWidth = Math.min(
         TOOLTIP_PREFERRED_WIDTH,
         clientWidth - 2 * TOOLTIP_VIEWPORT_GUTTER,
@@ -246,7 +125,7 @@ export function CourseCard({
         connectorOffset: clampConnectorOffset(linkCenterX - bottomLeft, bottomWidth),
       };
     };
-    const nextPlacement: TooltipPlacement =
+    const nextPlacement: CourseCardTooltipPlacement =
       clientWidth < 768 || width < TOOLTIP_MINIMUM_WIDTH
         ? makeBottomPlacement()
         : (() => {

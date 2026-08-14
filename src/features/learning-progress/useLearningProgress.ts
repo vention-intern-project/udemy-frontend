@@ -1,10 +1,9 @@
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import type { Enrollment, EnrollmentList, EnrollmentStatus } from '@entities/enrollment';
+import type { Enrollment, EnrollmentList } from '@entities/enrollment';
 import type { LessonOutline } from '@entities/course';
-import { ApiError, type SessionCacheEpoch } from '@shared/api';
-import { useSession, type SessionContextValue } from '@features/auth-session';
+import { useSession } from '@features/auth-session';
 
 import {
   requestCourseProgress,
@@ -13,6 +12,16 @@ import {
   requestLessonOutline,
   setLessonCompletion,
 } from './api';
+import {
+  attemptFor,
+  learningEpoch,
+  lessonMutationFailureKind,
+  statusAllowsProgress,
+  workspaceIdentity,
+  type LessonMutationSnapshot,
+  type LessonRowStateScope,
+  type MutationUnavailableScope,
+} from './learning-progress-contracts';
 import { DEFAULT_LEARNING_FEEDBACK_MOTION_PREFERENCES } from './model';
 import type {
   CourseProgress,
@@ -28,11 +37,7 @@ import {
   learningOutlineQueryKey,
 } from './query-keys';
 
-export interface LearningFailure {
-  title: string;
-  message: string;
-  unavailable: boolean;
-}
+export { learningFailure, type LearningFailure } from './learning-progress-contracts';
 
 export interface LearningListWorkflow {
   readonly enrollments: UseQueryResult<EnrollmentList, unknown>;
@@ -54,96 +59,6 @@ export interface LearningWorkspaceWorkflow {
 
 const SUCCESS_FEEDBACK_VISIBLE_MS = 4000;
 const SUCCESS_FEEDBACK_EXIT_MS = 120;
-
-interface LessonRowStateScope {
-  readonly identity: string;
-  readonly states: ReadonlyMap<number, LessonCompletionState>;
-}
-
-interface LessonMutationSnapshot {
-  readonly attempt: LessonProgressAttempt;
-  readonly previous: LessonCompletionState;
-}
-
-interface MutationUnavailableScope {
-  readonly identity: string;
-}
-
-type LessonMutationFailureKind = 'aborted' | 'forbidden' | 'uncertain' | 'rejected';
-
-function lessonMutationFailureKind(error: unknown): LessonMutationFailureKind {
-  if (error instanceof ApiError) {
-    if (error.kind === 'aborted') return 'aborted';
-    if (error.status === 403) return 'forbidden';
-    if (error.kind === 'invalid_response' || error.kind === 'offline') return 'uncertain';
-  }
-  if (error instanceof TypeError) return 'uncertain';
-  return 'rejected';
-}
-
-function learningEpoch(session: SessionContextValue): SessionCacheEpoch | null {
-  return session.state.status === 'authenticated' && session.state.user.role === 'student'
-    ? (session.cacheEpoch ?? null)
-    : null;
-}
-
-function statusAllowsProgress(status: EnrollmentStatus | undefined): boolean {
-  return status === 'active';
-}
-
-function workspaceIdentity(
-  subject: SessionCacheEpoch | null,
-  enrollmentId: number | null,
-): string | null {
-  return subject !== null && enrollmentId !== null ? `${subject}:${enrollmentId}` : null;
-}
-
-function attemptFor(
-  subject: SessionCacheEpoch,
-  enrollmentId: number,
-  courseId: number,
-  lessonId: number,
-  targetCompleted: boolean,
-): LessonProgressAttempt {
-  return {
-    subject,
-    workspaceIdentity: workspaceIdentity(subject, enrollmentId) as string,
-    enrollmentId,
-    courseId,
-    lessonId,
-    targetCompleted,
-    identity: `${subject}:${courseId}:${lessonId}:${targetCompleted ? 'complete' : 'incomplete'}`,
-  };
-}
-
-export function learningFailure(error: unknown): LearningFailure {
-  if (error instanceof ApiError && (error.status === 403 || error.status === 404)) {
-    return {
-      title: 'Learning workspace unavailable',
-      message: 'This learning workspace is unavailable.',
-      unavailable: true,
-    };
-  }
-  if (error instanceof ApiError && error.status === 401) {
-    return {
-      title: 'Sign in required',
-      message: 'Your session has ended. Sign in to continue learning.',
-      unavailable: false,
-    };
-  }
-  if (error instanceof ApiError && error.kind === 'invalid_response') {
-    return {
-      title: 'Learning data is unavailable',
-      message: 'The server returned an invalid response. Try again.',
-      unavailable: false,
-    };
-  }
-  return {
-    title: 'Learning data is unavailable',
-    message: 'Try again in a moment.',
-    unavailable: false,
-  };
-}
 
 export function useLearningList(page: number): LearningListWorkflow {
   const session = useSession();

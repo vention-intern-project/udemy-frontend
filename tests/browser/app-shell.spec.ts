@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expect, test, type BrowserContext, type Locator, type Page } from '@playwright/test';
 import {
   breakpointTokens,
   colorTokens,
@@ -84,6 +84,12 @@ const ENROLLMENTS_STRICT_MODE_ABORT: RequestFailureIdentity = {
 const INSTRUCTOR_COURSE_COLLECTION_STRICT_MODE_ABORT: RequestFailureIdentity = {
   method: 'GET',
   path: '/courses/my?page=1&page_size=20',
+  errorText: 'net::ERR_ABORTED',
+};
+
+const INSTRUCTOR_EDITOR_COURSE_STRICT_MODE_ABORT: RequestFailureIdentity = {
+  method: 'GET',
+  path: '/courses/42',
   errorText: 'net::ERR_ABORTED',
 };
 
@@ -224,6 +230,116 @@ async function mockAuthenticatedSession(page: Page, role: BackendRole) {
       }),
     }),
   );
+}
+
+interface InstructorPopupFixture {
+  waitForEditorCourseFulfillment(): Promise<void>;
+}
+
+async function mockInstructorPopupPages(
+  context: BrowserContext,
+  page: Page,
+): Promise<InstructorPopupFixture> {
+  let resolveEditorCourseFulfillment: (() => void) | null = null;
+  await context.route('**/me', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        email: 'instructor@example.com',
+        name: 'Indira',
+        surname: 'User',
+        role: 'instructor',
+        birthday: null,
+        phone_number: null,
+        created_at: '2026-07-20T00:00:00Z',
+      }),
+    }),
+  );
+  await context.route(/\/courses\/my\?page=1&page_size=20$/, async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        items: [],
+        page: 1,
+        page_size: 20,
+        total: 0,
+        pages: 0,
+        has_next: false,
+        has_previous: false,
+      }),
+    }),
+  );
+  await context.route('**/courses/42', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        id: 42,
+        title: 'Editor course',
+        description: null,
+        price: '0.00',
+        currency: 'USD',
+        published_at: null,
+        created_at: '2026-07-20T00:00:00Z',
+        updated_at: '2026-07-20T00:00:00Z',
+        instructor: { id: 3, name: 'Indira', surname: 'User' },
+        lessons: [],
+      }),
+    }),
+  );
+  await page.route('**/courses/42', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        id: 42,
+        title: 'Editor course',
+        description: null,
+        price: '0.00',
+        currency: 'USD',
+        published_at: null,
+        created_at: '2026-07-20T00:00:00Z',
+        updated_at: '2026-07-20T00:00:00Z',
+        instructor: { id: 3, name: 'Indira', surname: 'User' },
+        lessons: [],
+      }),
+    });
+    resolveEditorCourseFulfillment?.();
+    resolveEditorCourseFulfillment = null;
+  });
+  await page.route(/\/courses\/my\?page=1&page_size=20$/, async (route) => route.abort('aborted'));
+  return {
+    waitForEditorCourseFulfillment() {
+      if (resolveEditorCourseFulfillment !== null)
+        throw new Error('Editor course fulfillment is already being observed');
+      return new Promise<void>((resolve) => {
+        resolveEditorCourseFulfillment = resolve;
+      });
+    },
+  };
+}
+
+function monitorPopupRuntime(context: BrowserContext) {
+  const assertions: Array<() => void> = [];
+  context.on('page', (popup) =>
+    assertions.push(
+      monitorRuntime(
+        popup,
+        [],
+        [],
+        [
+          INSTRUCTOR_EDITOR_COURSE_STRICT_MODE_ABORT,
+          INSTRUCTOR_COURSE_COLLECTION_STRICT_MODE_ABORT,
+        ],
+      ),
+    ),
+  );
+  return () => {
+    expect(assertions, 'opened pages monitored for runtime diagnostics').toHaveLength(2);
+    assertions.forEach((assertRuntimeClean) => assertRuntimeClean());
+  };
 }
 
 async function mockStudentWorkspaceData(page: Page) {
@@ -790,13 +906,23 @@ async function expectAnonymousMobileNavigation(page: Page, width: MobileViewport
     return {
       headerTop: header.getBoundingClientRect().top,
       searchTop: search.getBoundingClientRect().top,
+      searchTopInset: Number.parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue('--spacing-2'),
+      ),
       searchBackground: getComputedStyle(search).backgroundColor,
       searchBorderTop: getComputedStyle(search).borderTopColor,
       searchShadow: getComputedStyle(search).boxShadow,
     };
   });
   expect(stickyGeometry.headerTop).toBeLessThan(0);
-  expect(stickyGeometry.searchTop).toBeCloseTo(0, 1);
+  expect(stickyGeometry.searchTopInset).toBe(8);
+  expect(stickyGeometry.searchTop).toBeGreaterThanOrEqual(0);
+  expect(stickyGeometry.searchTop).toBeLessThanOrEqual(stickyGeometry.searchTopInset);
+  expect(
+    [0, stickyGeometry.searchTopInset].some(
+      (expectedTop) => Math.abs(stickyGeometry.searchTop - expectedTop) <= 1,
+    ),
+  ).toBe(true);
   expect(stickyGeometry.searchBackground).toBe('rgb(238, 240, 244)');
   expect(stickyGeometry.searchBorderTop).toBe('rgb(209, 213, 219)');
   expect(stickyGeometry.searchShadow).not.toBe('none');
@@ -1246,7 +1372,11 @@ test('keeps the accepted shared-header marks and quiet desktop primary navigatio
 test('exposes representative production tokens across marketplace and workspace density', async ({
   page,
 }) => {
-  const assertRuntimeClean = monitorRuntime(page);
+  const assertRuntimeClean = monitorRuntime(
+    page,
+    [],
+    [INSTRUCTOR_COURSE_COLLECTION_STRICT_MODE_ABORT],
+  );
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.goto('/');
 
@@ -2149,10 +2279,22 @@ test('preserves the source mobile menu and focus for modified and new-tab activa
   page,
   context,
 }) => {
-  const assertRuntimeClean = monitorRuntime(page);
+  const assertRuntimeClean = monitorRuntime(
+    page,
+    [],
+    [
+      INSTRUCTOR_EDITOR_COURSE_STRICT_MODE_ABORT,
+      { ...INSTRUCTOR_COURSE_COLLECTION_STRICT_MODE_ABORT, occurrences: 2 },
+    ],
+  );
+  const assertPopupRuntimeClean = monitorPopupRuntime(context);
+  const popupFixture = await mockInstructorPopupPages(context, page);
   await mockAuthenticatedSession(page, 'instructor');
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/instructor/courses/42/edit');
+  await Promise.all([
+    popupFixture.waitForEditorCourseFulfillment(),
+    page.goto('/instructor/courses/42/edit'),
+  ]);
   await expect(page.getByRole('heading', { level: 1, name: 'Edit course' })).toBeVisible();
   const originalUrl = page.url();
   const menu = page.getByRole('button', { name: 'Open navigation' });
@@ -2174,6 +2316,7 @@ test('preserves the source mobile menu and focus for modified and new-tab activa
   await control.link.click({ modifiers: ['Control'] });
   const controlPopup = await controlPopupPromise;
   await controlPopup.waitForURL(/\/instructor\/courses(?:[?#]|$)/);
+  await expect(controlPopup.getByRole('heading', { level: 2, name: 'Your courses' })).toBeFocused();
   expect(new URL(controlPopup.url()).pathname).toBe('/instructor/courses');
   expect(page.url()).toBe(originalUrl);
   await expect(control.navigation).toBeVisible();
@@ -2207,6 +2350,7 @@ test('preserves the source mobile menu and focus for modified and new-tab activa
   await middle.link.click({ button: 'middle' });
   const middlePopup = await middlePopupPromise;
   await middlePopup.waitForURL(/\/instructor\/courses(?:[?#]|$)/);
+  await expect(middlePopup.getByRole('heading', { level: 2, name: 'Your courses' })).toBeFocused();
   expect(new URL(middlePopup.url()).pathname).toBe('/instructor/courses');
   expect(page.url()).toBe(originalUrl);
   await expect(middle.navigation).toBeVisible();
@@ -2221,6 +2365,7 @@ test('preserves the source mobile menu and focus for modified and new-tab activa
   await expect(page).toHaveTitle('Instructor courses | LearnHub');
   await expectNoHorizontalOverflow(page);
   assertRuntimeClean();
+  assertPopupRuntimeClean();
 });
 
 test('renders the not-found route at mobile width without overflow', async ({ page }) => {

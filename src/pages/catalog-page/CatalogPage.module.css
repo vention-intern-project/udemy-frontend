@@ -259,7 +259,7 @@
   }
 
   .toolbarControls [data-part='catalog-filter-price-label'] {
-    grid-column: 1 / -1;
+    display: none;
   }
 
   .sortBy {

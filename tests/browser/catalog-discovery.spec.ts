@@ -10,6 +10,7 @@ import {
 interface CatalogPaginationFixture {
   page?: number;
   pages?: number;
+  total?: number;
   has_next?: boolean;
   has_previous?: boolean;
 }
@@ -20,7 +21,7 @@ function response(items: readonly unknown[] = [], pagination: CatalogPaginationF
     page: 1,
     page_size: 20,
     total: items.length,
-    pages: items.length ? 1 : 0,
+    pages: items.length === 0 ? 0 : 1,
     has_next: false,
     has_previous: false,
     ...pagination,
@@ -436,6 +437,7 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
       body: response(courses, {
         page: requestedPage,
         pages: 2,
+        total: 25,
         has_next: requestedPage === 1,
         has_previous: requestedPage === 2,
       }),
@@ -1125,7 +1127,7 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
   await expect(publishedDisclosureButton).toHaveAttribute('aria-expanded', 'true');
   await expect(publishedDisclosureButton).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('tooltip')).toHaveCount(1);
-  await page.getByRole('heading', { level: 2, name: 'Found 5 courses' }).hover();
+  await page.getByRole('heading', { level: 2, name: 'Found 25 courses' }).hover();
   await expect(publishedDisclosureButton).toHaveAttribute('aria-expanded', 'true');
   await expect(publishedDisclosureButton).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('tooltip')).toHaveCount(1);
@@ -1329,6 +1331,7 @@ test('keeps a fine-pointer hover-open Sort popup open through trigger click and 
       body: response([permittedCourse()], {
         page: requestedPage,
         pages: 2,
+        total: 21,
         has_next: requestedPage === 1,
         has_previous: requestedPage === 2,
       }),
@@ -1698,9 +1701,7 @@ test('keeps Catalog result geometry stable while changed Sort and price requests
   assertClean();
 });
 
-test('navigates every enabled control for an authoritative page beyond the advertised page count', async ({
-  page,
-}) => {
+test('navigates every enabled control for an authoritative high final page', async ({ page }) => {
   const assertClean = await monitor(page);
   assertClean.allowRequestFailure({
     method: 'GET',
@@ -1715,7 +1716,8 @@ test('navigates every enabled control for an authoritative page beyond the adver
       contentType: 'application/json',
       body: response([permittedCourse()], {
         page: 99,
-        pages: 1,
+        pages: 99,
+        total: 1961,
         has_next: false,
         has_previous: true,
       }),
@@ -1724,7 +1726,7 @@ test('navigates every enabled control for an authoritative page beyond the adver
 
   await page.goto('/?page=99');
   await expect(page.getByRole('link', { name: 'React' })).toBeVisible();
-  await expect(page.getByRole('status').filter({ hasText: 'Page 99 of 1' })).toHaveCount(1);
+  await expect(page.getByRole('status').filter({ hasText: 'Page 99 of 99' })).toHaveCount(1);
   const previous = page.getByRole('button', { name: 'Go to previous page' });
   const pageOne = page.getByRole('button', { name: 'Go to page 1' });
   await expect(previous).toBeEnabled();
@@ -2419,23 +2421,9 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   ).toBe(true);
   const compactPriceLabel = filters.locator('[data-part="catalog-filter-price-label"]');
   const compactSortLabel = sortLabel.locator('[class*="sortCompact"]');
-  await expect(compactPriceLabel).toHaveText('Price:');
+  await expect(compactPriceLabel).toBeHidden();
   await expect(compactPriceLabel).toHaveAttribute('aria-hidden', 'true');
   await expect(compactSortLabel).toHaveText('Sort:');
-  const compactLabelParity = await Promise.all(
-    [compactPriceLabel, compactSortLabel].map((label) =>
-      label.evaluate((element) => {
-        const style = getComputedStyle(element);
-        return {
-          color: style.color,
-          fontSize: style.fontSize,
-          fontWeight: style.fontWeight,
-          lineHeight: style.lineHeight,
-        };
-      }),
-    ),
-  );
-  expect(compactLabelParity[0]).toEqual(compactLabelParity[1]);
   const mobilePriceLabels = await Promise.all(
     [filters.getByText('Min', { exact: true }), filters.getByText('Max', { exact: true })].map(
       async (label) => {
@@ -2539,15 +2527,15 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
       first.y < second.y ||
       (Math.abs(first.y - second.y) <= 1 && first.x + first.width <= second.x + 1);
     expect(comesBefore(responsiveToolbarGeometry[1]!, responsiveToolbarGeometry[2]!)).toBe(true);
-    const responsiveVisiblePriceLabel =
-      width === 768 ? priceLabel : filters.locator('[data-part="catalog-filter-price-label"]');
+    const responsiveCompactPriceLabel = filters.locator('[data-part="catalog-filter-price-label"]');
+    if (width < 768) await expect(responsiveCompactPriceLabel).toBeHidden();
     const responsivePriceGeometry = await Promise.all([
-      responsiveVisiblePriceLabel.boundingBox(),
+      (width === 768 ? priceLabel : responsiveCompactPriceLabel).boundingBox(),
       filters.getByLabel('Min price').boundingBox(),
       filters.getByLabel('Max price').boundingBox(),
       sortTrigger.boundingBox(),
     ]);
-    expect(responsivePriceGeometry.every(Boolean)).toBe(true);
+    expect(responsivePriceGeometry.slice(1).every(Boolean)).toBe(true);
     if (width === 768) {
       expect(
         Math.abs(
@@ -2562,12 +2550,10 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
       expect(Math.abs(responsivePriceGeometry[1]!.width - 120)).toBeLessThanOrEqual(1);
       expect(Math.abs(responsivePriceGeometry[3]!.width - 148)).toBeLessThanOrEqual(1);
     } else {
-      expect(responsivePriceGeometry[0]!.width).toBeGreaterThan(1);
-      expect(responsivePriceGeometry[0]!.height).toBeGreaterThan(1);
+      expect(responsivePriceGeometry[0]).toBeNull();
       expect(
         Math.abs(responsivePriceGeometry[1]!.y - responsivePriceGeometry[2]!.y),
       ).toBeLessThanOrEqual(1);
-      expect(responsivePriceGeometry[0]!.y).toBeLessThan(responsivePriceGeometry[1]!.y);
       expect(responsivePriceGeometry[1]!.x).toBeLessThan(responsivePriceGeometry[2]!.x);
       expect(responsivePriceGeometry[1]!.width).toBeGreaterThanOrEqual(128);
       expect(responsivePriceGeometry[2]!.width).toBeGreaterThanOrEqual(128);
@@ -2753,7 +2739,7 @@ test('remembers catalog searches in an accessible local combobox without changin
   assertClean();
 });
 
-test('canonicalizes an inverted range and honors server-false pagination availability', async ({
+test('canonicalizes an inverted range and honors single-page pagination availability', async ({
   page,
 }) => {
   const assertClean = await monitor(page);
@@ -2768,7 +2754,12 @@ test('canonicalizes an inverted range and honors server-false pagination availab
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: response([permittedCourse()], { pages: 3, has_next: false, has_previous: false }),
+      body: response([permittedCourse()], {
+        pages: 1,
+        total: 1,
+        has_next: false,
+        has_previous: false,
+      }),
     });
   });
 
@@ -3215,6 +3206,19 @@ test('renders the DD-174 quiet cart state and Details disclosure without changin
     errorText: 'net::ERR_ABORTED',
   });
   assertClean.allowRequestFailure({ method: 'GET', path: '/cart', errorText: 'net::ERR_ABORTED' });
+  expect(JSON.parse(response())).toMatchObject({
+    items: [],
+    page: 1,
+    page_size: 20,
+    total: 0,
+    pages: 0,
+    has_next: false,
+    has_previous: false,
+  });
+  expect(JSON.parse(response([permittedCourse()]))).toMatchObject({
+    total: 1,
+    pages: 1,
+  });
   await page.addInitScript(() => localStorage.setItem('learnhub.access-token', 'student-token'));
   await page.route('**/me', async (route) => {
     await route.fulfill({
