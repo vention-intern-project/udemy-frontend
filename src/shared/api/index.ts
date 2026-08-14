@@ -11,7 +11,7 @@ export type {
 export { ApiError, normalizeHttpError, normalizeTransportError } from './errors';
 export type { ApiErrorInit, ApiErrorKind, ApiValidationIssue } from './errors';
 export type { PageQueryDto, PaginationDto } from './contracts';
-export { isPrivateQueryForEpoch, mutationKeys } from './query-keys';
+export { isPrivateQueryForEpoch } from './query-keys';
 export type { SessionCacheEpoch } from './query-keys';
 export {
   readBoolean,
