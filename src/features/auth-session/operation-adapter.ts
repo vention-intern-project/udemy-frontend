@@ -3,6 +3,7 @@ import type { QueryFunctionContext } from '@tanstack/react-query';
 import {
   API_OPERATION_BY_ID,
   API_OPERATION_METADATA_BY_ID,
+  type ApiOperationRequestOptions,
   type SelectedApiOperationId,
 } from '@entities/api';
 import type { ApiRequestOptions } from '@shared/api';
@@ -10,13 +11,22 @@ import type { SessionContextValue } from './SessionProvider';
 
 type SessionOperationRequester = SessionContextValue['requestPublic'];
 
+type OperationRequestArguments<TResponse, TBody> = {
+  [TId in SelectedApiOperationId]: [
+    operationId: TId,
+    options: ApiOperationRequestOptions<TId, TResponse> & ApiRequestOptions<TBody, TResponse>,
+  ];
+}[SelectedApiOperationId];
+
 function operationPathMatches(template: string, actual: string): boolean {
   const templateSegments = template.split('/');
   const actualSegments = actual.split('/');
-  return templateSegments.length === actualSegments.length
-    && templateSegments.every((segment, index) => (
-      segment.startsWith(':') ? Boolean(actualSegments[index]) : segment === actualSegments[index]
-    ));
+  return (
+    templateSegments.length === actualSegments.length &&
+    templateSegments.every((segment, index) =>
+      segment.startsWith(':') ? Boolean(actualSegments[index]) : segment === actualSegments[index],
+    )
+  );
 }
 
 function assertOperationRequest(
@@ -34,6 +44,33 @@ function assertOperationRequest(
   if (options.authPolicy !== undefined && options.authPolicy !== metadata.authPolicy) {
     throw new Error(`Auth policy does not match ${operationId}`);
   }
+  if (operation.requestMode === 'query') {
+    if (options.body !== undefined) throw new Error(`Body does not match ${operationId}`);
+    if (options.query === undefined) throw new Error(`Query is required for ${operationId}`);
+  } else if (options.query !== undefined) {
+    throw new Error(`Query does not match ${operationId}`);
+  }
+  if (operation.requestMode === 'none' && options.body !== undefined) {
+    throw new Error(`Body does not match ${operationId}`);
+  }
+  if (
+    operation.requestMode === 'json' &&
+    (options.body === undefined || options.body instanceof FormData)
+  ) {
+    throw new Error(`JSON body does not match ${operationId}`);
+  }
+  if (operation.requestMode === 'multipart' && !(options.body instanceof FormData)) {
+    throw new Error(`Multipart body does not match ${operationId}`);
+  }
+  if (
+    (operation.responseMode === 'binary' && options.responseType !== 'blob') ||
+    (operation.responseMode !== 'binary' && options.responseType === 'blob')
+  ) {
+    throw new Error(`Response mode does not match ${operationId}`);
+  }
+  if (operation.mutationDedupe === 'supported' && !options.dedupeKey?.trim()) {
+    throw new Error(`Dedupe key is required for ${operationId}`);
+  }
 }
 
 export function selectOperationRequester(
@@ -46,7 +83,7 @@ export function selectOperationRequester(
   return session.requestOptional;
 }
 
-export function requestOperation<TResponse, TBody = unknown>(
+function executeOperation<TResponse, TBody = unknown>(
   session: SessionContextValue,
   operationId: SelectedApiOperationId,
   options: ApiRequestOptions<TBody, TResponse>,
@@ -54,21 +91,27 @@ export function requestOperation<TResponse, TBody = unknown>(
   const metadata = API_OPERATION_METADATA_BY_ID[operationId];
   const operation = API_OPERATION_BY_ID[operationId];
   assertOperationRequest(operationId, options);
-  return selectOperationRequester(session, operationId)<TResponse, TBody>({
+  return selectOperationRequester(
+    session,
+    operationId,
+  )<TResponse, TBody>({
     ...options,
     method: operation.method,
     authPolicy: metadata.authPolicy,
   });
 }
 
-export function createOperationQueryFn<TResponse, TBody = unknown>(
+export function requestOperation<TResponse = unknown, TBody = unknown>(
   session: SessionContextValue,
-  operationId: SelectedApiOperationId,
-  options: ApiRequestOptions<TBody, TResponse>,
+  ...[operationId, options]: OperationRequestArguments<TResponse, TBody>
+): Promise<TResponse> {
+  return executeOperation<TResponse, TBody>(session, operationId, options);
+}
+
+export function createOperationQueryFn<TResponse = unknown, TBody = unknown>(
+  session: SessionContextValue,
+  ...[operationId, options]: OperationRequestArguments<TResponse, TBody>
 ) {
-  return ({ signal }: QueryFunctionContext): Promise<TResponse> => requestOperation(
-    session,
-    operationId,
-    { ...options, signal },
-  );
+  return ({ signal }: QueryFunctionContext): Promise<TResponse> =>
+    executeOperation<TResponse, TBody>(session, operationId, { ...options, signal });
 }

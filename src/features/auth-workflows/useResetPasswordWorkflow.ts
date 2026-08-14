@@ -5,7 +5,11 @@ import { useNavigate } from 'react-router-dom';
 import { useSession } from '@features/auth-session';
 
 import { resetPassword, type ResetPasswordInput } from './api';
-import { useAuthErrorFocus, useSubmissionAttemptLifecycle } from './AuthForm';
+import {
+  useAuthErrorFocus,
+  useSubmissionAttemptLifecycle,
+  type SubmissionAttempt,
+} from './AuthForm';
 import { authWorkflowMutationKeys } from './mutation-keys';
 import {
   compactFieldErrors,
@@ -17,8 +21,8 @@ import {
 const FIELD_ORDER = ['password', 'passwordConfirmation'] as const;
 
 interface ResetPasswordMutationVariables {
+  readonly attempt: SubmissionAttempt;
   readonly input: ResetPasswordInput;
-  readonly signal: AbortSignal;
 }
 
 export interface ResetPasswordWorkflowOptions {
@@ -58,8 +62,8 @@ export function useResetPasswordWorkflow({
   const attempts = useSubmissionAttemptLifecycle(ownerKey);
   const mutation = useMutation({
     mutationKey: authWorkflowMutationKeys.resetPassword,
-    mutationFn: ({ input, signal }: ResetPasswordMutationVariables) =>
-      resetPassword(session, input, signal),
+    mutationFn: ({ attempt, input }: ResetPasswordMutationVariables) =>
+      resetPassword(session, input, attempt.identity, attempt.signal),
     gcTime: 0,
     retry: false,
   });
@@ -96,7 +100,7 @@ export function useResetPasswordWorkflow({
     setFieldErrors({});
     setSummary(null);
     try {
-      await mutation.mutateAsync({ input, signal: attempt.signal });
+      await mutation.mutateAsync({ attempt, input });
       if (!attempts.isCurrent(attempt)) return;
       onSuccess();
       navigate('/reset-password', { replace: true });

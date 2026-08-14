@@ -10,6 +10,7 @@ import {
 import { Eye, EyeOff } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
+import { createMutationAttemptIdentity, type MutationAttemptIdentity } from '@shared/api';
 import { Button, Input } from '@shared/ui/primitives';
 import type { AuthField, AuthFieldErrors } from './validation';
 import styles from './AuthForm.module.css';
@@ -156,6 +157,7 @@ export function useAuthErrorFocus(
 
 export interface SubmissionAttempt {
   readonly id: number;
+  readonly identity: MutationAttemptIdentity;
   readonly signal: AbortSignal;
 }
 
@@ -194,12 +196,13 @@ export function useSubmissionAttemptLifecycle(ownerKey: string) {
       const controller = new AbortController();
       const attempt: OwnedSubmissionAttempt = {
         id: state.nextId + 1,
+        identity: createMutationAttemptIdentity(),
         signal: controller.signal,
         controller,
       };
       state.nextId = attempt.id;
       state.current = attempt;
-      return { id: attempt.id, signal: attempt.signal };
+      return { id: attempt.id, identity: attempt.identity, signal: attempt.signal };
     },
     isCurrent(attempt: SubmissionAttempt): boolean {
       const state = lifecycle.current;

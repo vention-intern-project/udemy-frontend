@@ -1,6 +1,4 @@
-import {
-  API_OPERATION_BY_ID,
-} from '@entities/api';
+import { API_OPERATION_BY_ID } from '@entities/api';
 import {
   type ForgotPasswordRequestDto,
   type LoginRequestDto,
@@ -16,10 +14,12 @@ import {
   mapRegisterResponseDto,
   type AuthToken,
 } from '@entities/user';
-import {
-  requestOperation,
-  type SessionContextValue,
-} from '@features/auth-session';
+import { requestOperation, type SessionContextValue } from '@features/auth-session';
+import { mutationAttemptKey, type MutationAttemptIdentity } from '@shared/api';
+
+function authDedupeKey(operationId: string, attempt: MutationAttemptIdentity): string {
+  return `${operationId}:${mutationAttemptKey(attempt)}`;
+}
 
 export interface SignupInput extends UserRegisterDto {
   passwordConfirmation: string;
@@ -34,6 +34,7 @@ export interface ResetPasswordInput {
 export async function login(
   session: SessionContextValue,
   input: LoginRequestDto,
+  attempt: MutationAttemptIdentity,
   signal?: AbortSignal,
 ): Promise<AuthToken> {
   const operation = API_OPERATION_BY_ID['API-024'];
@@ -42,6 +43,7 @@ export async function login(
     path: operation.path,
     body: input,
     signal,
+    dedupeKey: authDedupeKey(operation.id, attempt),
     decode: decodeLoginResponseDto,
   });
   return mapLoginResponseDto(dto);
@@ -50,6 +52,7 @@ export async function login(
 export async function signup(
   session: SessionContextValue,
   input: SignupInput,
+  attempt: MutationAttemptIdentity,
   signal?: AbortSignal,
 ): Promise<AuthToken> {
   const operation = API_OPERATION_BY_ID['API-033'];
@@ -65,6 +68,7 @@ export async function signup(
     path: operation.path,
     body,
     signal,
+    dedupeKey: authDedupeKey(operation.id, attempt),
     decode: decodeRegisterResponseDto,
   });
   return mapRegisterResponseDto(dto);
@@ -73,6 +77,7 @@ export async function signup(
 export async function forgotPassword(
   session: SessionContextValue,
   input: ForgotPasswordRequestDto,
+  attempt: MutationAttemptIdentity,
   signal?: AbortSignal,
 ): Promise<void> {
   const operation = API_OPERATION_BY_ID['API-023'];
@@ -81,6 +86,7 @@ export async function forgotPassword(
     path: operation.path,
     body: input,
     signal,
+    dedupeKey: authDedupeKey(operation.id, attempt),
     decode: decodeMessageResponseDto,
   });
 }
@@ -88,6 +94,7 @@ export async function forgotPassword(
 export async function resetPassword(
   session: SessionContextValue,
   input: ResetPasswordInput,
+  attempt: MutationAttemptIdentity,
   signal?: AbortSignal,
 ): Promise<void> {
   const operation = API_OPERATION_BY_ID['API-029'];
@@ -100,6 +107,7 @@ export async function resetPassword(
     path: operation.path,
     body,
     signal,
+    dedupeKey: authDedupeKey(operation.id, attempt),
     decode: decodeMessageResponseDto,
   });
 }

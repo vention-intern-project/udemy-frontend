@@ -207,7 +207,7 @@ describe('course chat interaction lifecycle', () => {
   it('aborts its retained request controller when the mounted interaction unmounts', async () => {
     let signal: AbortSignal | undefined;
     requestCourseChatMock.mockImplementationOnce(
-      (_session, _thread, _message, _context, nextSignal) => {
+      (_session, _thread, _message, _context, _attempt, nextSignal) => {
         signal = nextSignal;
         return new Promise(() => {});
       },

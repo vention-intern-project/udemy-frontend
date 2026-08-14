@@ -6,7 +6,11 @@ import { useSession } from '@features/auth-session';
 
 import { login } from './api';
 import { authWorkflowMutationKeys } from './mutation-keys';
-import { useAuthErrorFocus, useSubmissionAttemptLifecycle } from './AuthForm';
+import {
+  useAuthErrorFocus,
+  useSubmissionAttemptLifecycle,
+  type SubmissionAttempt,
+} from './AuthForm';
 import {
   compactFieldErrors,
   mapAuthFailure,
@@ -17,8 +21,8 @@ import {
 const FIELD_ORDER = ['email', 'password'] as const;
 
 interface LoginMutationVariables {
+  readonly attempt: SubmissionAttempt;
   readonly input: LoginRequestDto;
-  readonly signal: AbortSignal;
 }
 
 export interface LoginWorkflow {
@@ -47,7 +51,8 @@ export function useLoginWorkflow(ownerKey: string): LoginWorkflow {
   const attempts = useSubmissionAttemptLifecycle(ownerKey);
   const mutation = useMutation({
     mutationKey: authWorkflowMutationKeys.login,
-    mutationFn: ({ input, signal }: LoginMutationVariables) => login(session, input, signal),
+    mutationFn: ({ attempt, input }: LoginMutationVariables) =>
+      login(session, input, attempt.identity, attempt.signal),
     gcTime: 0,
     retry: false,
   });
@@ -84,7 +89,7 @@ export function useLoginWorkflow(ownerKey: string): LoginWorkflow {
     setFieldErrors({});
     setSummary(null);
     try {
-      const token = await mutation.mutateAsync({ input, signal: attempt.signal });
+      const token = await mutation.mutateAsync({ attempt, input });
       if (!attempts.isCurrent(attempt)) return;
       session.acceptAccessToken(token.accessToken);
       if (!attempts.isCurrent(attempt)) return;
