@@ -1,3 +1,5 @@
+import { useEffect, useId, useRef } from 'react';
+
 import type { LessonOutline } from '@entities/course';
 import type { CourseProgress, LessonCompletionState } from '@features/learning-progress';
 import { lessonCompletionLabel } from '@features/learning-progress';
@@ -7,6 +9,7 @@ import { Button, Notice, Skeleton, SkeletonGroup } from '@shared/ui/primitives';
 import styles from './EnrollmentProgressPanel.module.css';
 
 export interface EnrollmentProgressPanelProps {
+  readonly workspaceIdentity: string;
   readonly progress: CourseProgress | undefined;
   readonly progressError: unknown;
   readonly progressLoading: boolean;
@@ -33,7 +36,77 @@ function setLessonCompletion(
   onSetCompletion(lessonId, completed);
 }
 
+interface LessonCompletionFocusIntent {
+  readonly workspaceIdentity: string;
+  pendingObserved: boolean;
+}
+
+interface LessonCompletionActionProps {
+  readonly workspaceIdentity: string;
+  readonly lessonId: number;
+  readonly markComplete: boolean;
+  readonly pending: boolean;
+  readonly onSetCompletion: EnrollmentProgressPanelProps['onSetCompletion'];
+}
+
+function LessonCompletionAction({
+  workspaceIdentity,
+  lessonId,
+  markComplete,
+  pending,
+  onSetCompletion,
+}: LessonCompletionActionProps) {
+  const actionId = `lesson-completion-action-${useId()}`;
+  const focusIntentRef = useRef<LessonCompletionFocusIntent | null>(null);
+
+  useEffect(() => {
+    const focusIntent = focusIntentRef.current;
+    if (focusIntent === null) return;
+    if (focusIntent.workspaceIdentity !== workspaceIdentity) {
+      focusIntentRef.current = null;
+      return;
+    }
+    if (pending) {
+      focusIntent.pendingObserved = true;
+      return;
+    }
+    if (!focusIntent.pendingObserved) return;
+    focusIntentRef.current = null;
+    const action = document.getElementById(actionId);
+    const activeElement = document.activeElement;
+    if (
+      action instanceof HTMLButtonElement &&
+      (activeElement === action ||
+        activeElement === document.body ||
+        activeElement === document.documentElement ||
+        activeElement?.tagName === 'MAIN')
+    )
+      action.focus();
+  }, [actionId, pending, workspaceIdentity]);
+
+  const handleClick = () => {
+    if (pending) return;
+    focusIntentRef.current = { workspaceIdentity, pendingObserved: false };
+    setLessonCompletion(pending, lessonId, markComplete, onSetCompletion);
+  };
+
+  return (
+    <Button
+      id={actionId}
+      variant={markComplete ? 'primary' : 'secondary'}
+      state={pending ? 'loading' : 'idle'}
+      loadingLabel="Updating…"
+      statusMessage={pending ? 'Updating lesson progress.' : undefined}
+      className={`${styles.lessonCompletionAction}${markComplete ? ` ${styles.markComplete}` : ''}`}
+      onClick={handleClick}
+    >
+      {markComplete ? 'Mark complete' : 'Mark incomplete'}
+    </Button>
+  );
+}
+
 export function EnrollmentProgressPanel({
+  workspaceIdentity,
   progress,
   progressError,
   progressLoading,
@@ -145,19 +218,13 @@ export function EnrollmentProgressPanel({
                         {lessonCompletionLabel(state)}
                       </p>
                     </div>
-                    <Button
-                      variant={markComplete ? 'primary' : 'secondary'}
-                      aria-busy={pending || undefined}
-                      aria-disabled={pending || undefined}
-                      className={`${styles.lessonCompletionAction}${
-                        markComplete ? ` ${styles.markComplete}` : ''
-                      }`}
-                      onClick={() =>
-                        setLessonCompletion(pending, lesson.id, markComplete, onSetCompletion)
-                      }
-                    >
-                      {markComplete ? 'Mark complete' : 'Mark incomplete'}
-                    </Button>
+                    <LessonCompletionAction
+                      workspaceIdentity={workspaceIdentity}
+                      lessonId={lesson.id}
+                      markComplete={markComplete}
+                      pending={pending}
+                      onSetCompletion={onSetCompletion}
+                    />
                   </li>
                 );
               })}

@@ -69,9 +69,10 @@ interface PaymentFeedbackNoticeProps {
 }
 
 type LearningRetryFocusTarget = 'enrollment' | 'workspace';
+type LearningWorkspaceIdentity = string;
 
 interface LearningRetryFocusIntent {
-  readonly identity: string;
+  readonly identity: LearningWorkspaceIdentity;
   readonly target: LearningRetryFocusTarget;
 }
 
@@ -164,25 +165,25 @@ export function LearningDetailPage() {
   const headingRef = useRef<HTMLHeadingElement>(null);
   const paymentNoticeRef = useRef<HTMLDivElement>(null);
   const retryIntentRef = useRef<LearningRetryFocusIntent | null>(null);
-  const retryIdentity = `${session.cacheEpoch ?? 'anonymous'}:${enrollmentId ?? 'invalid'}`;
+  const workspaceIdentity: LearningWorkspaceIdentity = `${session.cacheEpoch ?? 'anonymous'}:${enrollmentId ?? 'invalid'}`;
   useEffect(() => {
     retryIntentRef.current = null;
-  }, [retryIdentity]);
+  }, [workspaceIdentity]);
   useEffect(() => {
     const intent = retryIntentRef.current;
     if (
-      intent?.identity === retryIdentity &&
+      intent?.identity === workspaceIdentity &&
       intent.target === 'enrollment' &&
       workspace.enrollment.isSuccess
     ) {
       retryIntentRef.current = null;
       headingRef.current?.focus();
     }
-  }, [retryIdentity, workspace.enrollment.isSuccess]);
+  }, [workspaceIdentity, workspace.enrollment.isSuccess]);
   useEffect(() => {
     const intent = retryIntentRef.current;
     if (
-      intent?.identity === retryIdentity &&
+      intent?.identity === workspaceIdentity &&
       intent.target === 'workspace' &&
       workspace.progress.isSuccess &&
       workspace.outline.isSuccess
@@ -190,7 +191,7 @@ export function LearningDetailPage() {
       retryIntentRef.current = null;
       headingRef.current?.focus();
     }
-  }, [retryIdentity, workspace.outline.isSuccess, workspace.progress.isSuccess]);
+  }, [workspaceIdentity, workspace.outline.isSuccess, workspace.progress.isSuccess]);
   useEffect(() => {
     if (checkout.feedback !== null && !checkout.pending) paymentNoticeRef.current?.focus();
   }, [checkout.feedback, checkout.pending]);
@@ -198,7 +199,7 @@ export function LearningDetailPage() {
     if (!succeeded && retryIntentRef.current === intent) retryIntentRef.current = null;
   };
   const retryEnrollment = () => {
-    const intent: LearningRetryFocusIntent = { identity: retryIdentity, target: 'enrollment' };
+    const intent: LearningRetryFocusIntent = { identity: workspaceIdentity, target: 'enrollment' };
     retryIntentRef.current = intent;
     void workspace.retryEnrollment().then(
       (result) => finishRetry(intent, didRetrySucceed(result)),
@@ -206,7 +207,7 @@ export function LearningDetailPage() {
     );
   };
   const retryWorkspace = () => {
-    const intent: LearningRetryFocusIntent = { identity: retryIdentity, target: 'workspace' };
+    const intent: LearningRetryFocusIntent = { identity: workspaceIdentity, target: 'workspace' };
     retryIntentRef.current = intent;
     void workspace.retryWorkspace().then(
       (results) => finishRetry(intent, Array.isArray(results) && results.every(didRetrySucceed)),
@@ -333,6 +334,7 @@ export function LearningDetailPage() {
               ) : null}
             </div>
             <EnrollmentProgressPanel
+              workspaceIdentity={workspaceIdentity}
               progress={workspace.progress.data}
               progressError={workspace.progress.error}
               progressLoading={workspace.progress.isPending}

@@ -87,12 +87,17 @@ function decode<TResponse, TBody>(
 interface DetailHarnessOptions {
   readonly initialEntry?: string;
   readonly queryClient?: QueryClient;
+  readonly sameCourseRouteChange?: boolean;
   readonly sessionChange?: boolean;
   readonly routeChange?: boolean;
   readonly store?: AccessTokenStore;
 }
 
-function DetailHarnessControls({ routeChange, sessionChange }: DetailHarnessOptions) {
+function DetailHarnessControls({
+  routeChange,
+  sameCourseRouteChange,
+  sessionChange,
+}: DetailHarnessOptions) {
   const navigate = useNavigate();
   const session = useSession();
   return (
@@ -100,6 +105,11 @@ function DetailHarnessControls({ routeChange, sessionChange }: DetailHarnessOpti
       {routeChange ? (
         <button type="button" onClick={() => navigate('/learning/enrollments/5')}>
           Open workspace 5
+        </button>
+      ) : null}
+      {sameCourseRouteChange ? (
+        <button type="button" onClick={() => navigate('/learning/enrollments/5')}>
+          Open same-course workspace
         </button>
       ) : null}
       {sessionChange ? (
@@ -915,11 +925,11 @@ describe('LearningDetailPage', () => {
       await user.click(action);
     });
     expect(action.getAttribute('aria-busy')).toBe('true');
-    expect(action.getAttribute('aria-disabled')).toBe('true');
-    expect((action as HTMLButtonElement).disabled).toBe(false);
-    expect(action).toBe(document.activeElement);
-    expect(action.querySelector('[data-part="spinner"]')).toBeNull();
-    expect(action.textContent).toContain('Mark incomplete');
+    expect(action.getAttribute('aria-disabled')).toBeNull();
+    expect((action as HTMLButtonElement).disabled).toBe(true);
+    expect(action.querySelector('[data-part="spinner"]')).toBeTruthy();
+    expect(action.textContent).toContain('Updating…');
+    expect(screen.getByRole('status').textContent).toBe('Updating lesson progress.');
     await act(async () => {
       await user.click(action);
       await user.keyboard('{Enter}');
@@ -930,7 +940,50 @@ describe('LearningDetailPage', () => {
       resolveCompletion?.({ lesson_id: 12, completed: true, completed_at: '2026-07-26T00:00:00Z' });
     });
     await waitFor(() => expect(screen.getByText('Completed')).toBeTruthy());
-    expect(screen.getByRole('button', { name: 'Mark incomplete' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Mark incomplete' })).toBe(document.activeElement);
+  });
+
+  it('restores completion focus when outline arrives before progress resolves during the pending action', async () => {
+    let resolveProgress: ((value: unknown) => void) | undefined;
+    const progress = new Promise<unknown>((resolve) => {
+      resolveProgress = resolve;
+    });
+    let resolveCompletion: ((value: unknown) => void) | undefined;
+    const completion = new Promise<unknown>((resolve) => {
+      resolveCompletion = resolve;
+    });
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/enrollments/4') return decode(options, activeEnrollment);
+      if (options.path === '/courses/7/progress') return decode(options, await progress);
+      if (options.path === '/courses/7/lessons') return decode(options, oneLessonOutline);
+      if (options.path === '/courses/7/lessons/12/complete')
+        return decode(options, await completion);
+      throw new Error(`Unexpected request ${options.path}`);
+    };
+    await renderPage(request);
+    const user = userEvent.setup();
+    const action = await screen.findByRole('button', { name: 'Mark complete' });
+    await act(async () => {
+      await user.click(action);
+    });
+    expect((action as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => {
+      resolveProgress?.({
+        course_id: 7,
+        completed_lessons: 0,
+        total_lessons: 1,
+        progress_percentage: 0,
+      });
+    });
+    expect(screen.getByRole('button', { name: 'Updating…' })).toBeTruthy();
+    await act(async () => {
+      resolveCompletion?.({ lesson_id: 12, completed: true, completed_at: '2026-08-14T00:00:00Z' });
+    });
+    await waitFor(() => expect(screen.getByText('Completed')).toBeTruthy());
+    expect(screen.getByRole('button', { name: 'Mark incomplete' })).toBe(document.activeElement);
   });
 
   it('keeps one stable polite success slot through the accepted lifetime and opacity exit without moving focus', async () => {
@@ -1282,7 +1335,7 @@ describe('LearningDetailPage', () => {
       await Promise.resolve();
     });
     expect(screen.getByText('Completion status unavailable')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Mark complete' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Mark complete' })).toBe(document.activeElement);
   });
 
   it('restores a known completed row when API-018 fails', async () => {
@@ -1684,6 +1737,9 @@ describe('LearningDetailPage', () => {
       await user.click(screen.getByRole('button', { name: 'Open workspace 5' }));
     });
     await screen.findByRole('heading', { name: 'Second workspace' });
+    const routeSentinel = document.createElement('button');
+    document.body.append(routeSentinel);
+    routeSentinel.focus();
     await act(async () => {
       resolveCompletion?.({ lesson_id: 12, completed: true, completed_at: '2026-07-26T00:00:00Z' });
     });
@@ -1703,6 +1759,57 @@ describe('LearningDetailPage', () => {
     });
     expect(screen.getByText('Completion status unavailable')).toBeTruthy();
     expect(screen.queryByText('Lesson marked complete.')).toBeNull();
+    expect(document.activeElement).toBe(routeSentinel);
+    routeSentinel.remove();
+  });
+
+  it('does not restore stale completion focus into a same-course replacement workspace', async () => {
+    let resolveCompletion: ((value: unknown) => void) | undefined;
+    const completion = new Promise<unknown>((resolve) => {
+      resolveCompletion = resolve;
+    });
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/enrollments/4') return decode(options, activeEnrollment);
+      if (options.path === '/enrollments/5')
+        return decode(options, {
+          ...activeEnrollment,
+          id: 5,
+          course: { ...activeEnrollment.course, title: 'Replacement workspace' },
+        });
+      if (options.path === '/courses/7/progress')
+        return decode(options, {
+          course_id: 7,
+          completed_lessons: 0,
+          total_lessons: 1,
+          progress_percentage: 0,
+        });
+      if (options.path === '/courses/7/lessons') return decode(options, oneLessonOutline);
+      if (options.path === '/courses/7/lessons/12/complete')
+        return decode(options, await completion);
+      throw new Error(`Unexpected request ${options.path}`);
+    };
+    await renderPage(request, { sameCourseRouteChange: true });
+    const user = userEvent.setup();
+    const markComplete = await screen.findByRole('button', { name: 'Mark complete' });
+    await act(async () => {
+      await user.click(markComplete);
+    });
+    document.body.tabIndex = -1;
+    document.body.focus();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Open same-course workspace' }));
+    });
+    await screen.findByRole('heading', { name: 'Replacement workspace' });
+    expect(document.activeElement).toBe(document.body);
+    await act(async () => {
+      resolveCompletion?.({ lesson_id: 12, completed: true, completed_at: '2026-08-14T00:00:00Z' });
+    });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Mark complete' })).toBeTruthy());
+    expect(document.activeElement).toBe(document.body);
+    document.body.removeAttribute('tabindex');
   });
 
   it('keeps a late mutation error out of a replacement session subject', async () => {
@@ -1773,12 +1880,17 @@ describe('LearningDetailPage', () => {
     });
     await waitFor(() => expect(profileRequests).toBe(2));
     await screen.findByText('Completion status unavailable');
+    const sessionSentinel = document.createElement('button');
+    document.body.append(sessionSentinel);
+    sessionSentinel.focus();
     await act(async () => {
       rejectCompletion?.(new ApiError({ kind: 'server', status: 500, message: 'private' }));
     });
     await waitFor(() => expect(screen.getByRole('button', { name: 'Mark complete' })).toBeTruthy());
     expect(screen.getByText('Completion status unavailable')).toBeTruthy();
     expect(screen.queryByText('Lesson progress could not be updated. Try again.')).toBeNull();
+    expect(document.activeElement).toBe(sessionSentinel);
+    sessionSentinel.remove();
   });
 
   it('restores focus after enrollment-detail retry succeeds', async () => {
