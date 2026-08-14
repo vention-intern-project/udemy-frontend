@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { createApiClient } from '../../../src/shared/api';
+import {
+  createApiClient,
+  createMutationAttemptIdentity,
+  mutationAttemptKey,
+} from '../../../src/shared/api';
 
 type FetchArguments = Parameters<typeof fetch>;
 type FetchResult = ReturnType<typeof fetch>;
@@ -26,11 +30,21 @@ function createDeferred<T>(): Deferred<T> {
 }
 
 describe('fetch API client', () => {
+  it('keeps opaque mutation attempt keys stable only for explicit identity reuse', () => {
+    const first = createMutationAttemptIdentity();
+    const second = createMutationAttemptIdentity();
+
+    expect(mutationAttemptKey(first)).toBe(mutationAttemptKey(first));
+    expect(mutationAttemptKey(first)).not.toBe(mutationAttemptKey(second));
+  });
+
   it('serializes query/body and attaches a bearer token', async () => {
-    const fetchMock = vi.fn<FetchArguments, FetchResult>().mockResolvedValue(new Response(JSON.stringify({ id: 1 }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    }));
+    const fetchMock = vi.fn<FetchArguments, FetchResult>().mockResolvedValue(
+      new Response(JSON.stringify({ id: 1 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
     const client = createApiClient({
       baseUrl: 'https://api.example.test/',
       fetch: fetchMock,
@@ -53,10 +67,12 @@ describe('fetch API client', () => {
   });
 
   it('suppresses stored and caller-supplied bearers for explicitly public operations', async () => {
-    const fetchMock = vi.fn<FetchArguments, FetchResult>().mockResolvedValue(new Response(
-      JSON.stringify({ access_token: 'replacement' }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } },
-    ));
+    const fetchMock = vi.fn<FetchArguments, FetchResult>().mockResolvedValue(
+      new Response(JSON.stringify({ access_token: 'replacement' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
     const client = createApiClient({
       fetch: fetchMock,
       getAccessToken: () => 'existing-private-token',
@@ -74,37 +90,47 @@ describe('fetch API client', () => {
   });
 
   it('retries a safe GET once for offline and 500 failures', async () => {
-    const offlineFetch = vi.fn<FetchArguments, FetchResult>()
+    const offlineFetch = vi
+      .fn<FetchArguments, FetchResult>()
       .mockRejectedValueOnce(new TypeError('offline'))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }));
-    const serverFetch = vi.fn<FetchArguments, FetchResult>()
+    const serverFetch = vi
+      .fn<FetchArguments, FetchResult>()
       .mockResolvedValueOnce(new Response(JSON.stringify({ detail: 'temporary' }), { status: 500 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     const sleep = vi.fn().mockResolvedValue(undefined);
 
-    await expect(createApiClient({ fetch: offlineFetch, sleep }).request({ path: '/courses' }))
-      .resolves.toEqual({ ok: true });
-    await expect(createApiClient({ fetch: serverFetch, sleep }).request({ path: '/courses' }))
-      .resolves.toEqual({ ok: true });
+    await expect(
+      createApiClient({ fetch: offlineFetch, sleep }).request({ path: '/courses' }),
+    ).resolves.toEqual({ ok: true });
+    await expect(
+      createApiClient({ fetch: serverFetch, sleep }).request({ path: '/courses' }),
+    ).resolves.toEqual({ ok: true });
     expect(offlineFetch).toHaveBeenCalledTimes(2);
     expect(serverFetch).toHaveBeenCalledTimes(2);
     expect(sleep).toHaveBeenCalledTimes(2);
   });
 
   it('never automatically retries a mutation', async () => {
-    const fetchMock = vi.fn<FetchArguments, FetchResult>()
+    const fetchMock = vi
+      .fn<FetchArguments, FetchResult>()
       .mockResolvedValue(new Response(JSON.stringify({ detail: 'server error' }), { status: 500 }));
-    const client = createApiClient({ fetch: fetchMock, sleep: vi.fn().mockResolvedValue(undefined) });
+    const client = createApiClient({
+      fetch: fetchMock,
+      sleep: vi.fn().mockResolvedValue(undefined),
+    });
 
-    await expect(client.request({ method: 'POST', path: '/enrollments', body: { course_id: 3 } }))
-      .rejects.toMatchObject({ kind: 'server' });
+    await expect(
+      client.request({ method: 'POST', path: '/enrollments', body: { course_id: 3 } }),
+    ).rejects.toMatchObject({ kind: 'server' });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('deduplicates matching in-flight mutations without caching their result', async () => {
     const firstResponse = createDeferred<Response>();
     const secondResponse = createDeferred<Response>();
-    const fetchMock = vi.fn<FetchArguments, FetchResult>()
+    const fetchMock = vi
+      .fn<FetchArguments, FetchResult>()
       .mockReturnValueOnce(firstResponse.promise)
       .mockReturnValueOnce(secondResponse.promise);
     const client = createApiClient({ fetch: fetchMock });
@@ -130,26 +156,30 @@ describe('fetch API client', () => {
   it('notifies the session boundary on 401 and exposes a normalized error', async () => {
     const onUnauthorized = vi.fn();
     const client = createApiClient({
-      fetch: vi.fn<FetchArguments, FetchResult>().mockResolvedValue(new Response(
-        JSON.stringify({ detail: 'Could not validate credentials' }),
-        { status: 401 },
-      )),
+      fetch: vi.fn<FetchArguments, FetchResult>().mockResolvedValue(
+        new Response(JSON.stringify({ detail: 'Could not validate credentials' }), {
+          status: 401,
+        }),
+      ),
       onUnauthorized,
     });
 
-    await expect(client.request({ path: '/me' })).rejects.toEqual(expect.objectContaining({
-      kind: 'unauthorized',
-      status: 401,
-    }));
+    await expect(client.request({ path: '/me' })).rejects.toEqual(
+      expect.objectContaining({
+        kind: 'unauthorized',
+        status: 401,
+      }),
+    );
     expect(onUnauthorized).toHaveBeenCalledTimes(1);
   });
 
   it('does not let a failing unauthorized callback replace the API error', async () => {
     const client = createApiClient({
-      fetch: vi.fn<FetchArguments, FetchResult>().mockResolvedValue(new Response(
-        JSON.stringify({ detail: 'Could not validate credentials' }),
-        { status: 401 },
-      )),
+      fetch: vi.fn<FetchArguments, FetchResult>().mockResolvedValue(
+        new Response(JSON.stringify({ detail: 'Could not validate credentials' }), {
+          status: 401,
+        }),
+      ),
       onUnauthorized: () => {
         throw new Error('session storage unavailable');
       },
@@ -163,18 +193,23 @@ describe('fetch API client', () => {
 
   it('supports 204 and binary responses', async () => {
     const contentDisposition = "attachment; filename*=UTF-8''lessons%2Flesson%00%20one.pdf";
-    const fetchMock = vi.fn<FetchArguments, FetchResult>()
+    const fetchMock = vi
+      .fn<FetchArguments, FetchResult>()
       .mockResolvedValueOnce(new Response(null, { status: 204 }))
-      .mockResolvedValueOnce(new Response(new Blob(['lesson']), {
-        status: 200,
-        headers: {
-          'Content-Type': 'Application/PDF; charset=binary',
-          'Content-Disposition': contentDisposition,
-        },
-      }));
+      .mockResolvedValueOnce(
+        new Response(new Blob(['lesson']), {
+          status: 200,
+          headers: {
+            'Content-Type': 'Application/PDF; charset=binary',
+            'Content-Disposition': contentDisposition,
+          },
+        }),
+      );
     const client = createApiClient({ fetch: fetchMock });
 
-    await expect(client.request<void>({ method: 'DELETE', path: '/cart' })).resolves.toBeUndefined();
+    await expect(
+      client.request<void>({ method: 'DELETE', path: '/cart' }),
+    ).resolves.toBeUndefined();
     const binary = await client.request<import('../../../src/shared/api').ApiBinaryResponse>({
       path: '/media/lessons/a.pdf',
       responseType: 'blob',
@@ -193,33 +228,41 @@ describe('fetch API client', () => {
       return { courseId: (value as TestCartItemResponse).id };
     });
     const client = createApiClient({
-      fetch: vi.fn<FetchArguments, FetchResult>().mockResolvedValue(new Response(
-        JSON.stringify({ id: 7 }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } },
-      )),
+      fetch: vi.fn<FetchArguments, FetchResult>().mockResolvedValue(
+        new Response(JSON.stringify({ id: 7 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
     });
 
-    await expect(client.request({
-      path: '/courses/7',
-      decode,
-    })).resolves.toEqual({ courseId: 7 });
+    await expect(
+      client.request({
+        path: '/courses/7',
+        decode,
+      }),
+    ).resolves.toEqual({ courseId: 7 });
     expect(decode).toHaveBeenCalledTimes(1);
   });
 
   it('normalizes successful decoder failures with the HTTP status', async () => {
     const client = createApiClient({
-      fetch: vi.fn<FetchArguments, FetchResult>().mockResolvedValue(new Response(
-        JSON.stringify({ role: 'owner' }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } },
-      )),
+      fetch: vi.fn<FetchArguments, FetchResult>().mockResolvedValue(
+        new Response(JSON.stringify({ role: 'owner' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
     });
 
-    await expect(client.request({
-      path: '/me',
-      decode: () => {
-        throw new TypeError('Invalid profile role');
-      },
-    })).rejects.toMatchObject({
+    await expect(
+      client.request({
+        path: '/me',
+        decode: () => {
+          throw new TypeError('Invalid profile role');
+        },
+      }),
+    ).rejects.toMatchObject({
       kind: 'invalid_response',
       status: 200,
       message: 'Server returned an invalid success response',
@@ -232,20 +275,26 @@ describe('fetch API client', () => {
       return 'decoded-empty';
     });
     const client = createApiClient({
-      fetch: vi.fn<FetchArguments, FetchResult>().mockResolvedValue(new Response(null, { status: 204 })),
+      fetch: vi
+        .fn<FetchArguments, FetchResult>()
+        .mockResolvedValue(new Response(null, { status: 204 })),
     });
 
-    await expect(client.request({
-      method: 'DELETE',
-      path: '/cart',
-      decode,
-    })).resolves.toBe('decoded-empty');
+    await expect(
+      client.request({
+        method: 'DELETE',
+        path: '/cart',
+        decode,
+      }),
+    ).resolves.toBe('decoded-empty');
     expect(decode).toHaveBeenCalledTimes(1);
   });
 
   it('distinguishes malformed success payloads from offline failures', async () => {
     const client = createApiClient({
-      fetch: vi.fn<FetchArguments, FetchResult>().mockResolvedValue(new Response('not-json', { status: 200 })),
+      fetch: vi
+        .fn<FetchArguments, FetchResult>()
+        .mockResolvedValue(new Response('not-json', { status: 200 })),
     });
 
     await expect(client.request({ path: '/courses' })).rejects.toMatchObject({
@@ -255,17 +304,18 @@ describe('fetch API client', () => {
   });
 
   it('decodes successful JSON from unknown and normalizes decoder failures', async () => {
-    const fetchMock = vi.fn<FetchArguments, FetchResult>()
+    const fetchMock = vi
+      .fn<FetchArguments, FetchResult>()
       .mockResolvedValueOnce(new Response(JSON.stringify({ id: 7 }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ id: 'wrong' }), { status: 200 }))
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
     const client = createApiClient({ fetch: fetchMock });
     const decode = (value: unknown): TestCartItemResponse => {
       if (
-        typeof value !== 'object'
-        || value === null
-        || !('id' in value)
-        || typeof value.id !== 'number'
+        typeof value !== 'object' ||
+        value === null ||
+        !('id' in value) ||
+        typeof value.id !== 'number'
       ) {
         throw new TypeError('Expected numeric id');
       }

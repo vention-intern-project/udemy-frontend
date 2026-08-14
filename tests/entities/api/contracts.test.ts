@@ -9,6 +9,7 @@ import {
 } from '../../../src/entities/api';
 import type {
   ApiOperationDefinition,
+  ApiOperationRequestOptions,
   ChatRequestDto,
   ChatResponseDto,
   PathCourse,
@@ -98,6 +99,46 @@ type IsExact<TLeft, TRight> =
     : false;
 
 const CONTRACT_TYPES_MATCH: IsExact<SelectedApiContractMap, ExpectedContractMap> = true;
+const QUERY_OPTIONS: ApiOperationRequestOptions<'API-008'> = {
+  path: '/courses',
+  query: { page: 1, page_size: 20 },
+};
+const JSON_OPTIONS: ApiOperationRequestOptions<'API-024'> = {
+  path: '/login',
+  body: { email: 'learner@example.test', password: 'correct horse battery staple' },
+  dedupeKey: 'login:learner',
+};
+const BINARY_OPTIONS: ApiOperationRequestOptions<'API-025'> = {
+  path: '/media/lessons/lesson.pdf',
+  responseType: 'blob',
+};
+const MULTIPART_OPTIONS: ApiOperationRequestOptions<'API-032'> = {
+  path: '/lessons/1/upload-file',
+  body: new FormData(),
+  dedupeKey: 'lesson:1:upload',
+};
+const JSON_QUERY_OPTIONS: ApiOperationRequestOptions<'API-024'> = {
+  path: '/login',
+  body: { email: 'learner@example.test', password: 'correct horse battery staple' },
+  // @ts-expect-error API-024 cannot carry a query.
+  query: { page: 1 },
+  dedupeKey: 'login:learner',
+};
+const MULTIPART_JSON_OPTIONS: ApiOperationRequestOptions<'API-032'> = {
+  path: '/lessons/1/upload-file',
+  // @ts-expect-error API-032 requires FormData.
+  body: { file: 'lesson.pdf' },
+  dedupeKey: 'lesson:1:upload',
+};
+// @ts-expect-error API-025 requires the blob response mode.
+const BINARY_JSON_OPTIONS: ApiOperationRequestOptions<'API-025'> = {
+  path: '/media/lessons/lesson.pdf',
+};
+// @ts-expect-error supported mutation dedupe is mandatory.
+const MUTATION_WITHOUT_DEDUPE: ApiOperationRequestOptions<'API-024'> = {
+  path: '/login',
+  body: { email: 'learner@example.test', password: 'correct horse battery staple' },
+};
 const NEUTRAL_PAGINATION_FIXTURE: PaginationDto<{ id: number }> = {
   items: [{ id: 1 }],
   page: 1,
@@ -287,6 +328,17 @@ const AUDITED_OPERATION_TABLE = [
 ] as const satisfies readonly AuditedOperation[];
 
 describe('selected backend operation contracts', () => {
+  it('projects registry mode, response, and dedupe requirements into typed options', () => {
+    expect(QUERY_OPTIONS.query).toMatchObject({ page: 1, page_size: 20 });
+    expect(JSON_OPTIONS.dedupeKey).toBe('login:learner');
+    expect(BINARY_OPTIONS.responseType).toBe('blob');
+    expect(MULTIPART_OPTIONS.body).toBeInstanceOf(FormData);
+    expect(JSON_QUERY_OPTIONS).toBeDefined();
+    expect(MULTIPART_JSON_OPTIONS).toBeDefined();
+    expect(BINARY_JSON_OPTIONS).toBeDefined();
+    expect(MUTATION_WITHOUT_DEDUPE).toBeDefined();
+  });
+
   it('registers every selected frontend-facing operation exactly once', () => {
     const expected = AUDITED_OPERATION_TABLE.map(({ id }) => id);
 

@@ -9,7 +9,7 @@ import {
 } from 'react';
 
 import { useSession } from '@features/auth-session';
-import { ApiError } from '@shared/api';
+import { ApiError, createMutationAttemptIdentity } from '@shared/api';
 
 import { requestCourseChat } from './api';
 import type { ChatMessage, CourseChatContext, CourseChatErrorState } from './model';
@@ -147,7 +147,14 @@ export function CourseChatSessionProvider({ children }: CourseChatSessionProvide
 
       const response = isCourseChatPreviewEnabled
         ? previewCourseChat(current.threadId, message)
-        : requestCourseChat(session, current.threadId, message, context, controller.signal);
+        : requestCourseChat(
+            session,
+            current.threadId,
+            message,
+            context,
+            createMutationAttemptIdentity(),
+            controller.signal,
+          );
       void response
         .then((response) => {
           if (controllersRef.current.get(key) !== controller) return;
@@ -248,7 +255,14 @@ function useLocalCourseChat(context: CourseChatContext): CourseChatWorkflow {
     activeController.current?.abort();
     const controller = new AbortController();
     activeController.current = controller;
-    void requestCourseChat(session, threadId.current, message, context, controller.signal)
+    void requestCourseChat(
+      session,
+      threadId.current,
+      message,
+      context,
+      createMutationAttemptIdentity(),
+      controller.signal,
+    )
       .then((response) => {
         if (!mounted.current || activeController.current !== controller) return;
         threadId.current = response.thread_id;

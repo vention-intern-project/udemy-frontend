@@ -1,5 +1,6 @@
-import type { ApiMethod } from '@shared/api';
+import type { ApiMethod, ApiRequestOptions } from '@shared/api';
 import type { ContractAssumptionCode } from './assumptions';
+import type { SelectedApiContractMap } from './contracts';
 
 export type SelectedApiOperationId =
   | 'API-002'
@@ -35,14 +36,18 @@ export type SelectedApiOperationId =
   | 'API-034'
   | 'API-035';
 
+export type ApiOperationRequestMode = 'none' | 'query' | 'json' | 'multipart';
+export type ApiOperationResponseMode = 'json' | 'binary' | 'void';
+export type ApiOperationMutationDedupe = 'supported' | 'not_applicable';
+
 export interface ApiOperationDefinition {
   id: SelectedApiOperationId;
   method: ApiMethod;
   path: string;
   retry: 'safe_read' | 'never';
-  mutationDedupe: 'supported' | 'not_applicable';
-  requestMode: 'none' | 'query' | 'json' | 'multipart';
-  responseMode: 'json' | 'binary' | 'void';
+  mutationDedupe: ApiOperationMutationDedupe;
+  requestMode: ApiOperationRequestMode;
+  responseMode: ApiOperationResponseMode;
   assumptionTags: readonly ContractAssumptionCode[];
 }
 
@@ -379,3 +384,52 @@ export const API_OPERATION_BY_ID = {
 export const API_OPERATIONS: readonly ApiOperationDefinition[] = Object.freeze(
   Object.values(API_OPERATION_BY_ID),
 );
+
+type OperationInput<TId extends SelectedApiOperationId> = TId extends SelectedApiOperationId
+  ? SelectedApiContractMap[TId]['input']
+  : never;
+
+type OperationBody<TId extends SelectedApiOperationId> =
+  OperationInput<TId> extends { body: infer TBody } ? TBody : never;
+
+type OperationQuery<TId extends SelectedApiOperationId> =
+  OperationInput<TId> extends { query: infer TQuery } ? TQuery : never;
+
+type OperationBodyOptions<TId extends SelectedApiOperationId> = TId extends SelectedApiOperationId
+  ? OperationInput<TId> extends { body: unknown }
+    ? { body: OperationBody<TId> }
+    : { body?: never }
+  : never;
+
+type OperationQueryOptions<TId extends SelectedApiOperationId> = TId extends SelectedApiOperationId
+  ? OperationInput<TId> extends { query: unknown }
+    ? { query: OperationQuery<TId> }
+    : { query?: never }
+  : never;
+
+type OperationResponseOptions<TId extends SelectedApiOperationId> =
+  TId extends SelectedApiOperationId
+    ? (typeof API_OPERATION_BY_ID)[TId]['responseMode'] extends 'binary'
+      ? { responseType: 'blob' }
+      : { responseType?: never }
+    : never;
+
+type OperationDedupeOptions<TId extends SelectedApiOperationId> = TId extends SelectedApiOperationId
+  ? (typeof API_OPERATION_BY_ID)[TId]['mutationDedupe'] extends 'supported'
+    ? { dedupeKey: string }
+    : { dedupeKey?: string }
+  : never;
+
+export type ApiOperationRequestOptions<
+  TId extends SelectedApiOperationId,
+  TResponse = SelectedApiContractMap[TId]['response'],
+> = TId extends SelectedApiOperationId
+  ? Omit<
+      ApiRequestOptions<OperationBody<TId>, TResponse>,
+      'body' | 'dedupeKey' | 'query' | 'responseType'
+    > &
+      OperationBodyOptions<TId> &
+      OperationQueryOptions<TId> &
+      OperationResponseOptions<TId> &
+      OperationDedupeOptions<TId>
+  : never;

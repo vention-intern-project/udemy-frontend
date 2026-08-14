@@ -4,7 +4,11 @@ import { useState, type FormEvent, type RefObject } from 'react';
 import { useSession } from '@features/auth-session';
 
 import { signup, type SignupInput } from './api';
-import { useAuthErrorFocus, useSubmissionAttemptLifecycle } from './AuthForm';
+import {
+  useAuthErrorFocus,
+  useSubmissionAttemptLifecycle,
+  type SubmissionAttempt,
+} from './AuthForm';
 import { authWorkflowMutationKeys } from './mutation-keys';
 import {
   compactFieldErrors,
@@ -31,7 +35,7 @@ const FIELD_ORDER = [
 ] as const;
 
 interface SignupMutationVariables {
-  readonly signal: AbortSignal;
+  readonly attempt: SubmissionAttempt;
   readonly values: SignupInput;
 }
 
@@ -58,7 +62,8 @@ export function useSignupWorkflow(ownerKey: string): SignupWorkflow {
   const attempts = useSubmissionAttemptLifecycle(ownerKey);
   const mutation = useMutation({
     mutationKey: authWorkflowMutationKeys.signup,
-    mutationFn: ({ values, signal }: SignupMutationVariables) => signup(session, values, signal),
+    mutationFn: ({ attempt, values }: SignupMutationVariables) =>
+      signup(session, values, attempt.identity, attempt.signal),
     gcTime: 0,
     retry: false,
   });
@@ -93,7 +98,7 @@ export function useSignupWorkflow(ownerKey: string): SignupWorkflow {
     setFieldErrors({});
     setSummary(null);
     try {
-      const token = await mutation.mutateAsync({ values, signal: attempt.signal });
+      const token = await mutation.mutateAsync({ attempt, values });
       if (!attempts.isCurrent(attempt)) return;
       session.acceptAccessToken(token.accessToken);
       if (!attempts.isCurrent(attempt)) return;

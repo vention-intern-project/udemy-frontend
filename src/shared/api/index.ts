@@ -13,6 +13,8 @@ export type { ApiErrorInit, ApiErrorKind, ApiValidationIssue } from './errors';
 export type { PageQueryDto, PaginationDto } from './contracts';
 export { isPrivateQueryForEpoch } from './query-keys';
 export type { SessionCacheEpoch } from './query-keys';
+export { createMutationAttemptIdentity, mutationAttemptKey } from './mutation-attempt';
+export type { MutationAttemptIdentity } from './mutation-attempt';
 export {
   readBoolean,
   readNonNegativeInteger,

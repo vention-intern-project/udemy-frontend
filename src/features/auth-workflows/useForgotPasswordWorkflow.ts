@@ -5,7 +5,11 @@ import type { ForgotPasswordRequestDto } from '@entities/user';
 import { useSession } from '@features/auth-session';
 
 import { forgotPassword } from './api';
-import { useAuthErrorFocus, useSubmissionAttemptLifecycle } from './AuthForm';
+import {
+  useAuthErrorFocus,
+  useSubmissionAttemptLifecycle,
+  type SubmissionAttempt,
+} from './AuthForm';
 import { authWorkflowMutationKeys } from './mutation-keys';
 import {
   compactFieldErrors,
@@ -17,8 +21,8 @@ import {
 const FIELD_ORDER = ['email'] as const;
 
 interface ForgotPasswordMutationVariables {
+  readonly attempt: SubmissionAttempt;
   readonly input: ForgotPasswordRequestDto;
-  readonly signal: AbortSignal;
 }
 
 export interface ForgotPasswordWorkflow {
@@ -46,8 +50,8 @@ export function useForgotPasswordWorkflow(ownerKey: string): ForgotPasswordWorkf
   const attempts = useSubmissionAttemptLifecycle(ownerKey);
   const mutation = useMutation({
     mutationKey: authWorkflowMutationKeys.forgotPassword,
-    mutationFn: ({ input, signal }: ForgotPasswordMutationVariables) =>
-      forgotPassword(session, input, signal),
+    mutationFn: ({ attempt, input }: ForgotPasswordMutationVariables) =>
+      forgotPassword(session, input, attempt.identity, attempt.signal),
     gcTime: 0,
     retry: false,
   });
@@ -73,7 +77,7 @@ export function useForgotPasswordWorkflow(ownerKey: string): ForgotPasswordWorkf
     setFieldErrors({});
     setSummary(null);
     try {
-      await mutation.mutateAsync({ input, signal: attempt.signal });
+      await mutation.mutateAsync({ attempt, input });
       if (!attempts.isCurrent(attempt)) return;
       setSuccess(true);
       setEmailValue('');

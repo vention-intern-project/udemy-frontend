@@ -83,6 +83,67 @@ function sessionRequests() {
   return { session, requestPublic, requestOptional, requestRequired };
 }
 
+declare function selectedOperationId(): SelectedApiOperationId;
+
+function assertPublicOperationTypeBoundary(session: SessionContextValue): void {
+  const widenedOperationId: SelectedApiOperationId = selectedOperationId();
+  const queryBodyOptions = { path: '/courses', body: { unsupported: true } };
+  const jsonQueryOptions = {
+    path: '/login',
+    body: { email: 'learner@example.test', password: 'correct horse battery staple' },
+    query: { unsupported: true },
+    dedupeKey: 'login:test',
+  };
+  void requestOperation(session, 'API-008', {
+    path: '/courses',
+    query: { page: 1, page_size: 20 },
+  });
+  void createOperationQueryFn(session, 'API-008', {
+    path: '/courses',
+    query: { page: 1, page_size: 20 },
+  });
+  // @ts-expect-error Legacy response/body generics must still retain the API-008 query contract.
+  void requestOperation<unknown, { email: string; password: string }>(session, 'API-008', {
+    path: '/courses',
+    body: { email: 'learner@example.test', password: 'correct horse battery staple' },
+    dedupeKey: 'test',
+  });
+  void requestOperation<unknown, { email: string; password: string }>(session, 'API-024', {
+    path: '/login',
+    body: { email: 'learner@example.test', password: 'correct horse battery staple' },
+    dedupeKey: 'test',
+  });
+  void createOperationQueryFn<unknown, { email: string; password: string }>(session, 'API-024', {
+    path: '/login',
+    body: { email: 'learner@example.test', password: 'correct horse battery staple' },
+    dedupeKey: 'test',
+  });
+  // @ts-expect-error A widened operation ID cannot prove that API-024 JSON options are compatible.
+  void requestOperation<unknown, { email: string; password: string }>(session, widenedOperationId, {
+    path: '/login',
+    body: { email: 'learner@example.test', password: 'correct horse battery staple' },
+    dedupeKey: 'test',
+  });
+  void createOperationQueryFn<unknown, { email: string; password: string }>(
+    session,
+    // @ts-expect-error A widened operation ID cannot prove the query-factory options contract.
+    widenedOperationId,
+    {
+      path: '/login',
+      body: { email: 'learner@example.test', password: 'correct horse battery staple' },
+      dedupeKey: 'test',
+    },
+  );
+  // @ts-expect-error Query operations cannot accept a body through requestOperation.
+  void requestOperation(session, 'API-008', queryBodyOptions);
+  // @ts-expect-error Query operations require their contract query through requestOperation.
+  void requestOperation(session, 'API-008', { path: '/courses' });
+  // @ts-expect-error JSON operations cannot accept a query through createOperationQueryFn.
+  void createOperationQueryFn(session, 'API-024', jsonQueryOptions);
+}
+
+void assertPublicOperationTypeBoundary;
+
 describe('TanStack server-state boundary', () => {
   it('uses one stable application client and disables both retry layers', () => {
     const seen: unknown[] = [];
@@ -178,7 +239,10 @@ describe('TanStack server-state boundary', () => {
 
   it('binds operation method, path, and policy and rejects mismatched caller options', async () => {
     const requests = sessionRequests();
-    await requestOperation(requests.session, 'API-008', { path: '/courses' });
+    await requestOperation(requests.session, 'API-008', {
+      path: '/courses',
+      query: { page: 1, page_size: 20 },
+    });
     await requestOperation(requests.session, 'API-010', { path: '/courses/course-1' });
     await requestOperation(requests.session, 'API-030', { path: '/lessons/lesson-1' });
 
@@ -207,21 +271,169 @@ describe('TanStack server-state boundary', () => {
       requestOperation(requests.session, 'API-024', {
         method: 'GET',
         path: '/login',
-      }),
+      } as never),
     ).toThrow('Method does not match API-024');
     expect(() =>
       requestOperation(requests.session, 'API-024', {
         method: 'POST',
         path: '/signup',
-      }),
+      } as never),
     ).toThrow('Path does not match API-024');
     expect(() =>
       requestOperation(requests.session, 'API-024', {
         method: 'POST',
         path: '/login',
         authPolicy: 'required',
-      }),
+      } as never),
     ).toThrow('Auth policy does not match API-024');
+  });
+
+  it.each([
+    {
+      name: 'a body for a no-body operation',
+      operationId: 'API-003' as const,
+      options: { path: '/cart', body: { unsupported: true } },
+      error: 'Body does not match API-003',
+    },
+    {
+      name: 'a body for a query operation',
+      operationId: 'API-008' as const,
+      options: { path: '/courses', body: { unsupported: true } },
+      error: 'Body does not match API-008',
+    },
+    {
+      name: 'an omitted query for a query operation',
+      operationId: 'API-008' as const,
+      options: { path: '/courses' },
+      error: 'Query is required for API-008',
+    },
+    {
+      name: 'a null query for a query operation',
+      operationId: 'API-008' as const,
+      options: { path: '/courses', query: null },
+      error: 'Query is required for API-008',
+    },
+    {
+      name: 'a query for a JSON operation',
+      operationId: 'API-024' as const,
+      options: { path: '/login', query: { unsupported: true }, dedupeKey: 'login:test' },
+      error: 'Query does not match API-024',
+    },
+    {
+      name: 'a JSON body for a multipart operation',
+      operationId: 'API-032' as const,
+      options: {
+        path: '/lessons/lesson-1/upload-file',
+        body: { unsupported: true },
+        dedupeKey: 'upload:test',
+      },
+      error: 'Multipart body does not match API-032',
+    },
+    {
+      name: 'a null body for a JSON operation',
+      operationId: 'API-024' as const,
+      options: { path: '/login', body: null, dedupeKey: 'login:test' },
+      error: 'JSON body does not match API-024',
+    },
+    {
+      name: 'a blob response mode for a JSON operation',
+      operationId: 'API-024' as const,
+      options: {
+        path: '/login',
+        body: { email: 'learner@example.test', password: 'correct horse battery staple' },
+        responseType: 'blob',
+        dedupeKey: 'login:test',
+      },
+      error: 'Response mode does not match API-024',
+    },
+    {
+      name: 'a blob response mode for a void operation',
+      operationId: 'API-003' as const,
+      options: { path: '/cart', responseType: 'blob', dedupeKey: 'cart:clear' },
+      error: 'Response mode does not match API-003',
+    },
+    {
+      name: 'an omitted mutation dedupe key',
+      operationId: 'API-024' as const,
+      options: {
+        path: '/login',
+        body: { email: 'learner@example.test', password: 'correct horse battery staple' },
+      },
+      error: 'Dedupe key is required for API-024',
+    },
+    {
+      name: 'a non-string mutation dedupe key',
+      operationId: 'API-024' as const,
+      options: {
+        path: '/login',
+        body: { email: 'learner@example.test', password: 'correct horse battery staple' },
+        dedupeKey: 42,
+      },
+      error: 'Dedupe key is required for API-024',
+    },
+  ])('rejects $name before dispatch', ({ operationId, options, error }) => {
+    const requests = sessionRequests();
+
+    expect(() => requestOperation(requests.session, operationId, options as never)).toThrow(error);
+    expect(requests.requestPublic).not.toHaveBeenCalled();
+    expect(requests.requestOptional).not.toHaveBeenCalled();
+    expect(requests.requestRequired).not.toHaveBeenCalled();
+  });
+
+  it('dispatches a valid JSON operation when FormData is unavailable', async () => {
+    const requests = sessionRequests();
+    const formDataDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'FormData');
+    Object.defineProperty(globalThis, 'FormData', { configurable: true, value: undefined });
+
+    try {
+      await requestOperation(requests.session, 'API-024', {
+        path: '/login',
+        body: { email: 'learner@example.test', password: 'correct horse battery staple' },
+        dedupeKey: 'login:test',
+      });
+    } finally {
+      if (formDataDescriptor === undefined) {
+        Reflect.deleteProperty(globalThis, 'FormData');
+      } else {
+        Object.defineProperty(globalThis, 'FormData', formDataDescriptor);
+      }
+    }
+
+    expect(requests.requestPublic).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves valid multipart and binary operation dispatch', async () => {
+    const requests = sessionRequests();
+    const upload = new FormData();
+    upload.set('file', new File(['lesson'], 'lesson.pdf', { type: 'application/pdf' }));
+
+    await requestOperation(requests.session, 'API-032', {
+      path: '/lessons/lesson-1/upload-file',
+      body: upload,
+      dedupeKey: 'upload:lesson-1',
+    });
+    await requestOperation(requests.session, 'API-025', {
+      path: '/media/lessons/lesson.pdf',
+      responseType: 'blob',
+    });
+
+    expect(requests.requestRequired).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        method: 'POST',
+        authPolicy: 'required',
+        body: upload,
+        dedupeKey: 'upload:lesson-1',
+      }),
+    );
+    expect(requests.requestRequired).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        method: 'GET',
+        authPolicy: 'required',
+        responseType: 'blob',
+      }),
+    );
   });
 
   it('passes the TanStack query AbortSignal to the existing request client', async () => {
