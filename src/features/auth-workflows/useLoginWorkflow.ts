@@ -52,11 +52,13 @@ export function useLoginWorkflow(ownerKey: string): LoginWorkflow {
     retry: false,
   });
   const clearFieldError = (field: keyof AuthFieldErrors) => {
-    if (!fieldErrors[field]) return;
-    const remaining = { ...fieldErrors };
-    delete remaining[field];
-    setFieldErrors(remaining);
-    setSummary(null);
+    setFieldErrors((current) => {
+      if (!current[field]) return current;
+      const remaining = { ...current };
+      delete remaining[field];
+      return remaining;
+    });
+    if (fieldErrors[field]) setSummary(null);
   };
   const setEmail = (value: string) => {
     setEmailValue(value);

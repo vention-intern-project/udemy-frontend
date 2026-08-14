@@ -64,11 +64,13 @@ export function useSignupWorkflow(ownerKey: string): SignupWorkflow {
   });
   const update = <K extends keyof SignupInput>(key: K, value: SignupInput[K]) => {
     setInput((current) => ({ ...current, [key]: value }));
-    if (!fieldErrors[key]) return;
-    const remaining = { ...fieldErrors };
-    delete remaining[key];
-    setFieldErrors(remaining);
-    setSummary(null);
+    setFieldErrors((current) => {
+      if (!current[key]) return current;
+      const remaining = { ...current };
+      delete remaining[key];
+      return remaining;
+    });
+    if (fieldErrors[key]) setSummary(null);
   };
   async function submit(event: FormEvent) {
     event.preventDefault();

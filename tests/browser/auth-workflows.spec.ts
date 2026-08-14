@@ -1151,6 +1151,7 @@ for (const { label, pageScaleFactor, widths } of authViewportScenarios) {
         },
       );
       if (width === 768 && pageScaleFactor === 1) {
+        // Deliberate navigation after the successful 768px/default-scale pass can abort the in-flight decorative Learning empty-state image.
         allowOptionalRequestFailure(page, {
           method: 'GET',
           path: '/src/pages/learning-list-page/assets/my-learning-empty-state-ui022.png',

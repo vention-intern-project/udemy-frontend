@@ -1,16 +1,29 @@
 // @vitest-environment jsdom
 
 import { QueryClientProvider } from '@tanstack/react-query';
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, renderHook, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { StrictMode, useLayoutEffect, useRef, type ReactNode } from 'react';
+import {
+  StrictMode,
+  useLayoutEffect,
+  useRef,
+  type FormEvent,
+  type PropsWithChildren,
+  type ReactNode,
+} from 'react';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createAppQueryClient } from '../../src/app/query';
 import { AppRouter } from '../../src/app/router';
 import type { UserProfileDto } from '../../src/entities/user';
-import { AuthFormShell, mapAuthFailure } from '../../src/features/auth-workflows';
+import {
+  AuthFormShell,
+  mapAuthFailure,
+  useLoginWorkflow,
+  useResetPasswordWorkflow,
+  useSignupWorkflow,
+} from '../../src/features/auth-workflows';
 import { SessionProvider, type AccessTokenStore } from '../../src/features/auth-session';
 import { ApiError, type ApiClient, type ApiRequestOptions } from '../../src/shared/api';
 import { ThemeProvider } from '../../src/shared/ui/theme';
@@ -120,6 +133,10 @@ async function interact(action: () => Promise<unknown>) {
   });
 }
 
+function createSubmitEvent(): FormEvent {
+  return new Event('submit', { cancelable: true }) as unknown as FormEvent;
+}
+
 function renderAuth(
   path: string,
   handler: (options: ApiRequestOptions) => Promise<unknown>,
@@ -162,6 +179,24 @@ function renderAuth(
   );
   const view = render(options.strict ? <StrictMode>{tree}</StrictMode> : tree);
   return { client, request, store, view };
+}
+
+function AuthWorkflowTestProvider({ children }: PropsWithChildren) {
+  const client = createAppQueryClient();
+  const apiClient: ApiClient = {
+    request: async () => {
+      throw new Error('A client-side validation test must not make a request.');
+    },
+  };
+  return (
+    <QueryClientProvider client={client}>
+      <ThemeProvider initialDensityMode="marketplace">
+        <SessionProvider client={apiClient} tokenStore={tokenStore()}>
+          <MemoryRouter>{children}</MemoryRouter>
+        </SessionProvider>
+      </ThemeProvider>
+    </QueryClientProvider>
+  );
 }
 
 type AuthWorkflow = 'signup' | 'login' | 'forgot' | 'reset';
@@ -440,6 +475,58 @@ describe('authentication pages', () => {
     expect(document.getElementById('email-error')).toBe(null);
     expect(password.getAttribute('aria-invalid')).toBe('true');
     expect(document.getElementById('password-error')?.textContent).toBeTruthy();
+  });
+
+  it('retires consecutive login field errors from current state before rerender', async () => {
+    const { result } = renderHook(() => useLoginWorkflow('field-error-race-login'), {
+      wrapper: AuthWorkflowTestProvider,
+    });
+
+    await act(() => result.current.submit(createSubmitEvent()));
+    act(() => {
+      result.current.setEmail('learner@example.com');
+      result.current.setPassword('password');
+    });
+
+    expect(result.current.fieldErrors).toEqual({});
+    expect(result.current.summary).toBe(null);
+  });
+
+  it('retires consecutive signup field errors from current state before rerender', async () => {
+    const { result } = renderHook(() => useSignupWorkflow('field-error-race-signup'), {
+      wrapper: AuthWorkflowTestProvider,
+    });
+
+    await act(() => result.current.submit(createSubmitEvent()));
+    act(() => {
+      result.current.update('email', 'learner@example.com');
+      result.current.update('name', 'Ada');
+    });
+
+    expect(result.current.fieldErrors.name).toBeUndefined();
+    expect(result.current.fieldErrors.email).toBeUndefined();
+    expect(result.current.summary).toBe(null);
+  });
+
+  it('retires consecutive reset-password field errors from current state before rerender', async () => {
+    const { result } = renderHook(
+      () =>
+        useResetPasswordWorkflow({
+          ownerKey: 'field-error-race-reset',
+          token: 'field-error-race-token',
+          onSuccess: vi.fn(),
+        }),
+      { wrapper: AuthWorkflowTestProvider },
+    );
+
+    await act(() => result.current.submit(createSubmitEvent()));
+    act(() => {
+      result.current.setNewPassword('new password');
+      result.current.setPasswordConfirmation('new password');
+    });
+
+    expect(result.current.fieldErrors).toEqual({});
+    expect(result.current.summary).toBe(null);
   });
 
   it.each([
