@@ -7,16 +7,20 @@ import {
   type StudentSummaryDto,
 } from '@entities/enrollment';
 import { requestOperation, type SessionContextValue } from '@features/auth-session';
-import {
-  readBoolean,
-  readNonNegativeInteger,
-  readPositiveInteger,
-  readRecord,
-  readString,
-} from '@shared/api';
+import { decodePaginationEnvelope, readPositiveInteger, readRecord, readString } from '@shared/api';
 
 const ROSTER_PAGE_SIZE = 20;
 export const INSTRUCTOR_COURSE_PAGE_SIZE = 20;
+
+const PAGINATION_FIELDS = {
+  items: 'items',
+  page: 'page',
+  pageSize: 'page_size',
+  total: 'total',
+  pages: 'pages',
+  hasNext: 'has_next',
+  hasPrevious: 'has_previous',
+} as const;
 
 export interface InstructorCourseCollectionItem {
   readonly id: number;
@@ -173,21 +177,18 @@ export function decodeCourseEnrollmentList(
   courseId: number,
   expectedPage?: number,
 ): CourseEnrollmentList {
-  const response = readRecord(value, 'course enrollments');
-  if (!Array.isArray(response.items)) throw new TypeError('Invalid course enrollments');
-  const page = readPositiveInteger(response.page, 'enrollment page');
-  const pageSize = readPositiveInteger(response.page_size, 'enrollment page size');
-  const total = readNonNegativeInteger(response.total, 'enrollment total');
-  const pages = readNonNegativeInteger(response.pages, 'enrollment pages');
-  const hasNext = readBoolean(response.has_next, 'enrollment has_next');
-  const hasPrevious = readBoolean(response.has_previous, 'enrollment has_previous');
+  const response = decodePaginationEnvelope(value, {
+    context: 'enrollment',
+    decodeItem: (item) => decodeCourseEnrollment(item, courseId),
+    fields: PAGINATION_FIELDS,
+  });
+  const { page, pageSize, total, pages, hasNext, hasPrevious } = response;
   if (pageSize !== ROSTER_PAGE_SIZE || (expectedPage !== undefined && page !== expectedPage)) {
     throw new TypeError('Invalid enrollment cursor');
   }
   const ids = new Set<number>();
   const learnerIds = new Set<number>();
-  const items = response.items.map((item) => {
-    const dto = decodeCourseEnrollment(item, courseId);
+  const items = response.items.map((dto) => {
     if (ids.has(dto.id)) throw new TypeError('Invalid course enrollment identity');
     if (learnerIds.has(dto.user_id))
       throw new TypeError('Invalid course enrollment learner identity');
@@ -195,16 +196,9 @@ export function decodeCourseEnrollmentList(
     learnerIds.add(dto.user_id);
     return mapCourseEnrollment(dto);
   });
-  const expectedPages = total === 0 ? 0 : Math.ceil(total / pageSize);
   const remainingItems = Math.max(0, total - (page - 1) * pageSize);
   const itemLimit = Math.min(pageSize, remainingItems);
-  if (
-    pages !== expectedPages ||
-    page > Math.max(1, pages) ||
-    items.length > itemLimit ||
-    hasNext !== page < pages ||
-    hasPrevious !== page > 1
-  ) {
+  if (items.length > itemLimit) {
     throw new TypeError('Invalid enrollment pagination');
   }
   return { items, page, pageSize, total, pages, hasNext, hasPrevious };

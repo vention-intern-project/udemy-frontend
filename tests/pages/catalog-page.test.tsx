@@ -920,8 +920,8 @@ describe('CatalogPage public URL and pagination behavior', () => {
 
     await act(async () => {
       await user.click(retry);
-      await waitFor(() => expect(cartRequests).toBe(3));
     });
+    await waitFor(() => expect(cartRequests).toBe(3));
     await screen.findByRole('button', { name: 'Add to cart' });
     expect(mutationRequests).toBe(1);
   });
@@ -1280,8 +1280,8 @@ describe('CatalogPage public URL and pagination behavior', () => {
         page: 1,
         page_size: 20,
         total: items.length,
-        pages: 2,
-        has_next: true,
+        pages: 1,
+        has_next: false,
         has_previous: false,
       } as TResponse;
     };
@@ -1488,8 +1488,6 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(pluralResultHeading.lastChild?.textContent).toBe(' courses');
     expect(pluralResultHeading.querySelector('strong')?.textContent).not.toContain('courses');
 
-    const next = screen.getByRole('button', { name: 'Go to next page' });
-    expect(next).toBeTruthy();
     expect(requests.every((requestOptions) => requestOptions.path === '/courses')).toBe(true);
   });
 
@@ -1753,6 +1751,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
                   },
                   { ...catalogItem, id: 9, title: 'Instructor draft', published_at: null },
                 ],
+                total: 3,
               })
             : undefined;
       return options.decode ? options.decode(value) : (value as TResponse);
@@ -2034,7 +2033,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
     const requests: ApiRequestOptions[] = [];
     const request: ApiClient['request'] = async <TResponse,>(options: ApiRequestOptions) => {
       requests.push(options);
-      return response({ page: 2, pages: 2, has_previous: true }) as TResponse;
+      return response({ page: 2, total: 21, pages: 2, has_previous: true }) as TResponse;
     };
     renderCatalog(request, ['/?sort=price&page=2']);
 
@@ -2264,8 +2263,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
     });
   });
 
-  it('honors server pagination flags for edge and numbered controls when page-count metadata disagrees', async () => {
-    const user = userEvent.setup();
+  it('fails closed when server pagination flags and page-count metadata disagree', async () => {
     let requestCount = 0;
     const request: ApiClient['request'] = async <TResponse,>() => {
       requestCount += 1;
@@ -2273,26 +2271,14 @@ describe('CatalogPage public URL and pagination behavior', () => {
     };
     renderCatalog(request, ['/']);
 
-    await screen.findByRole('link', { name: 'React' });
-    const pageOne = screen.getByRole('button', { name: 'Go to page 1' }) as HTMLButtonElement;
-    const pageThree = screen.getByRole('button', { name: 'Go to page 3' }) as HTMLButtonElement;
-    expect(screen.queryByRole('button', { name: 'Go to next page' })).toBeNull();
-    const currentPage = screen.getByLabelText('Page 2, current page');
-    expect(currentPage.getAttribute('aria-current')).toBe('page');
-    expect(currentPage.textContent).toBe('2');
-    expect(pageOne.disabled).toBe(true);
-    expect(pageThree.disabled).toBe(true);
-    expect(
-      screen.getAllByRole('status').some((status) => status.textContent?.includes('Page 2 of 3')),
-    ).toBe(true);
-    await user.click(pageOne);
-    await user.click(pageThree);
+    expect(await screen.findByText('Catalog data is unavailable')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'React' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Go to (previous|next|page)/ })).toBeNull();
     expect(requestCount).toBe(1);
     expect(screen.getByLabelText('catalog location').textContent).toBe('/');
   });
 
-  it('navigates every enabled control for an authoritative page beyond the advertised page count', async () => {
-    const user = userEvent.setup();
+  it('fails closed when the server page is beyond the advertised page count', async () => {
     const requests: ApiRequestOptions[] = [];
     const request: ApiClient['request'] = async <TResponse,>(options: ApiRequestOptions) => {
       requests.push(options);
@@ -2300,34 +2286,11 @@ describe('CatalogPage public URL and pagination behavior', () => {
     };
     renderCatalog(request, ['/?page=99']);
 
-    await screen.findByRole('link', { name: 'React' });
-    expect(
-      screen.getAllByRole('status').some((status) => status.textContent?.includes('Page 99 of 1')),
-    ).toBe(true);
-    const previous = screen.getByRole('button', {
-      name: 'Go to previous page',
-    }) as HTMLButtonElement;
-    const pageOne = screen.getByRole('button', { name: 'Go to page 1' }) as HTMLButtonElement;
-    expect(previous.disabled).toBe(false);
-    expect(pageOne.disabled).toBe(false);
-    expect(screen.queryByRole('button', { name: 'Go to next page' })).toBeNull();
-    const currentPage = screen.getByLabelText('Page 99, current page');
-    expect(currentPage.getAttribute('aria-current')).toBe('page');
-    expect(currentPage.textContent).toBe('99');
-
-    await act(async () => {
-      await user.click(previous);
-    });
-    await waitFor(() =>
-      expect(screen.getByLabelText('catalog location').textContent).toBe('/?page=98'),
-    );
-    await waitFor(() => expect(requests[1]?.query?.page).toBe(98));
-
-    await act(async () => {
-      await user.click(screen.getByRole('button', { name: 'Go to page 1' }));
-    });
-    await waitFor(() => expect(screen.getByLabelText('catalog location').textContent).toBe('/'));
-    await waitFor(() => expect(requests[2]?.query?.page).toBe(1));
+    expect(await screen.findByText('Catalog data is unavailable')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'React' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Go to (previous|next|page)/ })).toBeNull();
+    expect(requests).toHaveLength(1);
+    expect(screen.getByLabelText('catalog location').textContent).toBe('/?page=99');
   });
 
   it('serializes an enabled next-page action and propagates its normalized API-008 query', async () => {
@@ -2337,6 +2300,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
       requests.push(options);
       return response({
         page: options.query?.page as number,
+        total: 21,
         pages: 2,
         has_next: options.query?.page === 1,
         has_previous: options.query?.page === 2,
