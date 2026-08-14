@@ -1,14 +1,43 @@
 import type {
-  CourseDetailDto, CourseDto, CourseListDto, CourseListItemDto, LessonBriefDto,
-  LessonDetailDto, LessonDto, LessonListDto, LessonTypeDto,
+  CourseDetailDto,
+  CourseDto,
+  CourseListDto,
+  CourseListItemDto,
+  LessonBriefDto,
+  LessonDetailDto,
+  LessonDto,
+  LessonListDto,
+  LessonTypeDto,
 } from './dto';
 import type {
-  CatalogCourse, CatalogCourseList, Course, CourseDetail, Lesson, LessonOutline,
-  LessonMediaLocator, LessonOutlineItem, LessonType,
+  CatalogCourse,
+  CatalogCourseList,
+  Course,
+  CourseDetail,
+  Lesson,
+  LessonOutline,
+  LessonMediaLocator,
+  LessonOutlineItem,
+  LessonType,
 } from './model';
 import {
-  readBoolean, readNonNegativeInteger, readNullableString, readPositiveInteger, readRecord, readString,
+  decodePaginationEnvelope,
+  readBoolean,
+  readNullableString,
+  readPositiveInteger,
+  readRecord,
+  readString,
 } from '@shared/api';
+
+const PAGINATION_FIELDS = {
+  items: 'items',
+  page: 'page',
+  pageSize: 'page_size',
+  total: 'total',
+  pages: 'pages',
+  hasNext: 'has_next',
+  hasPrevious: 'has_previous',
+} as const;
 
 const LESSON_TYPE_BY_DTO = {
   video: 'video',
@@ -59,7 +88,10 @@ export function mapLessonDto(dto: LessonDto): Lesson {
 
 function decodeLessonBrief(value: unknown): LessonBriefDto {
   const item = readRecord(value, 'lesson');
-  return { id: readPositiveInteger(item.id, 'lesson id'), title: readString(item.title, 'lesson title') };
+  return {
+    id: readPositiveInteger(item.id, 'lesson id'),
+    title: readString(item.title, 'lesson title'),
+  };
 }
 
 function decodeCourseListItem(value: unknown): CourseListItemDto {
@@ -119,26 +151,20 @@ export function decodeCourseDetailDto(value: unknown): CourseDetailDto {
 }
 
 export function decodeLessonListDto(value: unknown): LessonListDto {
-  const response = readRecord(value, 'lesson list response');
-  if (!Array.isArray(response.items)) throw new TypeError('Invalid lesson list items');
-  const page = readPositiveInteger(response.page, 'lesson page');
-  const pageSize = readPositiveInteger(response.page_size, 'lesson page_size');
-  const total = readNonNegativeInteger(response.total, 'lesson total');
-  const pages = readNonNegativeInteger(response.pages, 'lesson pages');
-  const hasNext = readBoolean(response.has_next, 'lesson has_next');
-  const hasPrevious = readBoolean(response.has_previous, 'lesson has_previous');
-  const items = response.items.map(decodeLessonDetail);
-  const expectedPages = total === 0 ? 0 : Math.ceil(total / pageSize);
-  const remainingItems = Math.max(0, total - ((page - 1) * pageSize));
-  const itemLimit = Math.min(pageSize, remainingItems);
-  if (pages !== expectedPages
-    || page > Math.max(1, pages)
-    || items.length > itemLimit
-    || hasNext !== (page < pages)
-    || hasPrevious !== (page > 1)) {
-    throw new TypeError('Invalid lesson list pagination consistency');
-  }
-  return { items, page, page_size: pageSize, total, pages, has_next: hasNext, has_previous: hasPrevious };
+  const response = decodePaginationEnvelope(value, {
+    context: 'lesson list',
+    decodeItem: decodeLessonDetail,
+    fields: PAGINATION_FIELDS,
+  });
+  return {
+    items: [...response.items],
+    page: response.page,
+    page_size: response.pageSize,
+    total: response.total,
+    pages: response.pages,
+    has_next: response.hasNext,
+    has_previous: response.hasPrevious,
+  };
 }
 
 function hasFilenameControlCharacter(filename: string): boolean {
@@ -159,13 +185,15 @@ export function mapLessonMediaLocator(downloadUrl: string | null): LessonMediaLo
   } catch {
     return null;
   }
-  if (filename === ''
-    || filename === '.'
-    || filename === '..'
-    || filename.includes('/')
-    || filename.includes('\\')
-    || hasFilenameControlCharacter(filename)
-    || encodeURIComponent(filename) !== encodedFilename) {
+  if (
+    filename === '' ||
+    filename === '.' ||
+    filename === '..' ||
+    filename.includes('/') ||
+    filename.includes('\\') ||
+    hasFilenameControlCharacter(filename) ||
+    encodeURIComponent(filename) !== encodedFilename
+  ) {
     return null;
   }
   return { filename };
@@ -201,41 +229,41 @@ export function mapLessonListDto(dto: LessonListDto): LessonOutline {
 }
 
 export function decodeCourseListDto(value: unknown): CourseListDto {
-  const response = readRecord(value, 'response');
-  if (!Array.isArray(response.items)) throw new TypeError('Invalid course list items');
-  const total = readNonNegativeInteger(response.total, 'total');
-  const pages = readNonNegativeInteger(response.pages, 'pages');
-  const items = response.items.map(decodeCourseListItem);
-  const hasNext = readBoolean(response.has_next, 'has_next');
-  const hasPrevious = readBoolean(response.has_previous, 'has_previous');
-
-  if ((total === 0 && (pages !== 0 || items.length !== 0 || hasNext || hasPrevious)) || (total > 0 && pages === 0)) {
+  let response;
+  try {
+    response = decodePaginationEnvelope(value, {
+      context: 'course list',
+      decodeItem: decodeCourseListItem,
+      fields: PAGINATION_FIELDS,
+    });
+  } catch {
     throw new TypeError('Invalid course list pagination consistency');
   }
-
   return {
-    items,
-    page: readPositiveInteger(response.page, 'page'),
-    page_size: readPositiveInteger(response.page_size, 'page_size'),
-    total,
-    pages,
-    has_next: hasNext,
-    has_previous: hasPrevious,
+    items: [...response.items],
+    page: response.page,
+    page_size: response.pageSize,
+    total: response.total,
+    pages: response.pages,
+    has_next: response.hasNext,
+    has_previous: response.hasPrevious,
   };
 }
 
 export function mapCourseListDto(dto: CourseListDto): CatalogCourseList {
   return {
-    items: dto.items.map((item): CatalogCourse => ({
-      id: item.id,
-      title: item.title,
-      description: item.description,
-      instructorName: `${item.instructor.name} ${item.instructor.surname}`.trim(),
-      price: item.price,
-      currency: item.currency,
-      totalLessonCount: item.lessons.length,
-      isPublished: item.published_at !== null,
-    })),
+    items: dto.items.map(
+      (item): CatalogCourse => ({
+        id: item.id,
+        title: item.title,
+        description: item.description,
+        instructorName: `${item.instructor.name} ${item.instructor.surname}`.trim(),
+        price: item.price,
+        currency: item.currency,
+        totalLessonCount: item.lessons.length,
+        isPublished: item.published_at !== null,
+      }),
+    ),
     page: dto.page,
     pageSize: dto.page_size,
     total: dto.total,

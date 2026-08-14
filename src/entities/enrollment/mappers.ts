@@ -1,8 +1,22 @@
 import type { EnrollmentDto, EnrollmentListDto, EnrollmentStatusDto } from './dto';
 import type { Enrollment, EnrollmentList, EnrollmentStatus } from './model';
 import {
-  readBoolean, readNonNegativeInteger, readNullableString, readPositiveInteger, readRecord, readString,
+  decodePaginationEnvelope,
+  readNullableString,
+  readPositiveInteger,
+  readRecord,
+  readString,
 } from '@shared/api';
+
+const PAGINATION_FIELDS = {
+  items: 'items',
+  page: 'page',
+  pageSize: 'page_size',
+  total: 'total',
+  pages: 'pages',
+  hasNext: 'has_next',
+  hasPrevious: 'has_previous',
+} as const;
 
 const ENROLLMENT_STATUS_BY_DTO = {
   pending_payment: 'pending_payment',
@@ -61,25 +75,20 @@ export function decodeEnrollmentDto(value: unknown): EnrollmentDto {
 }
 
 export function decodeEnrollmentListDto(value: unknown): EnrollmentListDto {
-  const response = readRecord(value, 'enrollment response');
-  if (!Array.isArray(response.items)) throw new TypeError('Invalid enrollment items');
-  const items = response.items.map(decodeEnrollmentDto);
-  const page = readPositiveInteger(response.page, 'enrollment page');
-  const pages = readNonNegativeInteger(response.pages, 'enrollment pages');
-  const total = readNonNegativeInteger(response.total, 'enrollment total');
-  const pageSize = readPositiveInteger(response.page_size, 'enrollment page size');
-  const hasNext = readBoolean(response.has_next, 'enrollment has_next');
-  const hasPrevious = readBoolean(response.has_previous, 'enrollment has_previous');
-  const expectedPages = total === 0 ? 0 : Math.ceil(total / pageSize);
-  const remainingItems = Math.max(0, total - ((page - 1) * pageSize));
-  const itemLimit = Math.min(pageSize, remainingItems);
-  if (pages !== expectedPages
-    || page > Math.max(1, pages)
-    || items.length > itemLimit
-    || hasNext !== (page < pages) || hasPrevious !== (page > 1)) {
-    throw new TypeError('Invalid enrollment pagination');
-  }
-  return { items, page, page_size: pageSize, total, pages, has_next: hasNext, has_previous: hasPrevious };
+  const response = decodePaginationEnvelope(value, {
+    context: 'enrollment',
+    decodeItem: decodeEnrollmentDto,
+    fields: PAGINATION_FIELDS,
+  });
+  return {
+    items: [...response.items],
+    page: response.page,
+    page_size: response.pageSize,
+    total: response.total,
+    pages: response.pages,
+    has_next: response.hasNext,
+    has_previous: response.hasPrevious,
+  };
 }
 
 export function mapEnrollmentListDto(dto: EnrollmentListDto): EnrollmentList {
