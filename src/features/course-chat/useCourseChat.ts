@@ -211,92 +211,10 @@ export function CourseChatSessionProvider({ children }: CourseChatSessionProvide
   );
 }
 
-function useLocalCourseChat(context: CourseChatContext): CourseChatWorkflow {
-  const session = useSession();
-  const [draft, setDraft] = useState('');
-  const [messages, setMessages] = useState<readonly ChatMessage[]>([]);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<CourseChatErrorState | null>(null);
-  const threadId = useRef(newThreadId());
-  const mounted = useRef(true);
-  const activeController = useRef<AbortController | null>(null);
-
-  const reset = () => {
-    activeController.current?.abort();
-    activeController.current = null;
-    threadId.current = newThreadId();
-    setDraft('');
-    setMessages([]);
-    setPending(false);
-    setError(null);
-  };
-
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-      activeController.current?.abort();
-      activeController.current = null;
-    };
-  }, []);
-
-  const submit = () => {
-    const message = draft.trim();
-    if (message === '' || pending) return;
-    setPending(true);
-    setError(null);
-    setDraft('');
-    const learnerMessage: ChatMessage = {
-      id: `${threadId.current}:learner:${Date.now()}`,
-      author: 'learner',
-      text: message,
-    };
-    setMessages((current) => [...current, learnerMessage]);
-    activeController.current?.abort();
-    const controller = new AbortController();
-    activeController.current = controller;
-    void requestCourseChat(
-      session,
-      threadId.current,
-      message,
-      context,
-      createMutationAttemptIdentity(),
-      controller.signal,
-    )
-      .then((response) => {
-        if (!mounted.current || activeController.current !== controller) return;
-        threadId.current = response.thread_id;
-        setMessages((current) => [
-          ...current,
-          {
-            id: `${response.thread_id}:assistant:${Date.now()}`,
-            author: 'assistant',
-            text: response.response,
-          },
-        ]);
-      })
-      .catch((reason: unknown) => {
-        if (!mounted.current || activeController.current !== controller) return;
-        setError(errorState(reason));
-      })
-      .finally(() => {
-        if (!mounted.current || activeController.current !== controller) return;
-        activeController.current = null;
-        setPending(false);
-      });
-  };
-  return { draft, messages, pending, error, setDraft, submit, reset };
-}
-
 export function useCourseChat(context: CourseChatContext): CourseChatWorkflow {
   const shared = useContext(CourseChatSessionContext);
-  const local = useLocalCourseChat(context);
-  return shared === null ? local : shared.workflowFor(context);
-}
-
-export function useCourseChatSessionControls() {
-  const shared = useContext(CourseChatSessionContext);
-  return {
-    resetConversation: shared?.resetConversation ?? (() => undefined),
-  };
+  if (shared === null) {
+    throw new Error('useCourseChat must be used within CourseChatSessionProvider.');
+  }
+  return shared.workflowFor(context);
 }

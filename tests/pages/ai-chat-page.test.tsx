@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type * as LearningProgress from '../../src/features/learning-progress';
 import { useLearningWorkspace } from '../../src/features/learning-progress';
 import { SessionProvider } from '../../src/features/auth-session';
+import { CourseChatSessionProvider } from '../../src/features/course-chat';
 import { AiChatPage } from '../../src/pages/ai-chat-page';
 
 vi.mock('../../src/features/learning-progress', async (importOriginal) => ({
@@ -30,12 +31,14 @@ function workspaceFor(enrollment: Record<string, unknown>) {
 function renderPage(path = '/learning/enrollments/4/ai-chat') {
   return render(
     <SessionProvider tokenStore={{ get: () => null, set: () => true, clear: () => {} }}>
-      <MemoryRouter initialEntries={[path]}>
-        <Routes>
-          <Route path="/learning/enrollments/:enrollmentId/ai-chat" element={<AiChatPage />} />
-          <Route path="/ai-chat" element={<AiChatPage />} />
-        </Routes>
-      </MemoryRouter>
+      <CourseChatSessionProvider>
+        <MemoryRouter initialEntries={[path]}>
+          <Routes>
+            <Route path="/learning/enrollments/:enrollmentId/ai-chat" element={<AiChatPage />} />
+            <Route path="/ai-chat" element={<AiChatPage />} />
+          </Routes>
+        </MemoryRouter>
+      </CourseChatSessionProvider>
     </SessionProvider>,
   );
 }

@@ -8,19 +8,27 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { SessionProvider } from '../../../src/features/auth-session';
 import { requestCourseChat } from '../../../src/features/course-chat/api';
-import { useCourseChat } from '../../../src/features/course-chat/useCourseChat';
+import {
+  CourseChatSessionProvider,
+  useCourseChat,
+} from '../../../src/features/course-chat/useCourseChat';
 import { CourseChatLauncher } from '../../../src/widgets/course-chat';
 import { CourseChatPanel } from '../../../src/widgets/course-chat/CourseChatPanel';
 import { ApiError } from '../../../src/shared/api';
 
 vi.mock('../../../src/features/course-chat/api', () => ({ requestCourseChat: vi.fn() }));
+vi.mock('../../../src/features/course-chat/preview', () => ({
+  isCourseChatPreviewEnabled: false,
+  previewCourseChat: vi.fn(),
+  previewMessages: () => [],
+}));
 
 const requestCourseChatMock = vi.mocked(requestCourseChat);
 
 function sessionWrapper({ children }: { readonly children: ReactNode }) {
   return (
     <SessionProvider tokenStore={{ get: () => null, set: () => true, clear: () => {} }}>
-      {children}
+      <CourseChatSessionProvider>{children}</CourseChatSessionProvider>
     </SessionProvider>
   );
 }
@@ -29,9 +37,11 @@ function launcher() {
   return (
     <MemoryRouter>
       <SessionProvider tokenStore={{ get: () => null, set: () => true, clear: () => {} }}>
-        <CourseChatLauncher
-          assistant={{ context: { kind: 'course', courseId: 7 }, enrollmentId: 4 }}
-        />
+        <CourseChatSessionProvider>
+          <CourseChatLauncher
+            assistant={{ context: { kind: 'course', courseId: 7 }, enrollmentId: 4 }}
+          />
+        </CourseChatSessionProvider>
       </SessionProvider>
     </MemoryRouter>
   );
@@ -59,6 +69,27 @@ afterEach(() => {
 });
 
 describe('course chat interaction lifecycle', () => {
+  it('requires CourseChatSessionProvider for useCourseChat', () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    try {
+      expect(() =>
+        renderHook(() => useCourseChat({ kind: 'course', courseId: 7 }), {
+          wrapper: ({ children }: { readonly children: ReactNode }) => (
+            <SessionProvider tokenStore={{ get: () => null, set: () => true, clear: () => {} }}>
+              {children}
+            </SessionProvider>
+          ),
+        }),
+      ).toThrow('CourseChatSessionProvider');
+      expect(consoleErrorSpy.mock.calls.flat()).toContainEqual(
+        expect.objectContaining({ message: expect.stringContaining('CourseChatSessionProvider') }),
+      );
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+  });
+
   it('links the labelled launcher to a focus-available noninteractive description', () => {
     render(launcher());
 
@@ -190,11 +221,9 @@ describe('course chat interaction lifecycle', () => {
     expect(requestCourseChatMock).toHaveBeenCalledTimes(1);
 
     cleanup();
-    render(
-      <SessionProvider tokenStore={{ get: () => null, set: () => true, clear: () => {} }}>
-        <CourseChatPanel context={{ kind: 'course', courseId: 7 }} />
-      </SessionProvider>,
-    );
+    render(<CourseChatPanel context={{ kind: 'course', courseId: 7 }} />, {
+      wrapper: sessionWrapper,
+    });
     const fullInput = screen.getByRole('textbox', { name: 'Message the course assistant' });
     await interact(() => user.type(fullInput, '   '));
     expect(screen.queryByRole('button', { name: 'Send message' })).toBeNull();
@@ -347,11 +376,9 @@ describe('course chat interaction lifecycle', () => {
       message: 'private backend detail',
     });
     const user = userEvent.setup();
-    render(
-      <SessionProvider tokenStore={{ get: () => null, set: () => true, clear: () => {} }}>
-        <CourseChatPanel context={{ kind: 'course', courseId: 7 }} />
-      </SessionProvider>,
-    );
+    render(<CourseChatPanel context={{ kind: 'course', courseId: 7 }} />, {
+      wrapper: sessionWrapper,
+    });
     await interact(() =>
       user.type(screen.getByRole('textbox', { name: 'Message the course assistant' }), 'Question'),
     );
@@ -369,11 +396,7 @@ describe('course chat interaction lifecycle', () => {
     const request = deferred<{ thread_id: string; response: string }>();
     requestCourseChatMock.mockReturnValueOnce(request.promise);
     const user = userEvent.setup();
-    render(
-      <SessionProvider tokenStore={{ get: () => null, set: () => true, clear: () => {} }}>
-        <CourseChatPanel context={{ kind: 'general' }} />
-      </SessionProvider>,
-    );
+    render(<CourseChatPanel context={{ kind: 'general' }} />, { wrapper: sessionWrapper });
     await interact(() =>
       user.type(screen.getByRole('textbox', { name: 'Message the course assistant' }), 'Question'),
     );
@@ -392,11 +415,9 @@ describe('course chat interaction lifecycle', () => {
     const response = deferred<{ thread_id: string; response: string }>();
     requestCourseChatMock.mockReturnValueOnce(response.promise);
     const user = userEvent.setup();
-    render(
-      <SessionProvider tokenStore={{ get: () => null, set: () => true, clear: () => {} }}>
-        <CourseChatPanel context={{ kind: 'course', courseId: 7 }} />
-      </SessionProvider>,
-    );
+    render(<CourseChatPanel context={{ kind: 'course', courseId: 7 }} />, {
+      wrapper: sessionWrapper,
+    });
     const messages = document.querySelector('[aria-live="polite"]');
     if (messages === null) throw new Error('Message list was not rendered.');
     Object.defineProperties(messages, {
