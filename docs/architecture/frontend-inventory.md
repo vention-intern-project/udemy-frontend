@@ -45,7 +45,7 @@ deliberately does not infer semantic ownership from folders.
 - `app`: `layouts`, `query`, `router`
 - `pages`: `ai-chat-page`, `cart-page`, `catalog-page`, `course-detail-page`, `forgot-password-page`, `instructor-course-editor-page`, `instructor-course-enrollments-page`, `instructor-courses-page`, `instructor-lesson-editor-page`, `learning-detail-page`, `learning-list-page`, `login-page`, `reset-password-page`, `signup-page`
 - `widgets`: `catalog-filter-bar`, `course-chat`, `enrollment-progress-panel`
-- `features`: `auth-session`, `auth-workflows`, `cart-workflow`, `catalog-course-actions`, `catalog-discovery`, `checkout-cart`, `course-action-reconciliation`, `course-chat`, `course-detail`, `instructor-course-editor`, `instructor-courses`, `learning-progress`, `media-access`
+- `features`: `auth-session`, `auth-workflows`, `cart-workflow`, `catalog-discovery`, `checkout-cart`, `course-action-reconciliation`, `course-chat`, `course-detail`, `instructor-course-editor`, `instructor-courses`, `learning-progress`, `media-access`
 - `entities`: `api`, `cart`, `course`, `enrollment`, `user`
 - `shared`: `accessibility`, `api`, `types`, `ui`
 

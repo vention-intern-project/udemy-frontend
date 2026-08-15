@@ -77,7 +77,14 @@ interface LiveInventory {
   diagnostics: readonly string[];
 }
 
+interface DirectoryEntry {
+  name: string;
+  isDirectory: boolean;
+  isFile: boolean;
+}
+
 type DirectoryEnumerator = (directoryPath: string) => readonly string[];
+type DirectoryEntriesReader = (directoryPath: string) => readonly DirectoryEntry[];
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const sourceRoot = resolve(repositoryRoot, 'src');
@@ -421,10 +428,49 @@ function canonicalLayerDirectory(layerName: string): string | undefined {
   return dirname(directoryPath) === sourceRoot ? directoryPath : undefined;
 }
 
+function directoryEntries(directoryPath: string): readonly DirectoryEntry[] {
+  return readdirSync(directoryPath, { withFileTypes: true }).map((entry) => ({
+    name: entry.name,
+    isDirectory: entry.isDirectory(),
+    isFile: entry.isFile(),
+  }));
+}
+
+function canonicalChildDirectory(parentDirectory: string, childName: string): string | undefined {
+  const childDirectory = resolve(parentDirectory, childName);
+
+  return dirname(childDirectory) === parentDirectory ? childDirectory : undefined;
+}
+
+function directoryContainsFile(
+  directoryPath: string,
+  readEntries: DirectoryEntriesReader,
+): boolean {
+  return readEntries(directoryPath).some((entry) => {
+    if (entry.isFile) return true;
+    if (!entry.isDirectory) return false;
+
+    const childDirectory = canonicalChildDirectory(directoryPath, entry.name);
+
+    return childDirectory ? directoryContainsFile(childDirectory, readEntries) : false;
+  });
+}
+
+function sourceBackedDirectoryNames(
+  directoryPath: string,
+  readEntries: DirectoryEntriesReader,
+): readonly string[] {
+  return readEntries(directoryPath).flatMap((entry) => {
+    if (!entry.isDirectory) return [];
+
+    const childDirectory = canonicalChildDirectory(directoryPath, entry.name);
+
+    return childDirectory && directoryContainsFile(childDirectory, readEntries) ? [entry.name] : [];
+  });
+}
+
 function directoryNames(directoryPath: string): readonly string[] {
-  return readdirSync(directoryPath, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name);
+  return sourceBackedDirectoryNames(directoryPath, directoryEntries);
 }
 
 function liveModuleDirectories(
@@ -620,6 +666,68 @@ describe('architecture inventory conformance', () => {
 
       expect(validateInventory(inventory, liveInventory(inventory))).toContain(diagnostic);
     });
+  });
+
+  it('keeps direct-module inventory reproducible when a local empty shell is absent from a clean checkout', () => {
+    const document = readFileSync(pathToFileURL(inventoryPath), 'utf8');
+    const inventory = documentedInventory(document);
+    const diagnostic =
+      'Documented direct module directories drift from the live src/<layer> filesystem. Update docs/architecture/frontend-inventory.md.';
+    const documentedFeatureDirectories = inventory.moduleDirectories.find(
+      (moduleDirectories) => moduleDirectories.layer === 'features',
+    )?.directories;
+    const featuresDirectory = resolve(sourceRoot, 'features');
+    const emptyLocalShell = resolve(featuresDirectory, 'catalog-course-actions');
+
+    expect(documentedFeatureDirectories).toBeDefined();
+
+    const cleanCheckoutEntries: DirectoryEntriesReader = (directoryPath) => {
+      if (directoryPath === featuresDirectory) {
+        return [
+          { name: 'catalog-course-actions', isDirectory: true, isFile: false },
+          ...documentedFeatureDirectories!.map((name) => ({
+            name,
+            isDirectory: true,
+            isFile: false,
+          })),
+        ];
+      }
+      if (directoryPath === emptyLocalShell) return [];
+
+      return [{ name: 'index.ts', isDirectory: false, isFile: true }];
+    };
+    const cleanCheckoutEnumerator: DirectoryEnumerator = (directoryPath) =>
+      directoryPath === featuresDirectory
+        ? sourceBackedDirectoryNames(directoryPath, cleanCheckoutEntries)
+        : directoryNames(directoryPath);
+
+    expect(validateInventory(inventory, liveInventory(inventory))).toEqual([]);
+    expect(sourceBackedDirectoryNames(featuresDirectory, cleanCheckoutEntries)).toEqual(
+      documentedFeatureDirectories,
+    );
+    expect(validateInventory(inventory, liveInventory(inventory, cleanCheckoutEnumerator))).toEqual(
+      [],
+    );
+
+    const sourceBackedAdditionEntries: DirectoryEntriesReader = (directoryPath) => {
+      if (directoryPath === featuresDirectory) {
+        return [
+          ...cleanCheckoutEntries(directoryPath),
+          { name: 'new-source-module', isDirectory: true, isFile: false },
+        ];
+      }
+      if (directoryPath === emptyLocalShell) return [];
+
+      return [{ name: 'index.ts', isDirectory: false, isFile: true }];
+    };
+    const sourceBackedAdditionEnumerator: DirectoryEnumerator = (directoryPath) =>
+      directoryPath === featuresDirectory
+        ? sourceBackedDirectoryNames(directoryPath, sourceBackedAdditionEntries)
+        : directoryNames(directoryPath);
+
+    expect(
+      validateInventory(inventory, liveInventory(inventory, sourceBackedAdditionEnumerator)),
+    ).toContain(diagnostic);
   });
 
   it('reports every invalid direct-module grammar and structural input without partial acceptance', () => {
