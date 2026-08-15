@@ -6,8 +6,8 @@
 
 This is a maintained live snapshot, not a proposed architecture. The executable conformance test
 checks registered route IDs/paths, documented page-module mappings against `AppRouter` and the
-public page index, and the six top-level layer directories. It deliberately does not infer
-semantic ownership from folders.
+public page index, the six top-level layer directories, and their immediate child directories. It
+deliberately does not infer semantic ownership from folders.
 
 ## Registered routes
 
@@ -51,6 +51,9 @@ semantic ownership from folders.
 
 ## Maintenance rule
 
-When a registered route ID/path or top-level layer directory intentionally changes, update this
-document in the same change and run the verification command above. Historical planning names
-and proposed structures belong in their source records; they are not current inventory entries.
+When a registered route ID/path, top-level layer directory, or immediate child module directory
+intentionally changes, update this document in the same change and run the verification command
+above. Keep one direct-module row per layer, with backtick-quoted nonempty names separated only by
+comma-space; bare, trailing, or other residual text is not valid inventory syntax. Historical
+planning names and proposed structures belong in their source records; they are not current
+inventory entries.
