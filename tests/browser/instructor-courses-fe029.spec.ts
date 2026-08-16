@@ -1,4 +1,5 @@
 import { expect, test, type Browser, type Locator, type Page, type Route } from '@playwright/test';
+import { inflateSync } from 'node:zlib';
 
 const instructorProfile = {
   email: 'instructor@example.test',
@@ -59,6 +60,111 @@ interface SourceCompositionScenario {
   readonly viewport: { readonly height: number; readonly width: number };
 }
 
+type PngPixel = readonly [red: number, green: number, blue: number, alpha: number];
+
+interface FooterCanvasGeometry {
+  readonly articleBottom: number;
+  readonly devicePixelRatio: number;
+  readonly footerTop: number;
+  readonly viewportWidth: number;
+}
+
+const PNG_SIGNATURE_LENGTH = 8;
+const PNG_RGBA_COLOR_TYPE = 6;
+const PNG_RGB_COLOR_TYPE = 2;
+const PNG_BIT_DEPTH = 8;
+
+function paethPredictor(left: number, above: number, upperLeft: number) {
+  const estimate = left + above - upperLeft;
+  const leftDistance = Math.abs(estimate - left);
+  const aboveDistance = Math.abs(estimate - above);
+  const upperLeftDistance = Math.abs(estimate - upperLeft);
+  if (leftDistance <= aboveDistance && leftDistance <= upperLeftDistance) return left;
+  if (aboveDistance <= upperLeftDistance) return above;
+  return upperLeft;
+}
+
+function pngPixelAt(screenshot: Buffer, x: number, y: number): PngPixel {
+  if (screenshot.length < PNG_SIGNATURE_LENGTH) throw new Error('Screenshot is not a PNG.');
+  let offset = PNG_SIGNATURE_LENGTH;
+  let width = 0;
+  let height = 0;
+  let colorType = -1;
+  const idatChunks: Buffer[] = [];
+
+  while (offset + 12 <= screenshot.length) {
+    const length = screenshot.readUInt32BE(offset);
+    const type = screenshot.toString('ascii', offset + 4, offset + 8);
+    const dataStart = offset + 8;
+    const dataEnd = dataStart + length;
+    if (dataEnd + 4 > screenshot.length) throw new Error('Screenshot PNG chunk is truncated.');
+    if (type === 'IHDR') {
+      width = screenshot.readUInt32BE(dataStart);
+      height = screenshot.readUInt32BE(dataStart + 4);
+      const bitDepth = screenshot[dataStart + 8];
+      colorType = screenshot[dataStart + 9] ?? -1;
+      const interlace = screenshot[dataStart + 12];
+      if (bitDepth !== PNG_BIT_DEPTH || interlace !== 0)
+        throw new Error('Unsupported screenshot PNG encoding.');
+    } else if (type === 'IDAT') {
+      idatChunks.push(screenshot.subarray(dataStart, dataEnd));
+    } else if (type === 'IEND') {
+      break;
+    }
+    offset = dataEnd + 4;
+  }
+
+  const bytesPerPixel =
+    colorType === PNG_RGBA_COLOR_TYPE ? 4 : colorType === PNG_RGB_COLOR_TYPE ? 3 : 0;
+  if (width === 0 || height === 0 || bytesPerPixel === 0)
+    throw new Error('Unsupported screenshot PNG color format.');
+  if (x < 0 || x >= width || y < 0 || y >= height)
+    throw new Error(`Screenshot probe ${x},${y} is outside ${width}x${height}.`);
+
+  const stride = width * bytesPerPixel;
+  const decoded = inflateSync(Buffer.concat(idatChunks));
+  let decodedOffset = 0;
+  let previous = Buffer.alloc(stride);
+  for (let row = 0; row <= y; row += 1) {
+    const filter = decoded[decodedOffset++];
+    const current = Buffer.from(decoded.subarray(decodedOffset, decodedOffset + stride));
+    decodedOffset += stride;
+    for (let column = 0; column < stride; column += 1) {
+      const left = column >= bytesPerPixel ? current[column - bytesPerPixel]! : 0;
+      const above = previous[column]!;
+      const upperLeft = column >= bytesPerPixel ? previous[column - bytesPerPixel]! : 0;
+      const value = current[column]!;
+      current[column] =
+        filter === 0
+          ? value
+          : filter === 1
+            ? (value + left) & 0xff
+            : filter === 2
+              ? (value + above) & 0xff
+              : filter === 3
+                ? (value + Math.floor((left + above) / 2)) & 0xff
+                : filter === 4
+                  ? (value + paethPredictor(left, above, upperLeft)) & 0xff
+                  : (() => {
+                      throw new Error(`Unsupported screenshot PNG filter ${filter}.`);
+                    })();
+    }
+    if (row === y) {
+      const pixelOffset = x * bytesPerPixel;
+      return colorType === PNG_RGBA_COLOR_TYPE
+        ? [
+            current[pixelOffset]!,
+            current[pixelOffset + 1]!,
+            current[pixelOffset + 2]!,
+            current[pixelOffset + 3]!,
+          ]
+        : [current[pixelOffset]!, current[pixelOffset + 1]!, current[pixelOffset + 2]!, 255];
+    }
+    previous = current;
+  }
+  throw new Error('Screenshot PNG does not contain the requested row.');
+}
+
 const unexpectedRuntimeErrors = new WeakMap<Page, string[]>();
 
 function collectionResponse(
@@ -101,6 +207,29 @@ async function expectNoHorizontalOverflow(page: Page) {
   }));
   expect(widths.document).toBeLessThanOrEqual(widths.client);
   expect(widths.body).toBeLessThanOrEqual(widths.client);
+}
+
+async function expectInstructorCanvasReachesFooter(page: Page) {
+  const footer = page.locator('footer');
+  await footer.scrollIntoViewIfNeeded();
+  const geometry = await page.evaluate<FooterCanvasGeometry>(() => {
+    const article = document.querySelector('article');
+    const footerElement = document.querySelector('footer');
+    if (!article || !footerElement) throw new Error('Expected Instructor canvas and footer.');
+    const articleBox = article.getBoundingClientRect();
+    const footerBox = footerElement.getBoundingClientRect();
+    return {
+      articleBottom: articleBox.bottom,
+      devicePixelRatio: window.devicePixelRatio,
+      footerTop: footerBox.top,
+      viewportWidth: window.innerWidth,
+    };
+  });
+  expect(geometry.articleBottom).toBeGreaterThanOrEqual(geometry.footerTop - 1);
+  const screenshot = await page.screenshot();
+  const physicalX = Math.floor((geometry.viewportWidth / 2) * geometry.devicePixelRatio);
+  const physicalY = Math.floor((geometry.footerTop - 1) * geometry.devicePixelRatio);
+  expect(pngPixelAt(screenshot, physicalX, physicalY)).toEqual([244, 241, 255, 255]);
 }
 
 async function readInstructorCoursesBackground(
@@ -149,6 +278,7 @@ async function expectApprovedSourceComposition(
       );
     }
     await expectNoHorizontalOverflow(page);
+    await expectInstructorCanvasReachesFooter(page);
     const screenshot = await page.screenshot();
     expect(screenshot.readUInt32BE(16)).toBe(scenario.physicalWidth);
     expect(screenshot.readUInt32BE(20)).toBe(scenario.physicalHeight);
@@ -241,6 +371,7 @@ test('uses the approved responsive decorative canvas and preserves Instructor he
   ).toHaveCount(0);
   await expect(collection).toHaveCSS('background-color', 'rgb(255, 255, 255)');
   await expect(collection).toHaveCSS('border-radius', '12px');
+  await expectInstructorCanvasReachesFooter(page);
   await expect(headerActions.routeLink).toHaveAttribute('aria-current', 'page');
   await expect(headerActions.createAction).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
 
@@ -286,6 +417,7 @@ test('uses the approved responsive decorative canvas and preserves Instructor he
     } else {
       expect(actionBox.x).toBeGreaterThan(routeBox.x + routeBox.width);
     }
+    await expectInstructorCanvasReachesFooter(page);
     const responsiveCreateAction = responsiveHeaderActions.createAction;
     await responsiveCreateAction.focus();
     await page.keyboard.press('Tab');
