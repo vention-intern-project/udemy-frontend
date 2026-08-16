@@ -1768,8 +1768,10 @@ test('keeps student contextual navigation consistent across the DD-259 CSS-width
     await expect(breadcrumb.getByRole('link', { name: longCourseTitle })).toHaveCount(0);
     await backLink.hover();
     await expect(backLink).toHaveCSS('text-decoration-line', 'underline');
+    await page.mouse.move(0, 0);
     await tabTo(page, backLink);
     await expect(backLink).toBeFocused();
+    await expect(backLink).toHaveCSS('text-decoration-line', 'underline');
     const geometry = await backLink.evaluate((link) => {
       const rect = link.getBoundingClientRect();
       const icon = link.querySelector('svg')?.getBoundingClientRect();
