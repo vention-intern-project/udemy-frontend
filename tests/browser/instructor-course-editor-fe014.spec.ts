@@ -355,6 +355,19 @@ test.afterEach(async ({ page }) => {
   expect(browserErrors.get(page), 'unexpected browser runtime errors').toEqual([]);
 });
 
+async function expectInstructorCanvasToMeetFooter(page: Page) {
+  const footer = page.getByRole('contentinfo');
+  await footer.scrollIntoViewIfNeeded();
+  expect(
+    await page.evaluate(() => {
+      const canvas = document.querySelector('article');
+      const footerElement = document.querySelector('footer');
+      if (!canvas || !footerElement) throw new Error('Expected Instructor canvas and footer.');
+      return canvas.getBoundingClientRect().bottom - footerElement.getBoundingClientRect().top;
+    }),
+  ).toBeGreaterThanOrEqual(-1);
+}
+
 test('uses authenticated course PATCH and lesson POST contracts, including safe 422 focus', async ({
   page,
 }) => {
@@ -363,6 +376,7 @@ test('uses authenticated course PATCH and lesson POST contracts, including safe 
   await page.goto(`/instructor/courses/${courseId}/edit`, { waitUntil: 'commit' });
 
   await expect(page.getByRole('heading', { name: 'Edit course' })).toBeVisible();
+  await expectInstructorCanvasToMeetFooter(page);
   state.coursePatchStatus = 422;
   await page.getByLabel('Course title').fill('An intentionally invalid contract course title');
   await page.getByRole('button', { name: 'Save course' }).click();

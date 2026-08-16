@@ -2622,6 +2622,15 @@ test('keeps instructor course-management content readable without student destin
     ).toBeGreaterThanOrEqual(44);
     await expect(page.getByText(longName)).toBeVisible();
     await expect(page.getByText(longEmail)).toBeVisible();
+    await page.getByRole('contentinfo').scrollIntoViewIfNeeded();
+    expect(
+      await page.evaluate(() => {
+        const canvas = document.querySelector('article');
+        const footer = document.querySelector('footer');
+        if (!canvas || !footer) throw new Error('Expected Instructor canvas and footer.');
+        return canvas.getBoundingClientRect().bottom - footer.getBoundingClientRect().top;
+      }),
+    ).toBeGreaterThanOrEqual(-1);
     await expect(page.getByRole('link', { name: 'Cart' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Open AI assistant' })).toHaveCount(0);
     await expect(page.getByRole('navigation', { name: 'Student navigation' })).toHaveCount(0);
