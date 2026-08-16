@@ -674,7 +674,7 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
             card.actionHeight >= 44 &&
             card.actionPaddingInlineStart === (width < 768 ? '8px' : '12px') &&
             card.actionPaddingInlineEnd === (width < 768 ? '8px' : '12px') &&
-            card.actionFontSize === '16px') ||
+            card.actionFontSize === '14px') ||
             (card.actionTagName === 'BUTTON' &&
               card.actionDisabled &&
               card.actionMinHeight === '44px' &&
@@ -1744,6 +1744,129 @@ test('navigates every enabled control for an authoritative high final page', asy
   await expect(page).toHaveURL('/');
   await expect.poll(() => requests.length).toBe(requestCountBeforePageOne + 1);
   expect(new URL(requests[requests.length - 1]).searchParams.get('page')).toBe('1');
+  assertClean();
+});
+
+test('keeps anonymous published Catalog links semantic and contained across the DD-259 width matrix', async ({
+  page,
+}) => {
+  const assertClean = await monitor(page);
+  assertClean.allowRequestFailure(
+    {
+      method: 'GET',
+      path: '/courses?page=1&page_size=20&sort=created_at',
+      errorText: 'net::ERR_ABORTED',
+    },
+    20,
+  );
+  const mutationRequests: string[] = [];
+  page.on('request', (request) => {
+    if (request.method() === 'POST' || request.method() === 'DELETE') {
+      mutationRequests.push(`${request.method()} ${new URL(request.url()).pathname}`);
+    }
+  });
+  await page.route('**/courses**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: response([
+        { ...permittedCourse('Anonymous free'), id: 8, price: '0.00' },
+        { ...permittedCourse('Anonymous paid'), id: 11, price: '29.99' },
+      ]),
+    });
+  });
+
+  for (const width of [320, 390, 767, 768, 1024, 1099, 1100, 1279, 1280, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/');
+    expect(await page.evaluate(() => window.innerWidth)).toBe(width);
+
+    const freeCard = page
+      .locator('[data-part="course-card"]')
+      .filter({ has: page.getByRole('heading', { level: 3, name: 'Anonymous free' }) });
+    const paidCard = page
+      .locator('[data-part="course-card"]')
+      .filter({ has: page.getByRole('heading', { level: 3, name: 'Anonymous paid' }) });
+    const freeLink = freeCard.getByRole('link', { name: 'Enroll for free' });
+    const paidLink = paidCard.getByRole('link', { name: 'Add to cart' });
+
+    await expect(freeLink).toHaveCount(1);
+    await expect(paidLink).toHaveCount(1);
+    await expect(freeLink).toHaveAttribute('href', '/login?returnTo=%2Fcourses%2F8');
+    await expect(paidLink).toHaveAttribute('href', '/login?returnTo=%2Fcourses%2F11');
+    await expect(freeLink.locator('svg')).toHaveCount(0);
+    await expect(paidLink.locator('svg')).toHaveCount(0);
+    await paidLink.hover();
+    expect(await paidLink.evaluate((element) => element.matches(':hover'))).toBe(true);
+    await freeLink.focus();
+    await expect(freeLink).toBeFocused();
+    expect(await freeLink.evaluate((element) => element.matches(':focus-visible'))).toBe(true);
+
+    const geometry = await Promise.all(
+      [
+        { card: freeCard, action: freeLink },
+        { card: paidCard, action: paidLink },
+      ].map(async ({ card, action }) => ({
+        card: await card.evaluate((element) => element.getBoundingClientRect().toJSON()),
+        action: await action.evaluate((element) => {
+          const rect = element.getBoundingClientRect();
+          const style = getComputedStyle(element);
+          return {
+            rect: rect.toJSON(),
+            fontSize: style.fontSize,
+            lineHeight: style.lineHeight,
+            fontWeight: style.fontWeight,
+            minHeight: style.minHeight,
+            borderRadius: style.borderRadius,
+          };
+        }),
+      })),
+    );
+    const viewport = await page.evaluate(() => ({
+      documentWidth: document.documentElement.scrollWidth,
+      bodyWidth: document.body.scrollWidth,
+      clientWidth: document.documentElement.clientWidth,
+    }));
+    expect(
+      geometry.every(
+        ({ card, action }) =>
+          action.fontSize === '14px' &&
+          action.lineHeight === '20px' &&
+          action.fontWeight === '600' &&
+          action.minHeight === '44px' &&
+          action.rect.height >= 44 &&
+          Math.abs(action.rect.width - 120) <= 0.5 &&
+          action.borderRadius === '8px' &&
+          action.rect.left >= card.left - 0.5 &&
+          action.rect.right <= card.right + 0.5,
+      ),
+    ).toBe(true);
+    expect(viewport.documentWidth).toBeLessThanOrEqual(viewport.clientWidth);
+    expect(viewport.bodyWidth).toBeLessThanOrEqual(viewport.clientWidth);
+
+    const paidBounds = await paidLink.boundingBox();
+    if (!paidBounds) throw new Error('Anonymous paid action bounds are missing.');
+    await page.mouse.move(
+      paidBounds.x + paidBounds.width / 2,
+      paidBounds.y + paidBounds.height / 2,
+    );
+    await page.mouse.down();
+    expect(await paidLink.evaluate((element) => element.matches(':active'))).toBe(true);
+    await page.mouse.up();
+    await expect(page).toHaveURL('/login?returnTo=%2Fcourses%2F11');
+
+    await page.goto('/');
+    const freeLinkAfterReset = page.getByRole('link', { name: 'Enroll for free' });
+    await freeLinkAfterReset.focus();
+    await expect(freeLinkAfterReset).toBeFocused();
+    expect(await freeLinkAfterReset.evaluate((element) => element.matches(':focus-visible'))).toBe(
+      true,
+    );
+    await freeLinkAfterReset.press('Enter');
+    await expect(page).toHaveURL('/login?returnTo=%2Fcourses%2F8');
+  }
+  expect(mutationRequests).toEqual([]);
+
   assertClean();
 });
 

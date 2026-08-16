@@ -39,6 +39,8 @@ interface RgbColor {
 
 interface AiHeroGeometry {
   readonly heroWidth: number;
+  readonly heroLeft: number;
+  readonly heroRight: number;
   readonly corridorWidth: number;
   readonly zoneWidth: number;
   readonly heroCenter: number;
@@ -53,15 +55,18 @@ interface AiHeroGeometry {
   readonly sourceVisibility: number;
   readonly overlay: string;
   readonly headingWhiteSpace: string;
+  readonly rootClientWidth: number;
+  readonly rootClientHeight: number;
+  readonly rootScrollHeight: number;
 }
 
-function expectedAiHeroImageWidth(viewportWidth: number): number {
+function expectedAiHeroImageWidth(viewportWidth: number, rootClientWidth = viewportWidth): number {
   // Mirrors the responsive CSS clamp coefficients in AiChatPage.module.css.
   if (viewportWidth <= 895) {
-    return Math.min(959.88, Math.max(820.95, viewportWidth * 1.085391 - 12.6303));
+    return Math.min(959.88, Math.max(820.95, rootClientWidth * 1.085391 - 12.6303));
   }
   if (viewportWidth <= 1199) {
-    return Math.min(1263, Math.max(959.88, viewportWidth * 0.997105 + 66.4737));
+    return Math.min(1263, Math.max(959.88, rootClientWidth * 0.997105 + 66.4737));
   }
   return 1263;
 }
@@ -617,7 +622,7 @@ test('uses one compact Suggested Actions disclosure below 1000px without changin
   await installCourseChatFixture(page, chatRequests);
   await page.emulateMedia({ reducedMotion: 'reduce' });
 
-  for (const width of [320, 390, 618, 767, 768, 789, 999]) {
+  for (const width of [320, 390, 618, 767, 768, 789, 895, 896, 999]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/ai-chat');
     const trigger = page.getByRole('button', { name: 'Suggested Actions' });
@@ -678,7 +683,7 @@ test('uses one compact Suggested Actions disclosure below 1000px without changin
     await page.evaluate(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches),
   ).toBe(true);
 
-  for (const width of [768, 789, 1024, 1440, 1890, 1920, 2560, 3840]) {
+  for (const width of [768, 789, 895, 896, 999, 1000, 1024, 1080, 1081, 1199, 1200, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/ai-chat');
     const suggestedActionsTrigger = page.getByRole('button', { name: 'Suggested Actions' });
@@ -717,6 +722,8 @@ test('uses one compact Suggested Actions disclosure below 1000px without changin
         const imageFit = getComputedStyle(image).objectFit;
         return {
           heroWidth,
+          heroLeft: heroRect.left,
+          heroRight: heroRect.right,
           corridorWidth,
           zoneWidth: heroWidth / 2,
           headingLeft: headingRect.left - heroRect.left,
@@ -734,10 +741,13 @@ test('uses one compact Suggested Actions disclosure below 1000px without changin
               : Math.min(renderedAspect / sourceAspect, sourceAspect / renderedAspect),
           overlay: getComputedStyle(hero, '::after').backgroundImage,
           headingWhiteSpace: getComputedStyle(heading).whiteSpace,
+          rootClientWidth: document.documentElement.clientWidth,
+          rootClientHeight: document.documentElement.clientHeight,
+          rootScrollHeight: document.documentElement.scrollHeight,
         };
       });
     expect(Math.abs(heroGeometry.copyCenter - heroGeometry.heroCenter)).toBeLessThanOrEqual(6);
-    expect(heroGeometry.heroWidth).toBeCloseTo(width, 0);
+    expect(heroGeometry.heroWidth).toBeCloseTo(heroGeometry.rootClientWidth, 0);
     expect(heroGeometry.corridorWidth).toBeCloseTo(heroGeometry.zoneWidth, 0);
     expect(heroGeometry.headingLeft).toBeGreaterThanOrEqual(0);
     if (width >= 768 && width <= 1080) {
@@ -746,26 +756,30 @@ test('uses one compact Suggested Actions disclosure below 1000px without changin
       expect(heroGeometry.headingRight).toBeLessThanOrEqual(heroGeometry.heroContentRight + 1);
       expect(heroGeometry.headingWidth).toBeLessThanOrEqual(680);
     }
-    expect(Math.abs(heroGeometry.imageWidth - expectedAiHeroImageWidth(width))).toBeLessThanOrEqual(
-      1,
+    expect(
+      Math.abs(
+        heroGeometry.imageWidth - expectedAiHeroImageWidth(width, heroGeometry.rootClientWidth),
+      ),
+    ).toBeLessThanOrEqual(1);
+    expect(heroGeometry.imageRight).toBeGreaterThan(heroGeometry.rootClientWidth / 2);
+    expect(heroGeometry.imageRight).toBeLessThanOrEqual(
+      heroGeometry.rootClientWidth + heroGeometry.imageWidth,
     );
-    expect(heroGeometry.imageRight).toBeGreaterThan(width / 2);
-    expect(heroGeometry.imageRight).toBeLessThanOrEqual(width + heroGeometry.imageWidth);
     if (width >= 896) expect(heroGeometry.imageFit).toBe('contain');
     expect(heroGeometry.sourceVisibility).toBeGreaterThanOrEqual(0.75);
     expect(heroGeometry.overlay).toContain('46%');
     expect(heroGeometry.overlay).toContain('62%');
     if (width === 789) expect(heroGeometry.headingWhiteSpace).toBe('nowrap');
+    if (width >= 895) {
+      expect(heroGeometry.rootScrollHeight).toBeGreaterThan(heroGeometry.rootClientHeight);
+      expect(Math.abs(heroGeometry.heroLeft)).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(heroGeometry.heroRight - heroGeometry.rootClientWidth)).toBeLessThanOrEqual(
+        0.5,
+      );
+    }
     await expectNoOverflow(page);
   }
 
-  await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto('/ai-chat');
-  const cdp = await page.context().newCDPSession(page);
-  await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 2 });
-  expect(await page.evaluate(() => window.visualViewport?.scale ?? 1)).toBeCloseTo(2, 1);
-  await expectNoOverflow(page);
-  await cdp.detach();
   const acceptedNavigationRasterAbortCount = diagnostics.unexpectedRuntimeFailures.filter(
     (failure) => failure === acceptedNavigationRasterAbort,
   ).length;

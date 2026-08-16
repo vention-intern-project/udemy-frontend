@@ -66,9 +66,182 @@ async function interact(action: () => Promise<void>) {
 afterEach(() => {
   cleanup();
   vi.resetAllMocks();
+  vi.unstubAllGlobals();
+  document.querySelectorAll('[data-test-footer]').forEach((footer) => footer.remove());
 });
 
+function footerForGeometryTest() {
+  const footer = document.createElement('footer');
+  footer.dataset.testFooter = 'true';
+  document.body.append(footer);
+  return footer;
+}
+
+function geometryRect(top: number, bottom: number): DOMRect {
+  return {
+    x: 0,
+    y: top,
+    width: 60,
+    height: bottom - top,
+    top,
+    right: 60,
+    bottom,
+    left: 0,
+    toJSON: () => ({}),
+  };
+}
+
+function flushGeometryFrames(frameCallbacks: FrameRequestCallback[]) {
+  act(() => {
+    frameCallbacks.splice(0).forEach((callback) => callback(0));
+  });
+}
+
+interface DesktopMediaQueryMock {
+  readonly mediaQuery: MediaQueryList;
+  setMatches(matches: boolean): void;
+}
+
+function mockDesktopMediaQuery(initialMatches: boolean): DesktopMediaQueryMock {
+  const changeListeners = new Set<(event: MediaQueryListEvent) => void>();
+  const mediaQuery = {
+    matches: initialMatches,
+    media: '(min-width: 768px)',
+    onchange: null,
+    addEventListener: vi.fn((type: string, listener: EventListenerOrEventListenerObject) => {
+      if (type === 'change' && typeof listener === 'function') changeListeners.add(listener);
+    }),
+    removeEventListener: vi.fn((type: string, listener: EventListenerOrEventListenerObject) => {
+      if (type === 'change' && typeof listener === 'function') changeListeners.delete(listener);
+    }),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  } as unknown as MediaQueryList;
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn(() => mediaQuery),
+  );
+
+  return {
+    mediaQuery,
+    setMatches(matches: boolean) {
+      Object.defineProperty(mediaQuery, 'matches', { configurable: true, value: matches });
+      const event = { matches, media: mediaQuery.media } as MediaQueryListEvent;
+      changeListeners.forEach((listener) => listener(event));
+    },
+  };
+}
+
 describe('course chat interaction lifecycle', () => {
+  it('keeps footer collision work inactive below 768px and starts it only after desktop entry', () => {
+    const media = mockDesktopMediaQuery(false);
+    const requestAnimationFrame = vi.fn();
+    const disconnectResizeObserver = vi.fn();
+    vi.stubGlobal('requestAnimationFrame', requestAnimationFrame);
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe() {}
+        disconnect() {
+          disconnectResizeObserver();
+        }
+      },
+    );
+    footerForGeometryTest();
+
+    render(launcher());
+    const root = screen.getByLabelText('Course assistant');
+
+    expect(requestAnimationFrame).not.toHaveBeenCalled();
+    expect(root.style.insetBlockEnd).toBe('');
+
+    media.setMatches(true);
+    expect(requestAnimationFrame).toHaveBeenCalledTimes(1);
+
+    media.setMatches(false);
+    expect(disconnectResizeObserver).toHaveBeenCalledTimes(1);
+    expect(root.style.insetBlockEnd).toBe('');
+  });
+
+  it('keeps clearance stable through repeated collision measurements and restores the normal anchor', () => {
+    mockDesktopMediaQuery(true);
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 900 });
+    const frameCallbacks: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      frameCallbacks.push(callback);
+      return frameCallbacks.length;
+    });
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    const footer = footerForGeometryTest();
+    vi.spyOn(footer, 'getBoundingClientRect').mockReturnValue(geometryRect(950, 1_100));
+
+    render(launcher());
+    const root = screen.getByLabelText('Course assistant');
+    const rootRect = vi.spyOn(root, 'getBoundingClientRect');
+    rootRect.mockReturnValue(geometryRect(760, 880));
+    window.dispatchEvent(new Event('resize'));
+    flushGeometryFrames(frameCallbacks);
+    expect(root.style.insetBlockEnd).toBe('');
+
+    vi.spyOn(footer, 'getBoundingClientRect').mockReturnValue(geometryRect(820, 1_020));
+    window.dispatchEvent(new Event('resize'));
+    flushGeometryFrames(frameCallbacks);
+    expect(root.style.insetBlockEnd).toBe('calc(var(--spacing-8) + 60px)');
+
+    rootRect.mockReturnValue(geometryRect(700, 820));
+    window.dispatchEvent(new Event('resize'));
+    flushGeometryFrames(frameCallbacks);
+    expect(root.style.insetBlockEnd).toBe('calc(var(--spacing-8) + 60px)');
+
+    vi.spyOn(footer, 'getBoundingClientRect').mockReturnValue(geometryRect(950, 1_100));
+    window.dispatchEvent(new Event('resize'));
+    flushGeometryFrames(frameCallbacks);
+    expect(root.style.insetBlockEnd).toBe('');
+  });
+
+  it('coalesces geometry updates and cancels pending work on unmount', () => {
+    mockDesktopMediaQuery(true);
+    const frameCallbacks: FrameRequestCallback[] = [];
+    const cancelAnimationFrame = vi.fn();
+    const disconnectResizeObserver = vi.fn();
+    const resizeObservers: ResizeObserverCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      frameCallbacks.push(callback);
+      return frameCallbacks.length;
+    });
+    vi.stubGlobal('cancelAnimationFrame', cancelAnimationFrame);
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: ResizeObserverCallback) {
+          resizeObservers.push(callback);
+        }
+        observe() {}
+        disconnect() {
+          disconnectResizeObserver();
+        }
+      },
+    );
+    const footer = footerForGeometryTest();
+    vi.spyOn(footer, 'getBoundingClientRect').mockReturnValue(geometryRect(950, 1_100));
+
+    render(launcher());
+    const root = screen.getByLabelText('Course assistant');
+    vi.spyOn(root, 'getBoundingClientRect').mockReturnValue(geometryRect(760, 880));
+    flushGeometryFrames(frameCallbacks);
+
+    window.dispatchEvent(new Event('resize'));
+    window.dispatchEvent(new Event('resize'));
+    resizeObservers.forEach((callback) => callback([], {} as ResizeObserver));
+    expect(frameCallbacks).toHaveLength(1);
+
+    cleanup();
+    expect(cancelAnimationFrame).toHaveBeenCalledWith(1);
+    expect(disconnectResizeObserver).toHaveBeenCalledTimes(1);
+  });
+
   it('requires CourseChatSessionProvider for useCourseChat', () => {
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 

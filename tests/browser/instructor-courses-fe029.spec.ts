@@ -1,4 +1,5 @@
-import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
+import { expect, test, type Browser, type Locator, type Page, type Route } from '@playwright/test';
+import { inflateSync } from 'node:zlib';
 
 const instructorProfile = {
   email: 'instructor@example.test',
@@ -39,6 +40,129 @@ interface InstructorCourseHeaderActions {
   readonly createAction: Locator;
   readonly routeLink: Locator;
   readonly sharesMobileActionGroup: boolean;
+}
+
+type BackgroundVariant = 'desktop' | 'tablet' | 'mobile';
+
+interface InstructorCoursesBackgroundComposition {
+  readonly image: string;
+  readonly position: string;
+  readonly repeat: string;
+  readonly size: string;
+  readonly variant: string;
+}
+
+interface SourceCompositionScenario {
+  readonly deviceScaleFactor: number;
+  readonly expectedVariant: BackgroundVariant;
+  readonly physicalHeight: number;
+  readonly physicalWidth: number;
+  readonly viewport: { readonly height: number; readonly width: number };
+}
+
+type PngPixel = readonly [red: number, green: number, blue: number, alpha: number];
+
+interface FooterCanvasGeometry {
+  readonly articleBottom: number;
+  readonly devicePixelRatio: number;
+  readonly footerTop: number;
+  readonly viewportWidth: number;
+}
+
+const PNG_SIGNATURE_LENGTH = 8;
+const PNG_RGBA_COLOR_TYPE = 6;
+const PNG_RGB_COLOR_TYPE = 2;
+const PNG_BIT_DEPTH = 8;
+
+function paethPredictor(left: number, above: number, upperLeft: number) {
+  const estimate = left + above - upperLeft;
+  const leftDistance = Math.abs(estimate - left);
+  const aboveDistance = Math.abs(estimate - above);
+  const upperLeftDistance = Math.abs(estimate - upperLeft);
+  if (leftDistance <= aboveDistance && leftDistance <= upperLeftDistance) return left;
+  if (aboveDistance <= upperLeftDistance) return above;
+  return upperLeft;
+}
+
+function pngPixelAt(screenshot: Buffer, x: number, y: number): PngPixel {
+  if (screenshot.length < PNG_SIGNATURE_LENGTH) throw new Error('Screenshot is not a PNG.');
+  let offset = PNG_SIGNATURE_LENGTH;
+  let width = 0;
+  let height = 0;
+  let colorType = -1;
+  const idatChunks: Buffer[] = [];
+
+  while (offset + 12 <= screenshot.length) {
+    const length = screenshot.readUInt32BE(offset);
+    const type = screenshot.toString('ascii', offset + 4, offset + 8);
+    const dataStart = offset + 8;
+    const dataEnd = dataStart + length;
+    if (dataEnd + 4 > screenshot.length) throw new Error('Screenshot PNG chunk is truncated.');
+    if (type === 'IHDR') {
+      width = screenshot.readUInt32BE(dataStart);
+      height = screenshot.readUInt32BE(dataStart + 4);
+      const bitDepth = screenshot[dataStart + 8];
+      colorType = screenshot[dataStart + 9] ?? -1;
+      const interlace = screenshot[dataStart + 12];
+      if (bitDepth !== PNG_BIT_DEPTH || interlace !== 0)
+        throw new Error('Unsupported screenshot PNG encoding.');
+    } else if (type === 'IDAT') {
+      idatChunks.push(screenshot.subarray(dataStart, dataEnd));
+    } else if (type === 'IEND') {
+      break;
+    }
+    offset = dataEnd + 4;
+  }
+
+  const bytesPerPixel =
+    colorType === PNG_RGBA_COLOR_TYPE ? 4 : colorType === PNG_RGB_COLOR_TYPE ? 3 : 0;
+  if (width === 0 || height === 0 || bytesPerPixel === 0)
+    throw new Error('Unsupported screenshot PNG color format.');
+  if (x < 0 || x >= width || y < 0 || y >= height)
+    throw new Error(`Screenshot probe ${x},${y} is outside ${width}x${height}.`);
+
+  const stride = width * bytesPerPixel;
+  const decoded = inflateSync(Buffer.concat(idatChunks));
+  let decodedOffset = 0;
+  let previous = Buffer.alloc(stride);
+  for (let row = 0; row <= y; row += 1) {
+    const filter = decoded[decodedOffset++];
+    const current = Buffer.from(decoded.subarray(decodedOffset, decodedOffset + stride));
+    decodedOffset += stride;
+    for (let column = 0; column < stride; column += 1) {
+      const left = column >= bytesPerPixel ? current[column - bytesPerPixel]! : 0;
+      const above = previous[column]!;
+      const upperLeft = column >= bytesPerPixel ? previous[column - bytesPerPixel]! : 0;
+      const value = current[column]!;
+      current[column] =
+        filter === 0
+          ? value
+          : filter === 1
+            ? (value + left) & 0xff
+            : filter === 2
+              ? (value + above) & 0xff
+              : filter === 3
+                ? (value + Math.floor((left + above) / 2)) & 0xff
+                : filter === 4
+                  ? (value + paethPredictor(left, above, upperLeft)) & 0xff
+                  : (() => {
+                      throw new Error(`Unsupported screenshot PNG filter ${filter}.`);
+                    })();
+    }
+    if (row === y) {
+      const pixelOffset = x * bytesPerPixel;
+      return colorType === PNG_RGBA_COLOR_TYPE
+        ? [
+            current[pixelOffset]!,
+            current[pixelOffset + 1]!,
+            current[pixelOffset + 2]!,
+            current[pixelOffset + 3]!,
+          ]
+        : [current[pixelOffset]!, current[pixelOffset + 1]!, current[pixelOffset + 2]!, 255];
+    }
+    previous = current;
+  }
+  throw new Error('Screenshot PNG does not contain the requested row.');
 }
 
 const unexpectedRuntimeErrors = new WeakMap<Page, string[]>();
@@ -83,6 +207,85 @@ async function expectNoHorizontalOverflow(page: Page) {
   }));
   expect(widths.document).toBeLessThanOrEqual(widths.client);
   expect(widths.body).toBeLessThanOrEqual(widths.client);
+}
+
+async function expectInstructorCanvasReachesFooter(page: Page) {
+  const footer = page.locator('footer');
+  await footer.scrollIntoViewIfNeeded();
+  const geometry = await page.evaluate<FooterCanvasGeometry>(() => {
+    const article = document.querySelector('article');
+    const footerElement = document.querySelector('footer');
+    if (!article || !footerElement) throw new Error('Expected Instructor canvas and footer.');
+    const articleBox = article.getBoundingClientRect();
+    const footerBox = footerElement.getBoundingClientRect();
+    return {
+      articleBottom: articleBox.bottom,
+      devicePixelRatio: window.devicePixelRatio,
+      footerTop: footerBox.top,
+      viewportWidth: window.innerWidth,
+    };
+  });
+  expect(geometry.articleBottom).toBeGreaterThanOrEqual(geometry.footerTop - 1);
+  const screenshot = await page.screenshot();
+  const physicalX = Math.floor((geometry.viewportWidth / 2) * geometry.devicePixelRatio);
+  const physicalY = Math.floor((geometry.footerTop - 1) * geometry.devicePixelRatio);
+  expect(pngPixelAt(screenshot, physicalX, physicalY)).toEqual([244, 241, 255, 255]);
+}
+
+async function readInstructorCoursesBackground(
+  page: Page,
+): Promise<InstructorCoursesBackgroundComposition> {
+  return page.locator('article').evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      image: style.backgroundImage,
+      position: style.backgroundPosition,
+      repeat: style.backgroundRepeat,
+      size: style.backgroundSize,
+      variant: style.getPropertyValue('--instructor-courses-background-variant').trim(),
+    };
+  });
+}
+
+async function expectApprovedSourceComposition(
+  browser: Browser,
+  scenario: SourceCompositionScenario,
+) {
+  const context = await browser.newContext({
+    deviceScaleFactor: scenario.deviceScaleFactor,
+    viewport: scenario.viewport,
+  });
+  const page = await context.newPage();
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.stack ?? error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(message.text());
+  });
+  try {
+    await installInstructorSession(page);
+    await page.route('**/courses/my**', async (route) => {
+      await fulfillJson(route, 200, collectionResponse(firstPageCourses, 1, 20, 1));
+    });
+    await page.goto('/instructor/courses', { waitUntil: 'domcontentloaded' });
+    const background = await readInstructorCoursesBackground(page);
+    expect(background.variant).toBe(scenario.expectedVariant);
+    if (scenario.expectedVariant === 'mobile') {
+      expect(background.image).toContain('instructor-courses-background-mobile-top-uifd020.png');
+      expect(background.image).toContain('instructor-courses-background-mobile-bottom-uifd020.png');
+    } else {
+      expect(background.image).toContain(
+        `instructor-courses-background-${scenario.expectedVariant}-uifd020.png`,
+      );
+    }
+    await expectNoHorizontalOverflow(page);
+    await expectInstructorCanvasReachesFooter(page);
+    const screenshot = await page.screenshot();
+    expect(screenshot.readUInt32BE(16)).toBe(scenario.physicalWidth);
+    expect(screenshot.readUInt32BE(20)).toBe(scenario.physicalHeight);
+    expect(errors, 'source-composition runtime errors').toEqual([]);
+  } finally {
+    await context.close();
+  }
 }
 
 async function instructorCourseHeaderActions(
@@ -132,7 +335,7 @@ test.afterEach(async ({ page }) => {
   expect(unexpectedRuntimeErrors.get(page), 'unexpected browser runtime errors').toEqual([]);
 });
 
-test('uses the unified lavender workspace canvas and preserves responsive Instructor header actions', async ({
+test('uses the approved responsive decorative canvas and preserves Instructor header actions', async ({
   page,
 }) => {
   await page.route('**/courses/my**', async (route) => {
@@ -147,6 +350,17 @@ test('uses the unified lavender workspace canvas and preserves responsive Instru
   const headerActions = await instructorCourseHeaderActions(page, 1024);
 
   await expect(pageCanvas).toHaveCSS('background-color', 'rgb(244, 241, 255)');
+  await expect
+    .poll(() => readInstructorCoursesBackground(page))
+    .toMatchObject({
+      variant: 'desktop',
+      repeat: 'no-repeat',
+      position: '100% 0%',
+      size: '100%',
+    });
+  expect((await readInstructorCoursesBackground(page)).image).toContain(
+    'instructor-courses-background-desktop-uifd020.png',
+  );
   await expect(
     page.getByRole('heading', { level: 1, name: 'Instructor courses', includeHidden: true }),
   ).toHaveCount(1);
@@ -157,6 +371,7 @@ test('uses the unified lavender workspace canvas and preserves responsive Instru
   ).toHaveCount(0);
   await expect(collection).toHaveCSS('background-color', 'rgb(255, 255, 255)');
   await expect(collection).toHaveCSS('border-radius', '12px');
+  await expectInstructorCanvasReachesFooter(page);
   await expect(headerActions.routeLink).toHaveAttribute('aria-current', 'page');
   await expect(headerActions.createAction).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
 
@@ -164,6 +379,24 @@ test('uses the unified lavender workspace canvas and preserves responsive Instru
     await page.setViewportSize({ width, height: 900 });
     if (width !== 195) {
       await page.goto('/instructor/courses', { waitUntil: 'domcontentloaded' });
+    }
+    const expectedVariant: BackgroundVariant =
+      width <= 767 ? 'mobile' : width <= 1023 ? 'tablet' : 'desktop';
+    const background = await readInstructorCoursesBackground(page);
+    expect(background.variant).toBe(expectedVariant);
+    expect(background.repeat).toBe(
+      expectedVariant === 'mobile' ? 'no-repeat, no-repeat' : 'no-repeat',
+    );
+    expect(background.size).toBe(expectedVariant === 'mobile' ? '100%, 100%' : '100%');
+    if (expectedVariant === 'mobile') {
+      expect(background.image).toContain('instructor-courses-background-mobile-top-uifd020.png');
+      expect(background.image).toContain('instructor-courses-background-mobile-bottom-uifd020.png');
+      expect(background.position).toBe('50% 0%, 50% 100%');
+    } else {
+      expect(background.image).toContain(
+        `instructor-courses-background-${expectedVariant}-uifd020.png`,
+      );
+      expect(background.position).toBe('100% 0%');
     }
     const responsiveHeaderActions = await instructorCourseHeaderActions(page, width);
     await expect(responsiveHeaderActions.routeLink).toBeVisible();
@@ -184,6 +417,7 @@ test('uses the unified lavender workspace canvas and preserves responsive Instru
     } else {
       expect(actionBox.x).toBeGreaterThan(routeBox.x + routeBox.width);
     }
+    await expectInstructorCanvasReachesFooter(page);
     const responsiveCreateAction = responsiveHeaderActions.createAction;
     await responsiveCreateAction.focus();
     await page.keyboard.press('Tab');
@@ -218,6 +452,32 @@ test('uses the unified lavender workspace canvas and preserves responsive Instru
   expect(await page.evaluate(() => window.history.length)).toBe(historyLengthBeforeSpace);
   expect(createRequests).toEqual([]);
   await expectNoHorizontalOverflow(page);
+});
+
+test('renders each approved source composition at its physical reference dimensions', async ({
+  browser,
+}) => {
+  await expectApprovedSourceComposition(browser, {
+    deviceScaleFactor: 1,
+    expectedVariant: 'desktop',
+    physicalHeight: 1440,
+    physicalWidth: 2560,
+    viewport: { width: 2560, height: 1440 },
+  });
+  await expectApprovedSourceComposition(browser, {
+    deviceScaleFactor: 2,
+    expectedVariant: 'tablet',
+    physicalHeight: 1024,
+    physicalWidth: 1536,
+    viewport: { width: 768, height: 512 },
+  });
+  await expectApprovedSourceComposition(browser, {
+    deviceScaleFactor: 3,
+    expectedVariant: 'mobile',
+    physicalHeight: 2532,
+    physicalWidth: 1170,
+    viewport: { width: 390, height: 844 },
+  });
 });
 
 test('renders the loading skeleton before the deferred collection settles', async ({ page }) => {

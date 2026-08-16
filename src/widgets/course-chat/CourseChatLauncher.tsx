@@ -1,5 +1,5 @@
 import { MessageCircleMore } from 'lucide-react';
-import { useId, useRef, useState } from 'react';
+import { type CSSProperties, useId, useLayoutEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
 import type { CourseAssistantContext } from '@features/course-chat';
@@ -17,13 +17,90 @@ export function CourseChatLauncher({ assistant }: CourseChatLauncherProps) {
   const widgetId = useId();
   const [open, setOpen] = useState(false);
   const [interactionMounted, setInteractionMounted] = useState(false);
+  const [footerClearance, setFooterClearance] = useState(0);
+  const rootRef = useRef<HTMLElement>(null);
   const launcherRef = useRef<HTMLButtonElement>(null);
+  const appliedFooterClearanceRef = useRef(0);
+
+  useLayoutEffect(() => {
+    if (typeof window.matchMedia !== 'function') return undefined;
+
+    const desktopMediaQuery = window.matchMedia('(min-width: 768px)');
+    let stopDesktopCollisionLifecycle: (() => void) | undefined;
+
+    const startDesktopCollisionLifecycle = () => {
+      const root = rootRef.current;
+      const footer = document.querySelector('footer');
+      if (!(root instanceof HTMLElement) || !(footer instanceof HTMLElement)) return;
+
+      let frame: number | null = null;
+      const updateClearance = () => {
+        const rootRect = root.getBoundingClientRect();
+        const footerRect = footer.getBoundingClientRect();
+        const appliedClearance = appliedFooterClearanceRef.current;
+        const normalRootTop = rootRect.top + appliedClearance;
+        const normalRootBottom = rootRect.bottom + appliedClearance;
+        const footerIsVisible = footerRect.bottom > 0 && footerRect.top < window.innerHeight;
+        const intersectsFooter =
+          normalRootTop < footerRect.bottom && normalRootBottom > footerRect.top;
+        const nextClearance =
+          footerIsVisible && intersectsFooter ? Math.max(0, normalRootBottom - footerRect.top) : 0;
+        appliedFooterClearanceRef.current = nextClearance;
+        setFooterClearance((current) => (current === nextClearance ? current : nextClearance));
+      };
+      const scheduleClearanceUpdate = () => {
+        if (frame !== null) return;
+        frame = requestAnimationFrame(() => {
+          frame = null;
+          updateClearance();
+        });
+      };
+      const observer =
+        typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(scheduleClearanceUpdate);
+      observer?.observe(root);
+      observer?.observe(footer);
+      const visualViewport = window.visualViewport;
+      scheduleClearanceUpdate();
+      document.addEventListener('scroll', scheduleClearanceUpdate, true);
+      window.addEventListener('resize', scheduleClearanceUpdate);
+      visualViewport?.addEventListener('resize', scheduleClearanceUpdate);
+      visualViewport?.addEventListener('scroll', scheduleClearanceUpdate);
+
+      stopDesktopCollisionLifecycle = () => {
+        if (frame !== null) cancelAnimationFrame(frame);
+        observer?.disconnect();
+        document.removeEventListener('scroll', scheduleClearanceUpdate, true);
+        window.removeEventListener('resize', scheduleClearanceUpdate);
+        visualViewport?.removeEventListener('resize', scheduleClearanceUpdate);
+        visualViewport?.removeEventListener('scroll', scheduleClearanceUpdate);
+      };
+    };
+    const handleBreakpointChange = () => {
+      stopDesktopCollisionLifecycle?.();
+      stopDesktopCollisionLifecycle = undefined;
+      appliedFooterClearanceRef.current = 0;
+      setFooterClearance(0);
+      if (desktopMediaQuery.matches) startDesktopCollisionLifecycle();
+    };
+
+    desktopMediaQuery.addEventListener('change', handleBreakpointChange);
+    handleBreakpointChange();
+    return () => {
+      desktopMediaQuery.removeEventListener('change', handleBreakpointChange);
+      stopDesktopCollisionLifecycle?.();
+    };
+  }, []);
+
+  const rootStyle: CSSProperties | undefined =
+    footerClearance === 0
+      ? undefined
+      : { insetBlockEnd: `calc(var(--spacing-8) + ${footerClearance}px)` };
   const close = (restoreFocus = true) => {
     setOpen(false);
     if (restoreFocus) launcherRef.current?.focus();
   };
   return (
-    <aside className={styles.root} aria-label="Course assistant">
+    <aside ref={rootRef} className={styles.root} style={rootStyle} aria-label="Course assistant">
       {interactionMounted ? (
         <CourseChatLauncherInteraction
           assistant={assistant}
