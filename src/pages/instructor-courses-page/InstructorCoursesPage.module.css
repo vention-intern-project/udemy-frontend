@@ -2,6 +2,7 @@
   --instructor-courses-background-variant: desktop;
 
   display: grid;
+  align-content: start;
   gap: var(--spacing-6);
   width: 100vw;
   box-sizing: border-box;

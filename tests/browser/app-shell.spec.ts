@@ -2109,6 +2109,58 @@ test('rejects malformed successful session data without authenticating or cleari
   assertRuntimeClean();
 });
 
+test('keeps public desktop auth actions at the header end after a recoverable session check failure', async ({
+  page,
+}) => {
+  const assertRuntimeClean = monitorRuntime(page, [{ method: 'GET', path: '/me', status: 503 }]);
+  await installCatalogFixture(page);
+  await page.addInitScript(() => localStorage.setItem('learnhub.access-token', 'retry-token'));
+  await page.route('**/me', async (route) =>
+    route.fulfill({
+      status: 503,
+      contentType: 'application/json',
+      body: JSON.stringify({ detail: 'Service unavailable' }),
+    }),
+  );
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/');
+
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' }),
+  ).toBeVisible();
+  const accountNavigation = page.getByRole('navigation', { name: 'Account navigation' });
+  const login = accountNavigation.getByRole('link', { name: 'Log in' });
+  const signup = accountNavigation.getByRole('link', { name: 'Sign up' });
+  await expect(login).toBeVisible();
+  await expect(signup).toBeVisible();
+  expect(await accountNavigation.locator('a').allTextContents()).toEqual(['Log in', 'Sign up']);
+
+  const headerGeometry = await page.locator('[data-app-shell-header]').evaluate((header) => {
+    const inner = header.firstElementChild;
+    const accountNavigation = header.querySelector<HTMLElement>(
+      '[aria-label="Account navigation"]',
+    );
+    const signup = Array.from(header.querySelectorAll<HTMLAnchorElement>('a')).find(
+      (link) => link.textContent?.trim() === 'Sign up',
+    );
+    if (!(inner instanceof HTMLElement) || !accountNavigation || !signup)
+      throw new Error('Public header geometry targets are unavailable.');
+    const innerRect = inner.getBoundingClientRect();
+    const accountRect = accountNavigation.getBoundingClientRect();
+    const signupRect = signup.getBoundingClientRect();
+    return {
+      accountLeft: accountRect.left,
+      innerCenter: innerRect.left + innerRect.width / 2,
+      innerRight: innerRect.right,
+      signupRight: signupRect.right,
+    };
+  });
+  expect(headerGeometry.accountLeft).toBeGreaterThan(headerGeometry.innerCenter);
+  expect(headerGeometry.innerRight - headerGeometry.signupRight).toBeLessThanOrEqual(24.5);
+  await expectNoHorizontalOverflow(page);
+  assertRuntimeClean();
+});
+
 test('keeps Router metadata, layout, density, and titles aligned for a case/trailing parameter route', async ({
   page,
 }) => {
@@ -2474,6 +2526,21 @@ test('removes non-essential shell transitions when reduced motion is requested',
   expect(transitions).toEqual({ skipLink: '0s', navigationLink: '0s' });
   await expectNoHorizontalOverflow(page);
   assertRuntimeClean();
+});
+
+test('redirects an Instructor from the Catalog root to Instructor courses', async ({ page }) => {
+  const requestedPaths: string[] = [];
+  page.on('request', (request) => requestedPaths.push(new URL(request.url()).pathname));
+  await mockAuthenticatedSession(page, 'instructor');
+  const collectionFixture = await mockInstructorCourseCollection(page);
+  const collectionLoaded = collectionFixture.waitForFulfillment();
+
+  await page.goto('/?search_query=React#catalog');
+  await expect(page).toHaveURL('/instructor/courses');
+  await collectionLoaded;
+  await expect(page.locator('[data-part="catalog-page"]')).toHaveCount(0);
+  expect(requestedPaths).not.toContain('/courses');
+  await expectNoHorizontalOverflow(page);
 });
 
 test('keeps instructor course-management content readable without student destinations', async ({

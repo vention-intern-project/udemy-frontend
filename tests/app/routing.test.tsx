@@ -320,20 +320,18 @@ describe('application routing and guards', () => {
     );
   });
 
-  it('keeps the public Catalog route, query, and hash available to an Instructor', async () => {
+  it('redirects an Instructor from the Catalog root to Instructor courses', async () => {
     const { request } = renderApp('/?search_query=React#catalog', 'instructor', {
       focusNavigationProbe: true,
       initialEntries: ['/instructor/courses', '/?search_query=React#catalog'],
       initialIndex: 1,
     });
 
-    await screen.findByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' });
-    expect(screen.getByLabelText('current location').textContent).toBe(
-      '/?search_query=React#catalog',
-    );
+    await screen.findByText('Instructor courses', { selector: 'h1' });
+    expect(screen.getByLabelText('current location').textContent).toBe('/instructor/courses');
     const requestedPaths = request.mock.calls.map(([options]) => options.path);
     expect(requestedPaths).toContain('/me');
-    expect(requestedPaths).toContain('/courses');
+    expect(requestedPaths).not.toContain('/courses');
 
     await act(async () => {
       await userEvent.setup().click(screen.getByRole('button', { name: 'Navigate back' }));

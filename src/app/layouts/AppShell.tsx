@@ -262,7 +262,7 @@ export function AppShell() {
   const layout = route?.layout ?? 'public';
   const isCatalogRoute = route?.id === 'PAGE-001';
   const isInstructorCoursesRoute = route?.id === 'PAGE-010';
-  const isAnonymous = state.status === 'anonymous';
+  const isAnonymous = state.status !== 'authenticated';
   const isInstructor = state.status === 'authenticated' && state.user.role === 'instructor';
   const brandDestination = isInstructor ? '/instructor/courses' : '/';
   const hasCatalogSearch =

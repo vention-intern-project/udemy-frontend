@@ -11,14 +11,20 @@ interface RouteBoundaryProps {
   children: ReactNode;
 }
 
-export function RouteBoundary({
-  route,
-  children,
-}: RouteBoundaryProps) {
+export function RouteBoundary({ route, children }: RouteBoundaryProps) {
   const { state } = useSession();
   const location = useLocation();
 
-  if (route.access === 'public') return children;
+  if (route.access === 'public') {
+    if (
+      route.id === 'PAGE-001' &&
+      state.status === 'authenticated' &&
+      state.user.role === 'instructor'
+    ) {
+      return <Navigate replace to={homeForRole(state.user.role)} />;
+    }
+    return children;
+  }
 
   if (route.access === 'guest') {
     if (state.status !== 'authenticated') return children;
@@ -30,10 +36,11 @@ export function RouteBoundary({
   }
 
   if (state.status !== 'authenticated') {
-    const intended = sanitizeInternalReturnTo(
-      `${location.pathname}${location.search}${location.hash}`,
-      globalThis.location?.origin,
-    ) ?? '/';
+    const intended =
+      sanitizeInternalReturnTo(
+        `${location.pathname}${location.search}${location.hash}`,
+        globalThis.location?.origin,
+      ) ?? '/';
     return <Navigate replace to={`/login?returnTo=${encodeURIComponent(intended)}`} />;
   }
 

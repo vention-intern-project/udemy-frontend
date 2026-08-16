@@ -585,6 +585,10 @@ test('uses only the authenticated collection query, paginates, and preserves sta
   await pagination.getByRole('button', { name: 'Go to next page' }).press('Space');
   await expect(page).toHaveURL(/\/instructor\/courses\?page=2$/);
 
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const collection = page.getByRole('heading', { level: 2, name: 'Your courses' }).locator('..');
+  expect(await collection.evaluate((element) => element.clientHeight)).toBeLessThan(260);
+
   for (const width of [320, 390, 640, 768, 1023, 1024, 1440] as const) {
     await page.setViewportSize({ width, height: 900 });
     await expect(page.getByText(pageTwoCourse.title)).toBeVisible();
