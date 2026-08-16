@@ -228,7 +228,7 @@ describe('LearningDetailPage', () => {
     const link = links[0]!;
     expect(link.getAttribute('href')).toBe('/learning');
     expect(link.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
-    expect(link.querySelector('svg')?.getAttribute('width')).toBe('18');
+    expect(link.querySelector('svg')?.getAttribute('width')).toBe('20');
     expect(link.textContent).toBe('My learning');
   }
 
@@ -256,6 +256,8 @@ describe('LearningDetailPage', () => {
     expect(
       screen.getByText('Accessible progress course', { selector: '[aria-current="page"]' }),
     ).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Accessible progress course' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Catalog' })).toBeNull();
     expect(screen.queryByText('Media unavailable in this workspace')).toBeNull();
     expect(screen.queryByRole('button', { name: /load (video|pdf)/i })).toBeNull();
   });

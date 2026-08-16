@@ -135,7 +135,9 @@
   min-height: var(--control-height-md);
   padding-inline: var(--spacing-3);
   color: var(--action-primary-fg);
+  font-size: var(--type-button-size);
   font-weight: var(--font-weight-semibold);
+  line-height: var(--type-button-lh);
   text-decoration: none;
   background: var(--action-primary-bg);
   border-radius: var(--radius-md);

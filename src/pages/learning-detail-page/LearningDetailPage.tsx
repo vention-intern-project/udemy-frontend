@@ -143,7 +143,7 @@ function LearningReturnLink({ currentCourseTitle }: LearningReturnLinkProps) {
   return (
     <nav className={styles.breadcrumb} aria-label="Breadcrumb">
       <ContextualNavigationLink className={styles.backLink} to="/learning">
-        <ChevronLeft size={18} aria-hidden="true" />
+        <ChevronLeft size={20} aria-hidden="true" />
         <span>My learning</span>
       </ContextualNavigationLink>
       {currentCourseTitle ? (

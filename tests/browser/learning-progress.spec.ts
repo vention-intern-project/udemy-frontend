@@ -1692,13 +1692,20 @@ test('recovers API-022 enrollment detail by keyboard and focuses the restored co
   expect(diagnostics.httpFailures).toEqual(['GET /enrollments/4 500', 'GET /enrollments/4 500']);
 });
 
-test('verifies Chromium page scale factor at 200% with overflow and focused-control access', async ({
+test('keeps student contextual navigation consistent across the DD-259 CSS-width matrix', async ({
   page,
 }) => {
   await installStudent(page);
   const diagnostics = captureRuntimeDiagnostics(page, {
-    abortedRequests: [expectedGetAbort('/enrollments/4', 1)],
+    abortedRequests: [
+      expectedGetAbort('/enrollments/my', 11),
+      expectedGetAbort('/enrollments/4', 11),
+      expectedGetAbort('/cart', 22),
+      expectedGetAbort('/src/app/layouts/assets/ai-assistant-navigation-ui018-2.png', 1),
+    ],
   });
+  const longCourseTitle =
+    'A deliberately long browser learning course title that must wrap without clipping the truthful current segment';
   await page.route('**/*', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -1706,52 +1713,81 @@ test('verifies Chromium page scale factor at 200% with overflow and focused-cont
     if (url.pathname.startsWith('/media/'))
       throw new Error('Media must not be requested by FE-011');
     if (url.pathname === '/me') return json(route, student);
+    if (url.pathname === '/enrollments/my')
+      return json(route, {
+        items: [{ ...enrollment, course: { ...enrollment.course, title: longCourseTitle } }],
+        page: 1,
+        page_size: 20,
+        total: 1,
+        pages: 1,
+        has_next: false,
+        has_previous: false,
+      });
     if (url.pathname === '/enrollments/4')
-      return json(route, { ...enrollment, status: 'cancelled' });
+      return json(route, {
+        ...enrollment,
+        course: { ...enrollment.course, title: longCourseTitle },
+      });
+    if (url.pathname === '/courses/7/progress')
+      return json(route, {
+        course_id: 7,
+        completed_lessons: 0,
+        total_lessons: 0,
+        progress_percentage: 0,
+      });
+    if (url.pathname === '/courses/7/lessons')
+      return json(route, {
+        items: [],
+        page: 1,
+        page_size: 100,
+        total: 0,
+        pages: 0,
+        has_next: false,
+        has_previous: false,
+      });
     if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/'))
       throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
     return route.fallback();
   });
 
-  await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto('/learning/enrollments/4');
-  const cdp = await page.context().newCDPSession(page);
-  await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 2 });
-  const scaleEvidence = await page.evaluate(() => ({
-    scale: window.visualViewport?.scale ?? 1,
-    visualWidth: window.visualViewport?.width ?? window.innerWidth,
-    layoutWidth: document.documentElement.clientWidth,
-  }));
-  expect(scaleEvidence.scale).toBeCloseTo(2, 1);
-  expect(scaleEvidence.visualWidth).toBeLessThan(scaleEvidence.layoutWidth);
+  for (const width of [320, 390, 479, 480, 767, 768, 1023, 1024, 1119, 1120, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/learning');
+    const listBreadcrumb = page.getByRole('navigation', { name: 'Breadcrumb' });
+    const catalog = listBreadcrumb.getByRole('link', { name: 'Catalog', exact: true });
+    await expect(catalog).toHaveAttribute('href', '/');
+    await expect(listBreadcrumb.getByRole('link')).toHaveCount(1);
+    await expect(listBreadcrumb.locator('[aria-current="page"]')).toHaveText('/My learning');
 
-  const breadcrumb = page.getByRole('navigation', { name: 'Breadcrumb' });
-  const backLink = breadcrumb.getByRole('link', { name: 'My learning', exact: true });
-  await expect(backLink).toHaveAttribute('href', '/learning');
-  await expect(breadcrumb.locator('[aria-current="page"]')).toHaveText(enrollment.course.title);
-  await tabTo(page, backLink);
-  await expect(backLink).toBeFocused();
-  const geometry = await page.evaluate(() => {
-    const active = document.activeElement;
-    const rect = active instanceof HTMLElement ? active.getBoundingClientRect() : null;
-    const viewport = window.visualViewport;
-    return {
-      documentWidth: document.documentElement.scrollWidth,
-      bodyWidth: document.body.scrollWidth,
-      layoutWidth: document.documentElement.clientWidth,
-      focusLeft: rect?.left ?? -1,
-      focusRight: rect?.right ?? Number.POSITIVE_INFINITY,
-      visibleLeft: viewport?.offsetLeft ?? 0,
-      visibleRight: (viewport?.offsetLeft ?? 0) + (viewport?.width ?? window.innerWidth),
-    };
-  });
-  expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.layoutWidth);
-  expect(geometry.bodyWidth).toBeLessThanOrEqual(geometry.layoutWidth);
-  expect(geometry.focusLeft).toBeGreaterThanOrEqual(geometry.visibleLeft);
-  expect(geometry.focusRight).toBeLessThanOrEqual(geometry.visibleRight);
+    await page.goto('/learning/enrollments/4');
+    const breadcrumb = page.getByRole('navigation', { name: 'Breadcrumb' });
+    const backLink = breadcrumb.getByRole('link', { name: 'My learning', exact: true });
+    await expect(backLink).toHaveAttribute('href', '/learning');
+    await expect(breadcrumb.getByRole('link')).toHaveCount(1);
+    await expect(breadcrumb.locator('[aria-current="page"]')).toHaveText(longCourseTitle);
+    await expect(breadcrumb.getByRole('link', { name: longCourseTitle })).toHaveCount(0);
+    await backLink.hover();
+    await expect(backLink).toHaveCSS('text-decoration-line', 'underline');
+    await tabTo(page, backLink);
+    await expect(backLink).toBeFocused();
+    const geometry = await backLink.evaluate((link) => {
+      const rect = link.getBoundingClientRect();
+      const icon = link.querySelector('svg')?.getBoundingClientRect();
+      return {
+        documentWidth: document.documentElement.scrollWidth,
+        bodyWidth: document.body.scrollWidth,
+        layoutWidth: document.documentElement.clientWidth,
+        targetHeight: rect.height,
+        iconHeight: icon?.height ?? -1,
+      };
+    });
+    expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.layoutWidth);
+    expect(geometry.bodyWidth).toBeLessThanOrEqual(geometry.layoutWidth);
+    expect(geometry.targetHeight).toBeGreaterThanOrEqual(44);
+    expect(geometry.iconHeight).toBeCloseTo(20, 1);
+  }
   expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
   expect(diagnostics.httpFailures).toEqual([]);
-  await cdp.detach();
 });
 
 for (const status of ['pending_payment', 'cancelled'] as const)
@@ -1934,7 +1970,7 @@ test('supports keyboard traversal and restores focus after list and workspace re
     Math.abs(myLearningReturnPosition.labelTop - catalogReturnPosition.labelTop),
   ).toBeLessThanOrEqual(0.5);
   expect(catalogReturnPosition.iconHeight).toBeCloseTo(20, 1);
-  expect(myLearningReturnPosition.iconHeight).toBeCloseTo(18, 1);
+  expect(myLearningReturnPosition.iconHeight).toBeCloseTo(20, 1);
   expect(
     Math.abs(
       myLearningReturnPosition.iconTop +

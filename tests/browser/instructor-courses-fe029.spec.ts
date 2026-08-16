@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
+import { expect, test, type Browser, type Locator, type Page, type Route } from '@playwright/test';
 
 const instructorProfile = {
   email: 'instructor@example.test',
@@ -39,6 +39,24 @@ interface InstructorCourseHeaderActions {
   readonly createAction: Locator;
   readonly routeLink: Locator;
   readonly sharesMobileActionGroup: boolean;
+}
+
+type BackgroundVariant = 'desktop' | 'tablet' | 'mobile';
+
+interface InstructorCoursesBackgroundComposition {
+  readonly image: string;
+  readonly position: string;
+  readonly repeat: string;
+  readonly size: string;
+  readonly variant: string;
+}
+
+interface SourceCompositionScenario {
+  readonly deviceScaleFactor: number;
+  readonly expectedVariant: BackgroundVariant;
+  readonly physicalHeight: number;
+  readonly physicalWidth: number;
+  readonly viewport: { readonly height: number; readonly width: number };
 }
 
 const unexpectedRuntimeErrors = new WeakMap<Page, string[]>();
@@ -83,6 +101,61 @@ async function expectNoHorizontalOverflow(page: Page) {
   }));
   expect(widths.document).toBeLessThanOrEqual(widths.client);
   expect(widths.body).toBeLessThanOrEqual(widths.client);
+}
+
+async function readInstructorCoursesBackground(
+  page: Page,
+): Promise<InstructorCoursesBackgroundComposition> {
+  return page.locator('article').evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      image: style.backgroundImage,
+      position: style.backgroundPosition,
+      repeat: style.backgroundRepeat,
+      size: style.backgroundSize,
+      variant: style.getPropertyValue('--instructor-courses-background-variant').trim(),
+    };
+  });
+}
+
+async function expectApprovedSourceComposition(
+  browser: Browser,
+  scenario: SourceCompositionScenario,
+) {
+  const context = await browser.newContext({
+    deviceScaleFactor: scenario.deviceScaleFactor,
+    viewport: scenario.viewport,
+  });
+  const page = await context.newPage();
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.stack ?? error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(message.text());
+  });
+  try {
+    await installInstructorSession(page);
+    await page.route('**/courses/my**', async (route) => {
+      await fulfillJson(route, 200, collectionResponse(firstPageCourses, 1, 20, 1));
+    });
+    await page.goto('/instructor/courses', { waitUntil: 'domcontentloaded' });
+    const background = await readInstructorCoursesBackground(page);
+    expect(background.variant).toBe(scenario.expectedVariant);
+    if (scenario.expectedVariant === 'mobile') {
+      expect(background.image).toContain('instructor-courses-background-mobile-top-uifd020.png');
+      expect(background.image).toContain('instructor-courses-background-mobile-bottom-uifd020.png');
+    } else {
+      expect(background.image).toContain(
+        `instructor-courses-background-${scenario.expectedVariant}-uifd020.png`,
+      );
+    }
+    await expectNoHorizontalOverflow(page);
+    const screenshot = await page.screenshot();
+    expect(screenshot.readUInt32BE(16)).toBe(scenario.physicalWidth);
+    expect(screenshot.readUInt32BE(20)).toBe(scenario.physicalHeight);
+    expect(errors, 'source-composition runtime errors').toEqual([]);
+  } finally {
+    await context.close();
+  }
 }
 
 async function instructorCourseHeaderActions(
@@ -132,7 +205,7 @@ test.afterEach(async ({ page }) => {
   expect(unexpectedRuntimeErrors.get(page), 'unexpected browser runtime errors').toEqual([]);
 });
 
-test('uses the unified lavender workspace canvas and preserves responsive Instructor header actions', async ({
+test('uses the approved responsive decorative canvas and preserves Instructor header actions', async ({
   page,
 }) => {
   await page.route('**/courses/my**', async (route) => {
@@ -147,6 +220,17 @@ test('uses the unified lavender workspace canvas and preserves responsive Instru
   const headerActions = await instructorCourseHeaderActions(page, 1024);
 
   await expect(pageCanvas).toHaveCSS('background-color', 'rgb(244, 241, 255)');
+  await expect
+    .poll(() => readInstructorCoursesBackground(page))
+    .toMatchObject({
+      variant: 'desktop',
+      repeat: 'no-repeat',
+      position: '100% 0%',
+      size: '100%',
+    });
+  expect((await readInstructorCoursesBackground(page)).image).toContain(
+    'instructor-courses-background-desktop-uifd020.png',
+  );
   await expect(
     page.getByRole('heading', { level: 1, name: 'Instructor courses', includeHidden: true }),
   ).toHaveCount(1);
@@ -164,6 +248,24 @@ test('uses the unified lavender workspace canvas and preserves responsive Instru
     await page.setViewportSize({ width, height: 900 });
     if (width !== 195) {
       await page.goto('/instructor/courses', { waitUntil: 'domcontentloaded' });
+    }
+    const expectedVariant: BackgroundVariant =
+      width <= 767 ? 'mobile' : width <= 1023 ? 'tablet' : 'desktop';
+    const background = await readInstructorCoursesBackground(page);
+    expect(background.variant).toBe(expectedVariant);
+    expect(background.repeat).toBe(
+      expectedVariant === 'mobile' ? 'no-repeat, no-repeat' : 'no-repeat',
+    );
+    expect(background.size).toBe(expectedVariant === 'mobile' ? '100%, 100%' : '100%');
+    if (expectedVariant === 'mobile') {
+      expect(background.image).toContain('instructor-courses-background-mobile-top-uifd020.png');
+      expect(background.image).toContain('instructor-courses-background-mobile-bottom-uifd020.png');
+      expect(background.position).toBe('50% 0%, 50% 100%');
+    } else {
+      expect(background.image).toContain(
+        `instructor-courses-background-${expectedVariant}-uifd020.png`,
+      );
+      expect(background.position).toBe('100% 0%');
     }
     const responsiveHeaderActions = await instructorCourseHeaderActions(page, width);
     await expect(responsiveHeaderActions.routeLink).toBeVisible();
@@ -218,6 +320,32 @@ test('uses the unified lavender workspace canvas and preserves responsive Instru
   expect(await page.evaluate(() => window.history.length)).toBe(historyLengthBeforeSpace);
   expect(createRequests).toEqual([]);
   await expectNoHorizontalOverflow(page);
+});
+
+test('renders each approved source composition at its physical reference dimensions', async ({
+  browser,
+}) => {
+  await expectApprovedSourceComposition(browser, {
+    deviceScaleFactor: 1,
+    expectedVariant: 'desktop',
+    physicalHeight: 1440,
+    physicalWidth: 2560,
+    viewport: { width: 2560, height: 1440 },
+  });
+  await expectApprovedSourceComposition(browser, {
+    deviceScaleFactor: 2,
+    expectedVariant: 'tablet',
+    physicalHeight: 1024,
+    physicalWidth: 1536,
+    viewport: { width: 768, height: 512 },
+  });
+  await expectApprovedSourceComposition(browser, {
+    deviceScaleFactor: 3,
+    expectedVariant: 'mobile',
+    physicalHeight: 2532,
+    physicalWidth: 1170,
+    viewport: { width: 390, height: 844 },
+  });
 });
 
 test('renders the loading skeleton before the deferred collection settles', async ({ page }) => {
