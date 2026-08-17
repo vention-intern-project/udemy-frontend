@@ -303,11 +303,11 @@ describe('AppShell student cart query and presentation', () => {
     expect(assistant.querySelector('img')).toBeNull();
     expect(assistantIcon?.getAttribute('aria-hidden')).toBe('true');
     expect(assistantIcon?.getAttribute('focusable')).toBe('false');
-    expect(assistantIcon?.getAttribute('width')).toBe('24');
-    expect(assistantIcon?.getAttribute('height')).toBe('24');
+    expect(assistantIcon?.getAttribute('width')).toBe('28');
+    expect(assistantIcon?.getAttribute('height')).toBe('28');
     expect(assistantIcon?.getAttribute('stroke-width')).toBe('1.75');
-    expect(cart.querySelector('svg')?.getAttribute('width')).toBe('26');
-    expect(cart.querySelector('svg')?.getAttribute('height')).toBe('26');
+    expect(cart.querySelector('svg')?.getAttribute('width')).toBe('25');
+    expect(cart.querySelector('svg')?.getAttribute('height')).toBe('25');
     expect(cart.querySelector('svg')?.getAttribute('stroke-width')).toBe('1.75');
     expect(profile.getAttribute('aria-expanded')).toBe('false');
   });

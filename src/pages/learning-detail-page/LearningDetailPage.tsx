@@ -26,6 +26,8 @@ import {
 
 import styles from './LearningDetailPage.module.css';
 
+const SUBMITTED_PAYMENT_NOTICE_DURATION_MS = 5000;
+
 function parseEnrollmentId(value: string | undefined): number | null {
   return value && /^[1-9]\d*$/.test(value) && Number.isSafeInteger(Number(value))
     ? Number(value)
@@ -163,8 +165,8 @@ export function LearningDetailPage() {
   const workspace = useLearningWorkspace(enrollmentId, feedbackMotion);
   const checkout = useCheckoutCart(`enrollment:${enrollmentId ?? 0}`);
   const headingRef = useRef<HTMLHeadingElement>(null);
-  const paymentNoticeRef = useRef<HTMLDivElement>(null);
   const retryIntentRef = useRef<LearningRetryFocusIntent | null>(null);
+  const [submittedPaymentNoticeVisible, setSubmittedPaymentNoticeVisible] = useState(false);
   const workspaceIdentity: LearningWorkspaceIdentity = `${session.cacheEpoch ?? 'anonymous'}:${enrollmentId ?? 'invalid'}`;
   useEffect(() => {
     retryIntentRef.current = null;
@@ -193,8 +195,17 @@ export function LearningDetailPage() {
     }
   }, [workspaceIdentity, workspace.outline.isSuccess, workspace.progress.isSuccess]);
   useEffect(() => {
-    if (checkout.feedback !== null && !checkout.pending) paymentNoticeRef.current?.focus();
-  }, [checkout.feedback, checkout.pending]);
+    if (checkout.feedback?.kind !== 'payment_completed') {
+      setSubmittedPaymentNoticeVisible(false);
+      return undefined;
+    }
+    setSubmittedPaymentNoticeVisible(true);
+    const timeout = window.setTimeout(
+      () => setSubmittedPaymentNoticeVisible(false),
+      SUBMITTED_PAYMENT_NOTICE_DURATION_MS,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [checkout.feedback, workspaceIdentity]);
   const finishRetry = (intent: LearningRetryFocusIntent, succeeded: boolean) => {
     if (!succeeded && retryIntentRef.current === intent) retryIntentRef.current = null;
   };
@@ -309,8 +320,9 @@ export function LearningDetailPage() {
           </h1>
           <p>{enrollment.course.description ?? 'No course description is available.'}</p>
         </header>
-        {checkout.feedback !== null ? (
-          <div ref={paymentNoticeRef} tabIndex={-1}>
+        {checkout.feedback !== null &&
+        (checkout.feedback.kind !== 'payment_completed' || submittedPaymentNoticeVisible) ? (
+          <div>
             <PaymentFeedbackNotice feedback={checkout.feedback} />
           </div>
         ) : null}

@@ -88,7 +88,7 @@ function CartNavigationLink({ itemCount }: CartNavigationLinkProps) {
       state={cartNavigationState(location)}
       to="/cart"
     >
-      <ShoppingCart aria-hidden="true" focusable="false" size={26} strokeWidth={1.75} />
+      <ShoppingCart aria-hidden="true" focusable="false" size={25} strokeWidth={1.75} />
       {presentation.badge ? <span className={styles.cartBadge}>{presentation.badge}</span> : null}
     </NavLink>
   );
@@ -168,7 +168,7 @@ function AiAssistantNavigationLink() {
       state={target.state}
       to={target.to}
     >
-      <Bot aria-hidden="true" focusable="false" size={24} strokeWidth={1.75} />
+      <Bot aria-hidden="true" focusable="false" size={28} strokeWidth={1.75} />
       {isTooltipVisible ? (
         <span id={tooltipId} className={styles.aiAssistantTooltip} role="tooltip">
           AI assistant

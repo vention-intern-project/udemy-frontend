@@ -46,6 +46,30 @@ p.eyebrow {
   margin-top: var(--spacing-3);
 }
 
+.card .forbiddenLink {
+  display: flex;
+  margin-inline: auto;
+  border: 0;
+  background: transparent;
+  color: var(--action-secondary-fg);
+}
+
+.card .forbiddenLink:visited,
+.card .forbiddenLink:active,
+.card .forbiddenLink:focus-visible {
+  border: 0;
+  background: transparent;
+  color: var(--action-secondary-fg);
+}
+
+.card .forbiddenLink:hover {
+  border: 0;
+  background: transparent;
+  color: var(--action-secondary-fg);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+}
+
 @media (min-width: 768px) {
   .card {
     padding: var(--spacing-12);

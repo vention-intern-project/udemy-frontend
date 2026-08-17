@@ -34,10 +34,16 @@ export function CourseChatLauncher({ assistant }: CourseChatLauncherProps) {
 
     const startDesktopCollisionLifecycle = () => {
       const root = rootRef.current;
-      const footer = document.querySelector('footer');
+      const precedingFooter = root?.previousElementSibling;
+      const footer =
+        precedingFooter?.tagName === 'FOOTER'
+          ? precedingFooter
+          : document.querySelector('footer:not([data-part="course-card-footer"])');
       if (!(root instanceof HTMLElement) || !(footer instanceof HTMLElement)) return;
 
       let frame: number | null = null;
+      let initialFrame: number | null = null;
+      let isInitialGeometryPending = true;
       const updateClearance = () => {
         const rootRect = root.getBoundingClientRect();
         const footerRect = footer.getBoundingClientRect();
@@ -56,7 +62,7 @@ export function CourseChatLauncher({ assistant }: CourseChatLauncherProps) {
         setFooterClearance((current) => (current === nextClearance ? current : nextClearance));
       };
       const scheduleClearanceUpdate = () => {
-        if (frame !== null) return;
+        if (isInitialGeometryPending || frame !== null) return;
         frame = requestAnimationFrame(() => {
           frame = null;
           updateClearance();
@@ -64,18 +70,29 @@ export function CourseChatLauncher({ assistant }: CourseChatLauncherProps) {
       };
       const observer =
         typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(scheduleClearanceUpdate);
+      const mutationObserver =
+        typeof MutationObserver === 'undefined'
+          ? null
+          : new MutationObserver(scheduleClearanceUpdate);
       observer?.observe(root);
       observer?.observe(footer);
+      mutationObserver?.observe(footer.parentElement ?? root, { childList: true, subtree: true });
       const visualViewport = window.visualViewport;
-      scheduleClearanceUpdate();
+      initialFrame = requestAnimationFrame(() => {
+        initialFrame = null;
+        isInitialGeometryPending = false;
+        scheduleClearanceUpdate();
+      });
       document.addEventListener('scroll', scheduleClearanceUpdate, true);
       window.addEventListener('resize', scheduleClearanceUpdate);
       visualViewport?.addEventListener('resize', scheduleClearanceUpdate);
       visualViewport?.addEventListener('scroll', scheduleClearanceUpdate);
 
       stopDesktopCollisionLifecycle = () => {
+        if (initialFrame !== null) cancelAnimationFrame(initialFrame);
         if (frame !== null) cancelAnimationFrame(frame);
         observer?.disconnect();
+        mutationObserver?.disconnect();
         document.removeEventListener('scroll', scheduleClearanceUpdate, true);
         window.removeEventListener('resize', scheduleClearanceUpdate);
         visualViewport?.removeEventListener('resize', scheduleClearanceUpdate);

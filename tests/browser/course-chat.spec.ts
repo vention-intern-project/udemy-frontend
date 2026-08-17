@@ -26,9 +26,33 @@ interface ChatRequestEvidence {
   readonly body: unknown;
 }
 
+interface CourseChatFixtureOptions {
+  readonly cart?: unknown;
+  readonly enrollments?: readonly unknown[];
+}
+
 interface RuntimeDiagnostics {
   readonly unexpectedRuntimeFailures: string[];
   readonly httpFailures: string[];
+}
+
+interface LauncherLifecycleDiagnostic {
+  frameCallbacks: number;
+  framesScheduled: number;
+  resizeListeners: number;
+}
+
+interface LauncherFooterGeometry {
+  readonly footerTop: number;
+  readonly footerBottom: number;
+  readonly launcherTop: number;
+  readonly launcherBottom: number;
+  readonly insetBlockEnd: string;
+  readonly inlineStyle: string | null;
+}
+
+interface DiagnosticWindow extends Window {
+  __launcherLifecycleDiagnostic?: LauncherLifecycleDiagnostic;
 }
 
 interface RgbColor {
@@ -109,13 +133,17 @@ function captureRuntimeDiagnostics(page: Page): RuntimeDiagnostics {
   return diagnostics;
 }
 
-async function installCourseChatFixture(page: Page, chatRequests: ChatRequestEvidence[]) {
+async function installCourseChatFixture(
+  page: Page,
+  chatRequests: ChatRequestEvidence[],
+  options: CourseChatFixtureOptions = {},
+) {
   await page.addInitScript(() => localStorage.setItem('learnhub.access-token', 'student-token'));
   await page.route('**/*', async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
     if (path === '/me') return json(route, student);
-    if (path === '/cart') return json(route, emptyCart);
+    if (path === '/cart') return json(route, options.cart ?? emptyCart);
     if (path === '/courses') {
       return json(route, {
         items: [],
@@ -129,12 +157,13 @@ async function installCourseChatFixture(page: Page, chatRequests: ChatRequestEvi
     }
     if (path === '/enrollments/4') return json(route, enrollment);
     if (path === '/enrollments/my') {
+      const enrollments = options.enrollments ?? [];
       return json(route, {
-        items: [],
+        items: enrollments,
         page: 1,
-        page_size: 20,
-        total: 0,
-        pages: 0,
+        page_size: enrollments.length || 20,
+        total: enrollments.length,
+        pages: enrollments.length === 0 ? 0 : 1,
         has_next: false,
         has_previous: false,
       });
@@ -499,6 +528,280 @@ test('keeps the workspace chat bounded at desktop and effective 200% scale with 
   await expect(page.getByLabel('Message the course assistant')).toBeFocused();
   await expectNoOverflow(page);
   await cdp.detach();
+  expect(chatRequests).toEqual([]);
+  expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
+  expect(diagnostics.httpFailures).toEqual([]);
+});
+
+test('resets Catalog footer clearance before My learning and Cart geometry without another scroll', async ({
+  page,
+}) => {
+  const chatRequests: ChatRequestEvidence[] = [];
+  const diagnostics = captureRuntimeDiagnostics(page);
+  await installCourseChatFixture(page, chatRequests, {
+    cart: {
+      id: 1,
+      items: Array.from({ length: 8 }, (_, index) => ({
+        id: index + 1,
+        course_id: index + 7,
+        added_at: '2026-01-01T00:00:00Z',
+        course: {
+          id: index + 7,
+          title: `Cart course ${index + 1}`,
+          price: '19.99',
+          currency: 'USD',
+        },
+      })),
+      total_price: '159.92',
+      currency: 'USD',
+      item_count: 8,
+    },
+    enrollments: Array.from({ length: 8 }, (_, index) => ({
+      id: index + 1,
+      user_id: 1,
+      course_id: index + 7,
+      status: 'active',
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+      course: {
+        id: index + 7,
+        title: `Learning course ${index + 1}`,
+        description: null,
+        price: '19.99',
+        currency: 'USD',
+      },
+    })),
+  });
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  for (const destination of [
+    { accessibleName: 'My learning', path: '/learning' },
+    { accessibleName: /^Cart/, path: '/cart' },
+  ]) {
+    await page.goto('/');
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+
+    const launcherRoot = page.getByLabel('Course assistant');
+    await expect(launcherRoot).toHaveAttribute('style', /inset-block-end/);
+    const collisionGeometry = await launcherRoot.evaluate((root) => {
+      const footer = root.previousElementSibling;
+      if (!(footer instanceof HTMLElement)) throw new Error('Application footer is missing.');
+      const launcher = root.getBoundingClientRect();
+      const footerRect = footer.getBoundingClientRect();
+      return { footerTop: footerRect.top, launcherBottom: launcher.bottom };
+    });
+    expect(collisionGeometry.footerTop - collisionGeometry.launcherBottom).toBeGreaterThanOrEqual(
+      16,
+    );
+
+    await page.getByRole('link', { name: destination.accessibleName }).click();
+    await expect(page).toHaveURL(destination.path);
+    const footerIsBelowFold = await launcherRoot.evaluate((root) => {
+      const footer = root.previousElementSibling;
+      if (!(footer instanceof HTMLElement)) throw new Error('Application footer is missing.');
+      return footer.getBoundingClientRect().top >= window.innerHeight;
+    });
+    expect(footerIsBelowFold).toBe(true);
+    await expect(launcherRoot).not.toHaveAttribute('style', /inset-block-end/);
+    const normalAnchor = await launcherRoot.evaluate((root) => {
+      const style = getComputedStyle(root);
+      return { insetBlockEnd: style.insetBlockEnd, insetInlineEnd: style.insetInlineEnd };
+    });
+    expect(normalAnchor).toEqual({ insetBlockEnd: '32px', insetInlineEnd: '16px' });
+  }
+
+  await expectNoOverflow(page);
+  expect(chatRequests).toEqual([]);
+  expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
+  expect(diagnostics.httpFailures).toEqual([]);
+});
+
+test('keeps the launcher clear through a sorted Catalog footer and page-three transition', async ({
+  page,
+}) => {
+  const chatRequests: ChatRequestEvidence[] = [];
+  const diagnostics = captureRuntimeDiagnostics(page);
+  await page.addInitScript(() => {
+    const diagnosticWindow = window as DiagnosticWindow;
+    diagnosticWindow.__launcherLifecycleDiagnostic = {
+      frameCallbacks: 0,
+      framesScheduled: 0,
+      resizeListeners: 0,
+    };
+    const originalRequestAnimationFrame = window.requestAnimationFrame.bind(window);
+    window.requestAnimationFrame = (callback) => {
+      diagnosticWindow.__launcherLifecycleDiagnostic!.framesScheduled += 1;
+      return originalRequestAnimationFrame((time) => {
+        diagnosticWindow.__launcherLifecycleDiagnostic!.frameCallbacks += 1;
+        callback(time);
+      });
+    };
+    const originalAddEventListener = window.addEventListener.bind(window) as (
+      type: string,
+      listener: EventListenerOrEventListenerObject | null,
+      options?: boolean | AddEventListenerOptions,
+    ) => void;
+    window.addEventListener = ((
+      type: string,
+      listener: EventListenerOrEventListenerObject | null,
+      options?: boolean | AddEventListenerOptions,
+    ) => {
+      if (type === 'resize') diagnosticWindow.__launcherLifecycleDiagnostic!.resizeListeners += 1;
+      originalAddEventListener(type, listener, options);
+    }) as typeof window.addEventListener;
+  });
+  await installCourseChatFixture(page, chatRequests);
+  const catalogCourse = {
+    id: 7,
+    title: 'Catalog course',
+    description: null,
+    price: '9.99',
+    currency: 'USD',
+    published_at: '2026-01-01T00:00:00Z',
+    instructor: { id: 1, name: 'Ada', surname: 'Lovelace' },
+    lessons: [{ id: 1, title: 'Intro' }],
+  };
+  await page.route('**/courses**', async (route) => {
+    const requestUrl = new URL(route.request().url());
+    const sort = requestUrl.searchParams.get('sort');
+    const pageNumber = Number(requestUrl.searchParams.get('page') ?? '1');
+    const items =
+      sort === 'title'
+        ? Array.from({ length: 20 }, (_, index) => ({
+            ...catalogCourse,
+            id: (pageNumber - 1) * 20 + index + 1,
+            title: `Catalog course ${pageNumber}-${index + 1}`,
+          }))
+        : Array.from({ length: 20 }, (_, index) => ({
+            ...catalogCourse,
+            id: index + 1,
+            title: `Catalog course ${index + 1}`,
+          }));
+    await json(route, {
+      items,
+      page: pageNumber,
+      page_size: 20,
+      total: sort === 'title' ? 60 : 20,
+      pages: sort === 'title' ? 3 : 1,
+      has_next: sort === 'title' && pageNumber < 3,
+      has_previous: pageNumber > 1,
+    });
+  });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/');
+  await expect(page.locator('[data-part="course-card"]')).toHaveCount(20);
+  await page.locator('[data-part="catalog-sort-trigger"]').scrollIntoViewIfNeeded();
+  const before = await page.evaluate(() => {
+    const diagnosticWindow = window as DiagnosticWindow;
+    return {
+      diagnostic: diagnosticWindow.__launcherLifecycleDiagnostic,
+      desktopMatches: window.matchMedia('(min-width: 768px)').matches,
+      footerExists: document.querySelector('footer') instanceof HTMLElement,
+      launcherExists:
+        document.querySelector('[aria-label="Course assistant"]') instanceof HTMLElement,
+    };
+  });
+  expect(before.desktopMatches).toBe(true);
+  expect(before.footerExists).toBe(true);
+  expect(before.launcherExists).toBe(true);
+  expect(before.diagnostic?.resizeListeners).toBeGreaterThan(0);
+  const beforeGeometry = await page
+    .getByLabel('Course assistant')
+    .evaluate<LauncherFooterGeometry>((launcher) => {
+      const footer = launcher.previousElementSibling;
+      if (!(footer instanceof HTMLElement)) throw new Error('Application footer is missing.');
+      const footerRect = footer.getBoundingClientRect();
+      const launcherRect = launcher.getBoundingClientRect();
+      const style = getComputedStyle(launcher);
+      return {
+        footerTop: footerRect.top,
+        footerBottom: footerRect.bottom,
+        launcherTop: launcherRect.top,
+        launcherBottom: launcherRect.bottom,
+        insetBlockEnd: style.insetBlockEnd,
+        inlineStyle: launcher.getAttribute('style'),
+      };
+    });
+  expect(beforeGeometry.insetBlockEnd).toBe('32px');
+  expect(beforeGeometry.inlineStyle).toBeNull();
+  await page.getByRole('button', { name: 'Sort by: Oldest' }).click();
+  await page.getByRole('option', { name: 'A to Z' }).click();
+  await expect(page).toHaveURL('/?sort=title');
+  await expect(page.getByRole('listbox', { name: 'Sort by options' })).toHaveCount(0);
+  await expect(page.locator('[data-part="course-card"]')).toHaveCount(20);
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => (window as DiagnosticWindow).__launcherLifecycleDiagnostic?.frameCallbacks ?? 0,
+      ),
+    )
+    .toBeGreaterThan(before.diagnostic?.frameCallbacks ?? 0);
+  await expect
+    .poll(() =>
+      page.getByLabel('Course assistant').evaluate((launcher) => {
+        const footer = launcher.previousElementSibling;
+        if (!(footer instanceof HTMLElement)) throw new Error('Application footer is missing.');
+        return footer.getBoundingClientRect().top - launcher.getBoundingClientRect().bottom;
+      }),
+    )
+    .toBeGreaterThanOrEqual(16);
+  const afterSort = await page
+    .getByLabel('Course assistant')
+    .evaluate<LauncherFooterGeometry>((launcher) => {
+      const footer = launcher.previousElementSibling;
+      if (!(footer instanceof HTMLElement)) throw new Error('Application footer is missing.');
+      const footerRect = footer.getBoundingClientRect();
+      const launcherRect = launcher.getBoundingClientRect();
+      return {
+        footerTop: footerRect.top,
+        footerBottom: footerRect.bottom,
+        launcherTop: launcherRect.top,
+        launcherBottom: launcherRect.bottom,
+        insetBlockEnd: getComputedStyle(launcher).insetBlockEnd,
+        inlineStyle: launcher.getAttribute('style'),
+      };
+    });
+  expect(Number.parseFloat(afterSort.insetBlockEnd)).toBeGreaterThan(32);
+  expect(afterSort.inlineStyle).toContain('inset-block-end');
+  await page.getByRole('button', { name: 'Go to page 3' }).click();
+  await expect(page).toHaveURL(/\?sort=title&page=3$/);
+  await expect(page.locator('[data-part="course-card"]')).toHaveCount(20);
+  await expect
+    .poll(() =>
+      page.getByLabel('Course assistant').evaluate((launcher) => {
+        const footer = launcher.previousElementSibling;
+        if (!(footer instanceof HTMLElement)) throw new Error('Application footer is missing.');
+        return footer.getBoundingClientRect().top - launcher.getBoundingClientRect().bottom;
+      }),
+    )
+    .toBeGreaterThanOrEqual(16);
+  const afterPageThree = await page
+    .getByLabel('Course assistant')
+    .evaluate<LauncherFooterGeometry>((launcher) => {
+      const footer = launcher.previousElementSibling;
+      if (!(footer instanceof HTMLElement)) throw new Error('Application footer is missing.');
+      const footerRect = footer.getBoundingClientRect();
+      const launcherRect = launcher.getBoundingClientRect();
+      return {
+        footerTop: footerRect.top,
+        footerBottom: footerRect.bottom,
+        launcherTop: launcherRect.top,
+        launcherBottom: launcherRect.bottom,
+        insetBlockEnd: getComputedStyle(launcher).insetBlockEnd,
+        inlineStyle: launcher.getAttribute('style'),
+      };
+    });
+  expect(afterPageThree.footerTop - afterPageThree.launcherBottom).toBeGreaterThanOrEqual(16);
+  expect(afterPageThree.insetBlockEnd).toBe('32px');
+  expect(afterPageThree.inlineStyle ?? '').toBe('');
+  const afterDiagnostic = await page.evaluate(
+    () => (window as DiagnosticWindow).__launcherLifecycleDiagnostic,
+  );
+  expect(afterDiagnostic?.resizeListeners).toBeGreaterThan(0);
+  expect(afterDiagnostic?.framesScheduled).toBeGreaterThan(before.diagnostic?.framesScheduled ?? 0);
+  expect(afterDiagnostic?.frameCallbacks).toBeGreaterThan(before.diagnostic?.frameCallbacks ?? 0);
+  await expectNoOverflow(page);
   expect(chatRequests).toEqual([]);
   expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
   expect(diagnostics.httpFailures).toEqual([]);

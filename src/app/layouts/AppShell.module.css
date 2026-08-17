@@ -995,7 +995,7 @@
   .cartLink:hover,
   .cartLink:active,
   .cartLinkActive {
-    color: var(--action-secondary-fg);
+    color: var(--text-primary);
     background: transparent;
   }
 
@@ -1066,19 +1066,19 @@
     transform: scale(0.96);
   }
 
-  .cartLink {
+  .cartLink > svg {
     transition: transform var(--duration-fast) var(--easing-standard);
   }
 
-  .cartLink:not(.cartLinkActive):hover {
+  .cartLink:not(.cartLinkActive):hover > svg {
     transform: scale(1.08);
   }
 
-  .cartLink:not(.cartLinkActive):active {
+  .cartLink:not(.cartLinkActive):active > svg {
     transform: scale(0.96);
   }
 
-  .cartLinkActive {
+  .cartLinkActive > svg {
     transform: scale(1);
   }
 }

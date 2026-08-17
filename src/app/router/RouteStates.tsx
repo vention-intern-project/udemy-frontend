@@ -65,7 +65,10 @@ export function ForbiddenState() {
         <p className={styles.eyebrow}>403</p>
         <h1 id="forbidden-title">You do not have access to this page</h1>
         <p>Use an account with the required role, or return to the catalog.</p>
-        <ContextualNavigationLink className={styles.linkButton} to="/">
+        <ContextualNavigationLink
+          className={[styles.linkButton, styles.forbiddenLink].join(' ')}
+          to="/"
+        >
           Back to catalog
         </ContextualNavigationLink>
       </div>

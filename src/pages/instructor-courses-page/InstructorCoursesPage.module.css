@@ -1,5 +1,7 @@
 .page {
   --instructor-courses-background-variant: desktop;
+  --instructor-courses-raster-height: 56.25vw;
+  --instructor-courses-raster-fade-size: clamp(96px, 12vw, 192px);
 
   display: grid;
   align-content: start;
@@ -16,22 +18,39 @@
     calc((100vw - var(--container-max-standard)) / 2 + var(--gutter-desktop))
   );
   min-width: 0;
-  min-block-size: calc(100% + var(--spacing-8) + var(--spacing-16));
   position: relative;
+  isolation: isolate;
   background-color: #f4f1ff;
   background-image: url('./assets/instructor-courses-background-desktop-uifd020.png');
   background-position: right top;
   background-repeat: no-repeat;
   background-size: 100% auto;
 }
+.page::before {
+  position: absolute;
+  z-index: 0;
+  inset-inline: 0;
+  inset-block-start: calc(
+    var(--instructor-courses-raster-height) - var(--instructor-courses-raster-fade-size)
+  );
+  block-size: var(--instructor-courses-raster-fade-size);
+  background: linear-gradient(to bottom, transparent, #f4f1ff);
+  content: '';
+  pointer-events: none;
+}
 .page::after {
   position: absolute;
+  z-index: 0;
   inset-inline: 0;
   inset-block-end: 0;
   block-size: 1px;
   background: #f4f1ff;
   content: '';
   pointer-events: none;
+}
+.page > * {
+  position: relative;
+  z-index: 1;
 }
 .panel,
 .form {
@@ -122,6 +141,7 @@
 @media (min-width: 768px) and (max-width: 1023px) {
   .page {
     --instructor-courses-background-variant: tablet;
+    --instructor-courses-raster-height: 66.6667vw;
 
     background-image: url('./assets/instructor-courses-background-tablet-uifd020.png');
   }
@@ -141,6 +161,9 @@
     background-size:
       100% auto,
       100% auto;
+  }
+  .page::before {
+    display: none;
   }
 }
 
