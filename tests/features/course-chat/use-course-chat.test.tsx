@@ -47,18 +47,18 @@ function launcher() {
   );
 }
 
-function launcherWithRouteTransition() {
+function launcherWithRouteTransition(destination: '/learning' | '/cart') {
   function RouteTransitionControl() {
     const navigate = useNavigate();
     return (
-      <button type="button" onClick={() => navigate('/learning')}>
-        Return to My learning
+      <button type="button" onClick={() => navigate(destination)}>
+        {destination === '/learning' ? 'Go to My learning' : 'Go to Cart'}
       </button>
     );
   }
 
   return (
-    <MemoryRouter initialEntries={['/ai-chat']}>
+    <MemoryRouter initialEntries={['/']}>
       <SessionProvider tokenStore={{ get: () => null, set: () => true, clear: () => {} }}>
         <CourseChatSessionProvider>
           <RouteTransitionControl />
@@ -117,7 +117,9 @@ function geometryRect(top: number, bottom: number): DOMRect {
 
 function flushGeometryFrames(frameCallbacks: FrameRequestCallback[]) {
   act(() => {
-    frameCallbacks.splice(0).forEach((callback) => callback(0));
+    while (frameCallbacks.length > 0) {
+      frameCallbacks.splice(0).forEach((callback) => callback(0));
+    }
   });
 }
 
@@ -230,28 +232,35 @@ describe('course chat interaction lifecycle', () => {
     expect(root.style.insetBlockEnd).toBe('');
   });
 
-  it('clears stale footer clearance synchronously on a route transition', async () => {
-    mockDesktopMediaQuery(true);
-    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 900 });
-    const frameCallbacks: FrameRequestCallback[] = [];
-    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
-      frameCallbacks.push(callback);
-      return frameCallbacks.length;
-    });
-    vi.stubGlobal('cancelAnimationFrame', vi.fn());
-    const footer = footerForGeometryTest();
-    vi.spyOn(footer, 'getBoundingClientRect').mockReturnValue(geometryRect(820, 1_020));
+  it.each([
+    ['/learning', 'Go to My learning'],
+    ['/cart', 'Go to Cart'],
+  ] as const)(
+    'clears stale Catalog footer clearance synchronously before %s geometry runs',
+    async (destination, navigationLabel) => {
+      mockDesktopMediaQuery(true);
+      Object.defineProperty(window, 'innerHeight', { configurable: true, value: 900 });
+      const frameCallbacks: FrameRequestCallback[] = [];
+      vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+        frameCallbacks.push(callback);
+        return frameCallbacks.length;
+      });
+      vi.stubGlobal('cancelAnimationFrame', vi.fn());
+      const footer = footerForGeometryTest();
+      vi.spyOn(footer, 'getBoundingClientRect').mockReturnValue(geometryRect(820, 1_020));
 
-    const user = userEvent.setup();
-    render(launcherWithRouteTransition());
-    const root = screen.getByLabelText('Course assistant');
-    vi.spyOn(root, 'getBoundingClientRect').mockReturnValue(geometryRect(760, 880));
-    flushGeometryFrames(frameCallbacks);
-    expect(root.style.insetBlockEnd).toBe('calc(var(--spacing-8) + 76px)');
+      const user = userEvent.setup();
+      render(launcherWithRouteTransition(destination));
+      const root = screen.getByLabelText('Course assistant');
+      vi.spyOn(root, 'getBoundingClientRect').mockReturnValue(geometryRect(760, 880));
+      flushGeometryFrames(frameCallbacks);
+      expect(root.style.insetBlockEnd).toBe('calc(var(--spacing-8) + 76px)');
 
-    await interact(() => user.click(screen.getByRole('button', { name: 'Return to My learning' })));
-    expect(root.style.insetBlockEnd).toBe('');
-  });
+      await interact(() => user.click(screen.getByRole('button', { name: navigationLabel })));
+      expect(root.style.insetBlockEnd).toBe('');
+      expect(frameCallbacks).toHaveLength(1);
+    },
+  );
 
   it('coalesces geometry updates and cancels pending work on unmount', () => {
     mockDesktopMediaQuery(true);

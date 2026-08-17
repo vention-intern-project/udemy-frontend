@@ -1,5 +1,4 @@
 import { expect, test, type Browser, type Locator, type Page, type Route } from '@playwright/test';
-import { inflateSync } from 'node:zlib';
 
 const instructorProfile = {
   email: 'instructor@example.test',
@@ -45,6 +44,10 @@ interface InstructorCourseHeaderActions {
 type BackgroundVariant = 'desktop' | 'tablet' | 'mobile';
 
 interface InstructorCoursesBackgroundComposition {
+  readonly continuationContent: string;
+  readonly continuationDisplay: string;
+  readonly continuationImage: string;
+  readonly continuationPointerEvents: string;
   readonly image: string;
   readonly position: string;
   readonly repeat: string;
@@ -60,109 +63,15 @@ interface SourceCompositionScenario {
   readonly viewport: { readonly height: number; readonly width: number };
 }
 
-type PngPixel = readonly [red: number, green: number, blue: number, alpha: number];
-
 interface FooterCanvasGeometry {
   readonly articleBottom: number;
-  readonly devicePixelRatio: number;
   readonly footerTop: number;
-  readonly viewportWidth: number;
 }
 
-const PNG_SIGNATURE_LENGTH = 8;
-const PNG_RGBA_COLOR_TYPE = 6;
-const PNG_RGB_COLOR_TYPE = 2;
-const PNG_BIT_DEPTH = 8;
-
-function paethPredictor(left: number, above: number, upperLeft: number) {
-  const estimate = left + above - upperLeft;
-  const leftDistance = Math.abs(estimate - left);
-  const aboveDistance = Math.abs(estimate - above);
-  const upperLeftDistance = Math.abs(estimate - upperLeft);
-  if (leftDistance <= aboveDistance && leftDistance <= upperLeftDistance) return left;
-  if (aboveDistance <= upperLeftDistance) return above;
-  return upperLeft;
-}
-
-function pngPixelAt(screenshot: Buffer, x: number, y: number): PngPixel {
-  if (screenshot.length < PNG_SIGNATURE_LENGTH) throw new Error('Screenshot is not a PNG.');
-  let offset = PNG_SIGNATURE_LENGTH;
-  let width = 0;
-  let height = 0;
-  let colorType = -1;
-  const idatChunks: Buffer[] = [];
-
-  while (offset + 12 <= screenshot.length) {
-    const length = screenshot.readUInt32BE(offset);
-    const type = screenshot.toString('ascii', offset + 4, offset + 8);
-    const dataStart = offset + 8;
-    const dataEnd = dataStart + length;
-    if (dataEnd + 4 > screenshot.length) throw new Error('Screenshot PNG chunk is truncated.');
-    if (type === 'IHDR') {
-      width = screenshot.readUInt32BE(dataStart);
-      height = screenshot.readUInt32BE(dataStart + 4);
-      const bitDepth = screenshot[dataStart + 8];
-      colorType = screenshot[dataStart + 9] ?? -1;
-      const interlace = screenshot[dataStart + 12];
-      if (bitDepth !== PNG_BIT_DEPTH || interlace !== 0)
-        throw new Error('Unsupported screenshot PNG encoding.');
-    } else if (type === 'IDAT') {
-      idatChunks.push(screenshot.subarray(dataStart, dataEnd));
-    } else if (type === 'IEND') {
-      break;
-    }
-    offset = dataEnd + 4;
-  }
-
-  const bytesPerPixel =
-    colorType === PNG_RGBA_COLOR_TYPE ? 4 : colorType === PNG_RGB_COLOR_TYPE ? 3 : 0;
-  if (width === 0 || height === 0 || bytesPerPixel === 0)
-    throw new Error('Unsupported screenshot PNG color format.');
-  if (x < 0 || x >= width || y < 0 || y >= height)
-    throw new Error(`Screenshot probe ${x},${y} is outside ${width}x${height}.`);
-
-  const stride = width * bytesPerPixel;
-  const decoded = inflateSync(Buffer.concat(idatChunks));
-  let decodedOffset = 0;
-  let previous = Buffer.alloc(stride);
-  for (let row = 0; row <= y; row += 1) {
-    const filter = decoded[decodedOffset++];
-    const current = Buffer.from(decoded.subarray(decodedOffset, decodedOffset + stride));
-    decodedOffset += stride;
-    for (let column = 0; column < stride; column += 1) {
-      const left = column >= bytesPerPixel ? current[column - bytesPerPixel]! : 0;
-      const above = previous[column]!;
-      const upperLeft = column >= bytesPerPixel ? previous[column - bytesPerPixel]! : 0;
-      const value = current[column]!;
-      current[column] =
-        filter === 0
-          ? value
-          : filter === 1
-            ? (value + left) & 0xff
-            : filter === 2
-              ? (value + above) & 0xff
-              : filter === 3
-                ? (value + Math.floor((left + above) / 2)) & 0xff
-                : filter === 4
-                  ? (value + paethPredictor(left, above, upperLeft)) & 0xff
-                  : (() => {
-                      throw new Error(`Unsupported screenshot PNG filter ${filter}.`);
-                    })();
-    }
-    if (row === y) {
-      const pixelOffset = x * bytesPerPixel;
-      return colorType === PNG_RGBA_COLOR_TYPE
-        ? [
-            current[pixelOffset]!,
-            current[pixelOffset + 1]!,
-            current[pixelOffset + 2]!,
-            current[pixelOffset + 3]!,
-          ]
-        : [current[pixelOffset]!, current[pixelOffset + 1]!, current[pixelOffset + 2]!, 255];
-    }
-    previous = current;
-  }
-  throw new Error('Screenshot PNG does not contain the requested row.');
+interface WorkFrameBoundaryGeometry {
+  readonly articleBottom: number;
+  readonly footerTop: number;
+  readonly workFrameBottom: number;
 }
 
 const unexpectedRuntimeErrors = new WeakMap<Page, string[]>();
@@ -209,7 +118,7 @@ async function expectNoHorizontalOverflow(page: Page) {
   expect(widths.body).toBeLessThanOrEqual(widths.client);
 }
 
-async function expectInstructorCanvasReachesFooter(page: Page) {
+async function expectInstructorCanvasEndsBeforeFooter(page: Page) {
   const footer = page.locator('footer');
   await footer.scrollIntoViewIfNeeded();
   const geometry = await page.evaluate<FooterCanvasGeometry>(() => {
@@ -220,16 +129,32 @@ async function expectInstructorCanvasReachesFooter(page: Page) {
     const footerBox = footerElement.getBoundingClientRect();
     return {
       articleBottom: articleBox.bottom,
-      devicePixelRatio: window.devicePixelRatio,
       footerTop: footerBox.top,
-      viewportWidth: window.innerWidth,
     };
   });
-  expect(geometry.articleBottom).toBeGreaterThanOrEqual(geometry.footerTop - 1);
-  const screenshot = await page.screenshot();
-  const physicalX = Math.floor((geometry.viewportWidth / 2) * geometry.devicePixelRatio);
-  const physicalY = Math.floor((geometry.footerTop - 1) * geometry.devicePixelRatio);
-  expect(pngPixelAt(screenshot, physicalX, physicalY)).toEqual([244, 241, 255, 255]);
+  expect(geometry.articleBottom).toBeLessThanOrEqual(geometry.footerTop + 1);
+}
+
+async function expectInstructorCanvasEndsAfterWorkFrame(page: Page) {
+  const createCourse = page.getByRole('heading', { level: 2, name: 'Create course' }).locator('..');
+  await createCourse.scrollIntoViewIfNeeded();
+  const geometry = await page.evaluate<WorkFrameBoundaryGeometry>(() => {
+    const article = document.querySelector('article');
+    const footer = document.querySelector('footer');
+    const createCourseHeading = Array.from(document.querySelectorAll('h2')).find(
+      (heading) => heading.textContent === 'Create course',
+    );
+    const workFrame = createCourseHeading?.parentElement;
+    if (!article || !footer || !workFrame)
+      throw new Error('Expected Instructor canvas, work frame, and footer.');
+    return {
+      articleBottom: article.getBoundingClientRect().bottom,
+      footerTop: footer.getBoundingClientRect().top,
+      workFrameBottom: workFrame.getBoundingClientRect().bottom,
+    };
+  });
+  expect(geometry.articleBottom).toBeLessThanOrEqual(geometry.footerTop + 1);
+  expect(geometry.articleBottom - geometry.workFrameBottom).toBeLessThanOrEqual(65);
 }
 
 async function readInstructorCoursesBackground(
@@ -237,7 +162,12 @@ async function readInstructorCoursesBackground(
 ): Promise<InstructorCoursesBackgroundComposition> {
   return page.locator('article').evaluate((element) => {
     const style = getComputedStyle(element);
+    const continuation = getComputedStyle(element, '::before');
     return {
+      continuationContent: continuation.content,
+      continuationDisplay: continuation.display,
+      continuationImage: continuation.backgroundImage,
+      continuationPointerEvents: continuation.pointerEvents,
       image: style.backgroundImage,
       position: style.backgroundPosition,
       repeat: style.backgroundRepeat,
@@ -245,6 +175,16 @@ async function readInstructorCoursesBackground(
       variant: style.getPropertyValue('--instructor-courses-background-variant').trim(),
     };
   });
+}
+
+function expectDesktopTabletContinuation(
+  background: InstructorCoursesBackgroundComposition,
+  expectedVariant: Exclude<BackgroundVariant, 'mobile'>,
+) {
+  expect(background.variant).toBe(expectedVariant);
+  expect(background.continuationContent).toBe('""');
+  expect(background.continuationImage).toContain('linear-gradient');
+  expect(background.continuationPointerEvents).toBe('none');
 }
 
 async function expectApprovedSourceComposition(
@@ -278,7 +218,7 @@ async function expectApprovedSourceComposition(
       );
     }
     await expectNoHorizontalOverflow(page);
-    await expectInstructorCanvasReachesFooter(page);
+    await expectInstructorCanvasEndsBeforeFooter(page);
     const screenshot = await page.screenshot();
     expect(screenshot.readUInt32BE(16)).toBe(scenario.physicalWidth);
     expect(screenshot.readUInt32BE(20)).toBe(scenario.physicalHeight);
@@ -371,7 +311,7 @@ test('uses the approved responsive decorative canvas and preserves Instructor he
   ).toHaveCount(0);
   await expect(collection).toHaveCSS('background-color', 'rgb(255, 255, 255)');
   await expect(collection).toHaveCSS('border-radius', '12px');
-  await expectInstructorCanvasReachesFooter(page);
+  await expectInstructorCanvasEndsBeforeFooter(page);
   await expect(headerActions.routeLink).toHaveAttribute('aria-current', 'page');
   await expect(headerActions.createAction).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
 
@@ -392,11 +332,13 @@ test('uses the approved responsive decorative canvas and preserves Instructor he
       expect(background.image).toContain('instructor-courses-background-mobile-top-uifd020.png');
       expect(background.image).toContain('instructor-courses-background-mobile-bottom-uifd020.png');
       expect(background.position).toBe('50% 0%, 50% 100%');
+      expect(background.continuationDisplay).toBe('none');
     } else {
       expect(background.image).toContain(
         `instructor-courses-background-${expectedVariant}-uifd020.png`,
       );
       expect(background.position).toBe('100% 0%');
+      expectDesktopTabletContinuation(background, expectedVariant);
     }
     const responsiveHeaderActions = await instructorCourseHeaderActions(page, width);
     await expect(responsiveHeaderActions.routeLink).toBeVisible();
@@ -417,7 +359,7 @@ test('uses the approved responsive decorative canvas and preserves Instructor he
     } else {
       expect(actionBox.x).toBeGreaterThan(routeBox.x + routeBox.width);
     }
-    await expectInstructorCanvasReachesFooter(page);
+    await expectInstructorCanvasEndsBeforeFooter(page);
     const responsiveCreateAction = responsiveHeaderActions.createAction;
     await responsiveCreateAction.focus();
     await page.keyboard.press('Tab');
@@ -452,6 +394,29 @@ test('uses the approved responsive decorative canvas and preserves Instructor he
   expect(await page.evaluate(() => window.history.length)).toBe(historyLengthBeforeSpace);
   expect(createRequests).toEqual([]);
   await expectNoHorizontalOverflow(page);
+});
+
+test('fades desktop and tablet raster into the existing canvas for short and long course lists', async ({
+  page,
+}) => {
+  for (const items of [[course], firstPageCourses] as const) {
+    await page.route('**/courses/my**', async (route) => {
+      await fulfillJson(route, 200, collectionResponse(items, 1, items.length, 1));
+    });
+
+    for (const [width, expectedVariant] of [
+      [768, 'tablet'],
+      [1024, 'desktop'],
+    ] as const) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/instructor/courses', { waitUntil: 'domcontentloaded' });
+      expectDesktopTabletContinuation(await readInstructorCoursesBackground(page), expectedVariant);
+      await expectInstructorCanvasEndsBeforeFooter(page);
+      await expectInstructorCanvasEndsAfterWorkFrame(page);
+      await expectNoHorizontalOverflow(page);
+    }
+    await page.unroute('**/courses/my**');
+  }
 });
 
 test('renders each approved source composition at its physical reference dimensions', async ({
@@ -588,6 +553,8 @@ test('uses only the authenticated collection query, paginates, and preserves sta
   await page.setViewportSize({ width: 1280, height: 900 });
   const collection = page.getByRole('heading', { level: 2, name: 'Your courses' }).locator('..');
   expect(await collection.evaluate((element) => element.clientHeight)).toBeLessThan(260);
+  await expectInstructorCanvasEndsBeforeFooter(page);
+  await expectInstructorCanvasEndsAfterWorkFrame(page);
 
   for (const width of [320, 390, 640, 768, 1023, 1024, 1440] as const) {
     await page.setViewportSize({ width, height: 900 });

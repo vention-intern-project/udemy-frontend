@@ -8,7 +8,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createAppQueryClient } from '../../src/app/query';
 import * as checkoutCart from '../../src/features/checkout-cart';
-import type { CheckoutWorkflow, EnrollmentStatusRefresh } from '../../src/features/checkout-cart';
+import type {
+  CheckoutFeedback,
+  CheckoutWorkflow,
+  EnrollmentStatusRefresh,
+} from '../../src/features/checkout-cart';
 import {
   SessionProvider,
   useSession,
@@ -122,9 +126,18 @@ function DetailHarnessControls({
 }
 
 async function renderPage(request: ApiClient['request'], options: DetailHarnessOptions = {}) {
+  const { queryClient } = await renderPageWithView(request, options);
+  return queryClient;
+}
+
+async function renderPageWithView(
+  request: ApiClient['request'],
+  options: DetailHarnessOptions = {},
+) {
   const queryClient = options.queryClient ?? createAppQueryClient();
+  let unmount: (() => void) | undefined;
   await act(async () => {
-    render(
+    ({ unmount } = render(
       <QueryClientProvider client={queryClient}>
         <SessionProvider client={{ request }} tokenStore={options.store ?? tokenStore()}>
           <MemoryRouter initialEntries={[options.initialEntry ?? '/learning/enrollments/4']}>
@@ -135,9 +148,10 @@ async function renderPage(request: ApiClient['request'], options: DetailHarnessO
           </MemoryRouter>
         </SessionProvider>
       </QueryClientProvider>,
-    );
+    ));
   });
-  return queryClient;
+  if (unmount === undefined) throw new Error('Learning detail test view did not mount');
+  return { queryClient, unmount };
 }
 
 type EnrollmentRefetchResult = Awaited<
@@ -222,6 +236,19 @@ async function capturePageEnrollmentRefresh(
 }
 
 describe('LearningDetailPage', () => {
+  function checkoutWorkflowWithFeedback(feedback: CheckoutFeedback | null): CheckoutWorkflow {
+    return {
+      pending: false,
+      checkoutBlocked: false,
+      paymentActionsLocked: false,
+      feedback,
+      checkout: vi.fn(),
+      recoverCheckout: vi.fn(),
+      completeMockPayment: vi.fn(),
+      checkPaymentStatus: vi.fn(),
+    };
+  }
+
   function expectMyLearningReturn() {
     const links = screen.getAllByRole('link', { name: 'My learning' });
     expect(links).toHaveLength(1);
@@ -231,6 +258,119 @@ describe('LearningDetailPage', () => {
     expect(link.querySelector('svg')?.getAttribute('width')).toBe('20');
     expect(link.textContent).toBe('My learning');
   }
+
+  it('keeps submitted payment feedback polite and focused elsewhere through 4,999ms, then removes it at 5,000ms', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(checkoutCart, 'useCheckoutCart').mockReturnValue(
+      checkoutWorkflowWithFeedback({ kind: 'payment_completed' }),
+    );
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/enrollments/4') return decode(options, activeEnrollment);
+      if (options.path === '/courses/7/progress')
+        return decode(options, {
+          course_id: 7,
+          completed_lessons: 0,
+          total_lessons: 0,
+          progress_percentage: 0,
+        });
+      if (options.path === '/courses/7/lessons')
+        return decode(options, {
+          items: [],
+          page: 1,
+          page_size: 100,
+          total: 0,
+          pages: 0,
+          has_next: false,
+          has_previous: false,
+        });
+      throw new Error(`Unexpected request ${options.path}`);
+    };
+    await renderPage(request);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    const focusSentinel = document.createElement('button');
+    document.body.append(focusSentinel);
+    focusSentinel.focus();
+    const notice = screen.getByText('Mock payment submitted').closest('[role="status"]');
+    if (notice === null) throw new Error('Submitted payment notice is not a polite live status');
+    const noticeContainer = notice.parentElement;
+    expect(notice.textContent).toContain('Mock payment submitted');
+    expect(notice.getAttribute('aria-live')).toBe('polite');
+    expect(document.activeElement).toBe(focusSentinel);
+    await act(async () => {
+      vi.advanceTimersByTime(4999);
+    });
+    expect(screen.getByText('Mock payment submitted').closest('[role="status"]')).toBe(notice);
+    expect(document.activeElement).toBe(focusSentinel);
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(screen.queryByText('Mock payment submitted')).toBeNull();
+    expect(noticeContainer === null || document.body.contains(noticeContainer)).toBe(false);
+    expect(document.activeElement).toBe(focusSentinel);
+    focusSentinel.remove();
+  });
+
+  it('cancels submitted-payment timers on replacement, route identity change, and unmount while preserving persistent feedback', async () => {
+    vi.useFakeTimers();
+    let feedback: CheckoutFeedback | null = { kind: 'payment_completed' };
+    vi.spyOn(checkoutCart, 'useCheckoutCart').mockImplementation(() =>
+      checkoutWorkflowWithFeedback(feedback),
+    );
+    const clearTimeout = vi.spyOn(globalThis, 'clearTimeout');
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/enrollments/4' || options.path === '/enrollments/5')
+        return decode(options, activeEnrollment);
+      if (options.path === '/courses/7/progress')
+        return decode(options, {
+          course_id: 7,
+          completed_lessons: 0,
+          total_lessons: 0,
+          progress_percentage: 0,
+        });
+      if (options.path === '/courses/7/lessons')
+        return decode(options, {
+          items: [],
+          page: 1,
+          page_size: 100,
+          total: 0,
+          pages: 0,
+          has_next: false,
+          has_previous: false,
+        });
+      throw new Error(`Unexpected request ${options.path}`);
+    };
+    const firstView = await renderPageWithView(request);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByText('Mock payment submitted')).toBeTruthy();
+    firstView.unmount();
+    expect(clearTimeout).toHaveBeenCalled();
+    const { unmount } = await renderPageWithView(request, { routeChange: true });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByText('Mock payment submitted')).toBeTruthy();
+    feedback = { kind: 'payment_declined' };
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Open workspace 5' }));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(clearTimeout).toHaveBeenCalled();
+    await act(async () => {
+      vi.advanceTimersByTime(5000);
+    });
+    expect(screen.queryByText('Mock payment submitted')).toBeNull();
+    unmount();
+  });
 
   it('keeps the normal workspace back control as a decorative-icon contextual link', async () => {
     const request: ApiClient['request'] = async <TResponse, TBody>(

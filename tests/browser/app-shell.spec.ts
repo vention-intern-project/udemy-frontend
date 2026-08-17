@@ -336,17 +336,27 @@ function monitorPopupRuntime(context: BrowserContext) {
   };
 }
 
-async function mockStudentWorkspaceData(page: Page) {
+async function mockStudentWorkspaceData(page: Page, cartItemCount = 0) {
   await page.route('**/cart', async (route) =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
         id: 1,
-        items: [],
+        items: Array.from({ length: cartItemCount }, (_, index) => ({
+          id: index + 1,
+          course_id: index + 1,
+          added_at: '2026-08-17T00:00:00Z',
+          course: {
+            id: index + 1,
+            title: `Cart course ${index + 1}`,
+            price: '0.00',
+            currency: 'USD',
+          },
+        })),
         total_price: '0.00',
         currency: 'USD',
-        item_count: 0,
+        item_count: cartItemCount,
       }),
     }),
   );
@@ -1328,7 +1338,7 @@ test('keeps the accepted shared-header marks and quiet desktop Bot interaction s
     const assistantLink = document.querySelector<HTMLAnchorElement>(
       'a[aria-label="Open AI assistant"]',
     );
-    const cartLink = document.querySelector<HTMLAnchorElement>('a[aria-label="Cart (0)"]');
+    const cartLink = document.querySelector<HTMLAnchorElement>('a[aria-label^="Cart"]');
     const profileButton = document.querySelector<HTMLElement>('[data-account-initials]');
     const activeLink = document.querySelector<HTMLAnchorElement>(
       'nav[aria-label="Primary navigation"] a[aria-current="page"]',
@@ -1375,12 +1385,12 @@ test('keeps the accepted shared-header marks and quiet desktop Bot interaction s
   expect(geometry.assistantIcon).toEqual({
     ariaHidden: 'true',
     focusable: 'false',
-    width: 24,
-    height: 24,
+    width: 28,
+    height: 28,
     stroke: '1.75',
     framed: false,
   });
-  expect(geometry.cartIcon).toEqual({ width: 26, height: 26, stroke: '1.75' });
+  expect(geometry.cartIcon).toEqual({ width: 25, height: 25, stroke: '1.75' });
   expect(geometry.activeIndicator.width).toBe('24px');
   expect(geometry.activeIndicator.height).toBe('2px');
   expect(geometry.activeIndicator.opacity).toBe('1');
@@ -1763,14 +1773,15 @@ test('applies the accepted desktop header affordances without changing navigatio
     [CART_STRICT_MODE_ABORT, ENROLLMENTS_STRICT_MODE_ABORT],
   );
   await mockAuthenticatedSession(page, 'student');
-  await mockStudentWorkspaceData(page);
+  await mockStudentWorkspaceData(page, 100);
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/learning');
 
   const catalog = page.getByRole('link', { name: 'Catalog', exact: true });
   const learning = page.getByRole('link', { name: 'My learning', exact: true });
   const assistant = page.getByRole('link', { name: 'Open AI assistant' });
-  const cart = page.getByRole('link', { name: /^Cart/ });
+  const cart = page.getByRole('link', { name: 'Cart (99+)' });
+  const cartBadge = cart.locator('span');
   await expect(catalog).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await catalog.hover();
   await expect(catalog).toHaveCSS('color', 'rgb(91, 63, 214)');
@@ -1806,16 +1817,40 @@ test('applies the accepted desktop header affordances without changing navigatio
   await expect(assistant).toBeFocused();
   await expect(tooltip).toHaveCount(0);
 
-  await expect(cart).toHaveCSS('color', 'rgb(75, 50, 181)');
+  const cartIcon = cart.locator('svg');
+  await expect(cart).toHaveCSS('color', 'rgb(17, 24, 39)');
   await expect(cart).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(cart).toHaveCSS('transform', 'none');
+  const readCartContainerGeometry = () =>
+    cart.evaluate((link) => {
+      const badge = link.querySelector('span');
+      if (!badge) throw new Error('Cart count badge is unavailable.');
+      const rect = (element: Element) => element.getBoundingClientRect().toJSON();
+      return {
+        link: rect(link),
+        badge: rect(badge),
+        linkTransform: getComputedStyle(link).transform,
+        badgeTransform: getComputedStyle(badge).transform,
+      };
+    });
+  const restContainerGeometry = await readCartContainerGeometry();
   await cart.hover();
-  await expect(cart).toHaveCSS('transform', 'matrix(1.08, 0, 0, 1.08, 0, 0)');
+  await expect(cart).toHaveCSS('transform', 'none');
+  await expect(cartIcon).toHaveCSS('transform', 'matrix(1.08, 0, 0, 1.08, 0, 0)');
+  await expect(cartBadge).toHaveCSS('transform', 'none');
+  expect(await readCartContainerGeometry()).toEqual(restContainerGeometry);
   await page.mouse.down();
-  await expect(cart).toHaveCSS('transform', 'matrix(0.96, 0, 0, 0.96, 0, 0)');
+  await expect(cart).toHaveCSS('transform', 'none');
+  await expect(cartIcon).toHaveCSS('transform', 'matrix(0.96, 0, 0, 0.96, 0, 0)');
+  await expect(cartBadge).toHaveCSS('transform', 'none');
+  expect(await readCartContainerGeometry()).toEqual(restContainerGeometry);
   await page.mouse.up();
   await cart.click();
   await expect(page.getByRole('heading', { level: 1, name: 'Cart' })).toBeVisible();
-  await expect(cart).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 0, 0)');
+  await expect(cart).toHaveCSS('transform', 'none');
+  await expect(cartIcon).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 0, 0)');
+  await expect(cartBadge).toHaveCSS('transform', 'none');
+  expect(await readCartContainerGeometry()).toEqual(restContainerGeometry);
   await expectNoHorizontalOverflow(page);
   assertRuntimeClean();
 });
@@ -2291,15 +2326,60 @@ test('keeps Router metadata, layout, density, and titles aligned for a case/trai
 });
 
 test('keeps wrong-role content hidden behind an accessible forbidden state', async ({ page }) => {
-  const assertRuntimeClean = monitorRuntime(page);
+  const assertRuntimeClean = monitorRuntime(
+    page,
+    [],
+    [],
+    [INSTRUCTOR_COURSE_COLLECTION_STRICT_MODE_ABORT],
+  );
   await mockAuthenticatedSession(page, 'instructor');
-  await page.setViewportSize({ width: 1440, height: 900 });
+  const collectionFixture = await mockInstructorCourseCollection(page);
   await page.goto('/cart');
   await expect(
     page.getByRole('heading', { level: 1, name: 'You do not have access to this page' }),
   ).toBeVisible();
   await expect(page.getByRole('heading', { level: 1, name: 'Cart' })).toHaveCount(0);
-  await expect(page.getByRole('link', { name: 'Back to catalog' })).toBeVisible();
+  const catalogLink = page.getByRole('link', { name: 'Back to catalog' });
+  await expect(catalogLink).toHaveAttribute('href', '/');
+
+  for (const width of [320, 390, 768, 1024, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(catalogLink).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  }
+
+  await expect(catalogLink).toHaveCSS('color', 'rgb(75, 50, 181)');
+  await expect(catalogLink).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(catalogLink).toHaveCSS('border-top-width', '0px');
+  await expect(catalogLink).toHaveCSS('text-decoration-line', 'none');
+  expect(
+    await catalogLink.evaluate((link) => {
+      const card = link.parentElement;
+      if (!(card instanceof HTMLElement)) throw new Error('Forbidden card is unavailable.');
+      const linkRect = link.getBoundingClientRect();
+      const cardRect = card.getBoundingClientRect();
+      return Math.abs(linkRect.left + linkRect.width / 2 - (cardRect.left + cardRect.width / 2));
+    }),
+  ).toBeLessThanOrEqual(0.5);
+  await catalogLink.hover();
+  await expect(catalogLink).toHaveCSS('text-decoration-line', 'underline');
+  await expect(catalogLink).toHaveCSS('text-decoration-thickness', '1px');
+  await catalogLink.focus();
+  await expect(catalogLink).toBeFocused();
+  await expect(catalogLink).toHaveCSS('outline-width', '2px');
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.evaluate(() => {
+    document.documentElement.style.zoom = '200%';
+  });
+  await expect(catalogLink).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  await page.evaluate(() => {
+    document.documentElement.style.zoom = '';
+  });
+
+  await Promise.all([collectionFixture.waitForFulfillment(), catalogLink.click()]);
+  await expect(page).toHaveURL('/instructor/courses');
   assertRuntimeClean();
 });
 
