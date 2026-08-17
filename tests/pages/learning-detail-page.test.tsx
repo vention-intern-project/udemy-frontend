@@ -360,7 +360,7 @@ describe('LearningDetailPage', () => {
     ).toBe('Lessons (3)');
   });
 
-  it('starts each active lesson as explicitly unknown despite nonzero aggregate progress', async () => {
+  it('retains the technical unknown status for a non-published lesson', async () => {
     const request: ApiClient['request'] = async <TResponse, TBody>(
       options: ApiRequestOptions<TBody, TResponse>,
     ) => {
@@ -382,7 +382,7 @@ describe('LearningDetailPage', () => {
               lesson_type: 'video',
               download_url: '/media/private.mp4',
               description: null,
-              is_published: true,
+              is_published: false,
               created_at: '2026-01-01T00:00:00Z',
               updated_at: '2026-01-01T00:00:00Z',
             },
@@ -398,7 +398,7 @@ describe('LearningDetailPage', () => {
     };
     await renderPage(request);
     expect(await screen.findByText('Completion status unavailable')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Mark complete' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Complete lesson' })).toBeTruthy();
     expect(screen.queryByText('/media/private.mp4')).toBeNull();
     expect(screen.queryByRole('link', { name: /download/i })).toBeNull();
   });
@@ -922,16 +922,23 @@ describe('LearningDetailPage', () => {
     };
     await renderPage(request);
     const user = userEvent.setup();
-    const action = await screen.findByRole('button', { name: 'Mark complete' });
+    const action = await screen.findByRole('button', { name: 'Complete lesson' });
+    const initialStatus = screen.getByText('Not completed', { exact: true });
+    expect(initialStatus.getAttribute('role')).toBeNull();
+    expect(initialStatus.getAttribute('tabindex')).toBeNull();
+    expect(initialStatus.parentElement?.firstElementChild).toBe(initialStatus);
+    expect(action.querySelector('svg[aria-hidden="true"]')).toBeTruthy();
     await act(async () => {
       await user.click(action);
     });
     expect(action.getAttribute('aria-busy')).toBe('true');
-    expect(action.getAttribute('aria-disabled')).toBeNull();
-    expect((action as HTMLButtonElement).disabled).toBe(true);
-    expect(action.querySelector('[data-part="spinner"]')).toBeTruthy();
-    expect(action.textContent).toContain('Updating…');
-    expect(screen.getByRole('status').textContent).toBe('Updating lesson progress.');
+    expect(action.getAttribute('aria-disabled')).toBe('true');
+    expect((action as HTMLButtonElement).disabled).toBe(false);
+    expect(action.querySelector('[data-part="spinner"]')).toBeNull();
+    expect(action.textContent).toContain('Undo completion');
+    const pendingStatus = screen.getByRole('status');
+    expect(pendingStatus.textContent).toContain('Updating lesson progress.');
+    expect(pendingStatus.getAttribute('aria-live')).toBe('polite');
     await act(async () => {
       await user.click(action);
       await user.keyboard('{Enter}');
@@ -942,7 +949,11 @@ describe('LearningDetailPage', () => {
       resolveCompletion?.({ lesson_id: 12, completed: true, completed_at: '2026-07-26T00:00:00Z' });
     });
     await waitFor(() => expect(screen.getByText('Completed')).toBeTruthy());
-    expect(screen.getByRole('button', { name: 'Mark incomplete' })).toBe(document.activeElement);
+    const completedStatus = screen.getByText('Completed', { exact: true });
+    expect(completedStatus.getAttribute('role')).toBeNull();
+    expect(completedStatus.getAttribute('tabindex')).toBeNull();
+    expect(completedStatus.parentElement?.firstElementChild).toBe(completedStatus);
+    expect(screen.getByRole('button', { name: 'Undo completion' })).toBe(document.activeElement);
   });
 
   it('restores completion focus when outline arrives before progress resolves during the pending action', async () => {
@@ -967,11 +978,12 @@ describe('LearningDetailPage', () => {
     };
     await renderPage(request);
     const user = userEvent.setup();
-    const action = await screen.findByRole('button', { name: 'Mark complete' });
+    const action = await screen.findByRole('button', { name: 'Complete lesson' });
     await act(async () => {
       await user.click(action);
     });
-    expect((action as HTMLButtonElement).disabled).toBe(true);
+    expect(action.getAttribute('aria-disabled')).toBe('true');
+    expect((action as HTMLButtonElement).disabled).toBe(false);
     await act(async () => {
       resolveProgress?.({
         course_id: 7,
@@ -980,15 +992,15 @@ describe('LearningDetailPage', () => {
         progress_percentage: 0,
       });
     });
-    expect(screen.getByRole('button', { name: 'Updating…' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Undo completion' })).toBeTruthy();
     await act(async () => {
       resolveCompletion?.({ lesson_id: 12, completed: true, completed_at: '2026-08-14T00:00:00Z' });
     });
     await waitFor(() => expect(screen.getByText('Completed')).toBeTruthy());
-    expect(screen.getByRole('button', { name: 'Mark incomplete' })).toBe(document.activeElement);
+    expect(screen.getByRole('button', { name: 'Undo completion' })).toBe(document.activeElement);
   });
 
-  it('keeps one stable polite success slot through the accepted lifetime and opacity exit without moving focus', async () => {
+  it('suppresses successful completion notices without mounting a feedback slot and retains focus', async () => {
     const request: ApiClient['request'] = async <TResponse, TBody>(
       options: ApiRequestOptions<TBody, TResponse>,
     ) => {
@@ -1011,36 +1023,35 @@ describe('LearningDetailPage', () => {
       throw new Error(`Unexpected request ${options.path}`);
     };
     await renderPage(request);
-    const action = await screen.findByRole('button', { name: 'Mark complete' });
+    const action = await screen.findByRole('button', { name: 'Complete lesson' });
     vi.useFakeTimers();
     action.focus();
     await act(async () => {
       fireEvent.click(action);
       await Promise.resolve();
     });
-    const success = screen.getByText('Lesson marked complete.');
-    const slot = success.parentElement?.parentElement?.parentElement;
-    expect(success.closest('[role="status"]')?.getAttribute('aria-live')).toBe('polite');
-    expect(slot?.getAttribute('data-feedback-state')).toBe('visible');
-    expect(screen.getByRole('button', { name: 'Mark incomplete' })).toBe(document.activeElement);
+    expect(screen.queryByText('Lesson marked complete.')).toBeNull();
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(document.querySelector('[data-feedback-state]')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Undo completion' })).toBe(document.activeElement);
 
     await act(async () => {
       vi.advanceTimersByTime(4000);
     });
-    expect(slot?.getAttribute('data-feedback-state')).toBe('exiting');
-    expect(screen.getByText('Lesson marked complete.')).toBeTruthy();
+    expect(screen.queryByText('Lesson marked complete.')).toBeNull();
+    expect(document.querySelector('[data-feedback-state]')).toBeNull();
     await act(async () => {
       vi.advanceTimersByTime(119);
     });
-    expect(screen.getByText('Lesson marked complete.')).toBeTruthy();
+    expect(screen.queryByText('Lesson marked complete.')).toBeNull();
     await act(async () => {
       vi.advanceTimersByTime(1);
     });
     expect(screen.queryByText('Lesson marked complete.')).toBeNull();
-    expect(slot?.getAttribute('data-feedback-state')).toBe('empty');
+    expect(document.querySelector('[data-feedback-state]')).toBeNull();
   });
 
-  it('replaces a success timer on a rapid completion toggle while keeping errors persistent', async () => {
+  it('suppresses completion and undo notices while keeping errors persistent', async () => {
     let completionCount = 0;
     const request: ApiClient['request'] = async <TResponse, TBody>(
       options: ApiRequestOptions<TBody, TResponse>,
@@ -1068,43 +1079,38 @@ describe('LearningDetailPage', () => {
       throw new Error(`Unexpected request ${options.path}`);
     };
     await renderPage(request);
-    const firstAction = await screen.findByRole('button', { name: 'Mark complete' });
+    const firstAction = await screen.findByRole('button', { name: 'Complete lesson' });
     vi.useFakeTimers();
     await act(async () => {
       fireEvent.click(firstAction);
       await Promise.resolve();
     });
-    expect(screen.getByText('Lesson marked complete.')).toBeTruthy();
+    expect(screen.queryByText('Lesson marked complete.')).toBeNull();
     await act(async () => {
       vi.advanceTimersByTime(3900);
     });
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Mark incomplete' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Undo completion' }));
       await Promise.resolve();
     });
-    expect(screen.getByText('Lesson marked incomplete.')).toBeTruthy();
-    expect(
-      screen
-        .getByText('Lesson marked incomplete.')
-        .closest('[role="status"]')
-        ?.getAttribute('data-tone'),
-    ).toBe('info');
+    expect(screen.queryByText('Lesson marked incomplete.')).toBeNull();
     await act(async () => {
       vi.advanceTimersByTime(120);
     });
-    expect(screen.getByText('Lesson marked incomplete.')).toBeTruthy();
+    expect(screen.queryByText('Lesson marked incomplete.')).toBeNull();
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Mark complete' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Complete lesson' }));
       await Promise.resolve();
     });
     const error = screen.getByText('Lesson progress could not be updated. Try again.');
+    expect(error.closest('[data-tone]')?.getAttribute('data-tone')).toBe('error');
     await act(async () => {
       vi.advanceTimersByTime(10000);
     });
     expect(error).toBeTruthy();
   });
 
-  it('extends the existing success notice without restarting its visible state', async () => {
+  it('keeps rapid success feedback suppressed without mounting a feedback slot', async () => {
     const request: ApiClient['request'] = async <TResponse, TBody>(
       options: ApiRequestOptions<TBody, TResponse>,
     ) => {
@@ -1143,42 +1149,36 @@ describe('LearningDetailPage', () => {
     };
 
     await renderPage(request);
-    const actions = await screen.findAllByRole('button', { name: 'Mark complete' });
+    const actions = await screen.findAllByRole('button', { name: 'Complete lesson' });
     vi.useFakeTimers();
     await act(async () => {
       fireEvent.click(actions[0]!);
       await Promise.resolve();
     });
-    const feedbackSlot =
-      screen.getByText('Lesson marked complete.').parentElement?.parentElement?.parentElement;
-    const feedbackNotice = screen.getByText('Lesson marked complete.').closest('[role="status"]');
-    expect(feedbackSlot?.getAttribute('data-feedback-state')).toBe('visible');
-    expect(feedbackNotice).toBeTruthy();
+    expect(document.querySelector('[data-feedback-state]')).toBeNull();
+    expect(screen.queryByText('Lesson marked complete.')).toBeNull();
 
     await act(async () => {
       vi.advanceTimersByTime(3900);
       fireEvent.click(actions[1]!);
       await Promise.resolve();
     });
-    expect(feedbackSlot?.getAttribute('data-feedback-state')).toBe('visible');
-    expect(screen.getByText('Lesson marked complete.')).toBeTruthy();
-    expect(screen.getByText('Lesson marked complete.').closest('[role="status"]')).toBe(
-      feedbackNotice,
-    );
+    expect(document.querySelector('[data-feedback-state]')).toBeNull();
+    expect(screen.queryByText('Lesson marked complete.')).toBeNull();
 
     await act(async () => {
       vi.advanceTimersByTime(120);
     });
-    expect(screen.getByText('Lesson marked complete.')).toBeTruthy();
-    expect(feedbackSlot?.getAttribute('data-feedback-state')).toBe('visible');
+    expect(screen.queryByText('Lesson marked complete.')).toBeNull();
+    expect(document.querySelector('[data-feedback-state]')).toBeNull();
 
     await act(async () => {
       vi.advanceTimersByTime(3880);
     });
-    expect(feedbackSlot?.getAttribute('data-feedback-state')).toBe('exiting');
+    expect(document.querySelector('[data-feedback-state]')).toBeNull();
   });
 
-  it('removes the exiting success immediately when reduced motion is preferred', async () => {
+  it('keeps successful completion feedback suppressed with reduced motion', async () => {
     vi.stubGlobal('matchMedia', () => ({
       matches: true,
       addEventListener: () => undefined,
@@ -1206,20 +1206,18 @@ describe('LearningDetailPage', () => {
       throw new Error(`Unexpected request ${options.path}`);
     };
     await renderPage(request);
-    const action = await screen.findByRole('button', { name: 'Mark complete' });
+    const action = await screen.findByRole('button', { name: 'Complete lesson' });
     vi.useFakeTimers();
     await act(async () => {
       fireEvent.click(action);
       await Promise.resolve();
     });
-    expect(screen.getByText('Lesson marked complete.')).toBeTruthy();
+    expect(screen.queryByText('Lesson marked complete.')).toBeNull();
     await act(async () => {
       vi.advanceTimersByTime(4000);
     });
     expect(screen.queryByText('Lesson marked complete.')).toBeNull();
-    expect(
-      document.querySelector('[data-feedback-state]')?.getAttribute('data-feedback-state'),
-    ).toBe('empty');
+    expect(document.querySelector('[data-feedback-state]')).toBeNull();
   });
 
   it('adopts the API-018 response as the known-incomplete row state', async () => {
@@ -1268,16 +1266,16 @@ describe('LearningDetailPage', () => {
     };
     await renderPage(request);
     const user = userEvent.setup();
-    const completeAction = await screen.findByRole('button', { name: 'Mark complete' });
+    const completeAction = await screen.findByRole('button', { name: 'Complete lesson' });
     await act(async () => {
       await user.click(completeAction);
     });
-    await screen.findByRole('button', { name: 'Mark incomplete' });
+    await screen.findByRole('button', { name: 'Undo completion' });
     await act(async () => {
-      await user.click(screen.getByRole('button', { name: 'Mark incomplete' }));
+      await user.click(screen.getByRole('button', { name: 'Undo completion' }));
     });
     await waitFor(() => expect(screen.getByText('Not completed')).toBeTruthy());
-    expect(screen.getByRole('button', { name: 'Mark complete' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Complete lesson' })).toBeTruthy();
   });
 
   it('rolls a failed first completion back to the explicit unknown state', async () => {
@@ -1320,7 +1318,7 @@ describe('LearningDetailPage', () => {
     };
     await renderPage(request);
     const user = userEvent.setup();
-    const action = await screen.findByRole('button', { name: 'Mark complete' });
+    const action = await screen.findByRole('button', { name: 'Complete lesson' });
     await act(async () => {
       await user.click(action);
     });
@@ -1336,8 +1334,8 @@ describe('LearningDetailPage', () => {
     await act(async () => {
       await Promise.resolve();
     });
-    expect(screen.getByText('Completion status unavailable')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Mark complete' })).toBe(document.activeElement);
+    expect(screen.getByText('Not completed')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Complete lesson' })).toBe(document.activeElement);
   });
 
   it('restores a known completed row when API-018 fails', async () => {
@@ -1386,16 +1384,16 @@ describe('LearningDetailPage', () => {
     };
     await renderPage(request);
     const user = userEvent.setup();
-    const complete = await screen.findByRole('button', { name: 'Mark complete' });
+    const complete = await screen.findByRole('button', { name: 'Complete lesson' });
     await act(async () => {
       await user.click(complete);
     });
-    const incomplete = await screen.findByRole('button', { name: 'Mark incomplete' });
+    const incomplete = await screen.findByRole('button', { name: 'Undo completion' });
     await act(async () => {
       await user.click(incomplete);
     });
     await waitFor(() => expect(screen.getByText('Completed')).toBeTruthy());
-    expect(screen.getByRole('button', { name: 'Mark incomplete' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Undo completion' })).toBeTruthy();
   });
 
   it('restores a known not-completed row when a later API-017 attempt fails', async () => {
@@ -1449,21 +1447,21 @@ describe('LearningDetailPage', () => {
     };
     await renderPage(request);
     const user = userEvent.setup();
-    const firstComplete = await screen.findByRole('button', { name: 'Mark complete' });
+    const firstComplete = await screen.findByRole('button', { name: 'Complete lesson' });
     await act(async () => {
       await user.click(firstComplete);
     });
-    const markIncomplete = await screen.findByRole('button', { name: 'Mark incomplete' });
+    const markIncomplete = await screen.findByRole('button', { name: 'Undo completion' });
     await act(async () => {
       await user.click(markIncomplete);
     });
     await screen.findByText('Not completed');
     await act(async () => {
-      await user.click(screen.getByRole('button', { name: 'Mark complete' }));
+      await user.click(screen.getByRole('button', { name: 'Complete lesson' }));
     });
     await screen.findByText('Lesson progress could not be updated. Try again.');
     expect(screen.getByText('Not completed')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Mark complete' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Complete lesson' })).toBeTruthy();
   });
 
   it.each([
@@ -1501,12 +1499,12 @@ describe('LearningDetailPage', () => {
       };
       await renderPage(request);
       const user = userEvent.setup();
-      const markComplete = await screen.findByRole('button', { name: 'Mark complete' });
+      const markComplete = await screen.findByRole('button', { name: 'Complete lesson' });
       await act(async () => {
         await user.click(markComplete);
       });
       if (action === 'incomplete') {
-        const markIncomplete = await screen.findByRole('button', { name: 'Mark incomplete' });
+        const markIncomplete = await screen.findByRole('button', { name: 'Undo completion' });
         await act(async () => {
           await user.click(markIncomplete);
         });
@@ -1543,7 +1541,7 @@ describe('LearningDetailPage', () => {
       };
       await renderPage(request, { queryClient });
       const user = userEvent.setup();
-      const markComplete = await screen.findByRole('button', { name: 'Mark complete' });
+      const markComplete = await screen.findByRole('button', { name: 'Complete lesson' });
       await act(async () => {
         await user.click(markComplete);
       });
@@ -1552,8 +1550,8 @@ describe('LearningDetailPage', () => {
           'We could not confirm the lesson update. Progress is being refreshed.',
         ),
       ).toBeTruthy();
-      expect(screen.getByText('Completion status unavailable')).toBeTruthy();
-      expect(screen.getByRole('button', { name: 'Mark complete' })).toBeTruthy();
+      expect(screen.getByText('Not completed')).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Complete lesson' })).toBeTruthy();
       expect(screen.queryByText('private mutation detail')).toBeNull();
       await waitFor(() =>
         expect(invalidate).toHaveBeenCalledWith({
@@ -1588,11 +1586,11 @@ describe('LearningDetailPage', () => {
     };
     await renderPage(request);
     const user = userEvent.setup();
-    const markComplete = await screen.findByRole('button', { name: 'Mark complete' });
+    const markComplete = await screen.findByRole('button', { name: 'Complete lesson' });
     await act(async () => {
       await user.click(markComplete);
     });
-    await waitFor(() => expect(screen.getByText('Completion status unavailable')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Not completed')).toBeTruthy());
     expect(
       screen.queryByText(/could not confirm|could not be updated|private abort detail/i),
     ).toBeNull();
@@ -1639,7 +1637,7 @@ describe('LearningDetailPage', () => {
     };
     await renderPage(request, { queryClient, routeChange: true });
     const user = userEvent.setup();
-    const markComplete = await screen.findByRole('button', { name: 'Mark complete' });
+    const markComplete = await screen.findByRole('button', { name: 'Complete lesson' });
     await act(async () => {
       await user.click(markComplete);
     });
@@ -1666,7 +1664,7 @@ describe('LearningDetailPage', () => {
       queryKey: ['private', expect.any(String), 'API-022', 'learning:enrollment:4'],
       exact: true,
     });
-    expect(screen.getByText('Completion status unavailable')).toBeTruthy();
+    expect(screen.getByText('Not completed')).toBeTruthy();
     expect(screen.queryByText(/could not confirm|private invalid response/i)).toBeNull();
     expect(screen.queryByRole('heading', { name: 'Learning workspace unavailable' })).toBeNull();
   });
@@ -1731,7 +1729,7 @@ describe('LearningDetailPage', () => {
     };
     await renderPage(request, { queryClient, routeChange: true });
     const user = userEvent.setup();
-    const markComplete = await screen.findByRole('button', { name: 'Mark complete' });
+    const markComplete = await screen.findByRole('button', { name: 'Complete lesson' });
     await act(async () => {
       await user.click(markComplete);
     });
@@ -1759,7 +1757,7 @@ describe('LearningDetailPage', () => {
       queryKey: ['private', expect.any(String), 'API-022', 'learning:enrollment:5'],
       exact: true,
     });
-    expect(screen.getByText('Completion status unavailable')).toBeTruthy();
+    expect(screen.getByText('Not completed')).toBeTruthy();
     expect(screen.queryByText('Lesson marked complete.')).toBeNull();
     expect(document.activeElement).toBe(routeSentinel);
     routeSentinel.remove();
@@ -1795,7 +1793,7 @@ describe('LearningDetailPage', () => {
     };
     await renderPage(request, { sameCourseRouteChange: true });
     const user = userEvent.setup();
-    const markComplete = await screen.findByRole('button', { name: 'Mark complete' });
+    const markComplete = await screen.findByRole('button', { name: 'Complete lesson' });
     await act(async () => {
       await user.click(markComplete);
     });
@@ -1809,7 +1807,9 @@ describe('LearningDetailPage', () => {
     await act(async () => {
       resolveCompletion?.({ lesson_id: 12, completed: true, completed_at: '2026-08-14T00:00:00Z' });
     });
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Mark complete' })).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Complete lesson' })).toBeTruthy(),
+    );
     expect(document.activeElement).toBe(document.body);
     document.body.removeAttribute('tabindex');
   });
@@ -1873,7 +1873,7 @@ describe('LearningDetailPage', () => {
     };
     await renderPage(request, { sessionChange: true, store });
     const user = userEvent.setup();
-    const markComplete = await screen.findByRole('button', { name: 'Mark complete' });
+    const markComplete = await screen.findByRole('button', { name: 'Complete lesson' });
     await act(async () => {
       await user.click(markComplete);
     });
@@ -1881,15 +1881,17 @@ describe('LearningDetailPage', () => {
       await user.click(screen.getByRole('button', { name: 'Change learner' }));
     });
     await waitFor(() => expect(profileRequests).toBe(2));
-    await screen.findByText('Completion status unavailable');
+    await screen.findByText('Not completed');
     const sessionSentinel = document.createElement('button');
     document.body.append(sessionSentinel);
     sessionSentinel.focus();
     await act(async () => {
       rejectCompletion?.(new ApiError({ kind: 'server', status: 500, message: 'private' }));
     });
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Mark complete' })).toBeTruthy());
-    expect(screen.getByText('Completion status unavailable')).toBeTruthy();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Complete lesson' })).toBeTruthy(),
+    );
+    expect(screen.getByText('Not completed')).toBeTruthy();
     expect(screen.queryByText('Lesson progress could not be updated. Try again.')).toBeNull();
     expect(document.activeElement).toBe(sessionSentinel);
     sessionSentinel.remove();

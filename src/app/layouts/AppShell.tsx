@@ -23,7 +23,6 @@ import {
 import { Input, VisuallyHidden } from '@shared/ui/primitives';
 import { useDensityMode } from '@shared/ui/theme';
 import { CourseChatLauncher } from '@widgets/course-chat';
-import aiAssistantNavigationMark from './assets/ai-assistant-navigation-ui018-2.png';
 import learnHubBookMark from './assets/learnhub-book-ui018.png';
 import { AccountMenu } from './AccountMenu';
 import {
@@ -89,7 +88,7 @@ function CartNavigationLink({ itemCount }: CartNavigationLinkProps) {
       state={cartNavigationState(location)}
       to="/cart"
     >
-      <ShoppingCart aria-hidden="true" focusable="false" size={28} strokeWidth={1.6} />
+      <ShoppingCart aria-hidden="true" focusable="false" size={26} strokeWidth={1.75} />
       {presentation.badge ? <span className={styles.cartBadge}>{presentation.badge}</span> : null}
     </NavLink>
   );
@@ -98,23 +97,83 @@ function CartNavigationLink({ itemCount }: CartNavigationLinkProps) {
 function AiAssistantNavigationLink() {
   const location = useLocation();
   const target = assistantNavigationTarget(location);
+  const tooltipId = `ai-assistant-tooltip-${useId()}`;
+  const tooltipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isTooltipVisible, setIsTooltipVisible] = useState(false);
+  const [isTooltipFocused, setIsTooltipFocused] = useState(false);
+  const [isTooltipEscapeDismissed, setIsTooltipEscapeDismissed] = useState(false);
+
+  function clearTooltipTimer() {
+    if (tooltipTimerRef.current !== null) {
+      clearTimeout(tooltipTimerRef.current);
+      tooltipTimerRef.current = null;
+    }
+  }
+
+  useEffect(() => {
+    clearTooltipTimer();
+    setIsTooltipVisible(false);
+    setIsTooltipFocused(false);
+    setIsTooltipEscapeDismissed(false);
+    return clearTooltipTimer;
+  }, [location.hash, location.pathname, location.search]);
+
+  function openTooltipAfterPointerDelay() {
+    if (isTooltipEscapeDismissed) return;
+    clearTooltipTimer();
+    tooltipTimerRef.current = setTimeout(() => {
+      setIsTooltipVisible(true);
+      tooltipTimerRef.current = null;
+    }, 500);
+  }
+
+  function closeTooltipAfterPointerLeave() {
+    clearTooltipTimer();
+    if (!isTooltipFocused) setIsTooltipVisible(false);
+  }
+
+  function openTooltipOnFocus() {
+    clearTooltipTimer();
+    setIsTooltipFocused(true);
+    if (!isTooltipEscapeDismissed) setIsTooltipVisible(true);
+  }
+
+  function closeTooltipOnBlur() {
+    clearTooltipTimer();
+    setIsTooltipVisible(false);
+    setIsTooltipFocused(false);
+    setIsTooltipEscapeDismissed(false);
+  }
+
   return (
     <NavLink
       aria-label="Open AI assistant"
+      aria-describedby={isTooltipVisible ? tooltipId : undefined}
       className={({ isActive }) =>
         [styles.aiAssistantLink, isActive ? styles.aiAssistantLinkActive : null]
           .filter(Boolean)
           .join(' ')
       }
+      onBlur={closeTooltipOnBlur}
+      onFocus={openTooltipOnFocus}
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape') return;
+        event.preventDefault();
+        clearTooltipTimer();
+        setIsTooltipVisible(false);
+        setIsTooltipEscapeDismissed(true);
+      }}
+      onPointerEnter={openTooltipAfterPointerDelay}
+      onPointerLeave={closeTooltipAfterPointerLeave}
       state={target.state}
       to={target.to}
     >
-      <img
-        alt=""
-        aria-hidden="true"
-        className={styles.aiAssistantMark}
-        src={aiAssistantNavigationMark}
-      />
+      <Bot aria-hidden="true" focusable="false" size={24} strokeWidth={1.75} />
+      {isTooltipVisible ? (
+        <span id={tooltipId} className={styles.aiAssistantTooltip} role="tooltip">
+          AI assistant
+        </span>
+      ) : null}
     </NavLink>
   );
 }
@@ -198,6 +257,9 @@ function NavigationLinks({
                 isActive ? styles.navLinkActive : null,
                 showPrimaryNavigationIndicator && item.primaryNavigationIndicator
                   ? styles.navLinkPrimary
+                  : null,
+                item.to === '/' || item.to === '/learning'
+                  ? styles.navLinkPrimaryInteractive
                   : null,
                 item.variant ? NAVIGATION_VARIANT_CLASS[item.variant] : null,
               ]

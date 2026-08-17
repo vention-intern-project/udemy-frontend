@@ -14,6 +14,7 @@ import { ThemeProvider } from '../../src/shared/ui/theme';
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -286,7 +287,7 @@ describe('AppShell student cart query and presentation', () => {
     cleanup();
   });
 
-  it('keeps decorative header marks inside named links without changing Cart or Profile semantics', async () => {
+  it('uses decorative outline icons in desktop named links without changing Cart or Profile semantics', async () => {
     renderShell(authenticatedClient('student'), 'student-token', '/learning');
 
     const brand = await screen.findByRole('link', { name: 'LearnHub home' });
@@ -294,16 +295,58 @@ describe('AppShell student cart query and presentation', () => {
     const cart = await screen.findByRole('link', { name: 'Cart (0)' });
     const profile = screen.getByRole('button', { name: 'Account menu for student User' });
     const brandMark = brand.querySelector('img');
-    const assistantMark = assistant.querySelector('img');
+    const assistantIcon = assistant.querySelector('svg');
 
     expect(brandMark?.getAttribute('aria-hidden')).toBe('true');
     expect(brandMark?.getAttribute('alt')).toBe('');
     expect(brandMark?.getAttribute('src')).toContain('learnhub-book-ui018.png');
-    expect(assistantMark?.getAttribute('aria-hidden')).toBe('true');
-    expect(assistantMark?.getAttribute('alt')).toBe('');
-    expect(assistantMark?.getAttribute('src')).toContain('ai-assistant-navigation-ui018-2.png');
-    expect(cart.querySelector('svg')?.getAttribute('stroke-width')).toBe('1.6');
+    expect(assistant.querySelector('img')).toBeNull();
+    expect(assistantIcon?.getAttribute('aria-hidden')).toBe('true');
+    expect(assistantIcon?.getAttribute('focusable')).toBe('false');
+    expect(assistantIcon?.getAttribute('width')).toBe('24');
+    expect(assistantIcon?.getAttribute('height')).toBe('24');
+    expect(assistantIcon?.getAttribute('stroke-width')).toBe('1.75');
+    expect(cart.querySelector('svg')?.getAttribute('width')).toBe('26');
+    expect(cart.querySelector('svg')?.getAttribute('height')).toBe('26');
+    expect(cart.querySelector('svg')?.getAttribute('stroke-width')).toBe('1.75');
     expect(profile.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('delays the AI assistant tooltip for pointers, opens it on focus, and keeps Escape dismissed until blur', async () => {
+    renderShell(authenticatedClient('student'), 'student-token', '/learning');
+
+    const assistant = await screen.findByRole('link', { name: 'Open AI assistant' });
+    vi.useFakeTimers();
+    expect(screen.queryByRole('tooltip', { name: 'AI assistant' })).toBeNull();
+
+    await act(() => fireEvent.pointerEnter(assistant));
+    await act(() => vi.advanceTimersByTime(499));
+    expect(screen.queryByRole('tooltip', { name: 'AI assistant' })).toBeNull();
+    await act(() => vi.advanceTimersByTime(1));
+    const pointerTooltip = screen.getByRole('tooltip', { name: 'AI assistant' });
+    expect(assistant.getAttribute('aria-describedby')).toBe(pointerTooltip.id);
+
+    await act(() => fireEvent.pointerLeave(assistant));
+    expect(screen.queryByRole('tooltip', { name: 'AI assistant' })).toBeNull();
+
+    void act(() => assistant.focus());
+    const focusTooltip = screen.getByRole('tooltip', { name: 'AI assistant' });
+    expect(assistant.getAttribute('aria-describedby')).toBe(focusTooltip.id);
+    expect(document.activeElement).toBe(assistant);
+
+    await act(() => fireEvent.keyDown(assistant, { key: 'Escape' }));
+    expect(screen.queryByRole('tooltip', { name: 'AI assistant' })).toBeNull();
+    expect(document.activeElement).toBe(assistant);
+
+    await act(() => fireEvent.pointerEnter(assistant));
+    await act(() => vi.advanceTimersByTime(500));
+    expect(screen.queryByRole('tooltip', { name: 'AI assistant' })).toBeNull();
+
+    await act(() => fireEvent.blur(assistant));
+    await act(() => fireEvent.pointerLeave(assistant));
+    await act(() => fireEvent.pointerEnter(assistant));
+    await act(() => vi.advanceTimersByTime(500));
+    expect(screen.getByRole('tooltip', { name: 'AI assistant' })).toBeTruthy();
   });
 
   it('renders the Instructor LearnHub brand as an accessible Instructor courses home link', async () => {
@@ -410,9 +453,10 @@ describe('AppShell student cart query and presentation', () => {
     expect(
       within(studentNavigation).getByRole('link', { name: 'My learning' }).getAttribute('href'),
     ).toBe('/learning');
-    expect(
-      within(studentNavigation).getByRole('link', { name: 'AI chat' }).getAttribute('href'),
-    ).toBe('/ai-chat');
+    const mobileAssistant = within(studentNavigation).getByRole('link', { name: 'AI chat' });
+    expect(mobileAssistant.getAttribute('href')).toBe('/ai-chat');
+    expect(mobileAssistant.querySelector('svg')?.getAttribute('width')).toBe('20');
+    expect(mobileAssistant.querySelector('svg')?.getAttribute('height')).toBe('20');
     await waitFor(() =>
       expect(within(studentNavigation).getByRole('link', { name: 'Cart (0)' })).toBeTruthy(),
     );
@@ -423,7 +467,7 @@ describe('AppShell student cart query and presentation', () => {
     expect(screen.queryByRole('button', { name: 'Open AI assistant' })).toBeNull();
     expect(screen.queryByRole('button', { name: /Open navigation|Close navigation/ })).toBeNull();
 
-    fireEvent.click(within(studentNavigation).getByRole('link', { name: 'AI chat' }));
+    fireEvent.click(mobileAssistant);
     expect(request.mock.calls.map(([options]) => options.path)).toEqual(['/me', '/cart']);
   });
 

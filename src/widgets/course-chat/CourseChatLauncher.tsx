@@ -11,6 +11,10 @@ interface CourseChatLauncherProps {
   readonly assistant: CourseAssistantContext;
 }
 
+// DD-271 requires the spacing-4 breathing gap in measured viewport geometry.
+// CSS tokens cannot participate in DOMRect arithmetic, so this mirrors --spacing-4.
+const FOOTER_CLEARANCE_GAP_PX = 16;
+
 export function CourseChatLauncher({ assistant }: CourseChatLauncherProps) {
   const location = useLocation();
   const launcherDescriptionId = useId();
@@ -41,10 +45,13 @@ export function CourseChatLauncher({ assistant }: CourseChatLauncherProps) {
         const normalRootTop = rootRect.top + appliedClearance;
         const normalRootBottom = rootRect.bottom + appliedClearance;
         const footerIsVisible = footerRect.bottom > 0 && footerRect.top < window.innerHeight;
-        const intersectsFooter =
-          normalRootTop < footerRect.bottom && normalRootBottom > footerRect.top;
+        const footerIsWithinClearanceZone =
+          normalRootTop < footerRect.bottom &&
+          normalRootBottom + FOOTER_CLEARANCE_GAP_PX > footerRect.top;
         const nextClearance =
-          footerIsVisible && intersectsFooter ? Math.max(0, normalRootBottom - footerRect.top) : 0;
+          footerIsVisible && footerIsWithinClearanceZone
+            ? Math.max(0, normalRootBottom - footerRect.top + FOOTER_CLEARANCE_GAP_PX)
+            : 0;
         appliedFooterClearanceRef.current = nextClearance;
         setFooterClearance((current) => (current === nextClearance ? current : nextClearance));
       };
@@ -89,7 +96,7 @@ export function CourseChatLauncher({ assistant }: CourseChatLauncherProps) {
       desktopMediaQuery.removeEventListener('change', handleBreakpointChange);
       stopDesktopCollisionLifecycle?.();
     };
-  }, []);
+  }, [location.key]);
 
   const rootStyle: CSSProperties | undefined =
     footerClearance === 0

@@ -1,10 +1,11 @@
 import { useEffect, useId, useRef } from 'react';
+import { Check, Undo2 } from 'lucide-react';
 
 import type { LessonOutline } from '@entities/course';
 import type { CourseProgress, LessonCompletionState } from '@features/learning-progress';
 import { lessonCompletionLabel } from '@features/learning-progress';
 import { LessonMediaAccess } from '@features/media-access';
-import { Button, Notice, Skeleton, SkeletonGroup } from '@shared/ui/primitives';
+import { Button, Notice, Skeleton, SkeletonGroup, VisuallyHidden } from '@shared/ui/primitives';
 
 import styles from './EnrollmentProgressPanel.module.css';
 
@@ -34,6 +35,14 @@ function setLessonCompletion(
 ) {
   if (pending) return;
   onSetCompletion(lessonId, completed);
+}
+
+function lessonCompletionDisplayState(
+  state: LessonCompletionState,
+  isPublished: boolean,
+): LessonCompletionState {
+  if (state.status === 'unknown' && isPublished) return { status: 'known', completed: false };
+  return state;
 }
 
 interface LessonCompletionFocusIntent {
@@ -91,17 +100,25 @@ function LessonCompletionAction({
   };
 
   return (
-    <Button
-      id={actionId}
-      variant={markComplete ? 'primary' : 'secondary'}
-      state={pending ? 'loading' : 'idle'}
-      loadingLabel="Updating…"
-      statusMessage={pending ? 'Updating lesson progress.' : undefined}
-      className={`${styles.lessonCompletionAction}${markComplete ? ` ${styles.markComplete}` : ''}`}
-      onClick={handleClick}
-    >
-      {markComplete ? 'Mark complete' : 'Mark incomplete'}
-    </Button>
+    <>
+      <Button
+        id={actionId}
+        variant="ghost"
+        state="idle"
+        aria-disabled={pending}
+        aria-busy={pending}
+        className={styles.lessonCompletionAction}
+        onClick={handleClick}
+      >
+        {markComplete ? <Check aria-hidden="true" /> : <Undo2 aria-hidden="true" />}
+        {markComplete ? 'Complete lesson' : 'Undo completion'}
+      </Button>
+      {pending ? (
+        <VisuallyHidden role="status" aria-live="polite">
+          Updating lesson progress.
+        </VisuallyHidden>
+      ) : null}
+    </>
   );
 }
 
@@ -199,11 +216,22 @@ export function EnrollmentProgressPanel({
             <ol className={styles.list}>
               {outline.items.map((lesson) => {
                 const state = completionState(lesson.id);
+                const displayState = lessonCompletionDisplayState(state, lesson.isPublished);
                 const pending = isPending(lesson.id);
                 const markComplete = state.status === 'unknown' || !state.completed;
+                const completionClassName = [
+                  styles.completion,
+                  displayState.status === 'known' &&
+                    (displayState.completed
+                      ? styles.completionCompleted
+                      : styles.completionIncomplete),
+                ]
+                  .filter(Boolean)
+                  .join(' ');
                 return (
                   <li key={lesson.id} className={styles.lesson}>
                     <div className={styles.lessonDetails}>
+                      <p className={completionClassName}>{lessonCompletionLabel(displayState)}</p>
                       <h3>{lesson.title}</h3>
                       <p>{lesson.description ?? 'No lesson description is available.'}</p>
                       <span>
@@ -214,9 +242,6 @@ export function EnrollmentProgressPanel({
                         lessonType={lesson.lessonType}
                         locator={lesson.mediaLocator}
                       />
-                      <p className={styles.completion} aria-live="polite">
-                        {lessonCompletionLabel(state)}
-                      </p>
                     </div>
                     <LessonCompletionAction
                       workspaceIdentity={workspaceIdentity}

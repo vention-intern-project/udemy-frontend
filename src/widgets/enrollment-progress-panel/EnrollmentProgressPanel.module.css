@@ -66,27 +66,68 @@
   flex: 1 1 auto;
 }
 .lesson span,
-.completion {
+.lesson .completion {
   font-size: var(--type-body-sm-size);
   color: var(--text-muted);
 }
-.completion {
+.lesson .completion {
+  margin: 0 0 var(--spacing-2, 8px);
   font-weight: 600;
+}
+.lesson .completionIncomplete,
+.lesson .completionCompleted {
+  display: inline-flex;
+  inline-size: fit-content;
+  align-items: center;
+  min-block-size: 20px;
+  padding: 2px var(--spacing-2, 8px);
+  border-radius: var(--radius-sm);
+}
+.lesson .completionIncomplete {
+  color: var(--action-secondary-fg);
+  background: var(--action-secondary-bg);
+}
+.lesson .completionCompleted {
+  color: var(--feedback-success);
+  background: var(--feedback-success-bg);
 }
 .loading {
   padding: var(--spacing-3, 12px);
 }
-.markComplete:disabled {
-  color: var(--action-primary-fg);
-  background: var(--action-primary-bg);
-  border-color: transparent;
-}
 .lessonCompletionAction {
   flex: 0 0 auto;
-  inline-size: 10rem;
+  inline-size: 12rem;
+  color: var(--action-secondary-fg) !important;
+  background: transparent !important;
+  border: 0 !important;
+  text-decoration-line: none;
 }
-.markComplete > span {
+.lessonCompletionAction.lessonCompletionAction:hover:not([aria-disabled='true']) {
+  color: #735ce0 !important;
+  background: transparent !important;
+}
+.lessonCompletionAction.lessonCompletionAction:active:not([aria-disabled='true']) {
+  color: var(--action-primary-bg-pressed) !important;
+  background: transparent !important;
+  text-decoration-line: none;
+}
+.lessonCompletionAction:disabled {
+  color: var(--action-secondary-fg) !important;
+  background: transparent !important;
+  border: 0 !important;
+  text-decoration-line: none;
+}
+.lessonCompletionAction > span {
+  display: inline-flex;
+  gap: var(--spacing-2, 8px);
+  align-items: center;
+  justify-content: center;
   color: inherit;
+}
+.lessonCompletionAction svg {
+  flex: 0 0 18px;
+  inline-size: 18px;
+  block-size: 18px;
 }
 @media (max-width: 480px) {
   .lesson,
