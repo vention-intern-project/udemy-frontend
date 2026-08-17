@@ -622,41 +622,130 @@ test('keeps aggregate progress separate from fresh lesson state, dedupes action,
   });
   await page.goto('/learning/enrollments/4');
   await expect(page.getByRole('heading', { name: 'Browser learning course' })).toBeVisible();
-  await expect(page.getByText('Completion status unavailable')).toBeVisible();
+  await expect(page.getByText('Not completed', { exact: true })).toBeVisible();
+  await expect(page.getByText('Completion status unavailable')).toHaveCount(0);
+  const initialStatus = page.getByText('Not completed', { exact: true });
+  await expect(initialStatus).toHaveCSS('margin-bottom', '8px');
+  await expect(initialStatus).toHaveCSS('color', 'rgb(75, 50, 181)');
+  await expect(initialStatus).toHaveCSS('background-color', 'rgb(238, 235, 251)');
   await expect(page.getByRole('progressbar')).toHaveAttribute(
     'aria-label',
     '1 of 2 lessons completed, 50%',
   );
   await expect(page.getByText('1 available now · 1 lesson coming soon')).toBeVisible();
   await expect(page.getByText('Media unavailable in this workspace')).toHaveCount(0);
-  const markComplete = page.getByRole('button', { name: 'Mark complete' });
-  await expect(markComplete).toHaveCSS('color', 'rgb(255, 255, 255)');
+  const markComplete = page.getByRole('button', { name: 'Complete lesson' });
+  await expect(markComplete).toHaveCSS('color', 'rgb(75, 50, 181)');
+  await expect(markComplete).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(markComplete).toHaveCSS('border-top-width', '0px');
+  await markComplete.hover();
+  await expect(markComplete).toHaveCSS('color', 'rgb(115, 92, 224)');
+  await expect(markComplete).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(markComplete).toHaveCSS('text-decoration-line', 'none');
+  const completeIcon = markComplete.locator('svg[aria-hidden="true"]');
+  await expect(completeIcon).toHaveCount(1);
+  await expect(completeIcon).toHaveCSS('color', 'rgb(115, 92, 224)');
+  await expect(completeIcon).toHaveCSS('width', '18px');
+  await expect(completeIcon).toHaveCSS('height', '18px');
+  const completeAlignment = await markComplete.evaluate((action) => {
+    const content = action.querySelector(':scope > span');
+    if (content === null) throw new Error('Completion action content group is missing');
+    const actionRect = action.getBoundingClientRect();
+    const contentRect = content.getBoundingClientRect();
+    return {
+      horizontalOffset: contentRect.x - actionRect.x,
+      horizontalSpace: actionRect.width - contentRect.width,
+      verticalOffset: contentRect.y - actionRect.y,
+      verticalSpace: actionRect.height - contentRect.height,
+    };
+  });
+  expect(completeAlignment.horizontalOffset).toBeCloseTo(completeAlignment.horizontalSpace / 2, 1);
+  expect(completeAlignment.verticalOffset).toBeCloseTo(completeAlignment.verticalSpace / 2, 1);
   const markCompleteBox = await markComplete.boundingBox();
   expect(markCompleteBox).not.toBeNull();
-  await markComplete.dblclick();
-  await expect.poll(() => requests).toEqual(['/courses/7/lessons/12/complete']);
-  await expect(page.locator('[data-feedback-state="visible"]')).toHaveCSS('min-height', '48px');
+  if (markCompleteBox === null) throw new Error('Complete lesson action has no pointer target');
+  await page.mouse.move(
+    markCompleteBox.x + markCompleteBox.width / 2,
+    markCompleteBox.y + markCompleteBox.height / 2,
+  );
+  await page.mouse.down();
+  await expect(markComplete).toHaveCSS('color', 'rgb(61, 41, 155)');
+  await expect(markComplete).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(markComplete).toHaveCSS('text-decoration-line', 'none');
+  await expect(completeIcon).toHaveCSS('color', 'rgb(61, 41, 155)');
+  await page.mouse.up();
+  const courseHeader = page
+    .locator('header')
+    .filter({ has: page.getByRole('heading', { name: 'Browser learning course' }) });
+  const courseDescription = courseHeader.getByText('No course description is available.', {
+    exact: true,
+  });
   const lessonRow = page
     .getByRole('listitem')
     .filter({ has: page.getByRole('heading', { name: 'First browser lesson' }) });
-  await expect(lessonRow.getByText('Completed', { exact: true })).toBeVisible();
-  const markIncomplete = page.getByRole('button', { name: 'Mark incomplete' });
+  const courseContentGap = async () => {
+    const descriptionBox = await courseDescription.boundingBox();
+    const lessonRowBox = await lessonRow.boundingBox();
+    if (descriptionBox === null || lessonRowBox === null)
+      throw new Error('Learning header or first lesson geometry is unavailable');
+    return lessonRowBox.y - (descriptionBox.y + descriptionBox.height);
+  };
+  const initialCourseFeedbackGap = await courseContentGap();
+  await expect.poll(() => requests).toEqual(['/courses/7/lessons/12/complete']);
+  await expect(page.getByText('Lesson marked complete.')).toHaveCount(0);
+  const completedStatus = lessonRow.getByText('Completed', { exact: true });
+  await expect(completedStatus).toBeVisible();
+  await expect(completedStatus).toHaveCSS('color', 'rgb(4, 120, 87)');
+  await expect(completedStatus).toHaveCSS('background-color', 'rgb(236, 253, 245)');
+  await expect(completedStatus).not.toHaveAttribute('role');
+  await expect(completedStatus).not.toHaveAttribute('tabindex');
+  expect(
+    await completedStatus.evaluate((status) => status.parentElement?.firstElementChild === status),
+  ).toBe(true);
+  const markIncomplete = page.getByRole('button', { name: 'Undo completion' });
   await expect(markIncomplete).toBeVisible();
+  const completionCourseFeedbackGap = await courseContentGap();
+  expect(completionCourseFeedbackGap).toBeCloseTo(initialCourseFeedbackGap, 1);
+  await expect(markIncomplete.locator('svg[aria-hidden="true"]')).toHaveCount(1);
   const markIncompleteBox = await markIncomplete.boundingBox();
   expect(markIncompleteBox).not.toBeNull();
   expect(markIncompleteBox?.width).toBe(markCompleteBox?.width);
-  await markIncomplete.click();
-  await expect(page.getByText('Not completed')).toBeVisible();
-  await expect(
-    page.getByText('Lesson marked incomplete.').locator('xpath=ancestor::*[@role="status"]'),
-  ).toHaveAttribute('data-tone', 'info');
-  await page.getByRole('button', { name: 'Mark complete' }).click();
+  await markIncomplete.hover();
+  await expect(markIncomplete).toHaveCSS('color', 'rgb(115, 92, 224)');
+  await expect(markIncomplete).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(markIncomplete).toHaveCSS('text-decoration-line', 'none');
+  const incompleteIcon = markIncomplete.locator('svg[aria-hidden="true"]');
+  await expect(incompleteIcon).toHaveCSS('color', 'rgb(115, 92, 224)');
+  if (markIncompleteBox === null) throw new Error('Undo completion action has no pointer target');
+  await page.mouse.move(
+    markIncompleteBox.x + markIncompleteBox.width / 2,
+    markIncompleteBox.y + markIncompleteBox.height / 2,
+  );
+  await page.mouse.down();
+  await expect(markIncomplete).toHaveCSS('color', 'rgb(61, 41, 155)');
+  await expect(markIncomplete).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(markIncomplete).toHaveCSS('text-decoration-line', 'none');
+  await expect(incompleteIcon).toHaveCSS('color', 'rgb(61, 41, 155)');
+  await page.mouse.up();
+  const incompleteStatus = page.getByText('Not completed', { exact: true });
+  await expect(incompleteStatus).toBeVisible();
+  await expect(incompleteStatus).toHaveCSS('color', 'rgb(75, 50, 181)');
+  await expect(incompleteStatus).toHaveCSS('background-color', 'rgb(238, 235, 251)');
+  await expect(incompleteStatus).not.toHaveAttribute('role');
+  await expect(incompleteStatus).not.toHaveAttribute('tabindex');
+  expect(
+    await incompleteStatus.evaluate((status) => status.parentElement?.firstElementChild === status),
+  ).toBe(true);
+  await expect(page.getByText('Lesson marked incomplete.')).toHaveCount(0);
+  const undoCourseFeedbackGap = await courseContentGap();
+  expect(undoCourseFeedbackGap).toBeCloseTo(initialCourseFeedbackGap, 1);
+  await page.getByRole('button', { name: 'Complete lesson' }).click();
   await expect(page.getByText('Lesson progress could not be updated. Try again.')).toBeVisible();
   await expect(page.getByText('Not completed')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Mark complete' })).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Complete lesson' })).toBeFocused();
   await page.reload();
-  await expect(page.getByText('Completion status unavailable')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Mark complete' })).toBeVisible();
+  await expect(page.getByText('Not completed', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Complete lesson' })).toBeVisible();
   expect(requests).toEqual([
     '/courses/7/lessons/12/complete',
     '/courses/7/lessons/12/incomplete',
@@ -1160,7 +1249,7 @@ for (const scenario of deniedMediaScenarios)
       expect(diagnostics.httpFailures).toEqual([`GET ${scenario.mediaPath} ${status}`]);
     });
 
-test('keeps the native completion action truthful and single-request while pending across pointer and keyboard input', async ({
+test('keeps the Cart-style guarded completion action truthful and single-request while pending across pointer and keyboard input', async ({
   page,
 }) => {
   await installStudent(page);
@@ -1229,15 +1318,22 @@ test('keeps the native completion action truthful and single-request while pendi
   });
 
   await page.goto('/learning/enrollments/4');
-  const action = page.getByRole('button', { name: /Mark (complete|incomplete)|Updating…/ });
+  const action = page.getByRole('button', { name: /Complete lesson|Undo completion/ });
   await action.click();
   await expect.poll(() => completionRequests).toBe(1);
-  await expect(action).not.toHaveAttribute('aria-disabled');
+  await expect(action).toHaveAttribute('aria-disabled', 'true');
   await expect(action).toHaveAttribute('aria-busy', 'true');
-  await expect(action).toHaveJSProperty('disabled', true);
-  await expect(action).toHaveAccessibleName('Updating…');
-  await expect(action.locator('[data-part="spinner"]')).toHaveCount(1);
+  await expect(action).toHaveJSProperty('disabled', false);
+  await expect(action).toHaveAttribute('data-state', 'idle');
+  await expect(action).toHaveAccessibleName('Undo completion');
+  await expect(action).toHaveCSS('color', 'rgb(75, 50, 181)');
+  await expect(action).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(action).toHaveCSS('border-top-width', '0px');
+  await expect(action).toHaveCSS('text-decoration-line', 'none');
+  await expect(action.locator('[data-part="spinner"]')).toHaveCount(0);
+  await expect(action.locator('svg[aria-hidden="true"]')).toHaveCSS('color', 'rgb(75, 50, 181)');
   await expect(page.getByRole('status')).toHaveText('Updating lesson progress.');
+  await expect(page.getByRole('status')).toHaveAttribute('aria-live', 'polite');
   const actionBox = await action.boundingBox();
   if (actionBox === null) throw new Error('Pending lesson action has no pointer target');
   await page.mouse.click(actionBox.x + actionBox.width / 2, actionBox.y + actionBox.height / 2);
@@ -1247,14 +1343,12 @@ test('keeps the native completion action truthful and single-request while pendi
 
   settleProgress?.();
   await expect(page.getByRole('progressbar')).toBeVisible();
-  await expect(action).toHaveAccessibleName('Updating…');
+  await expect(action).toHaveAccessibleName('Undo completion');
 
   settleCompletion?.();
   await expect(page.getByText('Completed', { exact: true })).toBeVisible();
-  await expect(
-    page.getByText('Lesson marked complete.').locator('xpath=ancestor::*[@role="status"]'),
-  ).toHaveAttribute('data-tone', 'success');
-  await expect(page.getByRole('button', { name: 'Mark incomplete' })).toBeFocused();
+  await expect(page.getByText('Lesson marked complete.')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Undo completion' })).toBeFocused();
   expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
   expect(diagnostics.httpFailures).toEqual([]);
 });
@@ -1375,8 +1469,8 @@ test('makes a forbidden lesson mutation neutral and suppresses further actions',
     return route.fallback();
   });
   await page.goto('/learning/enrollments/4');
-  await page.getByRole('button', { name: 'Mark complete' }).click();
-  await page.getByRole('button', { name: 'Mark incomplete' }).click();
+  await page.getByRole('button', { name: 'Complete lesson' }).click();
+  await page.getByRole('button', { name: 'Undo completion' }).click();
   await expect(page.getByRole('heading', { name: 'Learning workspace unavailable' })).toBeVisible();
   await expect(page.getByRole('button', { name: /mark|try again/i })).toHaveCount(0);
   await expect(page.getByText('private mutation detail')).toHaveCount(0);
@@ -1443,12 +1537,13 @@ test('marks a malformed mutation outcome unknown and refetches its exact progres
   await page.goto('/learning/enrollments/4');
   const initialEnrollmentReads = enrollmentReads;
   const initialProgressReads = progressReads;
-  await page.getByRole('button', { name: 'Mark complete' }).click();
+  await page.getByRole('button', { name: 'Complete lesson' }).click();
   await expect(
     page.getByText('We could not confirm the lesson update. Progress is being refreshed.'),
   ).toBeVisible();
-  await expect(page.getByText('Completion status unavailable')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Mark complete' })).toBeVisible();
+  await expect(page.getByText('Not completed', { exact: true })).toBeVisible();
+  await expect(page.getByText('Completion status unavailable')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Complete lesson' })).toBeVisible();
   await expect.poll(() => enrollmentReads).toBeGreaterThan(initialEnrollmentReads);
   await expect.poll(() => progressReads).toBeGreaterThan(initialProgressReads);
   expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);

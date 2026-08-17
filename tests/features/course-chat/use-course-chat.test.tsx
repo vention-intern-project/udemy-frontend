@@ -3,7 +3,7 @@
 import { act, cleanup, render, renderHook, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { StrictMode, type ReactNode } from 'react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useNavigate } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { SessionProvider } from '../../../src/features/auth-session';
@@ -38,6 +38,30 @@ function launcher() {
     <MemoryRouter>
       <SessionProvider tokenStore={{ get: () => null, set: () => true, clear: () => {} }}>
         <CourseChatSessionProvider>
+          <CourseChatLauncher
+            assistant={{ context: { kind: 'course', courseId: 7 }, enrollmentId: 4 }}
+          />
+        </CourseChatSessionProvider>
+      </SessionProvider>
+    </MemoryRouter>
+  );
+}
+
+function launcherWithRouteTransition() {
+  function RouteTransitionControl() {
+    const navigate = useNavigate();
+    return (
+      <button type="button" onClick={() => navigate('/learning')}>
+        Return to My learning
+      </button>
+    );
+  }
+
+  return (
+    <MemoryRouter initialEntries={['/ai-chat']}>
+      <SessionProvider tokenStore={{ get: () => null, set: () => true, clear: () => {} }}>
+        <CourseChatSessionProvider>
+          <RouteTransitionControl />
           <CourseChatLauncher
             assistant={{ context: { kind: 'course', courseId: 7 }, enrollmentId: 4 }}
           />
@@ -165,7 +189,7 @@ describe('course chat interaction lifecycle', () => {
     expect(root.style.insetBlockEnd).toBe('');
   });
 
-  it('keeps clearance stable through repeated collision measurements and restores the normal anchor', () => {
+  it('keeps a 16px visible-footer gap from the normal anchor and restores it at or beyond the gap', () => {
     mockDesktopMediaQuery(true);
     Object.defineProperty(window, 'innerHeight', { configurable: true, value: 900 });
     const frameCallbacks: FrameRequestCallback[] = [];
@@ -175,7 +199,7 @@ describe('course chat interaction lifecycle', () => {
     });
     vi.stubGlobal('cancelAnimationFrame', vi.fn());
     const footer = footerForGeometryTest();
-    vi.spyOn(footer, 'getBoundingClientRect').mockReturnValue(geometryRect(950, 1_100));
+    vi.spyOn(footer, 'getBoundingClientRect').mockReturnValue(geometryRect(880, 1_100));
 
     render(launcher());
     const root = screen.getByLabelText('Course assistant');
@@ -183,21 +207,49 @@ describe('course chat interaction lifecycle', () => {
     rootRect.mockReturnValue(geometryRect(760, 880));
     window.dispatchEvent(new Event('resize'));
     flushGeometryFrames(frameCallbacks);
+    expect(root.style.insetBlockEnd).toBe('calc(var(--spacing-8) + 16px)');
+
+    rootRect.mockReturnValue(geometryRect(744, 864));
+    window.dispatchEvent(new Event('resize'));
+    flushGeometryFrames(frameCallbacks);
+    expect(root.style.insetBlockEnd).toBe('calc(var(--spacing-8) + 16px)');
+
+    vi.spyOn(footer, 'getBoundingClientRect').mockReturnValue(geometryRect(840, 1_020));
+    window.dispatchEvent(new Event('resize'));
+    flushGeometryFrames(frameCallbacks);
+    expect(root.style.insetBlockEnd).toBe('calc(var(--spacing-8) + 56px)');
+
+    rootRect.mockReturnValue(geometryRect(704, 824));
+    window.dispatchEvent(new Event('resize'));
+    flushGeometryFrames(frameCallbacks);
+    expect(root.style.insetBlockEnd).toBe('calc(var(--spacing-8) + 56px)');
+
+    vi.spyOn(footer, 'getBoundingClientRect').mockReturnValue(geometryRect(896, 1_100));
+    window.dispatchEvent(new Event('resize'));
+    flushGeometryFrames(frameCallbacks);
     expect(root.style.insetBlockEnd).toBe('');
+  });
 
+  it('clears stale footer clearance synchronously on a route transition', async () => {
+    mockDesktopMediaQuery(true);
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 900 });
+    const frameCallbacks: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      frameCallbacks.push(callback);
+      return frameCallbacks.length;
+    });
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    const footer = footerForGeometryTest();
     vi.spyOn(footer, 'getBoundingClientRect').mockReturnValue(geometryRect(820, 1_020));
-    window.dispatchEvent(new Event('resize'));
-    flushGeometryFrames(frameCallbacks);
-    expect(root.style.insetBlockEnd).toBe('calc(var(--spacing-8) + 60px)');
 
-    rootRect.mockReturnValue(geometryRect(700, 820));
-    window.dispatchEvent(new Event('resize'));
+    const user = userEvent.setup();
+    render(launcherWithRouteTransition());
+    const root = screen.getByLabelText('Course assistant');
+    vi.spyOn(root, 'getBoundingClientRect').mockReturnValue(geometryRect(760, 880));
     flushGeometryFrames(frameCallbacks);
-    expect(root.style.insetBlockEnd).toBe('calc(var(--spacing-8) + 60px)');
+    expect(root.style.insetBlockEnd).toBe('calc(var(--spacing-8) + 76px)');
 
-    vi.spyOn(footer, 'getBoundingClientRect').mockReturnValue(geometryRect(950, 1_100));
-    window.dispatchEvent(new Event('resize'));
-    flushGeometryFrames(frameCallbacks);
+    await interact(() => user.click(screen.getByRole('button', { name: 'Return to My learning' })));
     expect(root.style.insetBlockEnd).toBe('');
   });
 

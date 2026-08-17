@@ -167,6 +167,23 @@ async function expectNoHorizontalOverflow(page: Page): Promise<void> {
   expect(widths.body).toBeLessThanOrEqual(widths.client);
 }
 
+async function expectSummaryJumpClearsGlobalAssistant(page: Page): Promise<void> {
+  const summaryJump = page.getByRole('button', { name: 'Go to order summary', exact: true });
+  const assistant = page.getByRole('button', { name: 'Open AI assistant', exact: true });
+  await expect(summaryJump).toHaveCount(1);
+  await expect(assistant).toHaveCount(1);
+  await expect(summaryJump).toHaveCSS('min-height', '44px');
+  await expect(assistant).toHaveCSS('width', '60px');
+
+  const [summaryBox, assistantBox] = await Promise.all([
+    summaryJump.boundingBox(),
+    assistant.boundingBox(),
+  ]);
+  if (!summaryBox || !assistantBox)
+    throw new Error('Summary-jump or global assistant geometry is unavailable.');
+  expect(summaryBox.x + summaryBox.width).toBeLessThanOrEqual(assistantBox.x - 16);
+}
+
 function cart(items = [cartItem]) {
   return {
     id: 1,
@@ -193,6 +210,28 @@ function longCart() {
 }
 
 test.describe('FE-009 cart workflow QA harness', () => {
+  test('keeps the compact Cart summary jump clear of the global assistant', async ({ page }) => {
+    await installStudent(page);
+    const consoleErrors: string[] = [];
+    page.on('console', (message) => {
+      if (message.type() === 'error') consoleErrors.push(message.text());
+    });
+    await page.route('**/me', (route) => json(route, student));
+    await routeCartApi(page, async (route, request) => {
+      if (request.method === 'GET' && request.pathname === '/cart') return json(route, longCart());
+      throw new Error(`Unexpected cart request ${request.method} ${request.pathname}`);
+    });
+
+    for (const width of [768, 820, 1023]) {
+      await page.setViewportSize({ width, height: 700 });
+      await page.goto('/cart');
+      await expectSummaryJumpClearsGlobalAssistant(page);
+      await expectNoHorizontalOverflow(page);
+    }
+
+    expect(consoleErrors).toEqual([]);
+  });
+
   test('offers one mobile summary jump above Student navigation without duplicating checkout', async ({
     page,
   }) => {
@@ -307,7 +346,7 @@ test.describe('FE-009 cart workflow QA harness', () => {
     await expect(jump).toHaveCount(0);
     expect(checkoutPosts).toBe(0);
 
-    for (const width of [320, 390, 617, 768, 1023, 1024, 1280]) {
+    for (const width of [320, 390, 617, 767, 768, 1023, 1024, 1280]) {
       await page.setViewportSize({ width, height: 700 });
       const geometry = await page.evaluate(() => ({
         bodyWidth: document.body.scrollWidth,

@@ -316,11 +316,11 @@ export function LearningDetailPage() {
         ) : null}
         {available ? (
           <>
-            <div
-              className={styles.feedbackSlot}
-              data-feedback-state={workspace.feedback?.visibility ?? 'empty'}
-            >
-              {workspace.feedback ? (
+            {workspace.feedback?.tone === 'error' ? (
+              <div
+                className={styles.feedbackSlot}
+                data-feedback-state={workspace.feedback.visibility}
+              >
                 <Notice
                   className={
                     workspace.feedback.visibility === 'exiting'
@@ -331,8 +331,8 @@ export function LearningDetailPage() {
                 >
                   {workspace.feedback.message}
                 </Notice>
-              ) : null}
-            </div>
+              </div>
+            ) : null}
             <EnrollmentProgressPanel
               workspaceIdentity={workspaceIdentity}
               progress={workspace.progress.data}

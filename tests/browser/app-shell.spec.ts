@@ -93,12 +93,6 @@ const INSTRUCTOR_EDITOR_COURSE_STRICT_MODE_ABORT: RequestFailureIdentity = {
   errorText: 'net::ERR_ABORTED',
 };
 
-const AI_ASSISTANT_NAVIGATION_RASTER_ABORT: RequestFailureIdentity = {
-  method: 'GET',
-  path: '/src/app/layouts/assets/ai-assistant-navigation-ui018-2.png',
-  errorText: 'net::ERR_ABORTED',
-};
-
 async function readRepresentativeTokenSnapshot(page: Page): Promise<RepresentativeTokenSnapshot> {
   return page.evaluate(() => {
     const root = document.documentElement;
@@ -1084,36 +1078,51 @@ test('redirects an anonymous protected route with its internal returnTo', async 
   assertRuntimeClean();
 });
 
-test('keeps Instructor direct Catalog history navigation and its query/hash', async ({ page }) => {
+test('replaces attempted Instructor Catalog history with Instructor courses', async ({ page }) => {
   const assertRuntimeClean = monitorRuntime(
     page,
     [],
-    [{ ...INSTRUCTOR_COURSE_COLLECTION_STRICT_MODE_ABORT, occurrences: 2 }],
+    [{ ...INSTRUCTOR_COURSE_COLLECTION_STRICT_MODE_ABORT, occurrences: 4 }],
   );
+  const publicCatalogRequests: string[] = [];
+  page.on('request', (request) => {
+    const url = new URL(request.url());
+    if (request.method() === 'GET' && url.pathname === '/courses')
+      publicCatalogRequests.push(request.url());
+  });
   await mockAuthenticatedSession(page, 'instructor');
   const collectionFixture = await mockInstructorCourseCollection(page);
   await page.setViewportSize({ width: 1280, height: 900 });
+  const expectInstructorCoursesOnly = async (url: string) => {
+    await expect(page).toHaveURL(url);
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Instructor courses', includeHidden: true }),
+    ).toHaveCount(1);
+    await expect(page.locator('[data-part="catalog-page"]')).toHaveCount(0);
+    expect(publicCatalogRequests).toEqual([]);
+  };
+
+  // A: initial Instructor history entry and collection fulfillment #1.
   await Promise.all([
     collectionFixture.waitForFulfillment(),
     page.goto('/instructor/courses?source=history#start'),
   ]);
-  await expect(
-    page.getByRole('heading', { level: 1, name: 'Instructor courses', includeHidden: true }),
-  ).toHaveCount(1);
+  await expectInstructorCoursesOnly('/instructor/courses?source=history#start');
 
-  await page.goto('/?search_query=React#catalog');
-  await expect(page).toHaveURL('/?search_query=React#catalog');
-  await expect(
-    page.getByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' }),
-  ).toHaveCount(1);
+  // B: attempted public Catalog entry; C: RouteBoundary Navigate replace destination and fulfillment #2.
+  await Promise.all([
+    collectionFixture.waitForFulfillment(),
+    page.goto('/?search_query=React#catalog'),
+  ]);
+  await expectInstructorCoursesOnly('/instructor/courses');
 
+  // Back restores A and fulfillment #3; B is absent because the redirect used replace.
   await Promise.all([collectionFixture.waitForFulfillment(), page.goBack()]);
-  await expect(page).toHaveURL('/instructor/courses?source=history#start');
-  await page.goForward();
-  await expect(page).toHaveURL('/?search_query=React#catalog');
-  await expect(
-    page.getByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' }),
-  ).toHaveCount(1);
+  await expectInstructorCoursesOnly('/instructor/courses?source=history#start');
+
+  // Forward restores C, never attempted Catalog B, and fulfillment #4.
+  await Promise.all([collectionFixture.waitForFulfillment(), page.goForward()]);
+  await expectInstructorCoursesOnly('/instructor/courses');
   await expectNoHorizontalOverflow(page);
   assertRuntimeClean();
 });
@@ -1268,13 +1277,16 @@ test('keeps the complete LearnHub brand accessible when authenticated', async ({
   assertRuntimeClean();
 });
 
-test('keeps the accepted shared-header marks and quiet desktop primary navigation states', async ({
+test('keeps the accepted shared-header marks and quiet desktop Bot interaction states', async ({
   page,
 }) => {
   const assertRuntimeClean = monitorRuntime(
     page,
     [],
-    [ENROLLMENTS_STRICT_MODE_ABORT, { ...CART_STRICT_MODE_ABORT, occurrences: 2 }],
+    [
+      { ...ENROLLMENTS_STRICT_MODE_ABORT, occurrences: 2 },
+      { ...CART_STRICT_MODE_ABORT, occurrences: 4 },
+    ],
   );
   await mockAuthenticatedSession(page, 'student');
   await mockStudentWorkspaceData(page);
@@ -1293,6 +1305,25 @@ test('keeps the accepted shared-header marks and quiet desktop primary navigatio
   await learning.focus();
   await expect(learning).toHaveCSS('outline-width', '2px');
 
+  const assistant = page.getByRole('link', { name: 'Open AI assistant' });
+  await assistant.hover();
+  await page.waitForTimeout(200);
+  await expect(assistant).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(assistant).toHaveCSS('color', 'rgb(75, 50, 181)');
+  await expect(assistant).toHaveCSS('transform', 'matrix(1.08, 0, 0, 1.08, 0, 0)');
+
+  await page.mouse.down();
+  await page.waitForTimeout(200);
+  await expect(assistant).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(assistant).toHaveCSS('color', 'rgb(75, 50, 181)');
+  await expect(assistant).toHaveCSS('transform', 'matrix(0.96, 0, 0, 0.96, 0, 0)');
+  await page.mouse.move(0, 0);
+  await page.mouse.up();
+  await page.waitForTimeout(200);
+
+  await assistant.focus();
+  await expect(assistant).toHaveCSS('outline-width', '3px');
+
   const geometry = await page.evaluate(() => {
     const assistantLink = document.querySelector<HTMLAnchorElement>(
       'a[aria-label="Open AI assistant"]',
@@ -1305,9 +1336,9 @@ test('keeps the accepted shared-header marks and quiet desktop primary navigatio
     if (!assistantLink || !cartLink || !profileButton || !activeLink) {
       throw new Error('Shared-header visual targets are unavailable.');
     }
-    const mark = assistantLink.querySelector('img');
+    const assistantIcon = assistantLink.querySelector('svg');
     const cartIcon = cartLink.querySelector('svg');
-    if (!(mark instanceof HTMLImageElement) || !(cartIcon instanceof SVGElement)) {
+    if (!(assistantIcon instanceof SVGElement) || !(cartIcon instanceof SVGElement)) {
       throw new Error('Shared-header icon targets are unavailable.');
     }
     const rect = (element: Element) => element.getBoundingClientRect().toJSON();
@@ -1315,14 +1346,13 @@ test('keeps the accepted shared-header marks and quiet desktop primary navigatio
       assistant: rect(assistantLink),
       profile: rect(profileButton),
       cart: rect(cartLink),
-      assistantMark: {
-        ariaHidden: mark.getAttribute('aria-hidden'),
-        alt: mark.alt,
-        source: mark.getAttribute('src'),
-        width: rect(mark).width,
-        height: rect(mark).height,
-        display: getComputedStyle(mark).display,
-        objectFit: getComputedStyle(mark).objectFit,
+      assistantIcon: {
+        ariaHidden: assistantIcon.getAttribute('aria-hidden'),
+        focusable: assistantIcon.getAttribute('focusable'),
+        width: rect(assistantIcon).width,
+        height: rect(assistantIcon).height,
+        stroke: assistantIcon.getAttribute('stroke-width'),
+        framed: assistantIcon.querySelector('img, span, button') !== null,
       },
       cartIcon: {
         width: rect(cartIcon).width,
@@ -1342,22 +1372,35 @@ test('keeps the accepted shared-header marks and quiet desktop primary navigatio
   expect(geometry.cart.width).toBe(44);
   expect(geometry.assistant.right).toBeLessThanOrEqual(geometry.profile.x + 0.5);
   expect(geometry.profile.right).toBeLessThanOrEqual(geometry.cart.x + 0.5);
-  expect(geometry.assistantMark).toEqual({
+  expect(geometry.assistantIcon).toEqual({
     ariaHidden: 'true',
-    alt: '',
-    source: expect.stringContaining('ai-assistant-navigation-ui018-2.png'),
-    width: 40,
-    height: 40,
-    display: 'block',
-    objectFit: 'contain',
+    focusable: 'false',
+    width: 24,
+    height: 24,
+    stroke: '1.75',
+    framed: false,
   });
-  expect(geometry.cartIcon).toEqual({ width: 28, height: 28, stroke: '1.6' });
+  expect(geometry.cartIcon).toEqual({ width: 26, height: 26, stroke: '1.75' });
   expect(geometry.activeIndicator.width).toBe('24px');
   expect(geometry.activeIndicator.height).toBe('2px');
   expect(geometry.activeIndicator.opacity).toBe('1');
   expect(geometry.activeIndicator.transitionDuration).toBe('0.18s, 0.18s');
 
+  await page.goto('/ai-chat');
+  await expect(assistant).toHaveAttribute('aria-current', 'page');
+  await expect(assistant).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(assistant).toHaveCSS('color', 'rgb(75, 50, 181)');
+  await expect(assistant).toHaveCSS('transform', 'none');
+
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/learning');
+  await assistant.hover();
+  await expect(assistant).toHaveCSS('transform', 'none');
+  await page.mouse.down();
+  await expect(assistant).toHaveCSS('transform', 'none');
+  await page.mouse.move(0, 0);
+  await page.mouse.up();
+
   await page.goto('/');
   await expect(catalog).toHaveAttribute('aria-current', 'page');
   const reducedMotion = await catalog.evaluate((link) => {
@@ -1711,6 +1754,72 @@ test('keeps the student Catalog, Search, Cart, and account slots stable across C
   assertRuntimeClean();
 });
 
+test('applies the accepted desktop header affordances without changing navigation semantics', async ({
+  page,
+}) => {
+  const assertRuntimeClean = monitorRuntime(
+    page,
+    [],
+    [CART_STRICT_MODE_ABORT, ENROLLMENTS_STRICT_MODE_ABORT],
+  );
+  await mockAuthenticatedSession(page, 'student');
+  await mockStudentWorkspaceData(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/learning');
+
+  const catalog = page.getByRole('link', { name: 'Catalog', exact: true });
+  const learning = page.getByRole('link', { name: 'My learning', exact: true });
+  const assistant = page.getByRole('link', { name: 'Open AI assistant' });
+  const cart = page.getByRole('link', { name: /^Cart/ });
+  await expect(catalog).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await catalog.hover();
+  await expect(catalog).toHaveCSS('color', 'rgb(91, 63, 214)');
+  await expect(catalog).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(learning).toHaveAttribute('aria-current', 'page');
+
+  await expect(page.getByRole('tooltip', { name: 'AI assistant' })).toHaveCount(0);
+  await assistant.hover();
+  await page.waitForTimeout(300);
+  await expect(page.getByRole('tooltip', { name: 'AI assistant' })).toHaveCount(0, {
+    timeout: 100,
+  });
+  await page.waitForTimeout(250);
+  const tooltip = page.getByRole('tooltip', { name: 'AI assistant' });
+  await expect(tooltip).toBeVisible();
+  expect(await assistant.getAttribute('aria-describedby')).toBe(await tooltip.getAttribute('id'));
+  const tooltipGeometry = await tooltip.evaluate((node) => {
+    const tip = node.getBoundingClientRect();
+    const target = node.parentElement?.getBoundingClientRect();
+    if (!target) throw new Error('AI assistant tooltip target is missing.');
+    const style = getComputedStyle(node);
+    return {
+      top: style.top,
+      center: tip.left + tip.width / 2 - (target.left + target.width / 2),
+      background: style.backgroundColor,
+    };
+  });
+  expect(tooltipGeometry.top).toBe('56px');
+  expect(tooltipGeometry.center).toBeCloseTo(0, 1);
+  expect(tooltipGeometry.background).toBe('rgb(31, 41, 55)');
+  await assistant.focus();
+  await page.keyboard.press('Escape');
+  await expect(assistant).toBeFocused();
+  await expect(tooltip).toHaveCount(0);
+
+  await expect(cart).toHaveCSS('color', 'rgb(75, 50, 181)');
+  await expect(cart).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await cart.hover();
+  await expect(cart).toHaveCSS('transform', 'matrix(1.08, 0, 0, 1.08, 0, 0)');
+  await page.mouse.down();
+  await expect(cart).toHaveCSS('transform', 'matrix(0.96, 0, 0, 0.96, 0, 0)');
+  await page.mouse.up();
+  await cart.click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Cart' })).toBeVisible();
+  await expect(cart).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 0, 0)');
+  await expectNoHorizontalOverflow(page);
+  assertRuntimeClean();
+});
+
 test('keeps Search contained before the Profile-to-Cart desktop group', async ({ page }) => {
   const assertRuntimeClean = monitorRuntime(
     page,
@@ -1830,7 +1939,6 @@ test('composes the student mobile shell with a scroll-away identity row and rout
     page,
     [],
     [{ ...CART_STRICT_MODE_ABORT, occurrences: 6 }],
-    [AI_ASSISTANT_NAVIGATION_RASTER_ABORT],
   );
   await mockAuthenticatedSession(page, 'student');
   await mockStudentWorkspaceData(page);
