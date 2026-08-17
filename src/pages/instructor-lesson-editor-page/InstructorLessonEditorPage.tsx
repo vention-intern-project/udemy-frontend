@@ -161,12 +161,14 @@ export function InstructorLessonEditorPage() {
       if (lessonId === null || file === null) throw new Error('Choose a file first');
       return uploadInstructorLessonFile(session, lessonId, file);
     },
-    onSuccess: async (updatedLesson) => {
+    onMutate: () => lesson.data?.courseId,
+    onSuccess: async (_acknowledgement, _variables, courseId) => {
       setUploadError(null);
       setUploadFieldErrors({});
       setFile(null);
+      if (fileRef.current) fileRef.current.value = '';
       setUploadSuccess(true);
-      await refresh(updatedLesson.courseId);
+      if (courseId !== undefined) await refresh(courseId);
     },
     onError: (error) => {
       const failure = mapInstructorEditorFormFailure(
@@ -365,7 +367,7 @@ export function InstructorLessonEditorPage() {
         {rule === null ? (
           <Notice tone="info">File upload is unavailable for text lessons.</Notice>
         ) : uploadSuccess ? (
-          <Notice tone="info" title="File accepted and saved">
+          <Notice tone="info" title="File accepted and queued">
             Processing status is unavailable.
           </Notice>
         ) : (

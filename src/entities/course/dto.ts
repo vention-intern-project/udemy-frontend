@@ -46,6 +46,13 @@ export interface LessonDto {
   updated_at: string;
 }
 
+export interface LessonFileUploadAcknowledgementDto {
+  lesson_id: number;
+  upload_id: string;
+  status: 'queued';
+  detail: string;
+}
+
 export type LessonDetailDto = Omit<LessonDto, 'course_id'>;
 
 export interface CourseDetailDto extends Omit<CourseDto, 'instructor_id'> {

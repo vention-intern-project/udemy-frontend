@@ -16,6 +16,7 @@ import type {
   CourseWriteDto,
   DeleteMessageDto,
   LessonDto,
+  LessonFileUploadAcknowledgementDto,
   LessonListDto,
   LessonPageQueryDto,
   LessonWriteDto,
@@ -85,7 +86,10 @@ export interface SelectedApiContractMap {
   'API-029': { input: { body: ResetPasswordRequestDto }; response: MessageResponseDto };
   'API-030': { input: { path: PathLesson }; response: LessonDto };
   'API-031': { input: { path: PathLesson; body: LessonWriteDto }; response: LessonDto };
-  'API-032': { input: { path: PathLesson; body: FormData }; response: LessonDto };
+  'API-032': {
+    input: { path: PathLesson; body: FormData };
+    response: LessonFileUploadAcknowledgementDto;
+  };
   'API-033': { input: { body: UserRegisterDto }; response: RegisterResponseDto };
   'API-034': { input: { body: MockPaymentCompletionRequestDto }; response: MockPaymentCompleteDto };
   'API-035': { input: { query: PageQueryDto }; response: CourseListDto };

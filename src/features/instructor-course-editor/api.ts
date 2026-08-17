@@ -1,4 +1,4 @@
-import type { LessonType } from '@entities/course';
+import type { LessonFileUploadAcknowledgementDto, LessonType } from '@entities/course';
 import type { SessionContextValue } from '@features/auth-session';
 import { requestOperation } from '@features/auth-session';
 import { readBoolean, readPositiveInteger, readRecord, readString } from '@shared/api';
@@ -7,6 +7,7 @@ import type {
   CreateInstructorLessonInput,
   InstructorEditorCourse,
   InstructorEditorLesson,
+  InstructorLessonFileUploadAcknowledgement,
   UpdateInstructorCourseInput,
   UpdateInstructorLessonInput,
 } from './model';
@@ -33,6 +34,35 @@ function decodeLesson(value: unknown, expectedCourseId?: number): InstructorEdit
     lessonType: lessonType(lesson.lesson_type),
     description: nullableString(lesson.description, 'lesson description'),
     isPublished: readBoolean(lesson.is_published, 'lesson is_published'),
+  };
+}
+
+function decodeLessonFileUploadAcknowledgement(
+  value: unknown,
+  expectedLessonId: number,
+): InstructorLessonFileUploadAcknowledgement {
+  const acknowledgement = readRecord(value, 'lesson file upload acknowledgement');
+  const uploadId = readString(acknowledgement.upload_id, 'upload acknowledgement upload id');
+  if (uploadId.length === 0) throw new TypeError('Invalid upload acknowledgement upload id');
+  const status = readString(acknowledgement.status, 'upload acknowledgement status');
+  if (status !== 'queued') throw new TypeError('Invalid upload acknowledgement status');
+  const acknowledgementLessonId = readPositiveInteger(
+    acknowledgement.lesson_id,
+    'upload acknowledgement lesson id',
+  );
+  if (acknowledgementLessonId !== expectedLessonId)
+    throw new TypeError('Invalid upload acknowledgement lesson id');
+  const dto: LessonFileUploadAcknowledgementDto = {
+    lesson_id: acknowledgementLessonId,
+    upload_id: uploadId,
+    status,
+    detail: readString(acknowledgement.detail, 'upload acknowledgement detail'),
+  };
+  return {
+    lessonId: dto.lesson_id,
+    uploadId: dto.upload_id,
+    status: dto.status,
+    detail: dto.detail,
   };
 }
 
@@ -177,13 +207,13 @@ export function uploadInstructorLessonFile(
   session: SessionContextValue,
   lessonId: number,
   file: File,
-): Promise<InstructorEditorLesson> {
+): Promise<InstructorLessonFileUploadAcknowledgement> {
   const body = new FormData();
   body.set('file', file);
   return requestOperation(session, 'API-032', {
     path: `/lessons/${lessonId}/upload-file`,
     body,
     dedupeKey: `instructor-lesson:${lessonId}:upload`,
-    decode: decodeLesson,
+    decode: (value) => decodeLessonFileUploadAcknowledgement(value, lessonId),
   });
 }
