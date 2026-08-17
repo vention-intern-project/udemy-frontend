@@ -192,6 +192,7 @@ describe('instructor course editor API', () => {
 
   it.each([
     [{ ...uploadAcknowledgement, lesson_id: 0 }, 'upload acknowledgement lesson id'],
+    [{ ...uploadAcknowledgement, lesson_id: 9 }, 'upload acknowledgement lesson id'],
     [{ ...uploadAcknowledgement, upload_id: '' }, 'upload acknowledgement upload id'],
     [{ ...uploadAcknowledgement, status: 'processing' }, 'Invalid upload acknowledgement status'],
     [{ ...uploadAcknowledgement, detail: null }, 'upload acknowledgement detail'],

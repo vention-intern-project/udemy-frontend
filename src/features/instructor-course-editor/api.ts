@@ -39,14 +39,21 @@ function decodeLesson(value: unknown, expectedCourseId?: number): InstructorEdit
 
 function decodeLessonFileUploadAcknowledgement(
   value: unknown,
+  expectedLessonId: number,
 ): InstructorLessonFileUploadAcknowledgement {
   const acknowledgement = readRecord(value, 'lesson file upload acknowledgement');
   const uploadId = readString(acknowledgement.upload_id, 'upload acknowledgement upload id');
   if (uploadId.length === 0) throw new TypeError('Invalid upload acknowledgement upload id');
   const status = readString(acknowledgement.status, 'upload acknowledgement status');
   if (status !== 'queued') throw new TypeError('Invalid upload acknowledgement status');
+  const acknowledgementLessonId = readPositiveInteger(
+    acknowledgement.lesson_id,
+    'upload acknowledgement lesson id',
+  );
+  if (acknowledgementLessonId !== expectedLessonId)
+    throw new TypeError('Invalid upload acknowledgement lesson id');
   const dto: LessonFileUploadAcknowledgementDto = {
-    lesson_id: readPositiveInteger(acknowledgement.lesson_id, 'upload acknowledgement lesson id'),
+    lesson_id: acknowledgementLessonId,
     upload_id: uploadId,
     status,
     detail: readString(acknowledgement.detail, 'upload acknowledgement detail'),
@@ -207,6 +214,6 @@ export function uploadInstructorLessonFile(
     path: `/lessons/${lessonId}/upload-file`,
     body,
     dedupeKey: `instructor-lesson:${lessonId}:upload`,
-    decode: decodeLessonFileUploadAcknowledgement,
+    decode: (value) => decodeLessonFileUploadAcknowledgement(value, lessonId),
   });
 }
