@@ -142,6 +142,15 @@ function updatedCourse(course: CourseFixture) {
   };
 }
 
+function uploadAcknowledgement(lesson: LessonFixture) {
+  return {
+    lesson_id: lesson.id,
+    upload_id: `browser-upload-${lesson.id}`,
+    status: 'queued',
+    detail: 'File accepted for processing.',
+  };
+}
+
 async function fulfillJson(route: Route, status: number, body: unknown): Promise<void> {
   await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 }
@@ -321,7 +330,7 @@ async function installInstructorFixture(page: Page, state: FixtureState): Promis
         await fulfillJson(route, state.uploadStatus, failure(state.uploadStatus, 'file'));
         return;
       }
-      await fulfillJson(route, 200, state.lesson);
+      await fulfillJson(route, 200, uploadAcknowledgement(state.lesson));
       return;
     }
     await route.abort();
@@ -608,7 +617,7 @@ test('uses lesson PATCH and contract-faithful multipart upload without terminal 
   });
   await expect(page.getByRole('button', { name: 'Upload file' })).toBeEnabled();
   await page.getByRole('button', { name: 'Upload file' }).click();
-  await expect(page.getByText('File accepted and saved')).toBeVisible();
+  await expect(page.getByText('File accepted and queued')).toBeVisible();
   await expect(page.getByText('Processing status is unavailable.')).toBeVisible();
   await expect(page.locator('input[name="file"]')).toHaveCount(0);
   await expect(
@@ -640,7 +649,7 @@ test('renders safe upload errors and keeps controls responsive under reduced mot
   await expect(page.getByText('Check lesson file and submit again.')).toBeVisible();
   await expect(page.getByText('hostile fixture detail must never reach UI')).toHaveCount(0);
 
-  for (const width of [320, 640, 1024, 1440] as const) {
+  for (const width of [320, 768, 1024, 1440] as const) {
     await page.setViewportSize({ width, height: 900 });
     await expect(page.getByRole('heading', { name: 'Edit lesson' })).toBeVisible();
     await expectNoHorizontalOverflow(page);

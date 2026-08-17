@@ -20,6 +20,7 @@ export type {
   CreateInstructorLessonInput,
   InstructorEditorCourse,
   InstructorEditorLesson,
+  InstructorLessonFileUploadAcknowledgement,
   UpdateInstructorCourseInput,
   UpdateInstructorLessonInput,
 } from './model';

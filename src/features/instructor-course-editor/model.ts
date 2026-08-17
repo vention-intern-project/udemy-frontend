@@ -9,6 +9,13 @@ export interface InstructorEditorLesson {
   readonly isPublished: boolean;
 }
 
+export interface InstructorLessonFileUploadAcknowledgement {
+  readonly lessonId: number;
+  readonly uploadId: string;
+  readonly status: 'queued';
+  readonly detail: string;
+}
+
 export interface InstructorEditorCourse {
   readonly id: number;
   readonly instructorId: number;

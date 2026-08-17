@@ -45,6 +45,12 @@ const lesson = {
   created_at: '2026-08-08T00:00:00Z',
   updated_at: '2026-08-08T00:00:00Z',
 };
+const uploadAcknowledgement = {
+  lesson_id: 8,
+  upload_id: 'backend-upload-8',
+  status: 'queued',
+  detail: 'File accepted for processing.',
+};
 
 function sessionWith(requestRequired: SessionContextValue['requestRequired']): SessionContextValue {
   return {
@@ -165,16 +171,16 @@ describe('instructor course editor API', () => {
   });
 
   it('sends API-032 as authenticated multipart file data and never maps terminal media state', async () => {
-    const request = vi.fn(async (options: ApiRequestOptions) => decode(options, lesson));
+    const request = vi.fn(async (options: ApiRequestOptions) =>
+      decode(options, uploadAcknowledgement),
+    );
     const session = sessionWith(asSessionRequest(request));
     const file = new File(['lesson'], 'lesson.mp4', { type: 'video/mp4' });
     await expect(uploadInstructorLessonFile(session, 8, file)).resolves.toEqual({
-      id: 8,
-      courseId: 7,
-      title: 'Introduction',
-      lessonType: 'video',
-      description: null,
-      isPublished: false,
+      lessonId: 8,
+      uploadId: 'backend-upload-8',
+      status: 'queued',
+      detail: 'File accepted for processing.',
     });
     const options = request.mock.calls[0]?.[0] as ApiRequestOptions<FormData>;
     expect(options.method).toBe('POST');
@@ -182,6 +188,24 @@ describe('instructor course editor API', () => {
     expect(options.body).toBeInstanceOf(FormData);
     expect((options.body as FormData).get('file')).toBe(file);
     expect(options.query).toBeUndefined();
+  });
+
+  it.each([
+    [{ ...uploadAcknowledgement, lesson_id: 0 }, 'upload acknowledgement lesson id'],
+    [{ ...uploadAcknowledgement, upload_id: '' }, 'upload acknowledgement upload id'],
+    [{ ...uploadAcknowledgement, status: 'processing' }, 'Invalid upload acknowledgement status'],
+    [{ ...uploadAcknowledgement, detail: null }, 'upload acknowledgement detail'],
+    [lesson, 'upload acknowledgement upload id'],
+  ])('rejects malformed or obsolete API-032 acknowledgements', async (response, message) => {
+    const request = vi.fn(async (options: ApiRequestOptions) => decode(options, response));
+
+    await expect(
+      uploadInstructorLessonFile(
+        sessionWith(asSessionRequest(request)),
+        8,
+        new File(['lesson'], 'lesson.mp4', { type: 'video/mp4' }),
+      ),
+    ).rejects.toThrow(message);
   });
 
   it('rejects malformed success payloads rather than projecting an unverified editor state', async () => {

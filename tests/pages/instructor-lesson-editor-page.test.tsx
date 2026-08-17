@@ -30,6 +30,12 @@ const lesson = {
   created_at: '2026-08-08T00:00:00Z',
   updated_at: '2026-08-08T00:00:00Z',
 };
+const uploadAcknowledgement = {
+  lesson_id: 8,
+  upload_id: 'backend-upload-8',
+  status: 'queued',
+  detail: 'File accepted for processing.',
+};
 const tokenStore: AccessTokenStore = { get: () => 'token', set: () => {}, clear: () => {} };
 
 afterEach(() => {
@@ -75,7 +81,7 @@ describe('InstructorLessonEditorPage', () => {
       if (options.path === '/lessons/8' && options.method === 'GET') return decode(options, lesson);
       if (options.path === '/lessons/8/upload-file') {
         uploadRequests.push(options);
-        return decode(options, lesson);
+        return decode(options, uploadAcknowledgement);
       }
       throw new Error(`Unexpected request: ${options.method} ${options.path}`);
     };
@@ -90,12 +96,15 @@ describe('InstructorLessonEditorPage', () => {
     await waitFor(() => expect(uploadRequests).toHaveLength(1));
     expect(uploadRequests[0]?.body).toBeInstanceOf(FormData);
     expect((uploadRequests[0]?.body as FormData).get('file')).toBe(file);
-    expect(await screen.findByText('File accepted and saved')).toBeTruthy();
+    expect(await screen.findByText('File accepted and queued')).toBeTruthy();
     expect(screen.getByText('Processing status is unavailable.')).toBeTruthy();
     expect(screen.queryByText(/download/i)).toBeNull();
     expect(screen.queryByText(/ready|complete|progress/i)).toBeNull();
     expect(screen.queryByLabelText('Lesson file')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Upload file' })).toBeNull();
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ['instructor-course-editor', expect.any(String), 'lesson', 8],
+    });
     expect(invalidate).toHaveBeenCalledWith({
       queryKey: ['instructor-course-editor', expect.any(String), 'course', 7],
     });
