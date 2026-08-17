@@ -239,10 +239,10 @@ test('supports explicit mock-payment success and failure while only observed act
   await expect.poll(() => paymentPosts).toBe(1);
   await expect(page.getByRole('heading', { name: 'Learning progress' })).toBeVisible();
   const submittedPayment = page.getByRole('status').filter({ hasText: 'Mock payment submitted' });
+  await expect(submittedPayment).toBeVisible();
   const progressTopBeforeDismiss = await page
     .getByRole('heading', { name: 'Learning progress' })
     .evaluate((element) => element.getBoundingClientRect().top);
-  await expect(submittedPayment).toBeVisible();
   await page.waitForTimeout(4500);
   await expect(submittedPayment).toBeVisible();
   await expect(submittedPayment).toHaveCount(0, { timeout: 1000 });

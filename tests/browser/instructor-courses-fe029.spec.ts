@@ -183,6 +183,7 @@ function expectDesktopTabletContinuation(
 ) {
   expect(background.variant).toBe(expectedVariant);
   expect(background.continuationContent).toBe('""');
+  expect(background.continuationDisplay).not.toBe('none');
   expect(background.continuationImage).toContain('linear-gradient');
   expect(background.continuationPointerEvents).toBe('none');
 }

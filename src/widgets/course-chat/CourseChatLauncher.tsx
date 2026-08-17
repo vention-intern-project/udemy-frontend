@@ -76,7 +76,7 @@ export function CourseChatLauncher({ assistant }: CourseChatLauncherProps) {
           : new MutationObserver(scheduleClearanceUpdate);
       observer?.observe(root);
       observer?.observe(footer);
-      mutationObserver?.observe(document.body, { childList: true, subtree: true });
+      mutationObserver?.observe(footer.parentElement ?? root, { childList: true, subtree: true });
       const visualViewport = window.visualViewport;
       initialFrame = requestAnimationFrame(() => {
         initialFrame = null;

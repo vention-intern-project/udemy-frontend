@@ -117,7 +117,8 @@ function geometryRect(top: number, bottom: number): DOMRect {
 
 function flushGeometryFrames(frameCallbacks: FrameRequestCallback[]) {
   act(() => {
-    while (frameCallbacks.length > 0) {
+    for (let drains = 0; frameCallbacks.length > 0; drains += 1) {
+      if (drains >= 10) throw new Error('Animation frames did not settle after 10 drains.');
       frameCallbacks.splice(0).forEach((callback) => callback(0));
     }
   });

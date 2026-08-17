@@ -596,6 +596,12 @@ test('resets Catalog footer clearance before My learning and Cart geometry witho
 
     await page.getByRole('link', { name: destination.accessibleName }).click();
     await expect(page).toHaveURL(destination.path);
+    const footerIsBelowFold = await launcherRoot.evaluate((root) => {
+      const footer = root.previousElementSibling;
+      if (!(footer instanceof HTMLElement)) throw new Error('Application footer is missing.');
+      return footer.getBoundingClientRect().top >= window.innerHeight;
+    });
+    expect(footerIsBelowFold).toBe(true);
     await expect(launcherRoot).not.toHaveAttribute('style', /inset-block-end/);
     const normalAnchor = await launcherRoot.evaluate((root) => {
       const style = getComputedStyle(root);
@@ -725,17 +731,12 @@ test('keeps the launcher clear through a sorted Catalog footer and page-three tr
   await expect(page.locator('[data-part="course-card"]')).toHaveCount(20);
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
   await expect
-    .poll(async () =>
-      page.evaluate(() => {
-        const diagnosticWindow = window as DiagnosticWindow;
-        return diagnosticWindow.__launcherLifecycleDiagnostic;
-      }),
+    .poll(() =>
+      page.evaluate(
+        () => (window as DiagnosticWindow).__launcherLifecycleDiagnostic?.frameCallbacks ?? 0,
+      ),
     )
-    .toMatchObject({
-      frameCallbacks: expect.any(Number),
-      framesScheduled: expect.any(Number),
-      resizeListeners: expect.any(Number),
-    });
+    .toBeGreaterThan(before.diagnostic?.frameCallbacks ?? 0);
   await expect
     .poll(() =>
       page.getByLabel('Course assistant').evaluate((launcher) => {
