@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -10,6 +14,15 @@ import { AppRouter } from '../../src/app/router/AppRouter';
 import { SessionProvider, type AccessTokenStore } from '../../src/features/auth-session';
 import type { ApiClient, ApiRequestOptions } from '../../src/shared/api';
 import { ThemeProvider } from '../../src/shared/ui/theme';
+import { LocaleProvider, localeRuntime } from '../../src/shared/locale';
+
+const APP_SHELL_STYLES = readFileSync(
+  pathToFileURL(resolve(process.cwd(), 'src/app/layouts/AppShell.module.css')),
+  'utf8',
+);
+const DESKTOP_APP_SHELL_STYLES = APP_SHELL_STYLES.slice(
+  APP_SHELL_STYLES.lastIndexOf('@media (min-width: 768px) {'),
+);
 
 afterEach(() => {
   cleanup();
@@ -20,6 +33,8 @@ afterEach(() => {
 
 beforeEach(() => {
   vi.stubGlobal('scrollTo', vi.fn());
+  void localeRuntime.changeLanguage('en');
+  localStorage.clear();
 });
 
 function tokenStore(token: string | null): AccessTokenStore {
@@ -58,12 +73,14 @@ function renderShell(client: ApiClient, token: string | null, path = '/') {
   render(
     <QueryClientProvider client={queryClient}>
       <ThemeProvider initialDensityMode="marketplace">
-        <SessionProvider client={client} tokenStore={tokenStore(token)}>
-          <MemoryRouter initialEntries={[path]}>
-            <AppShell />
-            <LocationStateProbe />
-          </MemoryRouter>
-        </SessionProvider>
+        <LocaleProvider>
+          <SessionProvider client={client} tokenStore={tokenStore(token)}>
+            <MemoryRouter initialEntries={[path]}>
+              <AppShell />
+              <LocationStateProbe />
+            </MemoryRouter>
+          </SessionProvider>
+        </LocaleProvider>
       </ThemeProvider>
     </QueryClientProvider>,
   );
@@ -75,11 +92,13 @@ function renderRouter(client: ApiClient, token: string | null, path: string) {
   render(
     <QueryClientProvider client={queryClient}>
       <ThemeProvider initialDensityMode="marketplace">
-        <SessionProvider client={client} tokenStore={tokenStore(token)}>
-          <MemoryRouter initialEntries={[path]}>
-            <AppRouter />
-          </MemoryRouter>
-        </SessionProvider>
+        <LocaleProvider>
+          <SessionProvider client={client} tokenStore={tokenStore(token)}>
+            <MemoryRouter initialEntries={[path]}>
+              <AppRouter />
+            </MemoryRouter>
+          </SessionProvider>
+        </LocaleProvider>
       </ThemeProvider>
     </QueryClientProvider>,
   );
@@ -317,36 +336,36 @@ describe('AppShell student cart query and presentation', () => {
 
     const assistant = await screen.findByRole('link', { name: 'Open AI assistant' });
     vi.useFakeTimers();
-    expect(screen.queryByRole('tooltip', { name: 'AI assistant' })).toBeNull();
+    expect(screen.queryByRole('tooltip', { name: 'AI chat' })).toBeNull();
 
     await act(() => fireEvent.pointerEnter(assistant));
     await act(() => vi.advanceTimersByTime(499));
-    expect(screen.queryByRole('tooltip', { name: 'AI assistant' })).toBeNull();
+    expect(screen.queryByRole('tooltip', { name: 'AI chat' })).toBeNull();
     await act(() => vi.advanceTimersByTime(1));
-    const pointerTooltip = screen.getByRole('tooltip', { name: 'AI assistant' });
+    const pointerTooltip = screen.getByRole('tooltip', { name: 'AI chat' });
     expect(assistant.getAttribute('aria-describedby')).toBe(pointerTooltip.id);
 
     await act(() => fireEvent.pointerLeave(assistant));
-    expect(screen.queryByRole('tooltip', { name: 'AI assistant' })).toBeNull();
+    expect(screen.queryByRole('tooltip', { name: 'AI chat' })).toBeNull();
 
     void act(() => assistant.focus());
-    const focusTooltip = screen.getByRole('tooltip', { name: 'AI assistant' });
+    const focusTooltip = screen.getByRole('tooltip', { name: 'AI chat' });
     expect(assistant.getAttribute('aria-describedby')).toBe(focusTooltip.id);
     expect(document.activeElement).toBe(assistant);
 
     await act(() => fireEvent.keyDown(assistant, { key: 'Escape' }));
-    expect(screen.queryByRole('tooltip', { name: 'AI assistant' })).toBeNull();
+    expect(screen.queryByRole('tooltip', { name: 'AI chat' })).toBeNull();
     expect(document.activeElement).toBe(assistant);
 
     await act(() => fireEvent.pointerEnter(assistant));
     await act(() => vi.advanceTimersByTime(500));
-    expect(screen.queryByRole('tooltip', { name: 'AI assistant' })).toBeNull();
+    expect(screen.queryByRole('tooltip', { name: 'AI chat' })).toBeNull();
 
     await act(() => fireEvent.blur(assistant));
     await act(() => fireEvent.pointerLeave(assistant));
     await act(() => fireEvent.pointerEnter(assistant));
     await act(() => vi.advanceTimersByTime(500));
-    expect(screen.getByRole('tooltip', { name: 'AI assistant' })).toBeTruthy();
+    expect(screen.getByRole('tooltip', { name: 'AI chat' })).toBeTruthy();
   });
 
   it('renders the Instructor LearnHub brand as an accessible Instructor courses home link', async () => {
@@ -471,6 +490,66 @@ describe('AppShell student cart query and presentation', () => {
     expect(request.mock.calls.map(([options]) => options.path)).toEqual(['/me', '/cart']);
   });
 
+  it('changes the desktop language through the labelled selector without changing the route', async () => {
+    const request = vi.fn(authenticatedClient('student').request);
+    renderShell({ request: request as ApiClient['request'] }, 'student-token', '/learning');
+
+    const trigger = await screen.findByRole('button', { name: 'Change language' });
+    expect(trigger.textContent).toBe('EN');
+    expect(trigger.querySelector('.lucide-chevron-down')).toBeTruthy();
+    expect(trigger.querySelector('.lucide-globe')).toBeNull();
+    const user = userEvent.setup();
+    await act(async () => {
+      await user.click(trigger);
+    });
+    const russian = screen.getByRole('button', { name: 'Русский' });
+    await act(async () => {
+      await user.click(russian);
+    });
+
+    expect(localStorage.getItem('learnhub.locale')).toBe('ru');
+    expect(screen.getByRole('button', { name: 'Изменить язык' })).toBeTruthy();
+  });
+
+  it.each(['{Enter}', '{Space}'])(
+    'opens the desktop language menu once when the focused native trigger receives %s',
+    async (key) => {
+      renderShell(authenticatedClient('student'), 'student-token', '/learning');
+
+      const trigger = await screen.findByRole('button', { name: 'Change language' });
+      const user = userEvent.setup();
+      await act(async () => {
+        trigger.focus();
+        await user.keyboard(key);
+      });
+
+      expect(trigger.getAttribute('aria-expanded')).toBe('true');
+      expect(screen.getByLabelText('Language menu')).toBeTruthy();
+      expect(screen.getAllByRole('button', { name: /English|Русский|O'zbek/ })).toHaveLength(3);
+    },
+  );
+
+  it('orders desktop student controls as AI, Cart, Profile, then Language', async () => {
+    renderShell(authenticatedClient('student'), 'student-token', '/learning');
+
+    const assistant = await screen.findByRole('link', { name: 'Open AI assistant' });
+    const cart = await screen.findByRole('link', { name: 'Cart' });
+    const profile = screen.getByRole('button', { name: 'Account menu for student User' });
+    const language = screen.getByRole('button', { name: 'Change language' });
+
+    expect(assistant.compareDocumentPosition(cart) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(cart.compareDocumentPosition(profile) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(
+      profile.compareDocumentPosition(language) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(DESKTOP_APP_SHELL_STYLES).toMatch(
+      /\.headerCartAccountGroup \.cartLink\s*\{\s*order:\s*1;/,
+    );
+    expect(DESKTOP_APP_SHELL_STYLES).toMatch(
+      /\.headerCartAccountGroup \.account\s*\{\s*order:\s*2;/,
+    );
+  });
+
   it('uses the enrollment-aware assistant destination from student mobile navigation', async () => {
     stubCompactViewport();
     renderShell(
@@ -488,5 +567,57 @@ describe('AppShell student cart query and presentation', () => {
         '{"returnTo":"/learning/enrollments/42/lesson-3"}',
       ),
     );
+  });
+
+  it('keeps authenticated mobile language choices in the same account popover with a Back flow', async () => {
+    stubCompactViewport();
+    renderShell(authenticatedClient('student'), 'student-token');
+
+    const user = userEvent.setup();
+    const accountMenu = await screen.findByRole('button', {
+      name: 'Account menu for student User',
+    });
+    await act(async () => {
+      await user.click(accountMenu);
+    });
+    const language = screen.getByRole('button', { name: /Language/ });
+    await act(async () => {
+      await user.click(language);
+    });
+    expect(screen.getByRole('button', { name: 'Русский' })).toBeTruthy();
+    const back = screen.getByRole('button', { name: 'Back' });
+    await act(async () => {
+      await user.click(back);
+    });
+    expect(screen.getByRole('button', { name: /Language/ })).toBeTruthy();
+  });
+
+  it('keeps authenticated instructor mobile language choices in the account popover alongside navigation', async () => {
+    stubCompactViewport();
+    renderShell(authenticatedClient('instructor'), 'instructor-token', '/instructor/courses');
+
+    const user = userEvent.setup();
+    const accountMenu = await screen.findByRole('button', {
+      name: 'Account menu for instructor User',
+    });
+    expect(screen.queryByRole('button', { name: 'Change language' })).toBeNull();
+    const navigationTrigger = screen.getByRole('button', { name: 'Open navigation' });
+    await act(async () => {
+      await user.click(navigationTrigger);
+    });
+    expect(screen.getByRole('navigation', { name: 'Mobile navigation' })).toBeTruthy();
+    await act(async () => {
+      await user.keyboard('{Escape}');
+    });
+    expect(screen.queryByRole('navigation', { name: 'Mobile navigation' })).toBeNull();
+    expect(document.activeElement).toBe(navigationTrigger);
+    await act(async () => {
+      await user.click(accountMenu);
+    });
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: /Language/ }));
+    });
+    expect(screen.getByRole('button', { name: "O'zbek" })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Back' })).toBeTruthy();
   });
 });

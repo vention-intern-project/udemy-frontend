@@ -52,8 +52,8 @@ interface HeaderSlotBox {
 
 interface StudentHeaderGeometry {
   account: HeaderSlotBox;
-  accountCartGap: number;
   cart: HeaderSlotBox;
+  cartAccountGap: number;
   catalog: HeaderSlotBox;
   clientWidth: number;
   hasVerticalScrollbar: boolean;
@@ -90,6 +90,18 @@ const INSTRUCTOR_COURSE_COLLECTION_STRICT_MODE_ABORT: RequestFailureIdentity = {
 const INSTRUCTOR_EDITOR_COURSE_STRICT_MODE_ABORT: RequestFailureIdentity = {
   method: 'GET',
   path: '/courses/42',
+  errorText: 'net::ERR_ABORTED',
+};
+
+const CATALOG_HERO_BACKGROUND_OPTIONAL_ABORT: RequestFailureIdentity = {
+  method: 'GET',
+  path: '/src/pages/catalog-page/assets/catalog-hero-ui025.png',
+  errorText: 'net::ERR_ABORTED',
+};
+
+const INSTRUCTOR_DESKTOP_BACKGROUND_OPTIONAL_ABORT: RequestFailureIdentity = {
+  method: 'GET',
+  path: '/src/pages/instructor-courses-page/assets/instructor-courses-background-desktop-uifd020.png',
   errorText: 'net::ERR_ABORTED',
 };
 
@@ -974,7 +986,7 @@ async function readStudentHeaderGeometry(page: Page): Promise<StudentHeaderGeome
       search: read('input[name="search_query"]'),
       cart,
       account,
-      accountCartGap: cart.x - (account.x + account.width),
+      cartAccountGap: account.x - (cart.x + cart.width),
       learning: read('a[href="/learning"]'),
       clientWidth: root.clientWidth,
       innerWidth: window.innerWidth,
@@ -1084,6 +1096,99 @@ test('redirects an anonymous protected route with its internal returnTo', async 
   await expect(page.getByRole('heading', { level: 1, name: 'Log in' })).toBeVisible();
   expect(new URL(page.url()).searchParams.get('returnTo')).toBe('/cart?coupon=SAVE#summary');
   await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  assertRuntimeClean();
+});
+
+test('persists desktop and anonymous-mobile locale selections on the current route', async ({
+  page,
+}) => {
+  const assertRuntimeClean = monitorRuntime(page);
+  await page.setViewportSize({ width: 1280, height: 844 });
+  await page.goto('/');
+
+  const desktopTrigger = page.getByRole('button', { name: 'Change language' });
+  await desktopTrigger.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('button', { name: 'Русский' })).toBeVisible();
+  await page.getByRole('button', { name: 'Русский' }).click();
+  expect(await page.evaluate(() => localStorage.getItem('learnhub.locale'))).toBe('ru');
+  await expect(page.getByRole('button', { name: 'Изменить язык' })).toBeVisible();
+  await page.reload();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole('button', { name: 'Изменить язык' })).toBeVisible();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileTrigger = page.getByRole('button', { name: 'Изменить язык' });
+  await mobileTrigger.click();
+  const uzbek = page.getByRole('button', { name: "O'zbek" });
+  await expect(uzbek).toHaveAttribute('aria-pressed', 'false');
+  await uzbek.click();
+  expect(await page.evaluate(() => localStorage.getItem('learnhub.locale'))).toBe('uz');
+  await expect(page.getByRole('button', { name: 'Tilni o‘zgartirish' })).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  assertRuntimeClean();
+});
+
+test('uses native buttons for authenticated-mobile language selection and preserves dismissal', async ({
+  page,
+}) => {
+  const assertRuntimeClean = monitorRuntime(
+    page,
+    [],
+    [CART_STRICT_MODE_ABORT, ENROLLMENTS_STRICT_MODE_ABORT],
+  );
+  await mockAuthenticatedSession(page, 'student');
+  await mockStudentWorkspaceData(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/learning');
+
+  const account = page.getByRole('button', { name: 'Account menu for Sam User' });
+  await account.click();
+  await page.getByRole('button', { name: 'Language' }).click();
+  const russian = page.getByRole('button', { name: 'Русский' });
+  await expect(russian).toHaveAttribute('aria-pressed', 'false');
+  await russian.click();
+  await expect(page.getByRole('button', { name: 'Язык' })).toBeVisible();
+  await page.getByRole('button', { name: 'Язык' }).click();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('button', { name: 'Русский' })).toHaveCount(0);
+  await expect(page.locator('[data-account-initials]')).toBeFocused();
+  await expectNoHorizontalOverflow(page);
+  assertRuntimeClean();
+});
+
+test('preserves the authenticated-instructor mobile language flow in the profile popover', async ({
+  page,
+}) => {
+  const assertRuntimeClean = monitorRuntime(
+    page,
+    [],
+    [INSTRUCTOR_COURSE_COLLECTION_STRICT_MODE_ABORT],
+  );
+  await mockAuthenticatedSession(page, 'instructor');
+  const collectionFixture = await mockInstructorCourseCollection(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await Promise.all([collectionFixture.waitForFulfillment(), page.goto('/instructor/courses')]);
+
+  const profile = page.getByRole('button', { name: 'Account menu for Indira User' });
+  await profile.click();
+  await page.getByRole('button', { name: 'Language' }).click();
+  const english = page.getByRole('button', { name: 'English' });
+  const russian = page.getByRole('button', { name: 'Русский' });
+  await expect(english).toHaveAttribute('aria-pressed', 'true');
+  await expect(russian).toHaveAttribute('aria-pressed', 'false');
+  await russian.click();
+
+  const localizedLanguage = page.getByRole('button', { name: 'Язык' });
+  await expect(localizedLanguage).toBeVisible();
+  await localizedLanguage.click();
+  await expect(russian).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Назад' }).click();
+  await expect(localizedLanguage).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('button', { name: 'Русский' })).toHaveCount(0);
+  await expect(page.locator('[data-account-initials]')).toBeFocused();
   await expectNoHorizontalOverflow(page);
   assertRuntimeClean();
 });
@@ -1264,7 +1369,7 @@ test('keeps anonymous mobile navigation in visual and keyboard order', async ({ 
 test('keeps header and footer surfaces at the physical viewport edges without symmetric gutters', async ({
   page,
 }) => {
-  const assertRuntimeClean = monitorRuntime(page);
+  const assertRuntimeClean = monitorRuntime(page, [], [], [CATALOG_HERO_BACKGROUND_OPTIONAL_ABORT]);
   for (const width of [320, 390, 768, 1280, 1440] as const) {
     await expectShellSurfacesAtViewportEdges(page, width);
   }
@@ -1311,7 +1416,7 @@ test('keeps the accepted shared-header marks and quiet desktop Bot interaction s
   await expect(learning).toHaveAttribute('aria-current', 'page');
   await catalog.hover();
   await expect(catalog).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-  await expect(catalog).toHaveCSS('color', 'rgb(55, 65, 81)');
+  await expect(catalog).toHaveCSS('color', 'rgb(91, 63, 214)');
   await learning.focus();
   await expect(learning).toHaveCSS('outline-width', '2px');
 
@@ -1340,10 +1445,13 @@ test('keeps the accepted shared-header marks and quiet desktop Bot interaction s
     );
     const cartLink = document.querySelector<HTMLAnchorElement>('a[aria-label^="Cart"]');
     const profileButton = document.querySelector<HTMLElement>('[data-account-initials]');
+    const languageButton = document.querySelector<HTMLButtonElement>(
+      'button[aria-label="Change language"]',
+    );
     const activeLink = document.querySelector<HTMLAnchorElement>(
       'nav[aria-label="Primary navigation"] a[aria-current="page"]',
     );
-    if (!assistantLink || !cartLink || !profileButton || !activeLink) {
+    if (!assistantLink || !cartLink || !profileButton || !languageButton || !activeLink) {
       throw new Error('Shared-header visual targets are unavailable.');
     }
     const assistantIcon = assistantLink.querySelector('svg');
@@ -1356,6 +1464,7 @@ test('keeps the accepted shared-header marks and quiet desktop Bot interaction s
       assistant: rect(assistantLink),
       profile: rect(profileButton),
       cart: rect(cartLink),
+      language: rect(languageButton),
       assistantIcon: {
         ariaHidden: assistantIcon.getAttribute('aria-hidden'),
         focusable: assistantIcon.getAttribute('focusable'),
@@ -1380,8 +1489,10 @@ test('keeps the accepted shared-header marks and quiet desktop Bot interaction s
   expect(geometry.assistant.width).toBe(44);
   expect(geometry.profile.width).toBe(44);
   expect(geometry.cart.width).toBe(44);
+  expect(geometry.language.height).toBeGreaterThanOrEqual(44);
   expect(geometry.assistant.right).toBeLessThanOrEqual(geometry.profile.x + 0.5);
-  expect(geometry.profile.right).toBeLessThanOrEqual(geometry.cart.x + 0.5);
+  expect(geometry.profile.right).toBeLessThanOrEqual(geometry.language.x + 0.5);
+  expect(geometry.cart.right).toBeLessThanOrEqual(geometry.profile.x + 0.5);
   expect(geometry.assistantIcon).toEqual({
     ariaHidden: 'true',
     focusable: 'false',
@@ -1493,6 +1604,7 @@ test('keeps the accepted instructor navigation and initials marker at desktop wi
     page,
     [],
     [{ ...INSTRUCTOR_COURSE_COLLECTION_STRICT_MODE_ABORT, occurrences: 2 }],
+    [INSTRUCTOR_DESKTOP_BACKGROUND_OPTIONAL_ABORT],
   );
   await mockAuthenticatedSession(page, 'instructor');
   const collectionFixture = await mockInstructorCourseCollection(page);
@@ -1619,7 +1731,7 @@ test('restores the account trigger when viewport scroll removes its focused deta
   await expect(account).toBeFocused();
 
   await page.keyboard.press('Tab');
-  await expect(page.getByRole('link', { name: 'Cart (0)' })).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Change language' })).toBeFocused();
 });
 
 test('keeps anonymous Cart-to-Login actions in their stable desktop end group', async ({
@@ -1788,14 +1900,14 @@ test('applies the accepted desktop header affordances without changing navigatio
   await expect(catalog).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await expect(learning).toHaveAttribute('aria-current', 'page');
 
-  await expect(page.getByRole('tooltip', { name: 'AI assistant' })).toHaveCount(0);
+  await expect(page.getByRole('tooltip', { name: 'AI chat' })).toHaveCount(0);
   await assistant.hover();
   await page.waitForTimeout(300);
-  await expect(page.getByRole('tooltip', { name: 'AI assistant' })).toHaveCount(0, {
+  await expect(page.getByRole('tooltip', { name: 'AI chat' })).toHaveCount(0, {
     timeout: 100,
   });
   await page.waitForTimeout(250);
-  const tooltip = page.getByRole('tooltip', { name: 'AI assistant' });
+  const tooltip = page.getByRole('tooltip', { name: 'AI chat' });
   await expect(tooltip).toBeVisible();
   expect(await assistant.getAttribute('aria-describedby')).toBe(await tooltip.getAttribute('id'));
   const tooltipGeometry = await tooltip.evaluate((node) => {
@@ -1855,7 +1967,9 @@ test('applies the accepted desktop header affordances without changing navigatio
   assertRuntimeClean();
 });
 
-test('keeps Search contained before the Profile-to-Cart desktop group', async ({ page }) => {
+test('keeps Search contained before the accepted Cart-to-Profile desktop group', async ({
+  page,
+}) => {
   const assertRuntimeClean = monitorRuntime(
     page,
     [],
@@ -1877,14 +1991,14 @@ test('keeps Search contained before the Profile-to-Cart desktop group', async ({
     const searchRight = geometry.search.x + geometry.search.width;
     expect(geometry.standardGap).toBeGreaterThan(0);
     expect(geometry.search.x).toBeGreaterThanOrEqual(learningRight + geometry.standardGap - 0.5);
-    expect(geometry.account.x).toBeGreaterThanOrEqual(searchRight + geometry.standardGap - 0.5);
-    expect(geometry.cart.x).toBeGreaterThanOrEqual(
-      geometry.account.x + geometry.account.width + geometry.standardGap - 1,
+    expect(geometry.cart.x).toBeGreaterThanOrEqual(searchRight + geometry.standardGap - 0.5);
+    expect(geometry.account.x).toBeGreaterThanOrEqual(
+      geometry.cart.x + geometry.cart.width + geometry.standardGap - 1,
     );
     expect(geometry.search.width).toBeLessThanOrEqual(544);
     expect(geometry.cart.height).toBeGreaterThanOrEqual(44);
     expect(geometry.account.height).toBeGreaterThanOrEqual(44);
-    expect(geometry.accountCartGap).toBeCloseTo(15, 1);
+    expect(geometry.cartAccountGap).toBeCloseTo(15, 1);
     expect(geometry.learningWhiteSpace).toBe('nowrap');
     expect(geometry.overflowFree).toBe(true);
   }
@@ -2286,20 +2400,35 @@ test('keeps public desktop auth actions at the header end after a recoverable se
     const signup = Array.from(header.querySelectorAll<HTMLAnchorElement>('a')).find(
       (link) => link.textContent?.trim() === 'Sign up',
     );
-    if (!(inner instanceof HTMLElement) || !accountNavigation || !signup)
+    const language = header.querySelector<HTMLButtonElement>(
+      'button[aria-label="Change language"]',
+    );
+    if (!(inner instanceof HTMLElement) || !accountNavigation || !signup || !language)
       throw new Error('Public header geometry targets are unavailable.');
     const innerRect = inner.getBoundingClientRect();
     const accountRect = accountNavigation.getBoundingClientRect();
+    const loginRect = Array.from(header.querySelectorAll<HTMLAnchorElement>('a'))
+      .find((link) => link.textContent?.trim() === 'Log in')
+      ?.getBoundingClientRect();
     const signupRect = signup.getBoundingClientRect();
+    const languageRect = language.getBoundingClientRect();
+    if (!loginRect) throw new Error('Public header Log in geometry target is unavailable.');
     return {
       accountLeft: accountRect.left,
       innerCenter: innerRect.left + innerRect.width / 2,
       innerRight: innerRect.right,
+      loginRight: loginRect.right,
       signupRight: signupRect.right,
+      languageLeft: languageRect.left,
+      languageRight: languageRect.right,
+      languageHeight: languageRect.height,
     };
   });
   expect(headerGeometry.accountLeft).toBeGreaterThan(headerGeometry.innerCenter);
-  expect(headerGeometry.innerRight - headerGeometry.signupRight).toBeLessThanOrEqual(24.5);
+  expect(headerGeometry.loginRight).toBeLessThanOrEqual(headerGeometry.signupRight);
+  expect(headerGeometry.signupRight).toBeLessThanOrEqual(headerGeometry.languageLeft);
+  expect(headerGeometry.innerRight - headerGeometry.languageRight).toBeLessThanOrEqual(24.5);
+  expect(headerGeometry.languageHeight).toBeGreaterThanOrEqual(44);
   await expectNoHorizontalOverflow(page);
   assertRuntimeClean();
 });
@@ -2471,6 +2600,9 @@ test('supports keyboard-operated mobile navigation and focus restoration', async
   const profile = page.getByRole('button', { name: 'Account menu for Indira User' });
   await expectInstructorHomeBrand(page);
   await expect(profile).toBeVisible();
+  await profile.click();
+  await expect(page.getByRole('button', { name: /Language/ })).toBeVisible();
+  await profile.click();
   const menu = page.getByRole('button', { name: 'Open navigation' });
   await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toBeHidden();
   await expectMenuAtHeaderContentEdge(page);
@@ -2751,6 +2883,7 @@ test('keeps instructor course-management content readable without student destin
         errorText: 'net::ERR_ABORTED',
       },
     ],
+    [INSTRUCTOR_DESKTOP_BACKGROUND_OPTIONAL_ABORT],
   );
   await mockAuthenticatedSession(page, 'instructor');
   await mockInstructorCourseCollection(page);

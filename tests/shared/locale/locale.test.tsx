@@ -6,11 +6,14 @@ import { describe, expect, it } from 'vitest';
 
 import {
   createBrowserLocaleStore,
+  createLocaleRuntime,
   createLocaleLookup,
   LocaleProvider,
+  MLUX_002_RUNTIME_MAPPING,
   resolveLocale,
   useLocale,
   type LocaleStorage,
+  type LocaleRuntimeDiagnostics,
 } from '../../../src/shared/locale';
 
 function memoryStorage(initialValues: Record<string, string> = {}): LocaleStorage {
@@ -80,5 +83,66 @@ describe('locale foundation', () => {
     expect(lookup.get('language', 'ru')).toBe('Язык');
     expect(lookup.get('logout', 'uz')).toBe('Log out');
     expect(lookup.get('logout', 'en')).toBe('Log out');
+  });
+
+  it('runs only the approved locales with immutable English fallback and actionable missing-key output', () => {
+    const diagnostics: LocaleRuntimeDiagnostics = { missingKeys: [] };
+    const runtime = createLocaleRuntime('ru', diagnostics);
+
+    expect((runtime.options.supportedLngs || []).filter((locale) => locale !== 'cimode')).toEqual([
+      'en',
+      'ru',
+      'uz',
+    ]);
+    expect(runtime.options.fallbackLng).toEqual(['en']);
+    expect(runtime.t('common:language')).toBe('Язык');
+    expect(runtime.t('common:not-a-real-key')).toBe('Translation unavailable');
+    expect(diagnostics.missingKeys).toContainEqual({ namespace: 'common', key: 'not-a-real-key' });
+  });
+
+  it('keeps the independently enumerated DRAFT-11 allocation, resource review state and occurrences complete', () => {
+    const runtime = createLocaleRuntime('en');
+    const expectedIds = [
+      'MLUX-C0001',
+      'MLUX-C0002',
+      'MLUX-C0003',
+      'MLUX-C0004',
+      'MLUX-C0005',
+      'MLUX-C0006',
+      'MLUX-C0007',
+      'MLUX-C0008',
+      'MLUX-C0009',
+      'MLUX-C0010',
+      'MLUX-C0011',
+      'MLUX-C0012',
+      'MLUX-C0013',
+      'MLUX-C0014',
+      'MLUX-C0015',
+      'MLUX-C0016',
+      'MLUX-C0017',
+      'MLUX-C0018',
+      'MLUX-C0019',
+      'MLUX-C0020',
+      'MLUX-C0021',
+      'MLUX-C0022',
+      'MLUX-C0023',
+    ];
+
+    expect(MLUX_002_RUNTIME_MAPPING.map((mapping) => mapping.unitId)).toEqual(expectedIds);
+    expect(MLUX_002_RUNTIME_MAPPING.flatMap((mapping) => mapping.occurrences)).toHaveLength(33);
+    expect(
+      MLUX_002_RUNTIME_MAPPING.flatMap((mapping) => mapping.occurrences)
+        .map(({ id }) => id)
+        .sort(),
+    ).toEqual(Array.from({ length: 33 }, (_, index) => `O${String(index + 1).padStart(4, '0')}`));
+    for (const mapping of MLUX_002_RUNTIME_MAPPING) {
+      expect(mapping.unitId).toMatch(/^MLUX-C\d{4}$/);
+      expect(mapping.key).not.toMatch(/^MLUX-/);
+      expect(mapping.resourceStatus).toBe('Draft');
+      expect(mapping.russian).toEqual({ resource: 'Draft', review: 'Pending' });
+      expect(mapping.uzbek).toEqual({ resource: 'Draft', review: 'Pending' });
+      expect(mapping.ownerTask).toBe('MLUX-002');
+      expect(runtime.exists(`${mapping.namespace}:${mapping.key}`)).toBe(true);
+    }
   });
 });
