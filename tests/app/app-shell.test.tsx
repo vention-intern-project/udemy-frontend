@@ -888,8 +888,12 @@ describe('AppShell student cart query and presentation', () => {
     await act(async () => {
       await user.click(accountMenu);
     });
+    expect(accountMenu.getAttribute('aria-expanded')).toBe('true');
+    const accountDetails = await screen.findByRole('group', {
+      name: 'Account details for instructor User',
+    });
     await act(async () => {
-      await user.click(screen.getByRole('button', { name: /Language/ }));
+      await user.click(within(accountDetails).getByRole('button', { name: /Language/ }));
     });
     expect(screen.getByRole('button', { name: "O'zbek" })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Back' })).toBeTruthy();
