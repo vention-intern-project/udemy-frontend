@@ -181,15 +181,15 @@ const D04_SOURCE_TO_CORPUS: readonly D04SourceOccurrence[] = [
   },
   {
     occurrenceId: 'O0499',
-    owner: 'src/pages/catalog-page/course-card-presentation.ts',
+    owner: 'src/shared/locale/format-locale-currency.ts',
     key: 'catalog:priceUnavailable',
-    seam: 'if (!DECIMAL_PRICE.test(price) || !CURRENCY_CODE.test(currency)) return priceUnavailable();',
+    seam: 'if (!DECIMAL_PRICE.test(price) || !CURRENCY_CODE.test(currency))\n    return unavailableLabel ?? rawPrice;',
   },
   {
     occurrenceId: 'O0500',
-    owner: 'src/pages/catalog-page/course-card-presentation.ts',
+    owner: 'src/shared/locale/format-locale-currency.ts',
     key: 'catalog:priceUnavailable',
-    seam: '} catch {\n    return priceUnavailable();',
+    seam: '} catch {\n    return unavailableLabel ?? rawPrice;',
   },
   {
     occurrenceId: 'O0501',
