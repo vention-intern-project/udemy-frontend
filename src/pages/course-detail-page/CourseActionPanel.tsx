@@ -139,7 +139,9 @@ export function CourseActionPanel({
           disabled={mutationState.status === 'pending'}
           onClick={() => onSubmitAction(action.kind)}
         >
-          {action.label}
+          {action.kind === 'enroll'
+            ? t('catalog:enrollFree', { defaultValue: action.label })
+            : t('catalog:addToCart', { defaultValue: action.label })}
         </Button>
       ) : null}
       {action?.kind === 'disabled' ? (

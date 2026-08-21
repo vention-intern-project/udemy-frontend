@@ -587,6 +587,63 @@ test('sends the paid cart request once and reports cart-specific success', async
 
 for (const scenario of [
   {
+    localeButton: 'Русский',
+    price: '0.00',
+    action: 'Записаться бесплатно',
+    mutationPath: '**/enrollments',
+    mutationResponse: enrollmentMutation,
+  },
+  {
+    localeButton: "O'zbek",
+    price: '19.99',
+    action: 'Savatga qo‘shish',
+    mutationPath: '**/cart/items',
+    mutationResponse: cartItemMutation,
+  },
+]) {
+  test(`localizes the authenticated eligible Course Detail action after selecting ${scenario.localeButton}`, async ({
+    page,
+  }) => {
+    const diagnostics = await installDiagnostics(page);
+    await installStudentToken(page);
+    await routeStudentReads(page, scenario.price);
+    let mutations = 0;
+    await page.route(scenario.mutationPath, async (route) => {
+      mutations += 1;
+      expect(route.request().postDataJSON()).toEqual({ course_id: 7 });
+      await json(route, scenario.mutationResponse, 201);
+    });
+
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/courses/7');
+    await page.getByRole('button', { name: 'Change language' }).click();
+    await page.getByRole('button', { name: scenario.localeButton, exact: true }).click();
+
+    const action = page.getByRole('button', { name: scenario.action });
+    await expect(action).toBeEnabled();
+    await action.focus();
+    await expect(action).toBeFocused();
+    await expectNoHorizontalOverflow(page);
+
+    await page.setViewportSize({ width: 390, height: 900 });
+    await expect(action).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 2 });
+    const geometry = await expectNoHorizontalOverflow(page);
+    expect(geometry.scale).toBeCloseTo(2, 1);
+    await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 });
+    await cdp.detach();
+
+    await action.click();
+    expect(mutations).toBe(1);
+    diagnostics.assertClean();
+  });
+}
+
+for (const scenario of [
+  {
     name: 'enrollment null',
     price: '0.00',
     action: 'Enroll free',

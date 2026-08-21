@@ -233,6 +233,50 @@ afterEach(() => {
 });
 
 describe('CourseDetailPage', () => {
+  it.each([
+    {
+      locale: 'ru' as const,
+      price: '0.00',
+      label: 'Записаться бесплатно',
+      mutationPath: '/enrollments',
+      mutationResponse: enrollmentMutation,
+    },
+    {
+      locale: 'uz' as const,
+      price: '19.99',
+      label: 'Savatga qo‘shish',
+      mutationPath: '/cart/items',
+      mutationResponse: cartItemMutation,
+    },
+  ])(
+    'localizes the eligible authenticated primary action in $locale without changing its write target',
+    async ({ locale, price, label, mutationPath, mutationResponse }) => {
+      await localeRuntime.changeLanguage(locale);
+      let mutationRequests = 0;
+      const request: ApiClient['request'] = async <TResponse, TBody>(
+        options: ApiRequestOptions<TBody, TResponse>,
+      ) => {
+        if (options.path === '/me') return decode(options, studentProfile);
+        if (options.path === '/courses/7') return decode(options, { ...course, price });
+        if (options.path === '/courses/7/lessons') return decode(options, outline(null));
+        if (options.path === '/cart') return decode(options, emptyCart);
+        if (options.path === '/enrollments/my') return decode(options, emptyEnrollments);
+        if (options.path === mutationPath) {
+          mutationRequests += 1;
+          return decode(options, mutationResponse);
+        }
+        throw new Error(`Unexpected request ${options.path}`);
+      };
+      renderPage(request, 'token');
+
+      const action = await screen.findByRole('button', { name: label });
+      await act(async () => {
+        await userEvent.setup().click(action);
+      });
+      await waitFor(() => expect(mutationRequests).toBe(1));
+    },
+  );
+
   it.each(courseResidualLocaleScenarios)(
     'resolves every admitted course residual in $locale without changing API-authored data',
     async (copy) => {
