@@ -46,10 +46,10 @@ function renderPage(path = '/learning/enrollments/4/ai-chat', locale: Locale = '
   );
 }
 
-afterEach(() => {
+afterEach(async () => {
   vi.resetAllMocks();
   vi.unstubAllGlobals();
-  void localeRuntime.changeLanguage('en');
+  await localeRuntime.changeLanguage('en');
 });
 
 describe('AiChatPage eligibility states', () => {

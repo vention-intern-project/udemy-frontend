@@ -1107,6 +1107,8 @@ test('persists desktop and anonymous-mobile locale selections on the current rou
   await page.setViewportSize({ width: 1280, height: 844 });
   await page.goto('/');
 
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+
   await expect(page.getByRole('link', { name: 'LearnHub home' })).toHaveText('LearnHub');
   await expect(page.getByRole('link', { name: 'Skip to main content' })).toHaveAttribute(
     'href',
@@ -1118,6 +1120,7 @@ test('persists desktop and anonymous-mobile locale selections on the current rou
   await page.keyboard.press('Enter');
   await expect(page.getByRole('button', { name: 'Русский' })).toBeVisible();
   await page.getByRole('button', { name: 'Русский' }).click();
+  await expect(page.locator('html')).toHaveAttribute('lang', 'ru');
   expect(await page.evaluate(() => localStorage.getItem('learnhub.locale'))).toBe('ru');
   await expect(page.getByRole('button', { name: 'Изменить язык' })).toBeVisible();
   const russianPrimaryNavigation = page.getByRole('navigation', { name: 'Основная навигация' });
@@ -1132,6 +1135,7 @@ test('persists desktop and anonymous-mobile locale selections on the current rou
   );
   await page.reload();
   await expect(page).toHaveURL(/\/$/);
+  await expect(page.locator('html')).toHaveAttribute('lang', 'ru');
   await expect(page.getByRole('button', { name: 'Изменить язык' })).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
@@ -1141,6 +1145,7 @@ test('persists desktop and anonymous-mobile locale selections on the current rou
   const uzbek = page.getByRole('button', { name: "O'zbek" });
   await expect(uzbek).toHaveAttribute('aria-pressed', 'false');
   await uzbek.click();
+  await expect(page.locator('html')).toHaveAttribute('lang', 'uz');
   expect(await page.evaluate(() => localStorage.getItem('learnhub.locale'))).toBe('uz');
   await expect(page.getByRole('button', { name: 'Tilni o‘zgartirish' })).toBeVisible();
   const uzbekAnonymousNavigation = page.getByRole('navigation', { name: 'Mehmon navigatsiyasi' });

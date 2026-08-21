@@ -1339,6 +1339,26 @@ describe('locale foundation', () => {
     expect(screen.getByLabelText('active locale').textContent).toBe('uz');
   });
 
+  it('synchronizes the committed provider locale to the document language', async () => {
+    const previousDocumentLanguage = document.documentElement.lang;
+    try {
+      document.documentElement.lang = 'en';
+      render(
+        <LocaleProvider initialLocale="ru">
+          <LocaleProbe />
+        </LocaleProvider>,
+      );
+      expect(document.documentElement.lang).toBe('ru');
+
+      await act(async () => {
+        await userEvent.setup().click(screen.getByRole('button', { name: 'Set Uzbek' }));
+      });
+      expect(document.documentElement.lang).toBe('uz');
+    } finally {
+      document.documentElement.lang = previousDocumentLanguage;
+    }
+  });
+
   it('keeps provider initialization instance-owned across rerenders and an abandoned render', () => {
     void localeRuntime.changeLanguage('en');
     const changeSingletonLanguage = vi.spyOn(localeRuntime, 'changeLanguage');

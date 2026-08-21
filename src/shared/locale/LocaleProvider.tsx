@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { I18nextProvider, useTranslation } from 'react-i18next';
 
 import { createLocaleRuntime } from './i18n';
@@ -6,6 +6,17 @@ import { createBrowserLocaleStore, normalizeLocale, resolveBrowserLocale } from 
 import type { Locale, LocaleContextValue, LocaleProviderProps, LocaleStore } from './types';
 
 const LocaleStoreContext = createContext<LocaleStore | null>(null);
+
+function DocumentLanguageSynchronizer() {
+  const { i18n } = useTranslation();
+  const locale = normalizeLocale(i18n.resolvedLanguage ?? i18n.language) ?? 'en';
+
+  useEffect(() => {
+    document.documentElement.lang = locale;
+  }, [locale]);
+
+  return null;
+}
 
 export function LocaleProvider({
   children,
@@ -18,7 +29,10 @@ export function LocaleProvider({
   );
   return (
     <LocaleStoreContext.Provider value={browserStore}>
-      <I18nextProvider i18n={runtime}>{children}</I18nextProvider>
+      <I18nextProvider i18n={runtime}>
+        <DocumentLanguageSynchronizer />
+        {children}
+      </I18nextProvider>
     </LocaleStoreContext.Provider>
   );
 }

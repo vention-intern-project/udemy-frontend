@@ -59,7 +59,7 @@ vi.mock('react-pdf', () => ({
 import { LessonPdfPreview } from '../../../src/features/media-access/LessonPdfPreview';
 import { LocaleProvider, localeRuntime, type Locale } from '../../../src/shared/locale';
 
-afterEach(() => {
+afterEach(async () => {
   pdfMocks.documentMode = 'success';
   pdfMocks.pageMode = 'success';
   pdfMocks.documentProps = null;
@@ -67,7 +67,7 @@ afterEach(() => {
   pdfMocks.pageRenderCount = 0;
   pdfMocks.finishPageRender = null;
   pdfMocks.failPageRender = null;
-  void localeRuntime.changeLanguage('en');
+  await localeRuntime.changeLanguage('en');
 });
 
 describe('LessonPdfPreview', () => {

@@ -7,7 +7,10 @@ import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CatalogPage } from '../../src/pages/catalog-page';
-import { formatCatalogPrice } from '../../src/pages/catalog-page/course-card-presentation';
+import {
+  catalogActionLabelKey,
+  formatCatalogPrice,
+} from '../../src/pages/catalog-page/course-card-presentation';
 import { SortControl } from '../../src/pages/catalog-page/SortControl';
 import { createAppQueryClient } from '../../src/app/query';
 import {
@@ -25,6 +28,10 @@ afterEach(() => {
 });
 
 describe('catalog locale-native price presentation', () => {
+  it('maps the authenticated free-enrollment label to the existing localized resource', () => {
+    expect(catalogActionLabelKey('enroll-free', 'Enroll free')).toBe('enrollFree');
+  });
+
   it('uses the active locale when deriving a valid currency marker', () => {
     expect(formatCatalogPrice('9.99', 'USD', 'en-US')).toBe('$9.99');
     expect(formatCatalogPrice('9.99', 'USD', 'ru-RU')).not.toBe('$9.99');

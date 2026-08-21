@@ -39,7 +39,11 @@ export function catalogActionLabelKey(
     (label === 'Log in to add to cart' || label === 'Add to cart')
   )
     return 'addToCart';
-  if (presentation === 'enroll-free' && label === 'Log in to enroll free') return 'enrollFree';
+  if (
+    presentation === 'enroll-free' &&
+    (label === 'Log in to enroll free' || label === 'Enroll free')
+  )
+    return 'enrollFree';
   return presentation === 'neutral' && label === 'Course is not published' ? 'notPublished' : null;
 }
 

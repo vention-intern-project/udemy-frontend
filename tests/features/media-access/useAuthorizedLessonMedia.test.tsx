@@ -43,14 +43,14 @@ interface PendingMediaRequest {
   resolve(response: ApiBinaryResponse): void;
 }
 
-afterEach(() => {
+afterEach(async () => {
   requestAuthorizedLessonMedia.mockReset();
   mediaMocks.renderedPdf = null;
   createObjectUrl.mockReset();
   createObjectUrl.mockReturnValue(objectUrl);
   revokeObjectUrl.mockReset();
   vi.unstubAllGlobals();
-  void localeRuntime.changeLanguage('en');
+  await localeRuntime.changeLanguage('en');
 });
 
 afterAll(() => {

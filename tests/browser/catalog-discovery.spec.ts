@@ -3894,6 +3894,27 @@ test('renders the DD-045 CourseCard action and status system without changing ac
   await page.evaluate(() => {
     document.documentElement.style.zoom = '';
   });
+  for (const [triggerName, optionName, label] of [
+    ['Change language', 'Русский', 'Записаться бесплатно'],
+    ['Изменить язык', "O'zbek", 'Bepul yozilish'],
+  ] as const) {
+    await page.getByRole('button', { name: triggerName }).click();
+    await page.getByRole('button', { name: optionName }).click();
+    const localizedEnroll = page
+      .locator('[data-part="course-card"]')
+      .filter({ has: page.getByRole('heading', { level: 3, name: 'Free course' }) })
+      .getByRole('button', { name: label });
+    await expect(localizedEnroll).toBeVisible();
+    await localizedEnroll.focus();
+    await expect(localizedEnroll).toBeFocused();
+    expect(
+      await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth <= document.documentElement.clientWidth &&
+          document.body.scrollWidth <= document.documentElement.clientWidth,
+      ),
+    ).toBe(true);
+  }
   assertClean();
 });
 

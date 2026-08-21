@@ -94,12 +94,12 @@ async function interact(action: () => Promise<void>) {
   });
 }
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
   vi.resetAllMocks();
   vi.unstubAllGlobals();
   document.querySelectorAll('[data-test-footer]').forEach((footer) => footer.remove());
-  void localeRuntime.changeLanguage('en');
+  await localeRuntime.changeLanguage('en');
 });
 
 function footerForGeometryTest() {
