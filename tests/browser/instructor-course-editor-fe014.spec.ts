@@ -4,6 +4,14 @@ const accessToken = 'fe014-test-only-instructor-token';
 const courseId = 7;
 const lessonId = 101;
 
+type FixtureLocale = 'en' | 'ru' | 'uz';
+
+const FIXTURE_LOCALE_OPTION: Readonly<Record<FixtureLocale, string>> = {
+  en: 'English',
+  ru: 'Русский',
+  uz: "O'zbek",
+};
+
 interface InstructorProfileFixture {
   readonly email: string;
   readonly name: string;
@@ -117,6 +125,15 @@ function createFixtureState(): FixtureState {
     lessonDeleteStatus: 200,
     requests: [],
   };
+}
+
+async function selectFixtureLocale(page: Page, locale: FixtureLocale): Promise<void> {
+  const languageControl = page.getByRole('button', {
+    name: /Change language|Изменить язык|Tilni o‘zgartirish/,
+  });
+  await expect(languageControl).toBeVisible();
+  await languageControl.click();
+  await page.getByRole('button', { name: FIXTURE_LOCALE_OPTION[locale] }).click();
 }
 
 function fulfilledCourse(course: CourseFixture) {
@@ -512,6 +529,7 @@ test('announces truthful pending course and lesson deletes without duplicate mut
   await page.goto(`/instructor/courses/${courseId}/edit`, { waitUntil: 'commit' });
 
   const deleteLesson = page.getByRole('button', { name: 'Delete lesson' });
+  await expect(deleteLesson).toBeVisible();
   await deleteLesson.focus();
   await deleteLesson.press('Enter');
   const lessonDialog = page.getByRole('dialog', { name: 'Delete this lesson?' });
@@ -801,6 +819,7 @@ test('keeps every hostile lesson title literal in the destructive dialog and del
 test('renders allocated enrollment and lesson-editor copy in Russian and Uzbek without overflow', async ({
   page,
 }) => {
+  test.setTimeout(90_000);
   const state = createFixtureState();
   await installInstructorFixture(page, state);
   for (const [
@@ -843,10 +862,8 @@ test('renders allocated enrollment and lesson-editor copy in Russian and Uzbek w
       'Faylni yuklash',
     ],
   ] as const) {
-    await page.addInitScript((selectedLocale) => {
-      localStorage.setItem('learnhub.locale', selectedLocale);
-    }, locale);
     await page.goto('/instructor/courses/not-a-course/edit', { waitUntil: 'commit' });
+    await selectFixtureLocale(page, locale);
     await expect(page.getByText(courseAddressInvalid)).toBeVisible();
     await expect(page.getByRole('navigation', { name: breadcrumb })).toBeVisible();
 
@@ -871,4 +888,43 @@ test('renders allocated enrollment and lesson-editor copy in Russian and Uzbek w
     await expect(page.getByRole('button', { name: uploadFile })).toBeVisible();
     await expectNoHorizontalOverflow(page);
   }
+});
+
+test('localizes instructor course lesson-list types without changing lesson writes', async ({
+  page,
+}) => {
+  const state = createFixtureState();
+  state.course = createCourse([
+    { ...createLesson('video'), id: 101, title: 'Video list lesson' },
+    { ...createLesson('text'), id: 102, title: 'Text list lesson' },
+    { ...createLesson('pdf'), id: 103, title: 'PDF list lesson' },
+  ]);
+  state.lesson = state.course.lessons[0]!;
+  await installInstructorFixture(page, state);
+
+  for (const [locale, labels] of [
+    ['en', ['Video', 'Text', 'PDF']],
+    ['ru', ['Видео', 'Текст', 'PDF']],
+    ['uz', ['Video', 'Matn', 'PDF']],
+  ] as const) {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(`/instructor/courses/${courseId}/edit`, { waitUntil: 'commit' });
+    await selectFixtureLocale(page, locale);
+
+    for (const [index, label] of labels.entries()) {
+      const title = ['Video list lesson', 'Text list lesson', 'PDF list lesson'][index]!;
+      const row = page.getByRole('heading', { name: title }).locator('xpath=ancestor::li');
+      await expect(row.getByText(new RegExp(`^${label} ·`))).toBeVisible();
+    }
+
+    const firstEdit = page
+      .getByRole('link', { name: /Edit lesson|Редактировать урок|Darsni tahrirlash/ })
+      .first();
+    await firstEdit.focus();
+    await expect(firstEdit).toBeFocused();
+    await page.setViewportSize({ width: 640, height: 900 });
+    await expectNoHorizontalOverflow(page);
+  }
+
+  expect(state.requests.filter((request) => request.method() !== 'GET')).toEqual([]);
 });

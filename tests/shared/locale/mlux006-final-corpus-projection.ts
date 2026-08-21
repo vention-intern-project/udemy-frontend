@@ -1,4 +1,4 @@
-// Generated from MLUX-001-DRAFT-26 through prescribed read-only @oai/artifact-tool inspection.
+// Generated from MLUX-001-DRAFT-27 through prescribed @oai/artifact-tool inspection.
 // This independent test oracle must never import runtime mapping or resources.
 
 export interface Mlux006FinalCorpusProjection {
@@ -99,13 +99,13 @@ export interface Mlux006ExclusionRecord {
 }
 
 export const MLUX006_FINAL_CORPUS_PROJECTION = {
-  version: 'MLUX-001-DRAFT-26',
-  sha256: '57B5DAE484C3664D84BBD6AAC61CBDFC8045E5F7D27D04711C38A0F33DA27128',
-  byteLength: 107700,
+  version: 'MLUX-001-DRAFT-27',
+  sha256: '7D3AA5F65497C576B143D07327F7D51250FD4966C98BA75AF89DED2D6A74D026',
+  byteLength: 107865,
   summary: {
     translationUnits: 471,
-    sourceOccurrences: 666,
-    mergedDuplicateRows: 195,
+    sourceOccurrences: 669,
+    mergedDuplicateRows: 198,
     russianDrafts: 471,
     uzbekDrafts: 471,
     draftStatus: 'Draft',
@@ -6272,8 +6272,8 @@ export const MLUX006_FINAL_CORPUS_PROJECTION = {
       runtimeEnglish: 'Video',
       variables: [],
       plural: false,
-      sourceScreen: 'See Occurrences (2 verified sources)',
-      routeState: '2 contexts — see Occurrences',
+      sourceScreen: 'See Occurrences (4 verified sources)',
+      routeState: 'Shared instructor and course-detail lesson type — see Occurrences',
       english: 'Video',
       russian: {
         value: 'Видео',
@@ -6292,8 +6292,8 @@ export const MLUX006_FINAL_CORPUS_PROJECTION = {
       testTarget: 'See Occurrences',
       status: 'Draft',
       notes:
-        'Merged 2 equivalent occurrences; exact locations are on Occurrences; draft translations await human review.',
-      occurrenceCount: 3,
+        'Merged 3 equivalent occurrences; exact locations are on Occurrences; draft translations await human review.',
+      occurrenceCount: 4,
       dedupeDecision: 'Merged equivalent occurrences',
     },
     {
@@ -6303,8 +6303,8 @@ export const MLUX006_FINAL_CORPUS_PROJECTION = {
       runtimeEnglish: 'Text',
       variables: [],
       plural: false,
-      sourceScreen: 'See Occurrences (2 verified sources)',
-      routeState: '2 contexts — see Occurrences',
+      sourceScreen: 'See Occurrences (4 verified sources)',
+      routeState: 'Shared instructor and course-detail lesson type — see Occurrences',
       english: 'Text',
       russian: {
         value: 'Текст',
@@ -6323,8 +6323,8 @@ export const MLUX006_FINAL_CORPUS_PROJECTION = {
       testTarget: 'See Occurrences',
       status: 'Draft',
       notes:
-        'Merged 2 equivalent occurrences; exact locations are on Occurrences; draft translations await human review.',
-      occurrenceCount: 3,
+        'Merged 3 equivalent occurrences; exact locations are on Occurrences; draft translations await human review.',
+      occurrenceCount: 4,
       dedupeDecision: 'Merged equivalent occurrences',
     },
     {
@@ -6334,8 +6334,8 @@ export const MLUX006_FINAL_CORPUS_PROJECTION = {
       runtimeEnglish: 'PDF',
       variables: [],
       plural: false,
-      sourceScreen: 'See Occurrences (2 verified sources)',
-      routeState: '2 contexts — see Occurrences',
+      sourceScreen: 'See Occurrences (4 verified sources)',
+      routeState: 'Shared instructor and course-detail lesson type — see Occurrences',
       english: 'PDF',
       russian: {
         value: 'PDF',
@@ -6354,8 +6354,8 @@ export const MLUX006_FINAL_CORPUS_PROJECTION = {
       testTarget: 'See Occurrences',
       status: 'Draft',
       notes:
-        'Merged 2 equivalent occurrences; exact locations are on Occurrences; draft translations await human review.',
-      occurrenceCount: 3,
+        'Merged 3 equivalent occurrences; exact locations are on Occurrences; draft translations await human review.',
+      occurrenceCount: 4,
       dedupeDecision: 'Merged equivalent occurrences',
     },
     {
@@ -23587,10 +23587,52 @@ export const MLUX006_FINAL_CORPUS_PROJECTION = {
       extractionKind: 't(instructor:courseEditorValidationCouldNotProcessForm)',
       dedupeMapping: 'Merged with MLUX-C0363',
     },
+    {
+      occurrenceId: 'MLUX-O0667',
+      unitId: 'MLUX-C0203',
+      sourceScreen: 'src/pages/instructor-course-editor-page/InstructorCourseEditorPage.tsx:469',
+      routeState: 'Page: instructor-course-editor-page / lesson list type',
+      runtimeContext:
+        'src/pages/instructor-course-editor-page/InstructorCourseEditorPage.tsx:469 — Page: instructor-course-editor-page / lesson list type',
+      english: 'Video',
+      classification: 'Visible UI copy',
+      ownerTask: 'MLUX-006-FOLLOWUP',
+      testTarget: 'MLUX-006-FOLLOWUP focused + browser matrix',
+      extractionKind: 't(instructor:courseEditorVideo)',
+      dedupeMapping: 'Merged with MLUX-C0203',
+    },
+    {
+      occurrenceId: 'MLUX-O0668',
+      unitId: 'MLUX-C0204',
+      sourceScreen: 'src/pages/instructor-course-editor-page/InstructorCourseEditorPage.tsx:469',
+      routeState: 'Page: instructor-course-editor-page / lesson list type',
+      runtimeContext:
+        'src/pages/instructor-course-editor-page/InstructorCourseEditorPage.tsx:469 — Page: instructor-course-editor-page / lesson list type',
+      english: 'Text',
+      classification: 'Visible UI copy',
+      ownerTask: 'MLUX-006-FOLLOWUP',
+      testTarget: 'MLUX-006-FOLLOWUP focused + browser matrix',
+      extractionKind: 't(instructor:courseEditorText)',
+      dedupeMapping: 'Merged with MLUX-C0204',
+    },
+    {
+      occurrenceId: 'MLUX-O0669',
+      unitId: 'MLUX-C0205',
+      sourceScreen: 'src/pages/instructor-course-editor-page/InstructorCourseEditorPage.tsx:469',
+      routeState: 'Page: instructor-course-editor-page / lesson list type',
+      runtimeContext:
+        'src/pages/instructor-course-editor-page/InstructorCourseEditorPage.tsx:469 — Page: instructor-course-editor-page / lesson list type',
+      english: 'PDF',
+      classification: 'Visible UI copy',
+      ownerTask: 'MLUX-006-FOLLOWUP',
+      testTarget: 'MLUX-006-FOLLOWUP focused + browser matrix',
+      extractionKind: 't(instructor:courseEditorPdf)',
+      dedupeMapping: 'Merged with MLUX-C0205',
+    },
   ],
   acceptance: [
     {
-      corpusVersion: 'MLUX-001-DRAFT-26',
+      corpusVersion: 'MLUX-001-DRAFT-27',
       authority: 'Product owner',
       language: 'Russian',
       scope: 'All Russian draft rows',
@@ -23599,7 +23641,7 @@ export const MLUX006_FINAL_CORPUS_PROJECTION = {
       notes: 'User validates Russian wording.',
     },
     {
-      corpusVersion: 'MLUX-001-DRAFT-26',
+      corpusVersion: 'MLUX-001-DRAFT-27',
       authority: 'Selected native reviewer',
       language: 'Uzbek',
       scope: 'All Uzbek draft rows',

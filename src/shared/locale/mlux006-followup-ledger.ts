@@ -314,6 +314,27 @@ const sharedOccurrenceSources = [
     classification: 'Visible UI copy',
   },
   {
+    id: 'O0667',
+    unitId: 'MLUX-C0203',
+    context:
+      'src/pages/instructor-course-editor-page/InstructorCourseEditorPage.tsx:469 — Page: instructor-course-editor-page / lesson list type',
+    classification: 'Visible UI copy',
+  },
+  {
+    id: 'O0668',
+    unitId: 'MLUX-C0204',
+    context:
+      'src/pages/instructor-course-editor-page/InstructorCourseEditorPage.tsx:469 — Page: instructor-course-editor-page / lesson list type',
+    classification: 'Visible UI copy',
+  },
+  {
+    id: 'O0669',
+    unitId: 'MLUX-C0205',
+    context:
+      'src/pages/instructor-course-editor-page/InstructorCourseEditorPage.tsx:469 — Page: instructor-course-editor-page / lesson list type',
+    classification: 'Visible UI copy',
+  },
+  {
     id: 'O0665',
     unitId: 'MLUX-C0362',
     context:

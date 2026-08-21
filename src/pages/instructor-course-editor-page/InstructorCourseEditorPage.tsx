@@ -50,6 +50,17 @@ interface LessonFormState {
   isPublished: boolean;
 }
 
+type LessonTypeLabelKey =
+  | 'instructor:courseEditorVideo'
+  | 'instructor:courseEditorText'
+  | 'instructor:courseEditorPdf';
+
+const LESSON_TYPE_LABEL_KEY: Readonly<Record<LessonType, LessonTypeLabelKey>> = {
+  video: 'instructor:courseEditorVideo',
+  text: 'instructor:courseEditorText',
+  pdf: 'instructor:courseEditorPdf',
+};
+
 function interpolateInstructorTemplate(
   t: TFunction,
   key: string,
@@ -455,7 +466,7 @@ export function InstructorCourseEditorPage() {
                 <div>
                   <h3>{lesson.title}</h3>
                   <p>
-                    {lesson.lessonType} ·{' '}
+                    {t(LESSON_TYPE_LABEL_KEY[lesson.lessonType])} ·{' '}
                     {lesson.isPublished
                       ? t('course:published')
                       : t('instructor:courseEditorNotPublished')}

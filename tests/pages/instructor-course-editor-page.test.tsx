@@ -149,6 +149,42 @@ describe('InstructorCourseEditorPage', () => {
   );
 
   it.each([
+    ['en', ['Video', 'Text', 'PDF']],
+    ['ru', ['Видео', 'Текст', 'PDF']],
+    ['uz', ['Video', 'Matn', 'PDF']],
+  ] as const)(
+    'renders immutable lesson types through localized instructor labels in %s',
+    async (locale, lessonTypeLabels) => {
+      const request: ApiClient['request'] = async (options) => {
+        if (options.path === '/me') return decode(options, instructor);
+        if (options.path === '/courses/7' && options.method === 'GET')
+          return decode(options, {
+            ...course,
+            lessons: [
+              { ...course.lessons[0], id: 8, title: 'Video lesson', lesson_type: 'video' },
+              { ...course.lessons[0], id: 9, title: 'Text lesson', lesson_type: 'text' },
+              { ...course.lessons[0], id: 10, title: 'PDF lesson', lesson_type: 'pdf' },
+            ],
+          });
+        throw new Error(`Unexpected request: ${options.method} ${options.path}`);
+      };
+
+      await renderPage({ request }, '/instructor/courses/7/edit', locale);
+      for (const [index, label] of lessonTypeLabels.entries()) {
+        const lessonTitle = ['Video lesson', 'Text lesson', 'PDF lesson'][index]!;
+        const lessonRow = (await screen.findByRole('heading', { name: lessonTitle })).closest('li');
+        expect(lessonRow).not.toBeNull();
+        expect(
+          within(lessonRow!).getByText(
+            (_, element) =>
+              element?.tagName === 'P' && element.textContent?.startsWith(`${label} · `),
+          ),
+        ).toBeTruthy();
+      }
+    },
+  );
+
+  it.each([
     ['en', 'Breadcrumb', 'This course address is not valid.'],
     ['ru', 'Хлебные крошки', 'Адрес курса указан неверно.'],
     ['uz', 'Yo‘l ko‘rsatkich', 'Kurs manzili noto‘g‘ri.'],

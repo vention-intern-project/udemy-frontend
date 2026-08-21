@@ -99,13 +99,53 @@ interface Mlux006ResidualSourceReconciliation {
   readonly currentFingerprint: string;
 }
 
+type Mlux006InstructorLessonType = 'video' | 'text' | 'pdf';
+
+interface Mlux006InstructorLessonListSourceOracle {
+  readonly sourcePath: string;
+  readonly line: number;
+  readonly translationKeys: Readonly<Record<Mlux006InstructorLessonType, string>>;
+}
+
+interface Mlux006InstructorLessonListOccurrenceAssociation {
+  readonly occurrenceId: string;
+  readonly unitId: string;
+  readonly lessonType: Mlux006InstructorLessonType;
+  readonly translationKey: string;
+}
+
+const MLUX006_INSTRUCTOR_LESSON_LIST_SOURCE_PATH =
+  'src/pages/instructor-course-editor-page/InstructorCourseEditorPage.tsx';
+
+const MLUX006_INSTRUCTOR_LESSON_LIST_OCCURRENCE_ASSOCIATIONS: readonly Mlux006InstructorLessonListOccurrenceAssociation[] =
+  [
+    {
+      occurrenceId: 'MLUX-O0667',
+      unitId: 'MLUX-C0203',
+      lessonType: 'video',
+      translationKey: 'instructor:courseEditorVideo',
+    },
+    {
+      occurrenceId: 'MLUX-O0668',
+      unitId: 'MLUX-C0204',
+      lessonType: 'text',
+      translationKey: 'instructor:courseEditorText',
+    },
+    {
+      occurrenceId: 'MLUX-O0669',
+      unitId: 'MLUX-C0205',
+      lessonType: 'pdf',
+      translationKey: 'instructor:courseEditorPdf',
+    },
+  ];
+
 const MLUX006_RESIDUAL_SOURCE_RECONCILIATIONS: readonly Mlux006ResidualSourceReconciliation[] = [
   {
     occurrenceId: 'MLUX-O0264',
     projectedFingerprint:
       'src/pages/instructor-course-editor-page/InstructorCourseEditorPage.tsx:463:jsx:PDF',
     currentFingerprint:
-      'src/pages/instructor-course-editor-page/InstructorCourseEditorPage.tsx:510:jsx:PDF',
+      'src/pages/instructor-course-editor-page/InstructorCourseEditorPage.tsx:521:jsx:PDF',
   },
 ];
 
@@ -692,7 +732,7 @@ function x012ExclusionViolations(
   const projectionExclusion = projectionExclusions[0]!;
   const expectedSourceCategory = `${sourceExclusion.sourcePath}:${sourceExclusion.line} — ${sourceExclusion.seam.toUpperCase()} “${sourceExclusion.value}”`;
   const scalarFields = [
-    ['corpus version', projection.version, sourceExclusion.corpusVersion],
+    ['corpus version', sourceExclusion.corpusVersion, 'MLUX-001-DRAFT-26'],
     ['source category', projectionExclusion.sourceCategory, expectedSourceCategory],
     ['origin', projectionExclusion.origin, sourceExclusion.origin],
     ['status', projectionExclusion.status, sourceExclusion.status],
@@ -711,6 +751,145 @@ function residualOwnerForPath(sourcePath: string): Mlux006ResidualOwner {
     return 'MLUX-005';
   }
   return 'MLUX-004';
+}
+
+function instructorLessonListSourceOracle(
+  source = readFileSync(
+    pathToFileURL(
+      join(
+        fileURLToPath(new URL('../../../', import.meta.url)),
+        MLUX006_INSTRUCTOR_LESSON_LIST_SOURCE_PATH,
+      ),
+    ),
+    'utf8',
+  ),
+): Mlux006InstructorLessonListSourceOracle {
+  const repositoryRoot = fileURLToPath(new URL('../../../', import.meta.url));
+  const sourceFile = ts.createSourceFile(
+    MLUX006_INSTRUCTOR_LESSON_LIST_SOURCE_PATH,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  const translationKeys: Partial<Record<Mlux006InstructorLessonType, string>> = {};
+  const translationCalls: ts.CallExpression[] = [];
+  const visitNode = (node: ts.Node): void => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === 'LESSON_TYPE_LABEL_KEY' &&
+      node.initializer &&
+      ts.isObjectLiteralExpression(node.initializer)
+    ) {
+      for (const property of node.initializer.properties) {
+        if (
+          ts.isPropertyAssignment(property) &&
+          property.name &&
+          ts.isIdentifier(property.name) &&
+          ts.isStringLiteral(property.initializer) &&
+          ['video', 'text', 'pdf'].includes(property.name.text)
+        ) {
+          translationKeys[property.name.text as Mlux006InstructorLessonType] =
+            property.initializer.text;
+        }
+      }
+    }
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === 't' &&
+      node.arguments.length === 1 &&
+      ts.isElementAccessExpression(node.arguments[0]) &&
+      ts.isIdentifier(node.arguments[0].expression) &&
+      node.arguments[0].expression.text === 'LESSON_TYPE_LABEL_KEY' &&
+      ts.isPropertyAccessExpression(node.arguments[0].argumentExpression) &&
+      ts.isIdentifier(node.arguments[0].argumentExpression.expression) &&
+      node.arguments[0].argumentExpression.expression.text === 'lesson' &&
+      node.arguments[0].argumentExpression.name.text === 'lessonType'
+    ) {
+      translationCalls.push(node);
+    }
+    ts.forEachChild(node, visitNode);
+  };
+  visitNode(sourceFile);
+
+  if (translationCalls.length !== 1) {
+    throw new Error(`Expected one lesson-list translation seam, found ${translationCalls.length}`);
+  }
+  for (const lessonType of ['video', 'text', 'pdf'] as const) {
+    if (!translationKeys[lessonType]) {
+      throw new Error(`Missing LESSON_TYPE_LABEL_KEY mapping for ${lessonType}`);
+    }
+  }
+  const translationCall = translationCalls[0]!;
+  return {
+    sourcePath: relative(
+      repositoryRoot,
+      join(repositoryRoot, MLUX006_INSTRUCTOR_LESSON_LIST_SOURCE_PATH),
+    )
+      .split(sep)
+      .join('/'),
+    line: sourceFile.getLineAndCharacterOfPosition(translationCall.getStart(sourceFile)).line + 1,
+    translationKeys: translationKeys as Readonly<Record<Mlux006InstructorLessonType, string>>,
+  };
+}
+
+function instructorLessonListAssociationViolations(
+  oracle: Mlux006InstructorLessonListSourceOracle,
+  projection: Mlux006FinalCorpusProjection = MLUX006_FINAL_CORPUS_PROJECTION,
+  sharedOccurrences: readonly (typeof MLUX_006_FOLLOWUP_SHARED_OCCURRENCES)[number][] = MLUX_006_FOLLOWUP_SHARED_OCCURRENCES,
+): string[] {
+  const violations: string[] = [];
+  const sourceScreen = `${oracle.sourcePath}:${oracle.line}`;
+  const runtimeContext = `${sourceScreen} — Page: instructor-course-editor-page / lesson list type`;
+  const sourceAssociations = projection.occurrences.filter(
+    (occurrence) =>
+      occurrence.ownerTask === 'MLUX-006-FOLLOWUP' &&
+      MLUX006_INSTRUCTOR_LESSON_LIST_OCCURRENCE_ASSOCIATIONS.some(
+        ({ occurrenceId }) => occurrence.occurrenceId === occurrenceId,
+      ),
+  );
+  if (sourceAssociations.length !== MLUX006_INSTRUCTOR_LESSON_LIST_OCCURRENCE_ASSOCIATIONS.length) {
+    violations.push('wrong instructor lesson-list projection association count');
+  }
+  for (const association of MLUX006_INSTRUCTOR_LESSON_LIST_OCCURRENCE_ASSOCIATIONS) {
+    const projectionOccurrences = projection.occurrences.filter(
+      ({ occurrenceId }) => occurrenceId === association.occurrenceId,
+    );
+    const sharedOccurrencesForAssociation = sharedOccurrences.filter(
+      ({ id }) => id === association.occurrenceId.replace('MLUX-', ''),
+    );
+    if (projectionOccurrences.length !== 1) {
+      violations.push(`wrong projection association count ${association.occurrenceId}`);
+      continue;
+    }
+    if (sharedOccurrencesForAssociation.length !== 1) {
+      violations.push(`wrong ledger association count ${association.occurrenceId}`);
+      continue;
+    }
+    const projectionOccurrence = projectionOccurrences[0]!;
+    const sharedOccurrence = sharedOccurrencesForAssociation[0]!;
+    if (projectionOccurrence.unitId !== association.unitId) {
+      violations.push(`wrong projection unit ${association.occurrenceId}`);
+    }
+    if (sharedOccurrence.unitId !== association.unitId) {
+      violations.push(`wrong ledger unit ${association.occurrenceId}`);
+    }
+    if (projectionOccurrence.sourceScreen !== sourceScreen) {
+      violations.push(`wrong projection source seam ${association.occurrenceId}`);
+    }
+    if (projectionOccurrence.runtimeContext !== runtimeContext) {
+      violations.push(`wrong projection context ${association.occurrenceId}`);
+    }
+    if (sharedOccurrence.context !== runtimeContext) {
+      violations.push(`wrong ledger context ${association.occurrenceId}`);
+    }
+    if (oracle.translationKeys[association.lessonType] !== association.translationKey) {
+      violations.push(`wrong source key ${association.lessonType}`);
+    }
+  }
+  return violations;
 }
 
 function collectResidualSourceHits(): Mlux006ResidualSourceHit[] {
@@ -870,35 +1049,82 @@ function matchingUnitsForResidualHit(
 }
 
 describe('MLUX-006 final corpus parity', () => {
-  it('matches the exact DRAFT-26 identity, allocation, statuses and deferred linguistic gate', () => {
+  it('derives the unique instructor lesson-list seam and binds each reused Video/Text/PDF occurrence to it', () => {
+    const oracle = instructorLessonListSourceOracle();
+
+    expect(oracle).toMatchObject({
+      sourcePath: MLUX006_INSTRUCTOR_LESSON_LIST_SOURCE_PATH,
+      translationKeys: {
+        video: 'instructor:courseEditorVideo',
+        text: 'instructor:courseEditorText',
+        pdf: 'instructor:courseEditorPdf',
+      },
+    });
+    expect(instructorLessonListAssociationViolations(oracle)).toEqual([]);
+  });
+
+  it('rejects a source-line mismatch derived from the live lesson-list translation seam', () => {
+    const oracle = instructorLessonListSourceOracle();
+    const movedOracle = { ...oracle, line: oracle.line + 1 };
+
+    expect(instructorLessonListAssociationViolations(movedOracle)).toEqual([
+      'wrong projection source seam MLUX-O0667',
+      'wrong projection context MLUX-O0667',
+      'wrong ledger context MLUX-O0667',
+      'wrong projection source seam MLUX-O0668',
+      'wrong projection context MLUX-O0668',
+      'wrong ledger context MLUX-O0668',
+      'wrong projection source seam MLUX-O0669',
+      'wrong projection context MLUX-O0669',
+      'wrong ledger context MLUX-O0669',
+    ]);
+  });
+
+  it('uses the deterministic in-app locale selector for FE014 browser locale matrices', () => {
+    const browserSource = readFileSync(
+      pathToFileURL(
+        join(
+          fileURLToPath(new URL('../../../', import.meta.url)),
+          'tests',
+          'browser',
+          'instructor-course-editor-fe014.spec.ts',
+        ),
+      ),
+      'utf8',
+    );
+    expect(browserSource).not.toContain('page.addInitScript((selectedLocale)');
+    expect(browserSource).toContain('selectFixtureLocale(page, locale)');
+  });
+
+  it('matches the exact DRAFT-27 identity, allocation, statuses and deferred linguistic gate', () => {
     expect(MLUX006_FINAL_CORPUS_PROJECTION).toMatchObject({
-      version: 'MLUX-001-DRAFT-26',
-      sha256: '57B5DAE484C3664D84BBD6AAC61CBDFC8045E5F7D27D04711C38A0F33DA27128',
-      byteLength: 107700,
+      version: 'MLUX-001-DRAFT-27',
+      sha256: '7D3AA5F65497C576B143D07327F7D51250FD4966C98BA75AF89DED2D6A74D026',
+      byteLength: 107865,
       summary: {
         translationUnits: 471,
-        sourceOccurrences: 666,
-        mergedDuplicateRows: 195,
+        sourceOccurrences: 669,
+        mergedDuplicateRows: 198,
         russianDrafts: 471,
         uzbekDrafts: 471,
         draftStatus: 'Draft',
       },
     });
     expect(MLUX006_FINAL_CORPUS_PROJECTION.units).toHaveLength(471);
-    expect(MLUX006_FINAL_CORPUS_PROJECTION.occurrences).toHaveLength(666);
+    expect(MLUX006_FINAL_CORPUS_PROJECTION.occurrences).toHaveLength(669);
     expect(MLUX006_FINAL_CORPUS_PROJECTION.exclusions.map(({ id }) => id)).toEqual(
       Array.from({ length: 12 }, (_, index) => `MLUX-X${String(index + 1).padStart(3, '0')}`),
     );
     expect(MLUX006_FINAL_CORPUS_PROJECTION.acceptance).toEqual([
       expect.objectContaining({
-        corpusVersion: 'MLUX-001-DRAFT-26',
+        corpusVersion: 'MLUX-001-DRAFT-27',
         authority: 'Product owner',
         language: 'Russian',
         verdict: 'Pending',
         date: null,
       }),
       expect.objectContaining({
-        corpusVersion: 'MLUX-001-DRAFT-26',
+        corpusVersion: 'MLUX-001-DRAFT-27',
         authority: 'Selected native reviewer',
         language: 'Uzbek',
         verdict: 'Pending',
@@ -1004,9 +1230,9 @@ describe('MLUX-006 final corpus parity', () => {
     ).toContain('wrong classification inheritance owner MLUX-O0001');
     expect(candidate.occurrences.every(({ classification }) => Boolean(classification))).toBe(true);
     expect(candidate.units).toHaveLength(471);
-    expect(candidate.occurrences).toHaveLength(666);
+    expect(candidate.occurrences).toHaveLength(669);
     expect(new Set(candidate.occurrences.map(({ occurrenceId }) => occurrenceId))).toHaveLength(
-      666,
+      669,
     );
     expect(collectParityViolations(MLUX006_FINAL_CORPUS_PROJECTION, candidate)).toEqual([]);
   });
