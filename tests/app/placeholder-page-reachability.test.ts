@@ -169,7 +169,7 @@ describe('PlaceholderPage source-bound exclusion', () => {
     ).toEqual(['PAGE-001']);
   });
 
-  it('binds the raw fallback note to one exact DRAFT-25 exclusion fingerprint', () => {
+  it('binds the raw fallback note to one exact DRAFT-26 exclusion fingerprint', () => {
     const sourceSeam = sourceSeamForValue(
       placeholderSourcePath,
       placeholderSource,
@@ -185,7 +185,7 @@ describe('PlaceholderPage source-bound exclusion', () => {
     expect(MLUX_003_SOURCE_EXCLUSIONS).toEqual([
       {
         id: 'MLUX-X012',
-        corpusVersion: 'MLUX-001-DRAFT-25',
+        corpusVersion: 'MLUX-001-DRAFT-26',
         ...sourceSeam,
         status: 'Excluded',
         origin: 'Current-route unreachable fallback note',
