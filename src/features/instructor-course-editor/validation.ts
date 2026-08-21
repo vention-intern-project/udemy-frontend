@@ -27,9 +27,11 @@ export type InstructorEditorFailureMessage =
   | { readonly kind: 'genericAction'; readonly actionKey: string };
 
 export interface InstructorEditorFormFailure {
-  readonly fields: Readonly<Record<string, InstructorEditorFailureMessage>>;
+  readonly fields: InstructorEditorFieldErrors;
   readonly summary: InstructorEditorFailureMessage;
 }
+
+export type InstructorEditorFieldErrors = Readonly<Record<string, InstructorEditorFailureMessage>>;
 
 function safeFieldMessage(labelKey: string, type: string): InstructorEditorFailureMessage {
   const normalizedType = type.toLowerCase();

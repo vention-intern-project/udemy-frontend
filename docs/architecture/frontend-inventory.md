@@ -47,7 +47,7 @@ deliberately does not infer semantic ownership from folders.
 - `widgets`: `catalog-filter-bar`, `course-chat`, `enrollment-progress-panel`
 - `features`: `auth-session`, `auth-workflows`, `cart-workflow`, `catalog-discovery`, `checkout-cart`, `course-action-reconciliation`, `course-chat`, `course-detail`, `instructor-course-editor`, `instructor-courses`, `learning-progress`, `media-access`
 - `entities`: `api`, `cart`, `course`, `enrollment`, `user`
-- `shared`: `accessibility`, `api`, `types`, `ui`
+- `shared`: `accessibility`, `api`, `locale`, `types`, `ui`
 
 ## Maintenance rule
 

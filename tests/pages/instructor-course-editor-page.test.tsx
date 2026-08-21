@@ -9,8 +9,7 @@ import { createAppQueryClient } from '../../src/app/query';
 import { SessionProvider, type AccessTokenStore } from '../../src/features/auth-session';
 import { InstructorCourseEditorPage } from '../../src/pages/instructor-course-editor-page';
 import { ApiError, type ApiClient, type ApiRequestOptions } from '../../src/shared/api';
-import { LocaleProvider, type Locale } from '../../src/shared/locale';
-import { localeRuntime } from '../../src/shared/locale/i18n';
+import { LocaleProvider, useLocale, type Locale } from '../../src/shared/locale';
 
 const instructor = {
   email: 'instructor@example.test',
@@ -46,13 +45,33 @@ const course = {
 };
 const tokenStore: AccessTokenStore = { get: () => 'token', set: () => {}, clear: () => {} };
 
-afterEach(async () => {
+afterEach(() => {
   cleanup();
-  await act(async () => {
-    await localeRuntime.changeLanguage('en');
-  });
   vi.restoreAllMocks();
 });
+
+interface LocaleTestControlProps {
+  readonly locale: Locale;
+}
+
+function LocaleTestControl({ locale }: LocaleTestControlProps) {
+  const { setLocale } = useLocale();
+  return (
+    <button
+      type="button"
+      aria-label={`Set test locale to ${locale}`}
+      onClick={() => setLocale(locale)}
+    >
+      Set test locale to {locale}
+    </button>
+  );
+}
+
+async function setTestLocale(locale: Locale) {
+  await userEvent
+    .setup()
+    .click(screen.getByRole('button', { name: `Set test locale to ${locale}` }));
+}
 
 function decode<TResponse, TBody>(
   options: ApiRequestOptions<TBody, TResponse>,
@@ -67,11 +86,13 @@ async function renderPage(
   initialEntry = '/instructor/courses/7/edit',
   locale: Locale = 'en',
 ) {
-  await localeRuntime.changeLanguage(locale);
   await act(async () => {
     render(
       <QueryClientProvider client={createAppQueryClient()}>
         <LocaleProvider initialLocale={locale}>
+          <LocaleTestControl locale="en" />
+          <LocaleTestControl locale="ru" />
+          <LocaleTestControl locale="uz" />
           <SessionProvider client={client} tokenStore={tokenStore}>
             <MemoryRouter initialEntries={[initialEntry]}>
               <Routes>
@@ -451,14 +472,14 @@ describe('InstructorCourseEditorPage', () => {
     expect(title.getAttribute('aria-describedby')).toContain('error');
     expect((title as HTMLInputElement).value).toBe('Persistent title');
     await act(async () => {
-      await localeRuntime.changeLanguage('ru');
+      await setTestLocale('ru');
     });
     expect(await screen.findByText('Название курса обязательно.')).toBeTruthy();
     expect(
       (screen.getByRole('textbox', { name: 'Название курса' }) as HTMLInputElement).value,
     ).toBe('Persistent title');
     await act(async () => {
-      await localeRuntime.changeLanguage('uz');
+      await setTestLocale('uz');
     });
     expect(await screen.findByText('Kurs nomi kiritilishi shart.')).toBeTruthy();
     expect(screen.queryByText('PRIVATE_LOCALE_SWITCH_DETAIL')).toBeNull();
@@ -495,7 +516,7 @@ describe('InstructorCourseEditorPage', () => {
     expect((title as HTMLInputElement).disabled).toBe(true);
 
     await act(async () => {
-      await localeRuntime.changeLanguage('ru');
+      await setTestLocale('ru');
       rejectUpdate(
         new ApiError({
           kind: 'validation',
@@ -522,7 +543,7 @@ describe('InstructorCourseEditorPage', () => {
     expect(screen.queryByText('PRIVATE_DEFERRED_COURSE_DETAIL')).toBeNull();
 
     await act(async () => {
-      await localeRuntime.changeLanguage('uz');
+      await setTestLocale('uz');
     });
     expect(await screen.findByText('kurs nomi maydonini tekshirib, qayta yuboring.')).toBeTruthy();
     expect((screen.getByRole('textbox', { name: 'Kurs nomi' }) as HTMLInputElement).value).toBe(

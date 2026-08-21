@@ -9,8 +9,7 @@ import { createAppQueryClient } from '../../src/app/query';
 import { SessionProvider, type AccessTokenStore } from '../../src/features/auth-session';
 import { InstructorLessonEditorPage } from '../../src/pages/instructor-lesson-editor-page';
 import { ApiError, type ApiClient, type ApiRequestOptions } from '../../src/shared/api';
-import { LocaleProvider, type Locale } from '../../src/shared/locale';
-import { localeRuntime } from '../../src/shared/locale/i18n';
+import { LocaleProvider, useLocale, type Locale } from '../../src/shared/locale';
 
 const instructor = {
   email: 'instructor@example.test',
@@ -40,13 +39,33 @@ const uploadAcknowledgement = {
 };
 const tokenStore: AccessTokenStore = { get: () => 'token', set: () => {}, clear: () => {} };
 
-afterEach(async () => {
+afterEach(() => {
   cleanup();
-  await act(async () => {
-    await localeRuntime.changeLanguage('en');
-  });
   vi.restoreAllMocks();
 });
+
+interface LocaleTestControlProps {
+  readonly locale: Locale;
+}
+
+function LocaleTestControl({ locale }: LocaleTestControlProps) {
+  const { setLocale } = useLocale();
+  return (
+    <button
+      type="button"
+      aria-label={`Set test locale to ${locale}`}
+      onClick={() => setLocale(locale)}
+    >
+      Set test locale to {locale}
+    </button>
+  );
+}
+
+async function setTestLocale(locale: Locale) {
+  await userEvent
+    .setup()
+    .click(screen.getByRole('button', { name: `Set test locale to ${locale}` }));
+}
 
 function decode<TResponse, TBody>(
   options: ApiRequestOptions<TBody, TResponse>,
@@ -66,6 +85,9 @@ async function renderPage(
     render(
       <QueryClientProvider client={queryClient}>
         <LocaleProvider initialLocale={locale}>
+          <LocaleTestControl locale="en" />
+          <LocaleTestControl locale="ru" />
+          <LocaleTestControl locale="uz" />
           <SessionProvider client={client} tokenStore={tokenStore}>
             <MemoryRouter initialEntries={[initialEntry]}>
               <Routes>
@@ -496,7 +518,7 @@ describe('InstructorLessonEditorPage', () => {
     expect(uploadRequests[0]?.body).toBeInstanceOf(FormData);
 
     await act(async () => {
-      await localeRuntime.changeLanguage('ru');
+      await setTestLocale('ru');
       rejectUpload(
         new ApiError({
           kind: 'validation',
@@ -524,7 +546,7 @@ describe('InstructorLessonEditorPage', () => {
     expect(screen.queryByText('PRIVATE_DEFERRED_UPLOAD_DETAIL')).toBeNull();
 
     await act(async () => {
-      await localeRuntime.changeLanguage('uz');
+      await setTestLocale('uz');
     });
     expect(await screen.findByText('Dars fayli kiritilishi shart.')).toBeTruthy();
     expect(screen.getByLabelText('Dars fayli').getAttribute('aria-invalid')).toBe('true');

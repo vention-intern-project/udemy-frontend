@@ -15,6 +15,7 @@ export {
   resolveInstructorEditorFormFailure,
   resolveInstructorEditorFailureMessage,
   type InstructorEditorErrorCopy,
+  type InstructorEditorFieldErrors,
   type InstructorEditorFieldDefinition,
   type InstructorEditorFieldDefinitions,
   type InstructorEditorFailureMessage,

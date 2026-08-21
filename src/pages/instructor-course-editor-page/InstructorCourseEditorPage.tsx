@@ -16,6 +16,7 @@ import {
   mapInstructorEditorFormFailure,
   resolveInstructorEditorFormFailure,
   resolveInstructorEditorFailureMessage,
+  type InstructorEditorFieldErrors,
   type InstructorEditorFormFailure,
   type InstructorEditorCourse,
   type InstructorEditorLesson,
@@ -58,9 +59,8 @@ function interpolateInstructorTemplate(
   return t(key).replace(`{${variable}}`, () => value);
 }
 
-type CourseFieldErrors = InstructorEditorFormFailure['fields'];
-type LessonFieldErrors = InstructorEditorFormFailure['fields'];
-
+/* The validation owner supplies the shared field-error contract.
+ */
 const COURSE_ERROR_FIELDS = {
   title: { field: 'title', labelKey: 'courseEditorCourseTitle' },
   description: { field: 'description', labelKey: 'courseEditorDescription' },
@@ -130,8 +130,8 @@ export function InstructorCourseEditorPage() {
   const [lessonForm, setLessonForm] = useState<LessonFormState>(INITIAL_LESSON_FORM);
   const [courseError, setCourseError] = useState<InstructorEditorFormFailure | null>(null);
   const [lessonError, setLessonError] = useState<InstructorEditorFormFailure | null>(null);
-  const [courseFieldErrors, setCourseFieldErrors] = useState<CourseFieldErrors>({});
-  const [lessonFieldErrors, setLessonFieldErrors] = useState<LessonFieldErrors>({});
+  const [courseFieldErrors, setCourseFieldErrors] = useState<InstructorEditorFieldErrors>({});
+  const [lessonFieldErrors, setLessonFieldErrors] = useState<InstructorEditorFieldErrors>({});
   const [deleteTarget, setDeleteTarget] = useState<InstructorEditorLesson | 'course' | null>(null);
   const initializedCourseIdRef = useRef<number | null>(null);
   const courseTitleRef = useRef<HTMLInputElement>(null);
