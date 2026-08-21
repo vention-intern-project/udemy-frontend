@@ -9,6 +9,7 @@ import { createAppQueryClient } from '../../src/app/query';
 import { SessionProvider, type AccessTokenStore } from '../../src/features/auth-session';
 import { InstructorCourseEnrollmentsPage } from '../../src/pages/instructor-course-enrollments-page';
 import { ApiError, type ApiClient, type ApiRequestOptions } from '../../src/shared/api';
+import { LocaleProvider, type Locale } from '../../src/shared/locale';
 
 const instructor = {
   email: 'instructor@example.test',
@@ -48,21 +49,24 @@ async function renderPage(
   request: ApiClient['request'],
   token: string | null = 'instructor-token',
   initialEntry = '/instructor/courses/7/enrollments',
+  locale: Locale = 'en',
 ) {
   let view: ReturnType<typeof render> | undefined;
   await act(async () => {
     view = render(
       <QueryClientProvider client={createAppQueryClient()}>
-        <SessionProvider client={{ request }} tokenStore={tokenStore(token)}>
-          <MemoryRouter initialEntries={[initialEntry]}>
-            <Routes>
-              <Route
-                path="/instructor/courses/:courseId/enrollments"
-                element={<InstructorCourseEnrollmentsPage />}
-              />
-            </Routes>
-          </MemoryRouter>
-        </SessionProvider>
+        <LocaleProvider initialLocale={locale}>
+          <SessionProvider client={{ request }} tokenStore={tokenStore(token)}>
+            <MemoryRouter initialEntries={[initialEntry]}>
+              <Routes>
+                <Route
+                  path="/instructor/courses/:courseId/enrollments"
+                  element={<InstructorCourseEnrollmentsPage />}
+                />
+              </Routes>
+            </MemoryRouter>
+          </SessionProvider>
+        </LocaleProvider>
       </QueryClientProvider>,
     );
   });
@@ -79,6 +83,47 @@ function decode<TResponse, TBody>(
 }
 
 describe('InstructorCourseEnrollmentsPage', () => {
+  it.each([
+    ['en', 0, 'Breadcrumb', '0 enrollments'],
+    ['en', 1, 'Breadcrumb', '1 enrollment'],
+    ['en', 2, 'Breadcrumb', '2 enrollments'],
+    ['ru', 1, 'Хлебные крошки', '1 запись'],
+    ['ru', 2, 'Хлебные крошки', '2 записи'],
+    ['ru', 5, 'Хлебные крошки', '5 записей'],
+    ['uz', 1, 'Yo‘l ko‘rsatkich', '1 ta yozilish'],
+    ['uz', 2, 'Yo‘l ko‘rsatkich', '2 ta yozilish'],
+  ] as const)(
+    'localizes the breadcrumb and enrollment count in %s for %i',
+    async (locale, total, breadcrumbName, countLabel) => {
+      const request: ApiClient['request'] = async (options) => {
+        if (options.path === '/me') return decode(options, instructor);
+        return decode(options, {
+          ...roster,
+          items: total === 0 ? [] : roster.items,
+          total,
+          pages: total === 0 ? 0 : 1,
+        });
+      };
+
+      await renderPage(request, 'instructor-token', '/instructor/courses/7/enrollments', locale);
+      expect(await screen.findByText(countLabel)).toBeTruthy();
+      expect(screen.getByRole('navigation', { name: breadcrumbName })).toBeTruthy();
+    },
+  );
+
+  it.each([
+    ['ru', 'Записи на курс', 'Активно'],
+    ['uz', 'Kursga yozilishlar', 'Faol'],
+  ] as const)('renders allocated roster UI in %s', async (locale, heading, activeStatus) => {
+    const request: ApiClient['request'] = async (options) => {
+      if (options.path === '/me') return decode(options, instructor);
+      return decode(options, roster);
+    };
+    await renderPage(request, 'instructor-token', '/instructor/courses/7/enrollments', locale);
+    expect(await screen.findByRole('heading', { name: heading })).toBeTruthy();
+    expect(screen.getByText(activeStatus)).toBeTruthy();
+  });
+
   it.each([
     ['active', 'Active'],
     ['cancelled', 'Cancelled'],

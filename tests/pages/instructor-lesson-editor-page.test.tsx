@@ -9,6 +9,8 @@ import { createAppQueryClient } from '../../src/app/query';
 import { SessionProvider, type AccessTokenStore } from '../../src/features/auth-session';
 import { InstructorLessonEditorPage } from '../../src/pages/instructor-lesson-editor-page';
 import { ApiError, type ApiClient, type ApiRequestOptions } from '../../src/shared/api';
+import { LocaleProvider, type Locale } from '../../src/shared/locale';
+import { localeRuntime } from '../../src/shared/locale/i18n';
 
 const instructor = {
   email: 'instructor@example.test',
@@ -38,8 +40,11 @@ const uploadAcknowledgement = {
 };
 const tokenStore: AccessTokenStore = { get: () => 'token', set: () => {}, clear: () => {} };
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  await act(async () => {
+    await localeRuntime.changeLanguage('en');
+  });
   vi.restoreAllMocks();
 });
 
@@ -51,20 +56,27 @@ function decode<TResponse, TBody>(
   return options.decode(value);
 }
 
-async function renderPage(client: ApiClient, queryClient: QueryClient = createAppQueryClient()) {
+async function renderPage(
+  client: ApiClient,
+  queryClient: QueryClient = createAppQueryClient(),
+  locale: Locale = 'en',
+  initialEntry = '/instructor/lessons/8/edit',
+) {
   await act(async () => {
     render(
       <QueryClientProvider client={queryClient}>
-        <SessionProvider client={client} tokenStore={tokenStore}>
-          <MemoryRouter initialEntries={['/instructor/lessons/8/edit']}>
-            <Routes>
-              <Route
-                path="/instructor/lessons/:lessonId/edit"
-                element={<InstructorLessonEditorPage />}
-              />
-            </Routes>
-          </MemoryRouter>
-        </SessionProvider>
+        <LocaleProvider initialLocale={locale}>
+          <SessionProvider client={client} tokenStore={tokenStore}>
+            <MemoryRouter initialEntries={[initialEntry]}>
+              <Routes>
+                <Route
+                  path="/instructor/lessons/:lessonId/edit"
+                  element={<InstructorLessonEditorPage />}
+                />
+              </Routes>
+            </MemoryRouter>
+          </SessionProvider>
+        </LocaleProvider>
       </QueryClientProvider>,
     );
   });
@@ -72,6 +84,75 @@ async function renderPage(client: ApiClient, queryClient: QueryClient = createAp
 }
 
 describe('InstructorLessonEditorPage', () => {
+  it.each([
+    [
+      'en',
+      'Edit lesson',
+      'Lesson details',
+      'Upload lesson file',
+      'Instructor workspace',
+      'Back to course',
+      'Save lesson',
+      'Upload file',
+    ],
+    [
+      'ru',
+      'Редактировать урок',
+      'Сведения об уроке',
+      'Загрузить файл урока',
+      'Рабочая область преподавателя',
+      'Вернуться к курсу',
+      'Сохранить урок',
+      'Загрузить файл',
+    ],
+    [
+      'uz',
+      'Darsni tahrirlash',
+      'Dars tafsilotlari',
+      'Dars faylini yuklash',
+      'O‘qituvchi ish maydoni',
+      'Kursga qaytish',
+      'Darsni saqlash',
+      'Faylni yuklash',
+    ],
+  ] as const)(
+    'renders allocated lesson editor UI in %s',
+    async (locale, title, details, upload, workspace, backToCourse, saveLesson, uploadFile) => {
+      const request: ApiClient['request'] = async (options) => {
+        if (options.path === '/me') return decode(options, instructor);
+        if (options.path === '/lessons/8' && options.method === 'GET')
+          return decode(options, lesson);
+        throw new Error(`Unexpected request: ${options.method} ${options.path}`);
+      };
+      await renderPage({ request }, createAppQueryClient(), locale);
+      expect(await screen.findByRole('heading', { level: 1, name: title })).toBeTruthy();
+      expect(screen.getByRole('heading', { name: details })).toBeTruthy();
+      expect(screen.getByRole('heading', { name: upload })).toBeTruthy();
+      expect(screen.getByText(workspace)).toBeTruthy();
+      expect(screen.getByRole('link', { name: backToCourse })).toBeTruthy();
+      expect(screen.getByRole('button', { name: saveLesson })).toBeTruthy();
+      expect(screen.getByRole('button', { name: uploadFile })).toBeTruthy();
+    },
+  );
+
+  it.each([
+    ['en', 'This lesson address is not valid.'],
+    ['ru', 'Адрес урока указан неверно.'],
+    ['uz', 'Dars manzili noto‘g‘ri.'],
+  ] as const)('localizes the invalid lesson address in %s', async (locale, invalidAddress) => {
+    const request: ApiClient['request'] = async (options) => {
+      if (options.path === '/me') return decode(options, instructor);
+      throw new Error(`Unexpected request: ${options.method} ${options.path}`);
+    };
+    await renderPage(
+      { request },
+      createAppQueryClient(),
+      locale,
+      '/instructor/lessons/not-a-lesson/edit',
+    );
+    expect(await screen.findByText(invalidAddress)).toBeTruthy();
+  });
+
   it('submits a contract-valid multipart upload and acknowledges only its non-terminal outcome', async () => {
     const uploadRequests: ApiRequestOptions[] = [];
     const queryClient = createAppQueryClient();
@@ -109,6 +190,36 @@ describe('InstructorLessonEditorPage', () => {
       queryKey: ['instructor-course-editor', expect.any(String), 'course', 7],
     });
   });
+
+  it.each([
+    ['ru', 'Загрузить файл', 'Статус обработки недоступен.'],
+    ['uz', 'Faylni yuklash', 'Qayta ishlash holati mavjud emas.'],
+  ] as const)(
+    'localizes the queued upload control and processing-status notice in %s',
+    async (locale, uploadFile, processingUnavailable) => {
+      const request: ApiClient['request'] = async (options) => {
+        if (options.path === '/me') return decode(options, instructor);
+        if (options.path === '/lessons/8' && options.method === 'GET')
+          return decode(options, lesson);
+        if (options.path === '/lessons/8/upload-file') {
+          return decode(options, uploadAcknowledgement);
+        }
+        throw new Error(`Unexpected request: ${options.method} ${options.path}`);
+      };
+      await renderPage({ request }, createAppQueryClient(), locale);
+      await screen.findByRole('heading', { level: 1 });
+      const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]');
+      expect(fileInput).not.toBeNull();
+      if (!fileInput) return;
+      fireEvent.change(fileInput, {
+        target: { files: [new File(['video'], 'lesson.mp4', { type: 'video/mp4' })] },
+      });
+      await act(async () => {
+        await userEvent.setup().click(screen.getByRole('button', { name: uploadFile }));
+      });
+      expect(await screen.findByText(processingUnavailable)).toBeTruthy();
+    },
+  );
 
   it('rejects a locally invalid upload without calling API-032', async () => {
     const request = vi.fn(async (options: ApiRequestOptions) => {
@@ -352,5 +463,71 @@ describe('InstructorLessonEditorPage', () => {
       expect((document.activeElement as Element).getAttribute('role')).toBe('alert'),
     );
     expect(screen.queryByText('PRIVATE_UNKNOWN_DETAIL')).toBeNull();
+  });
+
+  it('settles an in-flight upload through the current locale while preserving file, focus and retry state', async () => {
+    let rejectUpload: (reason: unknown) => void = () => {};
+    const uploadResponse = new Promise<never>((_resolve, reject) => {
+      rejectUpload = reject;
+    });
+    const uploadRequests: ApiRequestOptions[] = [];
+    const request: ApiClient['request'] = async (options) => {
+      if (options.path === '/me') return decode(options, instructor);
+      if (options.path === '/lessons/8' && options.method === 'GET') return decode(options, lesson);
+      if (options.path === '/lessons/8/upload-file' && options.method === 'POST') {
+        uploadRequests.push(options);
+        return decode(options, await uploadResponse);
+      }
+      throw new Error(`Unexpected request: ${options.method} ${options.path}`);
+    };
+    await renderPage({ request });
+    const user = userEvent.setup();
+    const fileInput = await screen.findByLabelText('Lesson file');
+    const file = new File(['video'], 'deferred-lesson.mp4', { type: 'video/mp4' });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Upload file' }));
+    });
+    await waitFor(() => expect(uploadRequests).toHaveLength(1));
+    expect(screen.getByRole('button', { name: 'Uploading file' }).hasAttribute('disabled')).toBe(
+      true,
+    );
+    expect(uploadRequests).toHaveLength(1);
+    expect(uploadRequests[0]?.body).toBeInstanceOf(FormData);
+
+    await act(async () => {
+      await localeRuntime.changeLanguage('ru');
+      rejectUpload(
+        new ApiError({
+          kind: 'validation',
+          status: 422,
+          message: 'PRIVATE_DEFERRED_UPLOAD_DETAIL',
+          issues: [
+            {
+              location: ['body', 'file'],
+              message: 'PRIVATE_DEFERRED_UPLOAD_DETAIL',
+              type: 'missing',
+            },
+          ],
+        }),
+      );
+    });
+
+    const russianFile = await screen.findByLabelText('Файл урока');
+    expect(await screen.findByText('Файл урока обязательно.')).toBeTruthy();
+    expect(russianFile.getAttribute('aria-invalid')).toBe('true');
+    expect(russianFile.getAttribute('aria-describedby')).toContain('error');
+    await waitFor(() => expect(document.activeElement).toBe(russianFile));
+    expect(screen.getByRole('button', { name: 'Загрузить файл' }).hasAttribute('disabled')).toBe(
+      false,
+    );
+    expect(screen.queryByText('PRIVATE_DEFERRED_UPLOAD_DETAIL')).toBeNull();
+
+    await act(async () => {
+      await localeRuntime.changeLanguage('uz');
+    });
+    expect(await screen.findByText('Dars fayli kiritilishi shart.')).toBeTruthy();
+    expect(screen.getByLabelText('Dars fayli').getAttribute('aria-invalid')).toBe('true');
+    expect(screen.getByRole('button', { name: 'Faylni yuklash' })).toBeTruthy();
   });
 });

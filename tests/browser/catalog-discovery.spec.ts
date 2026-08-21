@@ -15,6 +15,27 @@ interface CatalogPaginationFixture {
   has_previous?: boolean;
 }
 
+interface CatalogLocaleExpectation {
+  readonly locale: 'ru' | 'uz';
+  readonly heroTitle: string;
+  readonly resultCount: string;
+  readonly sortBy: string;
+  readonly sortCompact: string;
+  readonly free: string;
+  readonly details: string;
+  readonly detailsAccessibleName: string;
+  readonly lessons: string;
+  readonly enrollForFree: string;
+  readonly addToCart: string;
+}
+
+interface CatalogViewportGeometry {
+  readonly width: number;
+  readonly documentWidth: number;
+  readonly bodyWidth: number;
+  readonly clientWidth: number;
+}
+
 function response(items: readonly unknown[] = [], pagination: CatalogPaginationFixture = {}) {
   return JSON.stringify({
     items,
@@ -4044,20 +4065,30 @@ test('recovers only authoritative preflight after a successful Catalog mutation 
   assertClean();
 });
 
-test('keeps instructor CourseCard actions neutral without student reads or mutations', async ({
+test('redirects Instructor Catalog root access without public Catalog or student requests', async ({
   page,
 }) => {
-  const privateRequests: string[] = [];
+  const assertClean = await monitor(page);
+  assertClean.allowRequestFailure(
+    {
+      method: 'GET',
+      path: '/courses/my?page=1&page_size=20',
+      errorText: 'net::ERR_ABORTED',
+    },
+    1,
+  );
+  const forbiddenRequests: string[] = [];
   await page.addInitScript(() => localStorage.setItem('learnhub.access-token', 'instructor-token'));
   page.on('request', (request) => {
     const path = new URL(request.url()).pathname;
     if (
+      (request.method() === 'GET' && path === '/courses') ||
       path === '/cart' ||
       path === '/enrollments/my' ||
       request.method() === 'POST' ||
       request.method() === 'DELETE'
     )
-      privateRequests.push(`${request.method()} ${path}`);
+      forbiddenRequests.push(`${request.method()} ${path}`);
   });
   await page.route('**/me', async (route) => {
     await route.fulfill({
@@ -4074,61 +4105,24 @@ test('keeps instructor CourseCard actions neutral without student reads or mutat
       }),
     });
   });
-  await page.route('**/courses**', async (route) => {
+  await page.route('**/courses/my**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: response([
-        { ...permittedCourse('Instructor paid'), id: 7 },
-        { ...permittedCourse('Instructor free'), id: 8, price: '0.00' },
-        { ...permittedCourse('Instructor draft'), id: 9, published_at: null },
-      ]),
+      body: response([{ ...permittedCourse('Instructor course'), id: 7 }]),
     });
   });
-  await page.goto('/');
-  const cards = await Promise.all(
-    ['Instructor paid', 'Instructor free', 'Instructor draft'].map(async (title) =>
-      page
-        .locator('[data-part="course-card"]')
-        .filter({ has: page.getByRole('heading', { level: 3, name: title }) }),
-    ),
+  const instructorCollection = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'GET' && new URL(response.url()).pathname === '/courses/my',
   );
-  const actions = [
-    cards[0].getByRole('button', { name: 'Not available for this account' }),
-    cards[1].getByRole('button', { name: 'Not available for this account' }),
-    cards[2].getByRole('button', { name: 'Not published' }),
-  ];
-  for (const action of actions) {
-    await expect(action).toBeDisabled();
-    await expect(action.locator('svg')).toHaveCount(0);
-  }
-  const geometry = await Promise.all(
-    actions.map((action) =>
-      action.evaluate((element) => {
-        const style = getComputedStyle(element);
-        const rect = element.getBoundingClientRect();
-        return {
-          height: rect.height,
-          width: rect.width,
-          paddingInlineStart: style.paddingInlineStart,
-          paddingInlineEnd: style.paddingInlineEnd,
-          whiteSpace: style.whiteSpace,
-        };
-      }),
-    ),
-  );
-  expect(
-    geometry.every(
-      (action) =>
-        action.height >= 44 &&
-        action.width >= 120 &&
-        action.paddingInlineStart === '12px' &&
-        action.paddingInlineEnd === '12px' &&
-        action.whiteSpace === 'nowrap',
-    ),
-  ).toBe(true);
-  expect(geometry[2].width).toBeCloseTo(120, 1);
-  expect(privateRequests).toEqual([]);
+  await Promise.all([instructorCollection, page.goto('/')]);
+  await expect(page).toHaveURL('/instructor/courses');
+  await expect(page.getByRole('heading', { level: 1, name: 'Instructor courses' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 2, name: 'Your courses' })).toBeVisible();
+  await expect(page.locator('[data-part="catalog-page"]')).toHaveCount(0);
+  expect(forbiddenRequests).toEqual([]);
+  assertClean();
 });
 
 test('allows only the exact simulated offline request failure and retries successfully', async ({
@@ -4439,5 +4433,314 @@ test('Keeps compact fine-pointer hover and focus free of dangling disclosure ARI
   await expect(card.getByRole('button', { name: 'View course details' })).toHaveCount(0);
   await expect(page.getByRole('tooltip')).toHaveCount(0);
   await expect(link).not.toHaveAttribute('aria-describedby');
+  assertClean();
+});
+
+test('localizes the D05 price filter fieldset and accessible names without changing responsive behavior', async ({
+  page,
+}) => {
+  const assertClean = await monitor(page);
+  assertClean.allowRequestFailure(
+    {
+      method: 'GET',
+      path: '/courses?page=1&page_size=20&sort=created_at',
+      errorText: 'net::ERR_ABORTED',
+    },
+    6,
+  );
+  await page.route('**/courses**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: response([permittedCourse()]),
+    });
+  });
+
+  const expectations = [
+    {
+      locale: 'en',
+      group: 'Price range',
+      minimum: 'Min price',
+      maximum: 'Max price',
+      label: 'Price:',
+    },
+    {
+      locale: 'ru',
+      group: 'Диапазон цен',
+      minimum: 'Мин. цена',
+      maximum: 'Макс. цена',
+      label: 'Цена:',
+    },
+    {
+      locale: 'uz',
+      group: 'Narx oralig‘i',
+      minimum: 'Min. narx',
+      maximum: 'Maks. narx',
+      label: 'Narx:',
+    },
+  ] as const;
+
+  const compactWidths = [320, 390, 617, 767];
+  const desktopWidths = [768, 1280];
+
+  for (const expected of expectations) {
+    await page.goto('/');
+    await page.evaluate(
+      (locale) => localStorage.setItem('learnhub.locale', locale),
+      expected.locale,
+    );
+    await page.reload();
+
+    for (const width of compactWidths) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(page.getByRole('group', { name: expected.group })).toBeVisible();
+      await expect(page.getByLabel(expected.minimum)).toHaveAccessibleName(expected.minimum);
+      await expect(page.getByLabel(expected.maximum)).toHaveAccessibleName(expected.maximum);
+      await expect(page.locator('[data-part="catalog-filter-price-label"]')).toBeHidden();
+      const geometry = await page.evaluate<CatalogViewportGeometry>(() => ({
+        width: window.innerWidth,
+        documentWidth: document.documentElement.scrollWidth,
+        bodyWidth: document.body.scrollWidth,
+        clientWidth: document.documentElement.clientWidth,
+      }));
+      expect(geometry.documentWidth, JSON.stringify(geometry)).toBeLessThanOrEqual(
+        geometry.clientWidth,
+      );
+      expect(geometry.bodyWidth, JSON.stringify(geometry)).toBeLessThanOrEqual(
+        geometry.clientWidth,
+      );
+    }
+
+    for (const width of desktopWidths) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(page.getByRole('group', { name: expected.group })).toBeVisible();
+      await expect(page.getByLabel(expected.minimum)).toHaveAccessibleName(expected.minimum);
+      await expect(page.getByLabel(expected.maximum)).toHaveAccessibleName(expected.maximum);
+      await expect(page.locator('[data-part="catalog-filter-price-label"]')).toHaveText(
+        expected.label,
+      );
+    }
+  }
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.evaluate(() => {
+    document.documentElement.style.zoom = '200%';
+  });
+  const zoomedPriceRange = await page
+    .getByRole('group', { name: 'Narx oralig‘i' })
+    .evaluate((fieldset) => {
+      const fieldsetRect = fieldset.getBoundingClientRect();
+      const inputRects = Array.from(fieldset.querySelectorAll('input')).map((input) =>
+        input.getBoundingClientRect().toJSON(),
+      );
+      return {
+        clientWidth: fieldset.clientWidth,
+        scrollWidth: fieldset.scrollWidth,
+        fieldset: fieldsetRect.toJSON(),
+        inputs: inputRects,
+      };
+    });
+  // Root CSS zoom expands the existing Catalog harness. D05 must not add a local
+  // price-fieldset overflow on top of that established document-level behavior.
+  expect(zoomedPriceRange.scrollWidth).toBeLessThanOrEqual(zoomedPriceRange.clientWidth);
+  expect(
+    zoomedPriceRange.inputs.every(
+      (input) =>
+        input.left >= zoomedPriceRange.fieldset.left - 1 &&
+        input.right <= zoomedPriceRange.fieldset.right + 1,
+    ),
+  ).toBe(true);
+  await page.evaluate(() => {
+    document.documentElement.style.zoom = '';
+  });
+  assertClean();
+});
+
+test('renders the D20 Catalog vertical slice in Russian and Uzbek without changing API data or anonymous actions', async ({
+  page,
+}) => {
+  const assertClean = await monitor(page);
+  assertClean.allowRequestFailure(
+    {
+      method: 'GET',
+      path: '/courses?page=1&page_size=20&sort=created_at',
+      errorText: 'net::ERR_ABORTED',
+    },
+    4,
+  );
+  const mutationRequests: string[] = [];
+  page.on('request', (request) => {
+    if (request.method() === 'POST' || request.method() === 'DELETE') {
+      mutationRequests.push(`${request.method()} ${new URL(request.url()).pathname}`);
+    }
+  });
+  await page.route('**/courses**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: response([
+        {
+          ...permittedCourse('React Fundamentals: Components'),
+          id: 8,
+          price: '0.00',
+          currency: 'UZS',
+          instructor: { id: 1, name: 'Samira', surname: 'Karimova' },
+          lessons: [
+            { id: 1, title: 'Intro' },
+            { id: 2, title: 'State' },
+            { id: 3, title: 'Effects' },
+          ],
+        },
+        {
+          ...permittedCourse('FastAPI and Async SQLAlchemy'),
+          id: 11,
+          price: '349000.00',
+          currency: 'UZS',
+          instructor: { id: 2, name: 'Nodira', surname: 'Yuldasheva' },
+          lessons: [
+            { id: 4, title: 'Setup' },
+            { id: 5, title: 'Models' },
+            { id: 6, title: 'Routes' },
+          ],
+        },
+      ]),
+    });
+  });
+
+  const expectations: readonly CatalogLocaleExpectation[] = [
+    {
+      locale: 'ru',
+      heroTitle: 'Освойте навыки, которые формируют будущее',
+      resultCount: 'Найдено 2 курса',
+      sortBy: 'Сортировать по:',
+      sortCompact: 'Сортировка:',
+      free: 'БЕСПЛАТНО',
+      details: 'Подробнее',
+      detailsAccessibleName: 'Открыть сведения о курсе',
+      lessons: '3 доступных урока',
+      enrollForFree: 'Записаться бесплатно',
+      addToCart: 'В корзину',
+    },
+    {
+      locale: 'uz',
+      heroTitle: 'Kelajakni shakllantirayotgan ko‘nikmalarni egallang Kelajak',
+      resultCount: 'Topildi 2 ta kurs',
+      sortBy: 'Saralash:',
+      sortCompact: 'Saralash:',
+      free: 'BEPUL',
+      details: 'Batafsil',
+      detailsAccessibleName: 'Kurs tafsilotlarini ko‘rish',
+      lessons: '3 ta dars mavjud',
+      enrollForFree: 'Bepul yozilish',
+      addToCart: 'Savatga qo‘shish',
+    },
+  ];
+
+  for (const expected of expectations) {
+    await page.goto('/');
+    await page.evaluate(
+      (locale) => localStorage.setItem('learnhub.locale', locale),
+      expected.locale,
+    );
+    await page.reload();
+
+    const freeCard = page.locator('[data-part="course-card"]').filter({
+      has: page.getByRole('heading', { level: 3, name: 'React Fundamentals: Components' }),
+    });
+    const paidCard = page.locator('[data-part="course-card"]').filter({
+      has: page.getByRole('heading', { level: 3, name: 'FastAPI and Async SQLAlchemy' }),
+    });
+    const freeAction = freeCard.getByRole('link', { name: expected.enrollForFree });
+    const paidAction = paidCard.getByRole('link', { name: expected.addToCart });
+
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(expected.heroTitle);
+    await expect(page.getByRole('heading', { level: 2 })).toHaveText(expected.resultCount);
+    await expect(freeCard.getByRole('heading', { level: 3 })).toHaveText(
+      'React Fundamentals: Components',
+    );
+    await expect(freeCard.getByText('Samira Karimova')).toBeVisible();
+    await expect(freeCard.getByText(expected.lessons)).toBeVisible();
+    await expect(freeCard.locator('[data-part="course-card-price"]')).toHaveText(expected.free);
+    await expect(paidCard.getByRole('heading', { level: 3 })).toHaveText(
+      'FastAPI and Async SQLAlchemy',
+    );
+    await expect(paidCard.getByText('Nodira Yuldasheva')).toBeVisible();
+    await expect(paidCard.locator('[data-part="course-card-price"]')).toContainText('UZS');
+    await expect(freeAction).toHaveAttribute('href', '/login?returnTo=%2Fcourses%2F8');
+    await expect(paidAction).toHaveAttribute('href', '/login?returnTo=%2Fcourses%2F11');
+
+    for (const width of [320, 390, 768, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+      await expect(page.getByRole('heading', { level: 2 })).toHaveText(expected.resultCount);
+      if (width >= 768) {
+        await expect(
+          freeCard
+            .getByRole('button', { name: expected.detailsAccessibleName })
+            .locator('[data-part="course-card-disclosure-pill"]'),
+        ).toHaveText(expected.details);
+      }
+      const visibleSortLabels = await page
+        .locator('[data-part="catalog-sort-toolbar"] span[aria-hidden="true"]')
+        .evaluateAll((labels) =>
+          labels
+            .filter((label) => getComputedStyle(label).display !== 'none')
+            .map((label) => label.textContent?.trim()),
+        );
+      expect(visibleSortLabels).toContain(width < 768 ? expected.sortCompact : expected.sortBy);
+      const viewportGeometry = await page.evaluate<CatalogViewportGeometry>(() => ({
+        width: window.innerWidth,
+        documentWidth: document.documentElement.scrollWidth,
+        bodyWidth: document.body.scrollWidth,
+        clientWidth: document.documentElement.clientWidth,
+      }));
+      expect(viewportGeometry.documentWidth, JSON.stringify(viewportGeometry)).toBeLessThanOrEqual(
+        viewportGeometry.clientWidth,
+      );
+      expect(viewportGeometry.bodyWidth, JSON.stringify(viewportGeometry)).toBeLessThanOrEqual(
+        viewportGeometry.clientWidth,
+      );
+    }
+
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await freeAction.focus();
+    await expect(freeAction).toBeFocused();
+    expect(await freeAction.evaluate((element) => element.matches(':focus-visible'))).toBe(true);
+    const details = freeCard.getByRole('button', { name: expected.detailsAccessibleName });
+    await details.click();
+    await expect(details).toHaveAttribute('aria-expanded', 'true');
+    await page.keyboard.press('Escape');
+    await expect(details).toBeFocused();
+    await expect(details).toHaveAttribute('aria-expanded', 'false');
+
+    await page.evaluate(() => {
+      document.documentElement.style.zoom = '200%';
+    });
+    const zoomedCatalog = await page
+      .locator('[data-part="catalog-result-list"]')
+      .evaluate((list) => ({
+        clientWidth: list.clientWidth,
+        scrollWidth: list.scrollWidth,
+        freeCard: list
+          .querySelector<HTMLElement>('[data-course-card-id="8"]')
+          ?.getBoundingClientRect()
+          .toJSON(),
+        paidCard: list
+          .querySelector<HTMLElement>('[data-course-card-id="11"]')
+          ?.getBoundingClientRect()
+          .toJSON(),
+        bounds: list.getBoundingClientRect().toJSON(),
+      }));
+    expect(zoomedCatalog.scrollWidth).toBeLessThanOrEqual(zoomedCatalog.clientWidth);
+    expect(zoomedCatalog.freeCard?.left).toBeGreaterThanOrEqual(zoomedCatalog.bounds.left - 1);
+    expect(zoomedCatalog.freeCard?.right).toBeLessThanOrEqual(zoomedCatalog.bounds.right + 1);
+    expect(zoomedCatalog.paidCard?.left).toBeGreaterThanOrEqual(zoomedCatalog.bounds.left - 1);
+    expect(zoomedCatalog.paidCard?.right).toBeLessThanOrEqual(zoomedCatalog.bounds.right + 1);
+    await page.evaluate(() => {
+      document.documentElement.style.zoom = '';
+    });
+  }
+
+  expect(mutationRequests).toEqual([]);
   assertClean();
 });

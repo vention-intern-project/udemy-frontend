@@ -1,4 +1,5 @@
 import { useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 
 import {
   AuthFormShell,
@@ -13,6 +14,7 @@ import { RolePicker } from './RolePicker';
 import styles from './SignupPage.module.css';
 
 export function SignupPage() {
+  const { t } = useTranslation();
   const location = useLocation();
   const returnTo = sanitizeInternalReturnTo(
     new URLSearchParams(location.search).get('returnTo'),
@@ -22,13 +24,13 @@ export function SignupPage() {
   const workflow = useSignupWorkflow(location.key);
   return (
     <AuthFormShell
-      title="Create account"
-      description="Create a LearnHub account to start learning or teaching."
+      title={t('routes:createAccountTitle')}
+      description={t('routes:createAccountDescription')}
       footer={
         <>
-          <span>Already have an account?</span>{' '}
+          <span>{t('auth:alreadyHaveAnAccount')}</span>{' '}
           <AuthLink tone="primary" to={loginDestination}>
-            Log in
+            {t('navigation:logIn')}
           </AuthLink>
         </>
       }
@@ -41,7 +43,7 @@ export function SignupPage() {
           id="email"
           name="email"
           type="email"
-          label="Email"
+          label={t('auth:email')}
           autoComplete="email"
           required
           value={workflow.input.email}
@@ -53,7 +55,7 @@ export function SignupPage() {
           <Input
             id="name"
             name="name"
-            label="First name"
+            label={t('auth:firstName')}
             autoComplete="given-name"
             required
             value={workflow.input.name}
@@ -64,7 +66,7 @@ export function SignupPage() {
           <Input
             id="surname"
             name="surname"
-            label="Last name"
+            label={t('auth:lastName')}
             autoComplete="family-name"
             required
             value={workflow.input.surname}
@@ -82,7 +84,7 @@ export function SignupPage() {
         <PasswordField
           id="password"
           name="password"
-          label="Password"
+          label={t('auth:password')}
           autoComplete="new-password"
           value={workflow.input.password}
           error={workflow.fieldErrors.password}
@@ -92,7 +94,7 @@ export function SignupPage() {
         <PasswordField
           id="passwordConfirmation"
           name="passwordConfirmation"
-          label="Confirm password"
+          label={t('auth:confirmPassword')}
           autoComplete="new-password"
           value={workflow.input.passwordConfirmation}
           error={workflow.fieldErrors.passwordConfirmation}
@@ -103,9 +105,9 @@ export function SignupPage() {
           type="submit"
           fullWidth
           state={workflow.isPending ? 'loading' : 'idle'}
-          loadingLabel="Creating account..."
+          loadingLabel={t('auth:creatingAccount')}
         >
-          Create account
+          {t('routes:createAccountTitle')}
         </Button>
       </form>
     </AuthFormShell>

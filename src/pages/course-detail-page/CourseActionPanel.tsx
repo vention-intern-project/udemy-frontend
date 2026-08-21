@@ -1,4 +1,6 @@
 import { Link } from 'react-router-dom';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
 
 import type { CourseDetail } from '@entities/course';
 import type {
@@ -36,6 +38,7 @@ interface ActionNotice {
 }
 
 function actionNotice(
+  t: TFunction,
   isDraft: boolean,
   mutationState: CourseMutationViewState,
   preflight: CoursePreflightState,
@@ -43,14 +46,14 @@ function actionNotice(
   if (isDraft)
     return {
       tone: 'warning',
-      title: 'Not available',
-      message: 'Course is not published',
+      title: t('course:notAvailable', { defaultValue: 'Not available' }),
+      message: t('course:courseIsNotPublished', { defaultValue: 'Course is not published' }),
       retryPreflight: false,
     };
   if (mutationState.status === 'error')
     return {
       tone: 'error',
-      title: 'Action failed',
+      title: t('course:actionFailed', { defaultValue: 'Action failed' }),
       message: mutationState.disposition.message,
       retryPreflight: false,
     };
@@ -58,21 +61,25 @@ function actionNotice(
     return mutationState.action === 'enroll'
       ? {
           tone: 'success',
-          title: 'Enrollment complete',
-          message: 'You are now enrolled in this course.',
+          title: t('course:enrollmentComplete', { defaultValue: 'Enrollment complete' }),
+          message: t('course:youAreNowEnrolledInThis', {
+            defaultValue: 'You are now enrolled in this course.',
+          }),
           retryPreflight: false,
         }
       : {
           tone: 'success',
-          title: 'Added to cart',
-          message: 'This course was added to your cart.',
+          title: t('course:addedToCart', { defaultValue: 'Added to cart' }),
+          message: t('course:thisCourseWasAddedToYour', {
+            defaultValue: 'This course was added to your cart.',
+          }),
           retryPreflight: false,
         };
   }
   if (preflight === 'unavailable') {
     return {
       tone: 'error',
-      title: 'Action unavailable',
+      title: t('course:actionUnavailable', { defaultValue: 'Action unavailable' }),
       message: courseActionReconciliationUncertaintyMessage,
       retryPreflight: true,
     };
@@ -89,11 +96,15 @@ export function CourseActionPanel({
   onSubmitAction,
   preflight,
 }: CourseActionPanelProps) {
+  const { t } = useTranslation();
   const actionState = actionButtonState(mutationState);
-  const notice = actionNotice(isDraft, mutationState, preflight);
+  const notice = actionNotice(t, isDraft, mutationState, preflight);
 
   return (
-    <aside className={styles.actionPanel} aria-label="Course action">
+    <aside
+      className={styles.actionPanel}
+      aria-label={t('course:courseAction', { defaultValue: 'Course action' })}
+    >
       <data className={styles.price} value={course.price}>
         {course.currency}&nbsp;{course.price}
       </data>
@@ -102,7 +113,7 @@ export function CourseActionPanel({
           {notice.message}{' '}
           {notice.retryPreflight ? (
             <Button variant="secondary" onClick={onRetryPreflight}>
-              Try again
+              {t('routes:tryAgain', { defaultValue: 'Try again' })}
             </Button>
           ) : null}
         </Notice>
@@ -124,7 +135,7 @@ export function CourseActionPanel({
         <Button
           fullWidth
           state={actionState}
-          loadingLabel="Please wait…"
+          loadingLabel={t('course:pleaseWait', { defaultValue: 'Please wait…' })}
           disabled={mutationState.status === 'pending'}
           onClick={() => onSubmitAction(action.kind)}
         >

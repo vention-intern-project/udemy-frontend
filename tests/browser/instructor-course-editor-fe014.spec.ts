@@ -48,6 +48,8 @@ interface FixtureState {
   uploadStatus: number;
   courseDeleteStatus: number;
   lessonDeleteStatus: number;
+  coursePatchGate?: Promise<void>;
+  uploadGate?: Promise<void>;
   courseDeleteGate?: Promise<void>;
   lessonDeleteGate?: Promise<void>;
   readonly requests: Request[];
@@ -204,6 +206,29 @@ async function installInstructorFixture(page: Page, state: FixtureState): Promis
       await fulfillJson(route, 200, fulfilledCourse(state.course));
       return;
     }
+    if (path === `/courses/${courseId}/enrollments` && method === 'GET') {
+      await expectAuthorized(request);
+      await fulfillJson(route, 200, {
+        items: [
+          {
+            id: 9,
+            user_id: 12,
+            course_id: courseId,
+            status: 'active',
+            created_at: '2026-08-08T00:00:00Z',
+            updated_at: '2026-08-08T00:00:00Z',
+            user: { id: 12, name: 'Sam', surname: 'Student', email: 'sam@example.test' },
+          },
+        ],
+        page: 1,
+        page_size: 20,
+        total: 1,
+        pages: 1,
+        has_next: false,
+        has_previous: false,
+      });
+      return;
+    }
     if (path === `/lessons/${lessonId}` && method === 'GET') {
       await expectAuthorized(request);
       await fulfillJson(route, 200, state.lesson);
@@ -240,6 +265,7 @@ async function installInstructorFixture(page: Page, state: FixtureState): Promis
       expect(request.headers()['content-type']).toContain('application/json');
       const body = request.postDataJSON() as Record<string, unknown>;
       expect(Object.keys(body).sort()).toEqual(['currency', 'description', 'price', 'title']);
+      await state.coursePatchGate;
       if (state.coursePatchStatus !== 200) {
         await fulfillJson(route, state.coursePatchStatus, failure(state.coursePatchStatus));
         return;
@@ -326,6 +352,7 @@ async function installInstructorFixture(page: Page, state: FixtureState): Promis
       expect(request.headers()['content-type']).toContain('multipart/form-data');
       const multipart = request.postDataBuffer();
       expect(multipart?.toString('utf8')).toContain('name="file"');
+      await state.uploadGate;
       if (state.uploadStatus !== 200) {
         await fulfillJson(route, state.uploadStatus, failure(state.uploadStatus, 'file'));
         return;
@@ -659,4 +686,189 @@ test('renders safe upload errors and keeps controls responsive under reduced mot
     document.documentElement.style.zoom = '2';
   });
   await expectNoHorizontalOverflow(page);
+});
+
+test('settles deferred course and upload failures in the locale selected while pending', async ({
+  page,
+}) => {
+  const state = createFixtureState();
+  const courseGate = deferredAction();
+  state.coursePatchStatus = 422;
+  state.coursePatchGate = courseGate.promise;
+  await installInstructorFixture(page, state);
+  await page.goto(`/instructor/courses/${courseId}/edit`, { waitUntil: 'commit' });
+
+  const courseTitle = page.getByLabel('Course title');
+  await expect(courseTitle).toBeVisible();
+  await courseTitle.fill('Deferred browser course');
+  await page.getByRole('button', { name: 'Save course' }).click();
+  await expect(page.getByRole('button', { name: 'Saving course' })).toBeDisabled();
+  await expect
+    .poll(() => state.requests.filter((request) => request.method() === 'PATCH'))
+    .toHaveLength(1);
+  await page.getByRole('button', { name: 'Change language' }).click();
+  await page.getByRole('button', { name: 'Русский' }).click();
+  await expect(page.getByRole('button', { name: 'Изменить язык' })).toBeVisible();
+  courseGate.resolve();
+  await expect(page.getByLabel('Название курса')).toBeFocused();
+  await expect(
+    page.getByText('Проверьте поле название курса и отправьте форму снова.'),
+  ).toBeVisible();
+  await expect(page.getByText('hostile fixture detail must never reach UI')).toHaveCount(0);
+  await expect(page.getByLabel('Название курса')).toHaveValue('Deferred browser course');
+  expect(state.requests.filter((request) => request.method() === 'PATCH')).toHaveLength(1);
+
+  const uploadGate = deferredAction();
+  state.uploadStatus = 422;
+  state.uploadGate = uploadGate.promise;
+  await page.goto(`/instructor/lessons/${lessonId}/edit`, { waitUntil: 'commit' });
+  await expect(page.getByRole('heading', { name: 'Редактировать урок' })).toBeVisible();
+  const lessonFile = page.locator('input[name="file"]');
+  await lessonFile.setInputFiles({
+    name: 'deferred-browser-video.mp4',
+    mimeType: 'video/mp4',
+    buffer: Buffer.from('video'),
+  });
+  await page.getByRole('button', { name: 'Загрузить файл' }).click();
+  await expect(page.locator('button[data-state="loading"]')).toBeDisabled();
+  await expect.poll(() => api032RequestCount(state.requests)).toBe(1);
+  await page.getByRole('button', { name: 'Изменить язык' }).click();
+  await page.getByRole('button', { name: "O'zbek" }).click();
+  await expect(page.getByRole('button', { name: 'Tilni o‘zgartirish' })).toBeVisible();
+  uploadGate.resolve();
+  await expect(page.locator('input[name="file"]')).toBeFocused();
+  await expect(page.getByText('dars fayli maydonini tekshirib, qayta yuboring.')).toBeVisible();
+  await expect(page.locator('input[name="file"]')).toHaveAttribute('aria-invalid', 'true');
+  await expect(page.getByText('hostile fixture detail must never reach UI')).toHaveCount(0);
+  expect(api032RequestCount(state.requests)).toBe(1);
+
+  for (const width of [320, 390, 768, 1280] as const) {
+    await page.setViewportSize({ width, height: 900 });
+    await expectNoHorizontalOverflow(page);
+  }
+  await page.setViewportSize({ width: 640, height: 900 });
+  await page.evaluate(() => {
+    document.documentElement.style.zoom = '2';
+  });
+  await expectNoHorizontalOverflow(page);
+  await page.evaluate(() => {
+    document.documentElement.style.zoom = '';
+  });
+});
+
+test('keeps every hostile lesson title literal in the destructive dialog and deletes only that lesson', async ({
+  page,
+}) => {
+  const state = createFixtureState();
+  await installInstructorFixture(page, state);
+
+  for (const title of [
+    'Dollar $& lesson',
+    'Dollar $` lesson',
+    "Dollar $' lesson",
+    'Braces {lessonTitle}',
+    'Unicode урок — dars',
+    'Ordinary lesson title',
+  ]) {
+    const lesson = { ...createLesson(), title };
+    state.lesson = lesson;
+    state.course = createCourse([lesson]);
+    await page.goto(`/instructor/courses/${courseId}/edit`, { waitUntil: 'commit' });
+    const deleteLesson = page.getByRole('button', { name: 'Delete lesson' });
+    await expect(deleteLesson).toBeVisible();
+    await deleteLesson.focus();
+    await deleteLesson.press('Enter');
+    const dialog = page.getByRole('dialog', { name: 'Delete this lesson?' });
+    await expect(dialog).toContainText(title);
+    const descriptionId = await dialog.getAttribute('aria-describedby');
+    await expect(page.locator(`[id="${descriptionId}"]`)).toContainText(title);
+    await page.getByRole('button', { name: 'Cancel' }).click();
+    await expect(deleteLesson).toBeFocused();
+
+    const requestCount = state.requests.filter((request) => request.method() === 'DELETE').length;
+    await deleteLesson.click();
+    await page.getByRole('button', { name: 'Delete lesson' }).last().click();
+    await expect
+      .poll(() => state.requests.filter((request) => request.method() === 'DELETE').length)
+      .toBe(requestCount + 1);
+    const deleteRequest = state.requests[state.requests.length - 1];
+    expect(new URL(deleteRequest?.url() ?? '').pathname).toBe(
+      `/courses/${courseId}/lessons/${lessonId}`,
+    );
+  }
+});
+
+test('renders allocated enrollment and lesson-editor copy in Russian and Uzbek without overflow', async ({
+  page,
+}) => {
+  const state = createFixtureState();
+  await installInstructorFixture(page, state);
+  for (const [
+    locale,
+    breadcrumb,
+    courseAddressInvalid,
+    enrollments,
+    enrollmentCount,
+    lessonAddressInvalid,
+    lessonEditor,
+    workspace,
+    backToCourse,
+    saveLesson,
+    uploadFile,
+  ] of [
+    [
+      'ru',
+      'Хлебные крошки',
+      'Адрес курса указан неверно.',
+      'Записи на курс',
+      '1 запись',
+      'Адрес урока указан неверно.',
+      'Редактировать урок',
+      'Рабочая область преподавателя',
+      'Вернуться к курсу',
+      'Сохранить урок',
+      'Загрузить файл',
+    ],
+    [
+      'uz',
+      'Yo‘l ko‘rsatkich',
+      'Kurs manzili noto‘g‘ri.',
+      'Kursga yozilishlar',
+      '1 ta yozilish',
+      'Dars manzili noto‘g‘ri.',
+      'Darsni tahrirlash',
+      'O‘qituvchi ish maydoni',
+      'Kursga qaytish',
+      'Darsni saqlash',
+      'Faylni yuklash',
+    ],
+  ] as const) {
+    await page.addInitScript((selectedLocale) => {
+      localStorage.setItem('learnhub.locale', selectedLocale);
+    }, locale);
+    await page.goto('/instructor/courses/not-a-course/edit', { waitUntil: 'commit' });
+    await expect(page.getByText(courseAddressInvalid)).toBeVisible();
+    await expect(page.getByRole('navigation', { name: breadcrumb })).toBeVisible();
+
+    await page.goto(`/instructor/courses/${courseId}/enrollments`, { waitUntil: 'commit' });
+    await expect(page.getByRole('heading', { name: enrollments })).toBeVisible();
+    await expect(page.getByText(enrollmentCount, { exact: true })).toBeVisible();
+    const breadcrumbNavigation = page.getByRole('navigation', { name: breadcrumb });
+    await expect(breadcrumbNavigation).toBeVisible();
+    const courseReturnLink = breadcrumbNavigation.getByRole('link');
+    await courseReturnLink.focus();
+    await expect(courseReturnLink).toBeFocused();
+    await expectNoHorizontalOverflow(page);
+
+    await page.goto('/instructor/lessons/not-a-lesson/edit', { waitUntil: 'commit' });
+    await expect(page.getByText(lessonAddressInvalid)).toBeVisible();
+
+    await page.goto(`/instructor/lessons/${lessonId}/edit`, { waitUntil: 'commit' });
+    await expect(page.getByRole('heading', { name: lessonEditor })).toBeVisible();
+    await expect(page.getByText(workspace, { exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: backToCourse })).toBeVisible();
+    await expect(page.getByRole('button', { name: saveLesson })).toBeVisible();
+    await expect(page.getByRole('button', { name: uploadFile })).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  }
 });

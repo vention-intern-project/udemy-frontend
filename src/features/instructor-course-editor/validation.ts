@@ -1,58 +1,124 @@
 import { ApiError } from '@shared/api';
+import type { TFunction } from 'i18next';
 
 export interface InstructorEditorFieldDefinition {
   readonly field: string;
-  readonly label: string;
+  readonly labelKey: string;
 }
+
+export type InstructorEditorFieldDefinitions = Readonly<
+  Record<string, InstructorEditorFieldDefinition>
+>;
 
 export interface InstructorEditorErrorCopy {
-  readonly action: string;
-  readonly forbidden: string;
-  readonly notFound: string;
-  readonly unauthorized: string;
-  readonly badRequest?: string;
+  readonly actionKey: string;
+  readonly forbiddenKey: string;
+  readonly notFoundKey: string;
+  readonly unauthorizedKey: string;
+  readonly badRequestKey: string | null;
 }
+
+export type InstructorEditorFailureMessage =
+  | { readonly kind: 'resource'; readonly key: string }
+  | { readonly kind: 'required'; readonly labelKey: string }
+  | { readonly kind: 'checkField'; readonly labelKey: string }
+  | { readonly kind: 'reviewHighlightedFields' }
+  | { readonly kind: 'couldNotProcessForm' }
+  | { readonly kind: 'genericAction'; readonly actionKey: string };
 
 export interface InstructorEditorFormFailure {
-  readonly fields: Readonly<Record<string, string>>;
-  readonly summary: string;
+  readonly fields: Readonly<Record<string, InstructorEditorFailureMessage>>;
+  readonly summary: InstructorEditorFailureMessage;
 }
 
-function safeFieldMessage(label: string, type: string): string {
+function safeFieldMessage(labelKey: string, type: string): InstructorEditorFailureMessage {
   const normalizedType = type.toLowerCase();
   if (normalizedType.includes('missing') || normalizedType.includes('required')) {
-    return `${label} is required.`;
+    return { kind: 'required', labelKey };
   }
 
-  return `Check ${label.toLowerCase()} and submit again.`;
+  return { kind: 'checkField', labelKey };
+}
+
+export function resolveInstructorEditorFailureMessage(
+  message: InstructorEditorFailureMessage,
+  t: TFunction,
+): string {
+  switch (message.kind) {
+    case 'resource':
+      return t(`instructor:${message.key}`);
+    case 'required':
+      return t('instructor:courseEditorValidationFieldRequired').replace('{fieldLabel}', () =>
+        t(`instructor:${message.labelKey}`),
+      );
+    case 'checkField':
+      return t('instructor:courseEditorValidationCheckField').replace('{fieldLabel}', () =>
+        t(`instructor:${message.labelKey}`).toLowerCase(),
+      );
+    case 'reviewHighlightedFields':
+      return t('instructor:courseEditorValidationReviewHighlightedFields');
+    case 'couldNotProcessForm':
+      return t('instructor:courseEditorValidationCouldNotProcessForm');
+    case 'genericAction':
+      return t('instructor:courseEditorValidationGenericAction').replace('{action}', () =>
+        t(`instructor:${message.actionKey}`),
+      );
+  }
+}
+
+export function resolveInstructorEditorFormFailure(
+  failure: InstructorEditorFormFailure,
+  t: TFunction,
+): { readonly fields: Readonly<Record<string, string>>; readonly summary: string } {
+  return {
+    fields: Object.fromEntries(
+      Object.entries(failure.fields).map(([field, message]) => [
+        field,
+        resolveInstructorEditorFailureMessage(message, t),
+      ]),
+    ),
+    summary: resolveInstructorEditorFailureMessage(failure.summary, t),
+  };
 }
 
 export function mapInstructorEditorFormFailure(
   error: unknown,
   copy: InstructorEditorErrorCopy,
-  fields: Readonly<Record<string, InstructorEditorFieldDefinition>>,
+  fields: InstructorEditorFieldDefinitions,
 ): InstructorEditorFormFailure {
   if (error instanceof ApiError && error.status === 401) {
-    return { fields: {}, summary: copy.unauthorized };
+    return {
+      fields: {},
+      summary: { kind: 'resource', key: copy.unauthorizedKey },
+    };
   }
   if (error instanceof ApiError && error.status === 403) {
-    return { fields: {}, summary: copy.forbidden };
+    return {
+      fields: {},
+      summary: { kind: 'resource', key: copy.forbiddenKey },
+    };
   }
   if (error instanceof ApiError && error.status === 404) {
-    return { fields: {}, summary: copy.notFound };
+    return {
+      fields: {},
+      summary: { kind: 'resource', key: copy.notFoundKey },
+    };
   }
-  if (error instanceof ApiError && error.status === 400 && copy.badRequest) {
-    return { fields: {}, summary: copy.badRequest };
+  if (error instanceof ApiError && error.status === 400 && copy.badRequestKey !== null) {
+    return {
+      fields: {},
+      summary: { kind: 'resource', key: copy.badRequestKey },
+    };
   }
   if (error instanceof ApiError && error.status === 422) {
-    const mappedFields: Record<string, string> = {};
+    const mappedFields: Record<string, InstructorEditorFailureMessage> = {};
     error.issues.forEach((issue) => {
       const fieldName = String(issue.location[issue.location.length - 1]);
       const definition = Object.prototype.hasOwnProperty.call(fields, fieldName)
         ? fields[fieldName]
         : undefined;
       if (definition && !mappedFields[definition.field]) {
-        mappedFields[definition.field] = safeFieldMessage(definition.label, issue.type);
+        mappedFields[definition.field] = safeFieldMessage(definition.labelKey, issue.type);
       }
     });
 
@@ -60,10 +126,13 @@ export function mapInstructorEditorFormFailure(
       fields: mappedFields,
       summary:
         Object.keys(mappedFields).length > 0
-          ? 'Review the highlighted fields and submit again.'
-          : 'We could not process this form. Check your details and try again.',
+          ? { kind: 'reviewHighlightedFields' }
+          : { kind: 'couldNotProcessForm' },
     };
   }
 
-  return { fields: {}, summary: `We could not ${copy.action}. Try again later.` };
+  return {
+    fields: {},
+    summary: { kind: 'genericAction', actionKey: copy.actionKey },
+  };
 }

@@ -3,8 +3,9 @@
 import { QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { I18nextProvider } from 'react-i18next';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createAppQueryClient } from '../../src/app/query';
 import {
@@ -14,6 +15,7 @@ import {
 } from '../../src/features/auth-session';
 import { CourseDetailPage } from '../../src/pages/course-detail-page';
 import { ApiError, type ApiClient, type ApiRequestOptions } from '../../src/shared/api';
+import { localeRuntime, type Locale } from '../../src/shared/locale';
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean | undefined;
@@ -75,6 +77,50 @@ const cartItemMutation = {
   course: { id: 7, title: course.title, price: '19.99', currency: course.currency },
 };
 
+interface CourseResidualLocaleScenario {
+  readonly locale: Locale;
+  readonly loadingDetails: string;
+  readonly loadingOutline: string;
+  readonly outlineHeading: string;
+  readonly emptyOutline: string;
+  readonly lessonMarker: string;
+  readonly draftCourse: string;
+  readonly notFoundDescription: string;
+}
+
+const courseResidualLocaleScenarios: readonly CourseResidualLocaleScenario[] = [
+  {
+    locale: 'en',
+    loadingDetails: 'Loading course details',
+    loadingOutline: 'Loading course outline',
+    outlineHeading: 'Course outline',
+    emptyOutline: 'No lessons have been added yet.',
+    lessonMarker: 'lesson ·',
+    draftCourse: 'Draft course',
+    notFoundDescription: 'This course does not exist or is no longer available.',
+  },
+  {
+    locale: 'ru',
+    loadingDetails: 'Загрузка сведений о курсе',
+    loadingOutline: 'Загрузка программы курса',
+    outlineHeading: 'Программа курса',
+    emptyOutline: 'Уроки ещё не добавлены.',
+    lessonMarker: 'урок ·',
+    draftCourse: 'Черновик курса',
+    notFoundDescription: 'Курс не существует или больше недоступен.',
+  },
+  {
+    locale: 'uz',
+    loadingDetails: 'Kurs tafsilotlari yuklanmoqda',
+    loadingOutline: 'Kurs dasturi yuklanmoqda',
+    outlineHeading: 'Kurs dasturi',
+    emptyOutline: 'Hali darslar qo‘shilmagan.',
+    lessonMarker: 'dars ·',
+    draftCourse: 'Kurs qoralamasi',
+    notFoundDescription: 'Bu kurs mavjud emas yoki endi ochiq emas.',
+  },
+];
+
 function lesson(downloadUrl: string | null) {
   return {
     id: 3,
@@ -88,13 +134,13 @@ function lesson(downloadUrl: string | null) {
   };
 }
 
-function outline(downloadUrl: string | null) {
+function outline(downloadUrl: string | null, items = 1) {
   return {
-    items: [lesson(downloadUrl)],
+    items: items === 0 ? [] : [lesson(downloadUrl)],
     page: 1,
     page_size: 100,
-    total: 1,
-    pages: 1,
+    total: items,
+    pages: items,
     has_next: false,
     has_previous: false,
   };
@@ -158,22 +204,28 @@ function renderPage(
 ) {
   const queryClient = createAppQueryClient();
   const view = render(
-    <QueryClientProvider client={queryClient}>
-      <SessionProvider client={{ request }} tokenStore={options.tokenStore ?? store(token)}>
-        <MemoryRouter
-          initialEntries={[path]}
-          future={{ v7_relativeSplatPath: true, v7_startTransition: true }}
-        >
-          <PageHarnessControls {...options} />
-          <Routes>
-            <Route path="/courses/:courseId" element={<CourseDetailPage />} />
-          </Routes>
-        </MemoryRouter>
-      </SessionProvider>
-    </QueryClientProvider>,
+    <I18nextProvider i18n={localeRuntime}>
+      <QueryClientProvider client={queryClient}>
+        <SessionProvider client={{ request }} tokenStore={options.tokenStore ?? store(token)}>
+          <MemoryRouter
+            initialEntries={[path]}
+            future={{ v7_relativeSplatPath: true, v7_startTransition: true }}
+          >
+            <PageHarnessControls {...options} />
+            <Routes>
+              <Route path="/courses/:courseId" element={<CourseDetailPage />} />
+            </Routes>
+          </MemoryRouter>
+        </SessionProvider>
+      </QueryClientProvider>
+    </I18nextProvider>,
   );
   return { ...view, queryClient };
 }
+
+beforeEach(async () => {
+  await localeRuntime.changeLanguage('en');
+});
 
 afterEach(() => {
   cleanup();
@@ -181,6 +233,65 @@ afterEach(() => {
 });
 
 describe('CourseDetailPage', () => {
+  it.each(courseResidualLocaleScenarios)(
+    'resolves every admitted course residual in $locale without changing API-authored data',
+    async (copy) => {
+      await localeRuntime.changeLanguage(copy.locale);
+      const pendingDetailRequest: ApiClient['request'] = async <TResponse,>() =>
+        await new Promise<TResponse>(() => undefined);
+      const detailLoading = renderPage(pendingDetailRequest);
+      expect(screen.getByRole('status', { name: copy.loadingDetails })).toBeTruthy();
+      detailLoading.unmount();
+
+      const pendingOutlineRequest: ApiClient['request'] = async <TResponse, TBody>(
+        options: ApiRequestOptions<TBody, TResponse>,
+      ) => {
+        if (options.path === '/courses/7') return decode(options, course);
+        return await new Promise<TResponse>(() => undefined);
+      };
+      const outlineLoading = renderPage(pendingOutlineRequest);
+      expect(
+        await screen.findByRole('heading', { level: 1, name: 'React foundations' }),
+      ).toBeTruthy();
+      expect(screen.getByRole('status', { name: copy.loadingOutline })).toBeTruthy();
+      outlineLoading.unmount();
+
+      const populatedRequest: ApiClient['request'] = async <TResponse, TBody>(
+        options: ApiRequestOptions<TBody, TResponse>,
+      ) => {
+        if (options.path === '/courses/7') return decode(options, course);
+        if (options.path === '/courses/7/lessons') return decode(options, outline(null));
+        throw new Error(`Unexpected request ${options.path}`);
+      };
+      const populated = renderPage(populatedRequest);
+      expect(
+        await screen.findByRole('heading', { level: 2, name: copy.outlineHeading }),
+      ).toBeTruthy();
+      expect(await screen.findByRole('heading', { level: 3, name: 'Welcome' })).toBeTruthy();
+      expect(screen.getByText(new RegExp(`video ${copy.lessonMarker}`))).toBeTruthy();
+      expect(screen.getByText('Ada Lovelace')).toBeTruthy();
+      populated.unmount();
+
+      const draftRequest: ApiClient['request'] = async <TResponse, TBody>(
+        options: ApiRequestOptions<TBody, TResponse>,
+      ) => {
+        if (options.path === '/courses/7')
+          return decode(options, { ...course, published_at: null });
+        if (options.path === '/courses/7/lessons') return decode(options, outline(null, 0));
+        throw new Error(`Unexpected request ${options.path}`);
+      };
+      const draft = renderPage(draftRequest);
+      expect(await screen.findByText(copy.draftCourse)).toBeTruthy();
+      expect(await screen.findByText(copy.emptyOutline)).toBeTruthy();
+      draft.unmount();
+
+      const invalidRequest = vi.fn(async () => undefined) as unknown as ApiClient['request'];
+      renderPage(invalidRequest, null, '/courses/not-a-number');
+      expect(screen.getByText(copy.notFoundDescription)).toBeTruthy();
+      expect(invalidRequest).not.toHaveBeenCalled();
+    },
+  );
+
   it.each([
     ['/media/lessons/private.mp4', 'populated-link'],
     [null, 'anonymous-redacted'],

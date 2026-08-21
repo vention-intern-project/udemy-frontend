@@ -47,11 +47,17 @@ vi.mock('react-pdf', () => ({
       if (pdfMocks.pageMode === 'error') onRenderError?.();
       else onRenderSuccess?.();
     }, [onRenderError, onRenderSuccess, pageNumber]);
-    return <><canvas aria-label={`Rendered PDF page ${pageNumber}`} /><span>Page {pageNumber} text</span></>;
+    return (
+      <>
+        <canvas aria-label={`Rendered PDF page ${pageNumber}`} />
+        <span>Page {pageNumber} text</span>
+      </>
+    );
   },
 }));
 
 import { LessonPdfPreview } from '../../../src/features/media-access/LessonPdfPreview';
+import { LocaleProvider, localeRuntime, type Locale } from '../../../src/shared/locale';
 
 afterEach(() => {
   pdfMocks.documentMode = 'success';
@@ -61,9 +67,28 @@ afterEach(() => {
   pdfMocks.pageRenderCount = 0;
   pdfMocks.finishPageRender = null;
   pdfMocks.failPageRender = null;
+  void localeRuntime.changeLanguage('en');
 });
 
 describe('LessonPdfPreview', () => {
+  it.each([
+    ['ru', 'Предыдущая страница', 'Следующая страница'],
+    ['uz', 'Oldingi sahifa', 'Keyingi sahifa'],
+  ] as const)(
+    'renders admitted page navigation labels in %s without changing page control behavior',
+    async (locale: Locale, previousPage, nextPage) => {
+      render(
+        <LocaleProvider initialLocale={locale}>
+          <LessonPdfPreview file={new Blob(['%PDF'], { type: 'application/pdf' })} />
+        </LocaleProvider>,
+      );
+
+      await screen.findByRole('button', { name: nextPage });
+      expect(screen.getByRole('button', { name: previousPage })).toHaveProperty('disabled', true);
+      expect(screen.getByRole('button', { name: nextPage })).toHaveProperty('disabled', false);
+    },
+  );
+
   it('renders an admitted Blob in-page with secure options and bounded page navigation', async () => {
     const file = new Blob(['%PDF'], { type: 'application/pdf' });
     render(<LessonPdfPreview file={file} />);
@@ -73,8 +98,12 @@ describe('LessonPdfPreview', () => {
     await waitFor(() => expect(screen.getByRole('status').textContent).toContain('Page 1 of 2'));
     expect(document.activeElement).toBe(preview);
     expect(screen.getByRole('status').textContent).toContain('Page 1 of 2');
-    expect(pdfMocks.documentProps).toEqual(expect.objectContaining({ file, options: { isEvalSupported: false } }));
-    expect(pdfMocks.pageProps).toEqual(expect.objectContaining({ pageNumber: 1, renderAnnotationLayer: false }));
+    expect(pdfMocks.documentProps).toEqual(
+      expect.objectContaining({ file, options: { isEvalSupported: false } }),
+    );
+    expect(pdfMocks.pageProps).toEqual(
+      expect.objectContaining({ pageNumber: 1, renderAnnotationLayer: false }),
+    );
     expect(pdfMocks.workerOptions.workerSrc).toContain('pdf.worker.min.mjs');
     expect(document.querySelector('iframe, object, embed, a')).toBeNull();
 
@@ -84,7 +113,9 @@ describe('LessonPdfPreview', () => {
     viewport.style.paddingInlineStart = '8px';
     viewport.style.paddingInlineEnd = '8px';
     fireEvent(window, new Event('resize'));
-    await waitFor(() => expect(pdfMocks.pageProps).toEqual(expect.objectContaining({ width: 288 })));
+    await waitFor(() =>
+      expect(pdfMocks.pageProps).toEqual(expect.objectContaining({ width: 288 })),
+    );
 
     fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
     await waitFor(() => expect(screen.getByLabelText('Rendered PDF page 2')).toBeTruthy());
@@ -141,18 +172,21 @@ describe('LessonPdfPreview', () => {
     expect(document.activeElement).toBe(retry);
   });
 
-  it.each(['document', 'page'] as const)('shows a safe retry target after a %s failure', async (failureKind) => {
-    if (failureKind === 'document') pdfMocks.documentMode = 'error';
-    else pdfMocks.pageMode = 'error';
-    render(<LessonPdfPreview file={new Blob(['%PDF'], { type: 'application/pdf' })} />);
+  it.each(['document', 'page'] as const)(
+    'shows a safe retry target after a %s failure',
+    async (failureKind) => {
+      if (failureKind === 'document') pdfMocks.documentMode = 'error';
+      else pdfMocks.pageMode = 'error';
+      render(<LessonPdfPreview file={new Blob(['%PDF'], { type: 'application/pdf' })} />);
 
-    const retry = await screen.findByRole('button', { name: 'Try PDF again' });
-    expect(screen.getByRole('status').textContent).toBe('PDF could not be displayed. Try again.');
-    expect(document.activeElement).toBe(retry);
+      const retry = await screen.findByRole('button', { name: 'Try PDF again' });
+      expect(screen.getByRole('status').textContent).toBe('PDF could not be displayed. Try again.');
+      expect(document.activeElement).toBe(retry);
 
-    pdfMocks.documentMode = 'success';
-    pdfMocks.pageMode = 'success';
-    fireEvent.click(retry);
-    await waitFor(() => expect(screen.getByLabelText('Rendered PDF page 1')).toBeTruthy());
-  });
+      pdfMocks.documentMode = 'success';
+      pdfMocks.pageMode = 'success';
+      fireEvent.click(retry);
+      await waitFor(() => expect(screen.getByLabelText('Rendered PDF page 1')).toBeTruthy());
+    },
+  );
 });

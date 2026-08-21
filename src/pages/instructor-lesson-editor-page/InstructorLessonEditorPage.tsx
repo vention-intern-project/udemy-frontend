@@ -1,16 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 
 import type { LessonType } from '@entities/course';
 import {
   instructorEditorCourseQueryKey,
   instructorEditorLessonQueryKey,
   mapInstructorEditorFormFailure,
+  resolveInstructorEditorFailureMessage,
+  resolveInstructorEditorFormFailure,
   requestInstructorEditorLesson,
   updateInstructorLesson,
   uploadInstructorLessonFile,
   type UpdateInstructorLessonInput,
+  type InstructorEditorFormFailure,
 } from '@features/instructor-course-editor';
 import { useSession } from '@features/auth-session';
 import {
@@ -27,25 +32,24 @@ import styles from './InstructorLessonEditorPage.module.css';
 
 interface LessonFormState extends UpdateInstructorLessonInput {}
 
-type LessonFieldErrors = Readonly<Record<string, string>>;
-type UploadFieldErrors = Readonly<Record<string, string>>;
-
 interface UploadRule {
   readonly accept: string;
   readonly description: string;
   readonly maxBytes: number;
 }
 
-const LESSON_ERROR_FIELDS = {
-  title: { field: 'title', label: 'Lesson title' },
-  lesson_type: { field: 'lessonType', label: 'Lesson type' },
-  description: { field: 'description', label: 'Description' },
-  is_published: { field: 'isPublished', label: 'Publish this lesson' },
-};
+function lessonErrorFields() {
+  return {
+    title: { field: 'title', labelKey: 'courseEditorLessonTitle' },
+    lesson_type: { field: 'lessonType', labelKey: 'courseEditorLessonType' },
+    description: { field: 'description', labelKey: 'courseEditorDescription' },
+    is_published: { field: 'isPublished', labelKey: 'courseEditorPublishThisLesson' },
+  };
+}
 
-const UPLOAD_ERROR_FIELDS = {
-  file: { field: 'file', label: 'Lesson file' },
-};
+function uploadErrorFields() {
+  return { file: { field: 'file', labelKey: 'lessonEditorLessonFile' } };
+}
 
 function positiveInteger(value: string | undefined): number | null {
   if (!value || !/^\d+$/u.test(value)) return null;
@@ -53,15 +57,19 @@ function positiveInteger(value: string | undefined): number | null {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
-function uploadRule(type: LessonType): UploadRule | null {
+function uploadRule(type: LessonType, t: TFunction): UploadRule | null {
   if (type === 'video')
     return {
       accept: '.mp4,.webm,.mov',
       maxBytes: 150 * 1024 * 1024,
-      description: 'MP4, WebM, or MOV up to 150 MB.',
+      description: t('instructor:lessonEditorMp4WebmOrMovUpTo150Mb'),
     };
   if (type === 'pdf')
-    return { accept: '.pdf', maxBytes: 50 * 1024 * 1024, description: 'PDF up to 50 MB.' };
+    return {
+      accept: '.pdf',
+      maxBytes: 50 * 1024 * 1024,
+      description: t('instructor:lessonEditorPdfUpTo50Mb'),
+    };
   return null;
 }
 
@@ -72,15 +80,16 @@ function fileMatchesUploadRule(file: File, rule: UploadRule | null): boolean {
 }
 
 export function InstructorLessonEditorPage() {
+  const { t } = useTranslation();
+  const formErrorFields = lessonErrorFields();
+  const fileErrorFields = uploadErrorFields();
   const lessonId = positiveInteger(useParams().lessonId);
   const session = useSession();
   const queryClient = useQueryClient();
   const [form, setForm] = useState<LessonFormState | null>(null);
   const [file, setFile] = useState<File | null>(null);
-  const [formError, setFormError] = useState<string | null>(null);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const [formFieldErrors, setFormFieldErrors] = useState<LessonFieldErrors>({});
-  const [uploadFieldErrors, setUploadFieldErrors] = useState<UploadFieldErrors>({});
+  const [formFailure, setFormFailure] = useState<InstructorEditorFormFailure | null>(null);
+  const [uploadFailure, setUploadFailure] = useState<InstructorEditorFormFailure | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
   const lessonTypeRef = useRef<HTMLSelectElement>(null);
@@ -120,24 +129,22 @@ export function InstructorLessonEditorPage() {
       return updateInstructorLesson(session, lessonId, form);
     },
     onSuccess: async (updatedLesson) => {
-      setFormError(null);
-      setFormFieldErrors({});
+      setFormFailure(null);
       if (updatedLesson.lessonType !== lesson.data?.lessonType) {
-        const nextRule = uploadRule(updatedLesson.lessonType);
+        const nextRule = uploadRule(updatedLesson.lessonType, t);
         setFile(null);
         if (fileRef.current) fileRef.current.value = '';
         if (nextRule) {
-          const message =
-            'The lesson type changed. Choose a file that matches the updated lesson type.';
-          setUploadError(message);
-          setUploadFieldErrors({ file: message });
+          const message = {
+            kind: 'resource',
+            key: 'lessonEditorTheLessonTypeChangedChooseAFileThatMatchesTheUpdatedLessonType',
+          } as const;
+          setUploadFailure({ fields: { file: message }, summary: message });
         } else {
-          setUploadError(null);
-          setUploadFieldErrors({});
+          setUploadFailure(null);
         }
       } else {
-        setUploadError(null);
-        setUploadFieldErrors({});
+        setUploadFailure(null);
       }
       await refresh(updatedLesson.courseId);
     },
@@ -145,15 +152,15 @@ export function InstructorLessonEditorPage() {
       const failure = mapInstructorEditorFormFailure(
         error,
         {
-          action: 'save this lesson',
-          unauthorized: 'Sign in again before continuing.',
-          forbidden: 'You do not have permission to change this lesson.',
-          notFound: 'This lesson is no longer available.',
+          actionKey: 'lessonEditorSaveThisLesson',
+          unauthorizedKey: 'courseEditorSignInAgainBeforeContinuing',
+          forbiddenKey: 'lessonEditorYouDoNotHavePermissionToChangeThisLesson',
+          notFoundKey: 'lessonEditorThisLessonIsNoLongerAvailable',
+          badRequestKey: null,
         },
-        LESSON_ERROR_FIELDS,
+        formErrorFields,
       );
-      setFormError(failure.summary);
-      setFormFieldErrors(failure.fields);
+      setFormFailure(failure);
     },
   });
   const upload = useMutation({
@@ -163,8 +170,7 @@ export function InstructorLessonEditorPage() {
     },
     onMutate: () => lesson.data?.courseId,
     onSuccess: async (_acknowledgement, _variables, courseId) => {
-      setUploadError(null);
-      setUploadFieldErrors({});
+      setUploadFailure(null);
       setFile(null);
       if (fileRef.current) fileRef.current.value = '';
       setUploadSuccess(true);
@@ -174,78 +180,83 @@ export function InstructorLessonEditorPage() {
       const failure = mapInstructorEditorFormFailure(
         error,
         {
-          action: 'upload this file',
-          unauthorized: 'Sign in again before continuing.',
-          forbidden: 'You do not have permission to change this lesson.',
-          notFound: 'This lesson is no longer available.',
-          badRequest: 'Choose a file that matches this lesson type and size limit.',
+          actionKey: 'lessonEditorUploadThisFile',
+          unauthorizedKey: 'courseEditorSignInAgainBeforeContinuing',
+          forbiddenKey: 'lessonEditorYouDoNotHavePermissionToChangeThisLesson',
+          notFoundKey: 'lessonEditorThisLessonIsNoLongerAvailable',
+          badRequestKey: 'lessonEditorChooseAFileThatMatchesThisLessonTypeAndSizeLimit',
         },
-        UPLOAD_ERROR_FIELDS,
+        fileErrorFields,
       );
-      setUploadError(failure.summary);
-      setUploadFieldErrors(failure.fields);
+      setUploadFailure(failure);
     },
   });
   useEffect(() => {
-    if (formFieldErrors.title) titleRef.current?.focus({ preventScroll: true });
-    else if (formFieldErrors.lessonType) lessonTypeRef.current?.focus({ preventScroll: true });
-    else if (formFieldErrors.description) descriptionRef.current?.focus({ preventScroll: true });
-    else if (formFieldErrors.isPublished) publishedRef.current?.focus({ preventScroll: true });
-    else if (formError) formErrorRef.current?.focus({ preventScroll: true });
-  }, [formError, formFieldErrors]);
+    if (formFailure?.fields.title) titleRef.current?.focus({ preventScroll: true });
+    else if (formFailure?.fields.lessonType) lessonTypeRef.current?.focus({ preventScroll: true });
+    else if (formFailure?.fields.description)
+      descriptionRef.current?.focus({ preventScroll: true });
+    else if (formFailure?.fields.isPublished) publishedRef.current?.focus({ preventScroll: true });
+    else if (formFailure) formErrorRef.current?.focus({ preventScroll: true });
+  }, [formFailure]);
   useEffect(() => {
-    if (uploadFieldErrors.file) fileRef.current?.focus({ preventScroll: true });
-    else if (uploadError) uploadErrorRef.current?.focus({ preventScroll: true });
-  }, [uploadError, uploadFieldErrors]);
+    if (uploadFailure?.fields.file) fileRef.current?.focus({ preventScroll: true });
+    else if (uploadFailure) uploadErrorRef.current?.focus({ preventScroll: true });
+  }, [uploadFailure]);
   if (lessonId === null)
     return (
-      <Notice tone="error" title="Lesson not found">
-        This lesson address is not valid.
+      <Notice tone="error" title={t('instructor:lessonEditorLessonNotFound')}>
+        {t('instructor:lessonEditorLessonAddressInvalid')}
       </Notice>
     );
   if (lesson.isPending)
     return (
-      <SkeletonGroup label="Loading lesson editor">
+      <SkeletonGroup label={t('instructor:lessonEditorLoadingLessonEditor')}>
         <Skeleton width="100%" height="320px" shape="rect" />
       </SkeletonGroup>
     );
   if (lesson.isError)
     return (
-      <Notice tone="error" title="Lesson editor unavailable">
+      <Notice tone="error" title={t('instructor:lessonEditorLessonEditorUnavailable')}>
         <p>
-          {
+          {resolveInstructorEditorFailureMessage(
             mapInstructorEditorFormFailure(
               lesson.error,
               {
-                action: 'load this lesson',
-                unauthorized: 'Sign in again before continuing.',
-                forbidden: 'You do not have permission to change this lesson.',
-                notFound: 'This lesson is no longer available.',
+                actionKey: 'lessonEditorLoadThisLesson',
+                unauthorizedKey: 'courseEditorSignInAgainBeforeContinuing',
+                forbiddenKey: 'lessonEditorYouDoNotHavePermissionToChangeThisLesson',
+                notFoundKey: 'lessonEditorThisLessonIsNoLongerAvailable',
+                badRequestKey: null,
               },
-              LESSON_ERROR_FIELDS,
-            ).summary
-          }
+              formErrorFields,
+            ).summary,
+            t,
+          )}
         </p>
         <Button variant="secondary" onClick={() => void lesson.refetch()}>
-          Try again
+          {t('routes:tryAgain')}
         </Button>
       </Notice>
     );
   if (!lesson.data || !form) return null;
-  const rule = uploadRule(lesson.data.lessonType);
-  const formFailure = formError;
-  const uploadFailure = uploadError;
+  const rule = uploadRule(lesson.data.lessonType, t);
+  const resolvedFormFailure = formFailure
+    ? resolveInstructorEditorFormFailure(formFailure, t)
+    : null;
+  const resolvedUploadFailure = uploadFailure
+    ? resolveInstructorEditorFormFailure(uploadFailure, t)
+    : null;
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (update.isPending) return;
     if (form.title.trim() === '') {
-      setFormError('Enter a lesson title.');
-      setFormFieldErrors({ title: 'Enter a lesson title.' });
+      const message = { kind: 'resource', key: 'courseEditorEnterALessonTitle' } as const;
+      setFormFailure({ fields: { title: message }, summary: message });
       titleRef.current?.focus();
       return;
     }
-    setFormError(null);
-    setFormFieldErrors({});
+    setFormFailure(null);
     update.mutate();
   };
   const selectFile = (event: ChangeEvent<HTMLInputElement>) => {
@@ -256,77 +267,84 @@ export function InstructorLessonEditorPage() {
     }
     if (!fileMatchesUploadRule(next, rule)) {
       setFile(null);
-      setUploadError('Choose a file that matches the stated type and size limit.');
-      setUploadFieldErrors({ file: 'Choose a file that matches the stated type and size limit.' });
+      const descriptor = {
+        kind: 'resource',
+        key: 'lessonEditorChooseAFileThatMatchesTheStatedTypeAndSizeLimit',
+      } as const;
+      setUploadFailure({ fields: { file: descriptor }, summary: descriptor });
       return;
     }
-    setUploadError(null);
-    setUploadFieldErrors({});
+    setUploadFailure(null);
     setFile(next);
   };
   const submitUpload = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (upload.isPending) return;
     if (!file) {
-      setUploadError('Choose a file before uploading.');
-      setUploadFieldErrors({ file: 'Choose a file before uploading.' });
+      const descriptor = {
+        kind: 'resource',
+        key: 'lessonEditorChooseAFileBeforeUploading',
+      } as const;
+      setUploadFailure({ fields: { file: descriptor }, summary: descriptor });
       return;
     }
     if (!fileMatchesUploadRule(file, rule)) {
       setFile(null);
       if (fileRef.current) fileRef.current.value = '';
-      setUploadError('Choose a file that matches the stated type and size limit.');
-      setUploadFieldErrors({ file: 'Choose a file that matches the stated type and size limit.' });
+      const descriptor = {
+        kind: 'resource',
+        key: 'lessonEditorChooseAFileThatMatchesTheStatedTypeAndSizeLimit',
+      } as const;
+      setUploadFailure({ fields: { file: descriptor }, summary: descriptor });
       return;
     }
-    setUploadError(null);
-    setUploadFieldErrors({});
+    setUploadFailure(null);
     upload.mutate();
   };
   return (
     <article className={styles.page} aria-busy={update.isPending || upload.isPending}>
       <header className={styles.header}>
         <div>
-          <p className={styles.eyebrow}>Instructor workspace</p>
-          <h1>Edit lesson</h1>
+          <p className={styles.eyebrow}>{t('instructor:lessonEditorInstructorWorkspace')}</p>
+          <h1>{t('routes:editLessonTitle')}</h1>
         </div>
         <Link className={styles.backLink} to={`/instructor/courses/${lesson.data.courseId}/edit`}>
-          Back to course
+          {t('instructor:lessonEditorBackToCourse')}
         </Link>
       </header>
       <section className={styles.panel} aria-labelledby="lesson-details-heading">
-        <h2 id="lesson-details-heading">Lesson details</h2>
+        <h2 id="lesson-details-heading">{t('instructor:lessonEditorLessonDetails')}</h2>
         <form className={styles.form} onSubmit={submit}>
           <Input
             ref={titleRef}
-            label="Lesson title"
+            label={t('instructor:courseEditorLessonTitle')}
             name="title"
             maxLength={255}
             required
             value={form.title}
-            error={formFieldErrors.title}
+            error={resolvedFormFailure?.fields.title}
             onChange={(event) => setForm({ ...form, title: event.target.value })}
           />
           <Select
             ref={lessonTypeRef}
-            label="Lesson type"
+            label={t('instructor:courseEditorLessonType')}
             name="lesson-type"
             value={form.lessonType}
-            error={formFieldErrors.lessonType}
+            error={resolvedFormFailure?.fields.lessonType}
             onChange={(event) => {
               setForm({ ...form, lessonType: event.target.value as LessonType });
             }}
           >
-            <option value="video">Video</option>
-            <option value="text">Text</option>
-            <option value="pdf">PDF</option>
+            <option value="video">{t('instructor:courseEditorVideo')}</option>
+            <option value="text">{t('instructor:courseEditorText')}</option>
+            <option value="pdf">{t('instructor:courseEditorPdf')}</option>
           </Select>
           <Textarea
             ref={descriptionRef}
-            label="Description"
+            label={t('instructor:courseEditorDescription')}
             name="description"
             value={form.description}
-            error={formFieldErrors.description}
+            error={resolvedFormFailure?.fields.description}
             onChange={(event) => setForm({ ...form, description: event.target.value })}
           />
           <label className={styles.checkbox}>
@@ -335,65 +353,67 @@ export function InstructorLessonEditorPage() {
               type="checkbox"
               name="is_published"
               checked={form.isPublished}
-              aria-invalid={formFieldErrors.isPublished ? true : undefined}
+              aria-invalid={formFailure?.fields.isPublished ? true : undefined}
               aria-describedby={
-                formFieldErrors.isPublished ? 'edit-lesson-is-published-error' : undefined
+                formFailure?.fields.isPublished ? 'edit-lesson-is-published-error' : undefined
               }
               onChange={(event) => setForm({ ...form, isPublished: event.target.checked })}
             />{' '}
-            Publish this lesson
+            {t('instructor:courseEditorPublishThisLesson')}
           </label>
-          {formFieldErrors.isPublished ? (
+          {formFailure?.fields.isPublished ? (
             <span id="edit-lesson-is-published-error" className={styles.fieldError} role="alert">
-              {formFieldErrors.isPublished}
+              {resolvedFormFailure?.fields.isPublished}
             </span>
           ) : null}
-          {formFailure && Object.keys(formFieldErrors).length === 0 ? (
+          {formFailure && Object.keys(formFailure.fields).length === 0 ? (
             <div ref={formErrorRef} tabIndex={-1} role="alert">
-              <Notice tone="error">{formFailure}</Notice>
+              <Notice tone="error">{resolvedFormFailure?.summary}</Notice>
             </div>
           ) : null}
           <Button
             type="submit"
             state={update.isPending ? 'loading' : 'idle'}
-            loadingLabel="Saving lesson"
+            loadingLabel={t('instructor:lessonEditorSavingLesson')}
           >
-            Save lesson
+            {t('instructor:lessonEditorSaveLesson')}
           </Button>
         </form>
       </section>
       <section className={styles.panel} aria-labelledby="upload-heading">
-        <h2 id="upload-heading">Upload lesson file</h2>
+        <h2 id="upload-heading">{t('instructor:lessonEditorUploadLessonFile')}</h2>
         {rule === null ? (
-          <Notice tone="info">File upload is unavailable for text lessons.</Notice>
+          <Notice tone="info">
+            {t('instructor:lessonEditorFileUploadIsUnavailableForTextLessons')}
+          </Notice>
         ) : uploadSuccess ? (
-          <Notice tone="info" title="File accepted and queued">
-            Processing status is unavailable.
+          <Notice tone="info" title={t('instructor:lessonEditorFileAcceptedAndQueued')}>
+            {t('instructor:lessonEditorProcessingStatusUnavailable')}
           </Notice>
         ) : (
           <form className={styles.form} onSubmit={submitUpload}>
             <Input
               ref={fileRef}
-              label="Lesson file"
+              label={t('instructor:lessonEditorLessonFile')}
               name="file"
               type="file"
               accept={rule.accept}
               helpText={rule.description}
-              error={uploadFieldErrors.file}
+              error={resolvedUploadFailure?.fields.file}
               onChange={selectFile}
             />
-            {uploadFailure && Object.keys(uploadFieldErrors).length === 0 ? (
+            {uploadFailure && Object.keys(uploadFailure.fields).length === 0 ? (
               <div ref={uploadErrorRef} tabIndex={-1} role="alert">
-                <Notice tone="error">{uploadFailure}</Notice>
+                <Notice tone="error">{resolvedUploadFailure?.summary}</Notice>
               </div>
             ) : null}
             <Button
               type="submit"
               disabled={file === null}
               state={upload.isPending ? 'loading' : 'idle'}
-              loadingLabel="Uploading file"
+              loadingLabel={t('instructor:lessonEditorUploadingFile')}
             >
-              Upload file
+              {t('instructor:lessonEditorUploadFile')}
             </Button>
           </form>
         )}

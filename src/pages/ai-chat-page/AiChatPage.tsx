@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft, CircleHelp, Compass, Medal, MoreVertical, Trash2, X } from 'lucide-react';
 
@@ -50,10 +51,13 @@ interface CourseAiChatPageProps {
 }
 
 function CourseAiChatPage({ enrollmentId }: CourseAiChatPageProps) {
+  const { t } = useTranslation();
   const workspace = useLearningWorkspace(enrollmentId, { reducedMotion: false });
   if (workspace.enrollment.isPending)
     return (
-      <SkeletonGroup label="Loading course assistant">
+      <SkeletonGroup
+        label={t('ai:loadingCourseAssistant', { defaultValue: 'Loading course assistant' })}
+      >
         <Skeleton width="40%" height="40px" />
         <Skeleton width="100%" height="360px" shape="rect" />
       </SkeletonGroup>
@@ -61,10 +65,16 @@ function CourseAiChatPage({ enrollmentId }: CourseAiChatPageProps) {
   if (workspace.enrollment.isError || workspace.enrollment.data === undefined)
     return (
       <section className={styles.state}>
-        <h1>Course assistant unavailable</h1>
-        <p>This assistant is unavailable for this course.</p>
+        <h1>
+          {t('ai:courseAssistantUnavailable', { defaultValue: 'Course assistant unavailable' })}
+        </h1>
+        <p>
+          {t('ai:thisAssistantIsUnavailableForThis', {
+            defaultValue: 'This assistant is unavailable for this course.',
+          })}
+        </p>
         <ContextualNavigationLink className={styles.unavailableReturnLink} to="/learning">
-          Return to my learning
+          {t('ai:returnToMyLearning')}
         </ContextualNavigationLink>
       </section>
     );
@@ -72,13 +82,19 @@ function CourseAiChatPage({ enrollmentId }: CourseAiChatPageProps) {
   if (enrollment.status !== 'active')
     return (
       <section className={styles.state}>
-        <h1>Course assistant unavailable</h1>
-        <p>This assistant is unavailable for this course.</p>
+        <h1>
+          {t('ai:courseAssistantUnavailable', { defaultValue: 'Course assistant unavailable' })}
+        </h1>
+        <p>
+          {t('ai:thisAssistantIsUnavailableForThis', {
+            defaultValue: 'This assistant is unavailable for this course.',
+          })}
+        </p>
         <ContextualNavigationLink
           className={styles.unavailableReturnLink}
           to={`/learning/enrollments/${enrollment.id}`}
         >
-          Return to learning workspace
+          {t('ai:returnToLearningWorkspace')}
         </ContextualNavigationLink>
       </section>
     );
@@ -95,12 +111,21 @@ function GeneralAiChatPage() {
 }
 
 function InvalidCourseAiChatPage() {
+  const { t } = useTranslation();
   return (
     <section className={styles.state} aria-labelledby="invalid-course-assistant-route-title">
-      <h1 id="invalid-course-assistant-route-title">Invalid course assistant address</h1>
-      <p>Return to my learning and choose a course to open its assistant.</p>
+      <h1 id="invalid-course-assistant-route-title">
+        {t('ai:invalidCourseAssistantAddress', {
+          defaultValue: 'Invalid course assistant address',
+        })}
+      </h1>
+      <p>
+        {t('ai:returnToMyLearningAndChoose', {
+          defaultValue: 'Return to my learning and choose a course to open its assistant.',
+        })}
+      </p>
       <ContextualNavigationLink className={styles.unavailableReturnLink} to="/learning">
-        Return to my learning
+        {t('ai:returnToMyLearning')}
       </ContextualNavigationLink>
     </section>
   );
@@ -121,24 +146,6 @@ interface SuggestedAction {
   readonly prompt: string;
 }
 
-const SUGGESTED_ACTIONS: readonly SuggestedAction[] = [
-  {
-    icon: Compass,
-    label: 'Recommend a course',
-    prompt: 'Recommend a course based on my learning goals.',
-  },
-  {
-    icon: CircleHelp,
-    label: 'Explain a concept',
-    prompt: 'Explain a concept I am learning in simple terms.',
-  },
-  {
-    icon: Medal,
-    label: 'Quiz me',
-    prompt: 'Quiz me on the course material I am learning.',
-  },
-];
-
 interface SuggestedActionsProps {
   readonly chat: CourseChatWorkflow;
   readonly backTo: string;
@@ -153,9 +160,33 @@ interface SuggestedActionListProps {
 }
 
 function SuggestedActionList({ chat, onActionSelect }: SuggestedActionListProps) {
+  const { t } = useTranslation();
+  const suggestedActions: readonly SuggestedAction[] = [
+    {
+      icon: Compass,
+      label: t('ai:recommendACourse', { defaultValue: 'Recommend a course' }),
+      prompt: t('ai:recommendACourseBasedOnMy', {
+        defaultValue: 'Recommend a course based on my learning goals.',
+      }),
+    },
+    {
+      icon: CircleHelp,
+      label: t('ai:explainAConcept', { defaultValue: 'Explain a concept' }),
+      prompt: t('ai:explainAConceptIAmLearning', {
+        defaultValue: 'Explain a concept I am learning in simple terms.',
+      }),
+    },
+    {
+      icon: Medal,
+      label: t('ai:quizMe', { defaultValue: 'Quiz me' }),
+      prompt: t('ai:quizMeOnTheCourseMaterial', {
+        defaultValue: 'Quiz me on the course material I am learning.',
+      }),
+    },
+  ];
   return (
     <div className={styles.suggestedActions}>
-      {SUGGESTED_ACTIONS.map(({ icon: Icon, label, prompt }) => {
+      {suggestedActions.map(({ icon: Icon, label, prompt }) => {
         const selected = chat.draft === prompt;
         return (
           <button
@@ -186,13 +217,14 @@ function SuggestedActions({
   onActionSelect,
   onCompactToggle,
 }: SuggestedActionsProps) {
+  const { t } = useTranslation();
   const compactPanelId = useId();
   return (
     <>
       <div className={styles.compactSuggestedActions}>
         <ContextualNavigationLink className={styles.returnLink} to={backTo}>
           <ChevronLeft aria-hidden="true" />
-          Return to my learning
+          {t('ai:returnToMyLearning')}
         </ContextualNavigationLink>
         <button
           className={styles.suggestedActionsTrigger}
@@ -201,15 +233,19 @@ function SuggestedActions({
           aria-controls={compactPanelId}
           onClick={onCompactToggle}
         >
-          Suggested Actions
+          {t('ai:suggestedActions', { defaultValue: 'Suggested Actions' })}
         </button>
         {isCompactOpen ? (
           <section
             id={compactPanelId}
             className={styles.compactSuggestedActionsPanel}
-            aria-label="Suggested Actions"
+            aria-label={t('ai:suggestedActions', { defaultValue: 'Suggested Actions' })}
           >
-            <p>Quick prompts to jumpstart your session</p>
+            <p>
+              {t('ai:quickPromptsToJumpstartYourSession', {
+                defaultValue: 'Quick prompts to jumpstart your session',
+              })}
+            </p>
             <SuggestedActionList chat={chat} onActionSelect={onActionSelect} />
           </section>
         ) : null}
@@ -217,11 +253,17 @@ function SuggestedActions({
       <div className={styles.sidebarColumn}>
         <ContextualNavigationLink className={styles.returnLink} to={backTo}>
           <ChevronLeft aria-hidden="true" />
-          Return to my learning
+          {t('ai:returnToMyLearning')}
         </ContextualNavigationLink>
         <aside className={styles.sidebar} aria-labelledby="suggested-actions-title">
-          <h2 id="suggested-actions-title">Suggested Actions</h2>
-          <p>Quick prompts to jumpstart your session</p>
+          <h2 id="suggested-actions-title">
+            {t('ai:suggestedActions0092', { defaultValue: 'Suggested Actions' })}
+          </h2>
+          <p>
+            {t('ai:quickPromptsToJumpstartYourSession', {
+              defaultValue: 'Quick prompts to jumpstart your session',
+            })}
+          </p>
           <SuggestedActionList chat={chat} onActionSelect={onActionSelect} />
         </aside>
       </div>
@@ -230,6 +272,7 @@ function SuggestedActions({
 }
 
 function AssistantPageLayout({ context, backTo }: AssistantPageLayoutProps) {
+  const { t } = useTranslation();
   const chat = useCourseChat(context);
   const location = useLocation();
   const navigate = useNavigate();
@@ -242,7 +285,10 @@ function AssistantPageLayout({ context, backTo }: AssistantPageLayoutProps) {
   const isUnavailable = chat.error === 'temporarily_unavailable' || chat.error === 'unavailable';
   const isAvailable =
     !isUnavailable && chat.messages.some((message) => message.author === 'assistant');
-  const chatTitle = context.kind === 'general' ? 'General Assistance Chat' : 'Course Assistant';
+  const chatTitle =
+    context.kind === 'general'
+      ? t('ai:generalAssistanceChat', { defaultValue: 'General Assistance Chat' })
+      : t('ai:courseAssistant', { defaultValue: 'Course Assistant' });
   const state = location.state as AiChatNavigationState | null;
   const returnTo =
     typeof state?.returnTo === 'string'
@@ -250,10 +296,10 @@ function AssistantPageLayout({ context, backTo }: AssistantPageLayoutProps) {
       : null;
   const closeDestination = returnTo && returnTo !== location.pathname ? returnTo : backTo;
   const availabilityLabel = isAvailable
-    ? 'Assistant available'
+    ? t('ai:assistantAvailable', { defaultValue: 'Assistant available' })
     : isUnavailable
-      ? 'Assistant unavailable'
-      : 'Assistant availability unknown';
+      ? t('ai:assistantUnavailable', { defaultValue: 'Assistant unavailable' })
+      : t('ai:assistantAvailabilityUnknown', { defaultValue: 'Assistant availability unknown' });
 
   useEffect(() => {
     if (!isActionMenuOpen) return undefined;
@@ -279,12 +325,9 @@ function AssistantPageLayout({ context, backTo }: AssistantPageLayoutProps) {
         />
         <div className={styles.heroContent}>
           <h1 id="ai-chat-hero-title">
-            <span className={styles.betaBadge}>BETA</span> AI Learning Assistant
+            <span className={styles.betaBadge}>{t('ai:beta')}</span> {t('ai:learningAssistant')}
           </h1>
-          <p>
-            Ask questions, summarize lessons, take interactive practice quizzes, and get course
-            recommendations tailored directly to your path.
-          </p>
+          <p>{t('ai:assistantDescription')}</p>
         </div>
       </section>
       <SuggestedActions
@@ -298,7 +341,7 @@ function AssistantPageLayout({ context, backTo }: AssistantPageLayoutProps) {
         }}
       />
       <section className={styles.chatArea}>
-        <section className={styles.chatFrame} aria-label="AI assistant chat">
+        <section className={styles.chatFrame} aria-label={t('ai:assistantChat')}>
           <header className={styles.chatFrameHeader}>
             <div className={styles.chatFrameIdentity}>
               <span
@@ -308,7 +351,11 @@ function AssistantPageLayout({ context, backTo }: AssistantPageLayoutProps) {
               />
               <span>
                 <strong>{chatTitle}</strong>
-                <small>Powered by LearnHub Intelligence</small>
+                <small>
+                  {t('ai:poweredByLearnhubIntelligence', {
+                    defaultValue: 'Powered by LearnHub Intelligence',
+                  })}
+                </small>
               </span>
             </div>
             <div className={styles.chatFrameActions}>
@@ -316,7 +363,7 @@ function AssistantPageLayout({ context, backTo }: AssistantPageLayoutProps) {
                 <Button
                   variant="ghost"
                   id={actionTriggerId}
-                  aria-label="Conversation actions"
+                  aria-label={t('ai:conversationActions', { defaultValue: 'Conversation actions' })}
                   aria-expanded={isActionMenuOpen}
                   onClick={() => setIsActionMenuOpen((isOpen) => !isOpen)}
                   onKeyDown={(event) => {
@@ -328,7 +375,9 @@ function AssistantPageLayout({ context, backTo }: AssistantPageLayoutProps) {
                 {isActionMenuOpen ? (
                   <span
                     className={styles.actionMenuList}
-                    aria-label="Conversation actions"
+                    aria-label={t('ai:conversationActions', {
+                      defaultValue: 'Conversation actions',
+                    })}
                     onKeyDown={(event) => {
                       if (event.key !== 'Escape') return;
                       event.preventDefault();
@@ -344,7 +393,7 @@ function AssistantPageLayout({ context, backTo }: AssistantPageLayoutProps) {
                         setIsClearConfirmationOpen(true);
                       }}
                     >
-                      <span>Clear chat</span>
+                      <span>{t('ai:clearChat', { defaultValue: 'Clear chat' })}</span>
                       <Trash2 aria-hidden="true" />
                     </button>
                   </span>
@@ -352,7 +401,7 @@ function AssistantPageLayout({ context, backTo }: AssistantPageLayoutProps) {
               </span>
               <Button
                 variant="ghost"
-                aria-label="Close assistant chat"
+                aria-label={t('ai:closeAssistantChat', { defaultValue: 'Close assistant chat' })}
                 onClick={() => navigate(closeDestination)}
               >
                 <X aria-hidden="true" />
@@ -367,15 +416,15 @@ function AssistantPageLayout({ context, backTo }: AssistantPageLayoutProps) {
             focusRequest={composerFocusRequest}
           />
         </section>
-        <Notice tone="info">
-          This conversation stays available while you continue using the assistant.
-        </Notice>
+        <Notice tone="info">{t('ai:conversationPersistence')}</Notice>
       </section>
       <DestructiveConfirmation
         open={isClearConfirmationOpen}
-        title="Clear this conversation?"
-        description="This action cannot be undone."
-        confirmLabel="Clear conversation"
+        title={t('ai:clearThisConversation', { defaultValue: 'Clear this conversation?' })}
+        description={t('ai:thisActionCannotBeUndone', {
+          defaultValue: 'This action cannot be undone.',
+        })}
+        confirmLabel={t('ai:clearConversation', { defaultValue: 'Clear conversation' })}
         onConfirm={() => {
           chat.reset();
           setIsClearConfirmationOpen(false);

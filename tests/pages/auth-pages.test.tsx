@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { QueryClientProvider } from '@tanstack/react-query';
-import { act, cleanup, render, renderHook, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   StrictMode,
@@ -26,6 +26,7 @@ import {
 } from '../../src/features/auth-workflows';
 import { SessionProvider, type AccessTokenStore } from '../../src/features/auth-session';
 import { ApiError, type ApiClient, type ApiRequestOptions } from '../../src/shared/api';
+import { localeRuntime, type Locale } from '../../src/shared/locale';
 import { ThemeProvider } from '../../src/shared/ui/theme';
 
 interface TestAccessTokenStore extends AccessTokenStore {
@@ -58,6 +59,67 @@ interface ResetTokenRenderObservation {
 interface RouteNavigationControlProps {
   readonly destination: string;
 }
+
+interface AuthResidualLocaleCopy {
+  readonly continueLabel: string;
+  readonly createAccount: string;
+  readonly createAnAccount: string;
+  readonly forgotPassword: string;
+  readonly logIn: string;
+  readonly passwordUpdated: string;
+  readonly recoveryChannel: string;
+  readonly recoveryLink: string;
+  readonly resetPassword: string;
+  readonly resetTokenHelp: string;
+}
+
+const AUTH_RESIDUAL_COPY: Readonly<Record<Locale, AuthResidualLocaleCopy>> = {
+  en: {
+    continueLabel: 'Continue',
+    createAccount: 'Create account',
+    createAnAccount: 'Create an account',
+    forgotPassword: 'Forgot your password?',
+    logIn: 'Log in',
+    passwordUpdated: 'Your password has been updated.',
+    recoveryChannel:
+      'If the account can use password recovery, the next steps will be available through the configured recovery channel.',
+    recoveryLink:
+      'Open the password-reset link from your recovery message to choose a new password.',
+    resetPassword: 'Reset password',
+    resetTokenHelp:
+      'Your reset link supplies a private token. It stays hidden while you complete this form.',
+  },
+  ru: {
+    continueLabel: 'Продолжить',
+    createAccount: 'Создать аккаунт',
+    createAnAccount: 'Создать аккаунт',
+    forgotPassword: 'Забыли пароль?',
+    logIn: 'Войти',
+    passwordUpdated: 'Ваш пароль обновлён.',
+    recoveryChannel:
+      'Если для аккаунта доступно восстановление пароля, дальнейшие шаги будут доступны через настроенный канал восстановления.',
+    recoveryLink:
+      'Откройте ссылку для сброса пароля из сообщения для восстановления, чтобы выбрать новый пароль.',
+    resetPassword: 'Сбросить пароль',
+    resetTokenHelp:
+      'Ссылка для сброса содержит приватный токен. Он остаётся скрытым, пока вы заполняете форму.',
+  },
+  uz: {
+    continueLabel: 'Davom etish',
+    createAccount: 'Akkaunt yaratish',
+    createAnAccount: 'Akkaunt yaratish',
+    forgotPassword: 'Parolni unutdingizmi?',
+    logIn: 'Kirish',
+    passwordUpdated: 'Parolingiz yangilandi.',
+    recoveryChannel:
+      'Agar akkaunt parolni tiklashdan foydalana olsa, keyingi qadamlar sozlangan tiklash kanali orqali mavjud bo‘ladi.',
+    recoveryLink:
+      'Yangi parol tanlash uchun tiklash xabaringizdagi parolni tiklash havolasini oching.',
+    resetPassword: 'Parolni tiklash',
+    resetTokenHelp:
+      'Tiklash havolangiz maxfiy tokenni o‘z ichiga oladi. Shaklni to‘ldirayotganingizda u yashirin qoladi.',
+  },
+};
 
 const profile: UserProfileDto = {
   email: 'learner@example.com',
@@ -235,7 +297,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-beforeEach(() => {
+beforeEach(async () => {
+  await localeRuntime.changeLanguage('en');
   vi.stubGlobal('scrollTo', vi.fn());
 });
 
@@ -1265,4 +1328,49 @@ describe('authentication pages', () => {
     expect(screen.queryByText(/HOSTILE_(VALIDATION|TOKEN)_DETAIL/)).toBe(null);
     expect(request).toHaveBeenCalledTimes(1);
   });
+
+  it.each(['en', 'ru', 'uz'] as const)(
+    'renders every DRAFT-21 auth residual consumer in %s without changing workflow behavior',
+    async (locale) => {
+      const copy = AUTH_RESIDUAL_COPY[locale];
+      await act(() => localeRuntime.changeLanguage(locale));
+
+      renderAuth('/login', async () => ({}));
+      expect(screen.getByRole('link', { name: copy.createAnAccount })).not.toBe(null);
+      expect(screen.getByRole('link', { name: copy.forgotPassword })).not.toBe(null);
+      cleanup();
+
+      renderAuth('/signup', async () => ({}));
+      expect(within(screen.getByRole('main')).getByRole('link', { name: copy.logIn })).not.toBe(
+        null,
+      );
+      expect(screen.getByRole('button', { name: copy.createAccount })).not.toBe(null);
+      cleanup();
+
+      renderAuth('/forgot-password?reason=missing-token', async () => ({ message: 'ok' }));
+      expect(screen.getByText(copy.recoveryLink)).not.toBe(null);
+      const forgotUser = userEvent.setup();
+      const email = document.getElementById('email') as HTMLInputElement;
+      await interact(() => forgotUser.type(email, 'learner@example.com'));
+      await interact(() =>
+        forgotUser.click(screen.getByRole('button', { name: copy.continueLabel })),
+      );
+      expect(await screen.findByText(copy.recoveryChannel)).not.toBe(null);
+      cleanup();
+
+      renderAuth('/reset-password?token=localized-reset-token', async () => ({ message: 'ok' }));
+      expect(screen.getByText(copy.resetTokenHelp)).not.toBe(null);
+      const user = userEvent.setup();
+      const password = document.getElementById('password') as HTMLInputElement;
+      const confirmation = document.getElementById('passwordConfirmation') as HTMLInputElement;
+      await interact(() => user.type(password, 'new password'));
+      await interact(() => user.type(confirmation, 'new password'));
+      await interact(() => user.click(screen.getByRole('button', { name: copy.resetPassword })));
+      await waitFor(() =>
+        expect(within(screen.getByRole('main')).getByRole('status').textContent).toContain(
+          copy.passwordUpdated,
+        ),
+      );
+    },
+  );
 });

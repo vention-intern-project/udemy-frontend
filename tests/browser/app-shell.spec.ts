@@ -1107,6 +1107,12 @@ test('persists desktop and anonymous-mobile locale selections on the current rou
   await page.setViewportSize({ width: 1280, height: 844 });
   await page.goto('/');
 
+  await expect(page.getByRole('link', { name: 'LearnHub home' })).toHaveText('LearnHub');
+  await expect(page.getByRole('link', { name: 'Skip to main content' })).toHaveAttribute(
+    'href',
+    '#main-content',
+  );
+
   const desktopTrigger = page.getByRole('button', { name: 'Change language' });
   await desktopTrigger.focus();
   await page.keyboard.press('Enter');
@@ -1114,11 +1120,22 @@ test('persists desktop and anonymous-mobile locale selections on the current rou
   await page.getByRole('button', { name: 'Русский' }).click();
   expect(await page.evaluate(() => localStorage.getItem('learnhub.locale'))).toBe('ru');
   await expect(page.getByRole('button', { name: 'Изменить язык' })).toBeVisible();
+  const russianPrimaryNavigation = page.getByRole('navigation', { name: 'Основная навигация' });
+  const russianAccountNavigation = page.getByRole('navigation', { name: 'Навигация по аккаунту' });
+  await expect(russianPrimaryNavigation.getByRole('link', { name: 'Каталог' })).toBeVisible();
+  await expect(russianAccountNavigation.getByRole('link', { name: 'Войти' })).toBeVisible();
+  await expect(russianAccountNavigation.getByRole('link', { name: 'Регистрация' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Главная LearnHub' })).toHaveText('LearnHub');
+  await expect(page.getByRole('link', { name: 'Перейти к основному содержимому' })).toHaveAttribute(
+    'href',
+    '#main-content',
+  );
   await page.reload();
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole('button', { name: 'Изменить язык' })).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole('navigation', { name: 'Навигация гостя' })).toBeVisible();
   const mobileTrigger = page.getByRole('button', { name: 'Изменить язык' });
   await mobileTrigger.click();
   const uzbek = page.getByRole('button', { name: "O'zbek" });
@@ -1126,6 +1143,138 @@ test('persists desktop and anonymous-mobile locale selections on the current rou
   await uzbek.click();
   expect(await page.evaluate(() => localStorage.getItem('learnhub.locale'))).toBe('uz');
   await expect(page.getByRole('button', { name: 'Tilni o‘zgartirish' })).toBeVisible();
+  const uzbekAnonymousNavigation = page.getByRole('navigation', { name: 'Mehmon navigatsiyasi' });
+  await expect(uzbekAnonymousNavigation).toBeVisible();
+  await expect(uzbekAnonymousNavigation.getByRole('link', { name: 'Katalog' })).toBeVisible();
+  await expect(uzbekAnonymousNavigation.getByRole('link', { name: 'Kirish' })).toBeVisible();
+  await expect(
+    uzbekAnonymousNavigation.getByRole('link', { name: 'Ro‘yxatdan o‘tish' }),
+  ).toBeVisible();
+  await expect(page.getByRole('link', { name: 'LearnHub bosh sahifasi' })).toHaveText('LearnHub');
+  await expect(page.getByRole('link', { name: "Asosiy mazmunga o'tish" })).toHaveAttribute(
+    'href',
+    '#main-content',
+  );
+  await expectNoHorizontalOverflow(page);
+  assertRuntimeClean();
+});
+
+test('keeps desktop language hover disclosure open across its gap and preserves other dismissal paths', async ({
+  page,
+}) => {
+  const assertRuntimeClean = monitorRuntime(page);
+  await page.setViewportSize({ width: 1280, height: 844 });
+  await page.goto('/');
+
+  const trigger = page.getByRole('button', { name: 'Change language' });
+  const menu = page.locator('[aria-label="Language menu"]');
+  await trigger.hover();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  await expect(menu).toBeVisible();
+  await expect(trigger).not.toBeFocused();
+
+  const triggerBox = await trigger.boundingBox();
+  const menuBox = await menu.boundingBox();
+  if (!triggerBox || !menuBox) throw new Error('Language disclosure geometry is unavailable.');
+  const traversalX = Math.min(
+    Math.max(triggerBox.x + triggerBox.width / 2, menuBox.x + 4),
+    menuBox.x + menuBox.width - 4,
+  );
+  await page.mouse.move(traversalX, triggerBox.y + triggerBox.height + 4);
+  await page.waitForTimeout(60);
+  await page.mouse.move(traversalX, menuBox.y + 4);
+  await expect(menu).toBeVisible();
+
+  await page.mouse.move(8, 300);
+  await expect(menu).toHaveCount(0);
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+
+  await trigger.click();
+  await expect(menu).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(menu).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+
+  await trigger.click();
+  await expect(menu).toBeVisible();
+  await page.locator('main').click({ position: { x: 16, y: 180 } });
+  await expect(menu).toHaveCount(0);
+
+  await trigger.click();
+  await expect(menu).toBeVisible();
+  await page.evaluate(() => window.dispatchEvent(new Event('scroll')));
+  await expect(menu).toHaveCount(0);
+
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.mouse.move(8, 300);
+  await trigger.hover();
+  await expect(menu).toBeVisible();
+  await expect(trigger.locator('[data-language-selector-chevron]')).toHaveCSS('transform', 'none');
+  await expectNoHorizontalOverflow(page);
+  assertRuntimeClean();
+});
+
+test('localizes the student desktop navigation in Russian and Uzbek', async ({ page }) => {
+  const assertRuntimeClean = monitorRuntime(
+    page,
+    [],
+    [CART_STRICT_MODE_ABORT, ENROLLMENTS_STRICT_MODE_ABORT],
+  );
+  await mockAuthenticatedSession(page, 'student');
+  await mockStudentWorkspaceData(page);
+  await page.addInitScript(() => localStorage.setItem('learnhub.locale', 'ru'));
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/learning');
+
+  const russianNavigation = page.getByRole('navigation', { name: 'Основная навигация' });
+  await expect(russianNavigation.getByRole('link', { name: 'Каталог' })).toBeVisible();
+  await expect(russianNavigation.getByRole('link', { name: 'Моё обучение' })).toHaveAttribute(
+    'aria-current',
+    'page',
+  );
+
+  await page.getByRole('button', { name: 'Изменить язык' }).click();
+  await page.getByRole('button', { name: "O'zbek" }).click();
+  const uzbekNavigation = page.getByRole('navigation', { name: 'Asosiy navigatsiya' });
+  await expect(uzbekNavigation.getByRole('link', { name: 'Katalog' })).toBeVisible();
+  await expect(uzbekNavigation.getByRole('link', { name: 'Ta’limim' })).toHaveAttribute(
+    'aria-current',
+    'page',
+  );
+  await expectNoHorizontalOverflow(page);
+  assertRuntimeClean();
+});
+
+test('localizes the instructor desktop and compact navigation in Russian and Uzbek', async ({
+  page,
+}) => {
+  const assertRuntimeClean = monitorRuntime(
+    page,
+    [],
+    [INSTRUCTOR_COURSE_COLLECTION_STRICT_MODE_ABORT],
+  );
+  await mockAuthenticatedSession(page, 'instructor');
+  const collectionFixture = await mockInstructorCourseCollection(page);
+  await page.addInitScript(() => localStorage.setItem('learnhub.locale', 'ru'));
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await Promise.all([collectionFixture.waitForFulfillment(), page.goto('/instructor/courses')]);
+
+  const russianNavigation = page.getByRole('navigation', { name: 'Основная навигация' });
+  await expect(
+    russianNavigation.getByRole('link', { name: 'Курсы преподавателя' }),
+  ).toHaveAttribute('aria-current', 'page');
+
+  await page.getByRole('button', { name: 'Изменить язык' }).click();
+  await page.getByRole('button', { name: "O'zbek" }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileNavigationTrigger = page.getByRole('button', { name: 'Navigatsiyani ochish' });
+  await mobileNavigationTrigger.click();
+  const compactNavigation = page.getByRole('navigation', { name: 'Mobil navigatsiya' });
+  await expect(
+    compactNavigation.getByRole('link', { name: 'O‘qituvchi kurslari' }),
+  ).toHaveAttribute('aria-current', 'page');
+  await page.keyboard.press('Escape');
+  await expect(mobileNavigationTrigger).toBeFocused();
   await expectNoHorizontalOverflow(page);
   assertRuntimeClean();
 });
@@ -1150,6 +1299,8 @@ test('uses native buttons for authenticated-mobile language selection and preser
   await expect(russian).toHaveAttribute('aria-pressed', 'false');
   await russian.click();
   await expect(page.getByRole('button', { name: 'Язык' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Выйти' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Навигация студента' })).toBeVisible();
   await page.getByRole('button', { name: 'Язык' }).click();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: 'Русский' })).toHaveCount(0);
@@ -1182,6 +1333,9 @@ test('preserves the authenticated-instructor mobile language flow in the profile
 
   const localizedLanguage = page.getByRole('button', { name: 'Язык' });
   await expect(localizedLanguage).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Выйти' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Главная LearnHub' })).toHaveText('LearnHub');
+  await expect(page.getByRole('link', { name: 'Перейти к основному содержимому' })).toBeVisible();
   await localizedLanguage.click();
   await expect(russian).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Назад' }).click();
@@ -1189,6 +1343,13 @@ test('preserves the authenticated-instructor mobile language flow in the profile
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: 'Русский' })).toHaveCount(0);
   await expect(page.locator('[data-account-initials]')).toBeFocused();
+  const mobileNavigationTrigger = page.getByRole('button', { name: 'Открыть навигацию' });
+  await mobileNavigationTrigger.click();
+  await expect(
+    page.locator('#mobile-navigation').getByRole('button', { name: 'Создать курс', exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(mobileNavigationTrigger).toBeFocused();
   await expectNoHorizontalOverflow(page);
   assertRuntimeClean();
 });
@@ -2742,11 +2903,12 @@ test('preserves the source mobile menu and focus for modified and new-tab activa
 
 test('renders the not-found route at mobile width without overflow', async ({ page }) => {
   const assertRuntimeClean = monitorRuntime(page);
+  await page.addInitScript(() => localStorage.setItem('learnhub.locale', 'ru'));
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/missing-page');
-  await expect(page.getByRole('heading', { level: 1, name: 'Page not found' })).toBeVisible();
-  await expect(page).toHaveTitle('Page not found | LearnHub');
-  await expect(page.getByRole('link', { name: 'Skip to main content' })).toHaveAttribute(
+  await expect(page.getByRole('heading', { level: 1, name: 'Страница не найдена' })).toBeVisible();
+  await expect(page).toHaveTitle('Страница не найдена | LearnHub');
+  await expect(page.getByRole('link', { name: 'Перейти к основному содержимому' })).toHaveAttribute(
     'href',
     '#main-content',
   );

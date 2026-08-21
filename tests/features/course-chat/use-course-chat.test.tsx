@@ -15,6 +15,7 @@ import {
 import { CourseChatLauncher } from '../../../src/widgets/course-chat';
 import { CourseChatPanel } from '../../../src/widgets/course-chat/CourseChatPanel';
 import { ApiError } from '../../../src/shared/api';
+import { LocaleProvider, localeRuntime, type Locale } from '../../../src/shared/locale';
 
 vi.mock('../../../src/features/course-chat/api', () => ({ requestCourseChat: vi.fn() }));
 vi.mock('../../../src/features/course-chat/preview', () => ({
@@ -27,22 +28,26 @@ const requestCourseChatMock = vi.mocked(requestCourseChat);
 
 function sessionWrapper({ children }: { readonly children: ReactNode }) {
   return (
-    <SessionProvider tokenStore={{ get: () => null, set: () => true, clear: () => {} }}>
-      <CourseChatSessionProvider>{children}</CourseChatSessionProvider>
-    </SessionProvider>
+    <LocaleProvider initialLocale="en">
+      <SessionProvider tokenStore={{ get: () => null, set: () => true, clear: () => {} }}>
+        <CourseChatSessionProvider>{children}</CourseChatSessionProvider>
+      </SessionProvider>
+    </LocaleProvider>
   );
 }
 
-function launcher() {
+function launcher(locale: Locale = 'en') {
   return (
     <MemoryRouter>
-      <SessionProvider tokenStore={{ get: () => null, set: () => true, clear: () => {} }}>
-        <CourseChatSessionProvider>
-          <CourseChatLauncher
-            assistant={{ context: { kind: 'course', courseId: 7 }, enrollmentId: 4 }}
-          />
-        </CourseChatSessionProvider>
-      </SessionProvider>
+      <LocaleProvider initialLocale={locale}>
+        <SessionProvider tokenStore={{ get: () => null, set: () => true, clear: () => {} }}>
+          <CourseChatSessionProvider>
+            <CourseChatLauncher
+              assistant={{ context: { kind: 'course', courseId: 7 }, enrollmentId: 4 }}
+            />
+          </CourseChatSessionProvider>
+        </SessionProvider>
+      </LocaleProvider>
     </MemoryRouter>
   );
 }
@@ -59,14 +64,16 @@ function launcherWithRouteTransition(destination: '/learning' | '/cart') {
 
   return (
     <MemoryRouter initialEntries={['/']}>
-      <SessionProvider tokenStore={{ get: () => null, set: () => true, clear: () => {} }}>
-        <CourseChatSessionProvider>
-          <RouteTransitionControl />
-          <CourseChatLauncher
-            assistant={{ context: { kind: 'course', courseId: 7 }, enrollmentId: 4 }}
-          />
-        </CourseChatSessionProvider>
-      </SessionProvider>
+      <LocaleProvider initialLocale="en">
+        <SessionProvider tokenStore={{ get: () => null, set: () => true, clear: () => {} }}>
+          <CourseChatSessionProvider>
+            <RouteTransitionControl />
+            <CourseChatLauncher
+              assistant={{ context: { kind: 'course', courseId: 7 }, enrollmentId: 4 }}
+            />
+          </CourseChatSessionProvider>
+        </SessionProvider>
+      </LocaleProvider>
     </MemoryRouter>
   );
 }
@@ -92,6 +99,7 @@ afterEach(() => {
   vi.resetAllMocks();
   vi.unstubAllGlobals();
   document.querySelectorAll('[data-test-footer]').forEach((footer) => footer.remove());
+  void localeRuntime.changeLanguage('en');
 });
 
 function footerForGeometryTest() {
@@ -161,6 +169,53 @@ function mockDesktopMediaQuery(initialMatches: boolean): DesktopMediaQueryMock {
 }
 
 describe('course chat interaction lifecycle', () => {
+  it.each([
+    [
+      'ru',
+      'Открыть ИИ-ассистента',
+      'Открыть ИИ-помощника',
+      'Чат с ассистентом курса',
+      'Действия с диалогом',
+      'Развернуть ассистента курса',
+      'Развернуть чат',
+      'Закрыть чат',
+    ],
+    [
+      'uz',
+      'AI yordamchini ochish',
+      'AI yordamchini ochish',
+      'Kurs yordamchisi chati',
+      'Suhbat amallari',
+      'Kurs yordamchisini kengaytirish',
+      'Chatni kengaytirish',
+      'Chatni yopish',
+    ],
+  ] as const)(
+    'uses exact %s accessible interaction resources when the launcher opens',
+    async (
+      locale,
+      openAssistant,
+      openAssistantTooltip,
+      chatLabel,
+      actionsLabel,
+      expandLabel,
+      expandTooltip,
+      closeTooltip,
+    ) => {
+      const user = userEvent.setup();
+      render(launcher(locale));
+
+      expect(screen.getByText(openAssistantTooltip)).toBeTruthy();
+      await interact(() => user.click(screen.getByRole('button', { name: openAssistant })));
+
+      expect(screen.getByRole('region', { name: chatLabel })).toBeTruthy();
+      expect(screen.getByRole('button', { name: actionsLabel })).toBeTruthy();
+      expect(screen.getByRole('button', { name: expandLabel })).toBeTruthy();
+      expect(screen.getByText(expandTooltip)).toBeTruthy();
+      expect(screen.getByText(closeTooltip)).toBeTruthy();
+    },
+  );
+
   it('keeps footer collision work inactive below 768px and starts it only after desktop entry', () => {
     const media = mockDesktopMediaQuery(false);
     const requestAnimationFrame = vi.fn();
@@ -626,6 +681,49 @@ describe('course chat interaction lifecycle', () => {
     expect(requestCourseChatMock).toHaveBeenCalledTimes(1);
     expect(screen.queryByText('private backend detail')).toBeNull();
   });
+
+  it.each([
+    [
+      'ru',
+      'Написать ассистенту курса',
+      'Отправить сообщение',
+      'Думаю…',
+      'Не удалось сгенерировать ответ.',
+      'Открыть ИИ-ассистента',
+    ],
+    [
+      'uz',
+      'Kurs yordamchisiga yozish',
+      'Xabar yuborish',
+      'O‘ylanmoqda…',
+      'Javobni yaratib bo‘lmadi.',
+      'AI yordamchini ochish',
+    ],
+  ] as const)(
+    'renders D04 pending and response-failure copy in %s',
+    async (locale, messageInput, sendMessage, thinking, responseFailure, openAssistant) => {
+      const request = deferred<{ thread_id: string; response: string }>();
+      requestCourseChatMock.mockReturnValueOnce(request.promise);
+      const user = userEvent.setup();
+      render(launcher(locale));
+
+      await interact(() => user.click(screen.getByRole('button', { name: openAssistant })));
+      await interact(() =>
+        user.type(screen.getByRole('textbox', { name: messageInput }), 'Question'),
+      );
+      await interact(() => user.click(screen.getByRole('button', { name: sendMessage })));
+      expect((await screen.findByRole('status')).textContent).toContain(thinking);
+
+      await act(async () => {
+        request.reject(
+          new ApiError({ kind: 'http', status: 500, message: 'private backend detail' }),
+        );
+        await request.promise.catch(() => undefined);
+      });
+      expect((await screen.findByRole('alert')).textContent).toContain(responseFailure);
+      expect(screen.queryByText('private backend detail')).toBeNull();
+    },
+  );
 
   it('uses context-agnostic unavailable copy for the general assistant', async () => {
     const request = deferred<{ thread_id: string; response: string }>();

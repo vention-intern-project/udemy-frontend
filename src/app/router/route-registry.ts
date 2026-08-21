@@ -22,12 +22,14 @@ export type PageId =
 
 export type RouteAccess = 'public' | 'guest' | Extract<UserRole, 'student' | 'instructor'>;
 export type RouteLayout = 'public' | 'auth' | 'workspace';
+export type RouteTitleKey = `common:${string}` | `navigation:${string}` | `routes:${string}`;
 
 export interface AppRouteDefinition {
   id: PageId;
   path: string;
   title: string;
   description: string;
+  titleKey: RouteTitleKey;
   access: RouteAccess;
   layout: RouteLayout;
 }
@@ -38,6 +40,7 @@ export const APP_ROUTES = [
     path: '/',
     title: 'Course catalog',
     description: 'Browse and discover available courses.',
+    titleKey: 'routes:courseCatalogTitle',
     access: 'public',
     layout: 'public',
   },
@@ -46,6 +49,7 @@ export const APP_ROUTES = [
     path: '/courses/:courseId',
     title: 'Course details',
     description: 'Review course information and lessons.',
+    titleKey: 'routes:courseDetailsTitle',
     access: 'public',
     layout: 'public',
   },
@@ -54,6 +58,7 @@ export const APP_ROUTES = [
     path: '/signup',
     title: 'Create account',
     description: 'Create a LearnHub account to start learning or teaching.',
+    titleKey: 'routes:createAccountTitle',
     access: 'guest',
     layout: 'auth',
   },
@@ -62,6 +67,7 @@ export const APP_ROUTES = [
     path: '/login',
     title: 'Log in',
     description: 'Access your learning or instructor workspace.',
+    titleKey: 'navigation:logIn',
     access: 'guest',
     layout: 'auth',
   },
@@ -70,6 +76,7 @@ export const APP_ROUTES = [
     path: '/forgot-password',
     title: 'Forgot password',
     description: 'Request help signing back in to your account.',
+    titleKey: 'routes:forgotPasswordTitle',
     access: 'guest',
     layout: 'auth',
   },
@@ -78,6 +85,7 @@ export const APP_ROUTES = [
     path: '/reset-password',
     title: 'Reset password',
     description: 'Choose a new password for your account.',
+    titleKey: 'routes:resetPasswordTitle',
     access: 'guest',
     layout: 'auth',
   },
@@ -86,6 +94,7 @@ export const APP_ROUTES = [
     path: '/cart',
     title: 'Cart',
     description: 'Your selected courses will appear here.',
+    titleKey: 'common:cart',
     access: 'student',
     layout: 'workspace',
   },
@@ -94,6 +103,7 @@ export const APP_ROUTES = [
     path: '/learning',
     title: 'My learning',
     description: 'Your course enrollments will appear here.',
+    titleKey: 'navigation:myLearning',
     access: 'student',
     layout: 'workspace',
   },
@@ -102,6 +112,7 @@ export const APP_ROUTES = [
     path: '/learning/enrollments/:enrollmentId',
     title: 'Learning details',
     description: 'Course progress and lessons will appear here.',
+    titleKey: 'routes:learningDetailsTitle',
     access: 'student',
     layout: 'workspace',
   },
@@ -110,6 +121,7 @@ export const APP_ROUTES = [
     path: '/learning/enrollments/:enrollmentId/ai-chat',
     title: 'Course assistant',
     description: 'Ask questions about an active course.',
+    titleKey: 'routes:courseAssistantTitle',
     access: 'student',
     layout: 'workspace',
   },
@@ -118,6 +130,7 @@ export const APP_ROUTES = [
     path: '/ai-chat',
     title: 'AI assistant',
     description: 'Ask general learning questions.',
+    titleKey: 'routes:aiAssistantTitle',
     access: 'student',
     layout: 'workspace',
   },
@@ -126,6 +139,7 @@ export const APP_ROUTES = [
     path: '/instructor/courses',
     title: 'Instructor courses',
     description: 'Your authored courses will appear here.',
+    titleKey: 'navigation:instructorCourses',
     access: 'instructor',
     layout: 'workspace',
   },
@@ -134,6 +148,7 @@ export const APP_ROUTES = [
     path: '/instructor/courses/:courseId/edit',
     title: 'Edit course',
     description: 'Course and lesson editing will appear here.',
+    titleKey: 'routes:editCourseTitle',
     access: 'instructor',
     layout: 'workspace',
   },
@@ -142,6 +157,7 @@ export const APP_ROUTES = [
     path: '/instructor/courses/:courseId/enrollments',
     title: 'Course enrollments',
     description: 'The selected course roster will appear here.',
+    titleKey: 'routes:courseEnrollmentsTitle',
     access: 'instructor',
     layout: 'workspace',
   },
@@ -150,6 +166,7 @@ export const APP_ROUTES = [
     path: '/instructor/lessons/:lessonId/edit',
     title: 'Edit lesson',
     description: 'Lesson metadata and upload tools will appear here.',
+    titleKey: 'routes:editLessonTitle',
     access: 'instructor',
     layout: 'workspace',
   },

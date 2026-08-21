@@ -7,6 +7,7 @@
 
   display: grid;
   min-height: 100vh;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto 1fr auto;
 }
 
@@ -436,6 +437,15 @@
   border-radius: var(--radius-lg);
   background: var(--color-surface);
   box-shadow: var(--shadow-2);
+}
+
+.languageMenu::before {
+  position: absolute;
+  top: calc(-1 * var(--spacing-2));
+  right: 0;
+  left: 0;
+  height: var(--spacing-2);
+  content: '';
 }
 
 .languageOption {
@@ -1038,7 +1048,7 @@
 
   .headerInner {
     display: grid;
-    grid-template-columns: max-content minmax(0, 1fr) max-content;
+    grid-template-columns: minmax(0, max-content) minmax(0, 1fr) minmax(0, max-content);
     justify-content: normal;
     flex-wrap: nowrap;
     column-gap: var(--spacing-4);

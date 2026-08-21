@@ -9,6 +9,7 @@ import {
   type RefObject,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 
 import { focusElement, focusFirst, getTabbableElements } from '../../accessibility/focus';
 import styles from './Dialog.module.css';
@@ -215,12 +216,14 @@ export function Dialog({
   children,
   onClose,
   initialFocusRef,
-  closeLabel = 'Close dialog',
+  closeLabel,
   showCloseButton = true,
   closeOnBackdrop = true,
   busy = false,
   className,
 }: DialogProps) {
+  const { t } = useTranslation();
+  const resolvedCloseLabel = closeLabel ?? t('a11y:closeDialog', { defaultValue: 'Close dialog' });
   const generatedId = useId();
   const titleId = `dialog-title-${generatedId}`;
   const descriptionId = description ? `dialog-description-${generatedId}` : undefined;
@@ -339,7 +342,7 @@ export function Dialog({
             <button
               className={[styles.close, 'ui-dialog__close'].join(' ')}
               type="button"
-              aria-label={closeLabel}
+              aria-label={resolvedCloseLabel}
               onClick={onClose}
               disabled={busy}
             >

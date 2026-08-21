@@ -7,6 +7,8 @@ import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CatalogPage } from '../../src/pages/catalog-page';
+import { formatCatalogPrice } from '../../src/pages/catalog-page/course-card-presentation';
+import { SortControl } from '../../src/pages/catalog-page/SortControl';
 import { createAppQueryClient } from '../../src/app/query';
 import {
   SessionProvider,
@@ -14,11 +16,36 @@ import {
   type AccessTokenStore,
 } from '../../src/features/auth-session';
 import { ApiError, type ApiClient, type ApiRequestOptions } from '../../src/shared/api';
+import { LocaleProvider } from '../../src/shared/locale';
 
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
   vi.unstubAllGlobals();
+});
+
+describe('catalog locale-native price presentation', () => {
+  it('uses the active locale when deriving a valid currency marker', () => {
+    expect(formatCatalogPrice('9.99', 'USD', 'en-US')).toBe('$9.99');
+    expect(formatCatalogPrice('9.99', 'USD', 'ru-RU')).not.toBe('$9.99');
+  });
+
+  it('localizes the unavailable fallback for invalid API price values', () => {
+    expect(formatCatalogPrice('invalid', 'USD', 'ru-RU')).toBe('Цена недоступна');
+  });
+});
+
+describe('catalog sort locale presentation', () => {
+  it('uses the interpolated catalog resource rather than a diagnostic fallback', () => {
+    render(
+      <LocaleProvider initialLocale="en">
+        <SortControl value="created_at" onChange={() => {}} onPointerOptionCommit={() => {}} />
+      </LocaleProvider>,
+    );
+
+    expect(screen.getByRole('button', { name: 'Sort by: Oldest' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Translation unavailable/i })).toBeNull();
+  });
 });
 
 const catalogItem = {
@@ -29,7 +56,7 @@ const catalogItem = {
   currency: 'USD',
   published_at: null,
   instructor: { id: 1, name: 'Ada', surname: 'Lovelace' },
-  lessons: [],
+  lessons: [] as Array<{ id: number; title: string }>,
 };
 
 interface CatalogPaginationFixture {
@@ -105,6 +132,7 @@ interface CatalogRenderOptions {
   queryClient?: QueryClient;
   tokenStore?: AccessTokenStore;
   withSessionSwitchControl?: boolean;
+  locale?: 'en' | 'ru' | 'uz';
 }
 
 function renderCatalog(
@@ -116,24 +144,106 @@ function renderCatalog(
 ) {
   return render(
     <QueryClientProvider client={options.queryClient ?? createAppQueryClient()}>
-      <SessionProvider client={{ request }} tokenStore={options.tokenStore ?? tokenStore(token)}>
-        <MemoryRouter
-          initialEntries={initialEntries}
-          initialIndex={initialIndex}
-          future={{ v7_relativeSplatPath: true, v7_startTransition: true }}
-        >
-          <main id="main-content" tabIndex={-1}>
-            <CatalogPage />
-          </main>
-          <HistoryControls />
-          {options.withSessionSwitchControl ? <CatalogSessionSwitchControl /> : null}
-        </MemoryRouter>
-      </SessionProvider>
+      <LocaleProvider initialLocale={options.locale ?? 'en'}>
+        <SessionProvider client={{ request }} tokenStore={options.tokenStore ?? tokenStore(token)}>
+          <MemoryRouter
+            initialEntries={initialEntries}
+            initialIndex={initialIndex}
+            future={{ v7_relativeSplatPath: true, v7_startTransition: true }}
+          >
+            <main id="main-content" tabIndex={-1}>
+              <CatalogPage />
+            </main>
+            <HistoryControls />
+            {options.withSessionSwitchControl ? <CatalogSessionSwitchControl /> : null}
+          </MemoryRouter>
+        </SessionProvider>
+      </LocaleProvider>
     </QueryClientProvider>,
   );
 }
 
 describe('CatalogPage public URL and pagination behavior', () => {
+  it('renders the admitted Catalog UI copy in Russian without changing course data', async () => {
+    const request: ApiClient['request'] = async <TResponse,>() =>
+      response({
+        items: [
+          {
+            ...catalogItem,
+            title: 'React Fundamentals',
+            lessons: [
+              { id: 1, title: 'Intro' },
+              { id: 2, title: 'State' },
+              { id: 3, title: 'Hooks' },
+            ],
+            price: '0.00',
+            currency: 'UZS',
+            published_at: '2026-07-01T00:00:00Z',
+          },
+          {
+            ...catalogItem,
+            id: 8,
+            title: 'TypeScript Architecture',
+            lessons: [{ id: 4, title: 'Intro' }],
+            price: '9.99',
+            currency: 'USD',
+            published_at: '2026-07-02T00:00:00Z',
+          },
+        ],
+        total: 2,
+      }) as TResponse;
+
+    renderCatalog(request, ['/'], 0, null, { locale: 'ru' });
+
+    expect(
+      await screen.findByRole('heading', {
+        level: 1,
+        name: 'Освойте навыки, которые формируют будущее',
+      }),
+    ).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 2, name: 'Найдено 2 курса' })).toBeTruthy();
+    expect(screen.getByText('Сортировка:')).toBeTruthy();
+    expect(screen.getByText('БЕСПЛАТНО')).toBeTruthy();
+    expect(screen.getAllByText('Подробнее')).toHaveLength(2);
+    expect(screen.getByText('3 доступных урока')).toBeTruthy();
+    expect(screen.getByRole('link', { name: /React Fundamentals/ })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Записаться бесплатно' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'В корзину' })).toBeTruthy();
+  });
+
+  it('uses Uzbek count-aware Catalog labels while keeping course titles unchanged', async () => {
+    const request: ApiClient['request'] = async <TResponse,>() =>
+      response({
+        items: [
+          {
+            ...catalogItem,
+            title: 'FastAPI Fundamentals',
+            lessons: [
+              { id: 1, title: 'Intro' },
+              { id: 2, title: 'API' },
+            ],
+            price: '0',
+            published_at: '2026-07-01T00:00:00Z',
+          },
+        ],
+      }) as TResponse;
+
+    renderCatalog(request, ['/'], 0, null, { locale: 'uz' });
+
+    expect(
+      await screen.findByRole('heading', {
+        level: 1,
+        name: 'Kelajakni shakllantirayotgan ko‘nikmalarni egallang Kelajak',
+      }),
+    ).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 2, name: 'Topildi 1 ta kurs' })).toBeTruthy();
+    expect(screen.getAllByText('Saralash:')).toHaveLength(2);
+    expect(screen.getByText('BEPUL')).toBeTruthy();
+    expect(screen.getByText('2 ta dars mavjud')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Bepul yozilish' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'FastAPI Fundamentals' })).toBeTruthy();
+  });
+
   it('keeps authenticated API-008 requests public and preserves the session after a catalog 401', async () => {
     let storedToken: string | null = 'stored-access-token';
     const clearToken = vi.fn(() => {

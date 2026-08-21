@@ -1,4 +1,5 @@
 import { useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 
 import {
   AuthFormShell,
@@ -11,6 +12,7 @@ import { sanitizeInternalReturnTo } from '@features/auth-session';
 import { Button, Input } from '@shared/ui/primitives';
 
 export function LoginPage() {
+  const { t } = useTranslation();
   const location = useLocation();
   const returnTo = sanitizeInternalReturnTo(
     new URLSearchParams(location.search).get('returnTo'),
@@ -22,17 +24,15 @@ export function LoginPage() {
   const workflow = useLoginWorkflow(location.key);
   return (
     <AuthFormShell
-      title="Log in"
+      title={t('navigation:logIn')}
       description={
-        returnTo === '/cart'
-          ? 'Log in with a student account to view your cart and continue checkout.'
-          : 'Access your learning or instructor workspace.'
+        returnTo === '/cart' ? t('auth:logInWithAStudentAccount') : t('routes:loginDescription')
       }
       footer={
         <>
-          <span>New to LearnHub?</span>{' '}
+          <span>{t('auth:newToLearnhub')}</span>{' '}
           <AuthLink tone="primary" to={signupDestination}>
-            Create an account
+            {t('auth:createAnAccount')}
           </AuthLink>
         </>
       }
@@ -45,7 +45,7 @@ export function LoginPage() {
           id="email"
           name="email"
           type="email"
-          label="Email"
+          label={t('auth:email')}
           autoComplete="email"
           required
           value={workflow.email}
@@ -56,7 +56,7 @@ export function LoginPage() {
         <PasswordField
           id="password"
           name="password"
-          label="Password"
+          label={t('auth:password')}
           autoComplete="current-password"
           value={workflow.password}
           error={workflow.fieldErrors.password}
@@ -64,15 +64,15 @@ export function LoginPage() {
           onChange={workflow.setPassword}
         />
         <AuthLink tone="primary" to="/forgot-password">
-          Forgot your password?
+          {t('auth:forgotYourPassword')}
         </AuthLink>
         <Button
           type="submit"
           fullWidth
           state={workflow.isPending ? 'loading' : 'idle'}
-          loadingLabel="Logging in..."
+          loadingLabel={t('auth:loggingIn')}
         >
-          Log in
+          {t('navigation:logIn')}
         </Button>
       </form>
     </AuthFormShell>

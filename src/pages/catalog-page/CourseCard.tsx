@@ -8,6 +8,7 @@ import {
   type FocusEvent,
   type PointerEvent,
 } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 
 import type { CatalogCourse } from '@entities/course';
@@ -28,7 +29,7 @@ import {
   type CourseCardTooltipPlacement,
 } from './course-card-disclosure';
 import {
-  catalogActionLabel,
+  catalogActionLabelKey,
   courseActionVisual,
   formatCatalogPrice,
 } from './course-card-presentation';
@@ -61,14 +62,21 @@ export function CourseCard({
   action,
   onAction,
 }: CourseCardProps) {
+  const { t, i18n } = useTranslation();
   const isDisclosureAvailable = useCourseCardDisclosureAvailability();
   const tooltipNotice = course.isPublished
     ? null
-    : 'This course is not available for enrollment yet.';
+    : t('catalog:thisCourseIsNotAvailableFor', {
+        defaultValue: 'This course is not available for enrollment yet.',
+      });
   const statusExplanationId = `catalog-course-${course.id}-status`;
   const tooltipLabelId = `catalog-course-${course.id}-description-label`;
   const tooltipDescriptionId = `catalog-course-${course.id}-description`;
-  const description = course.description ?? 'No course description is available.';
+  const description =
+    course.description ??
+    t('catalog:noCourseDescriptionIsAvailable', {
+      defaultValue: 'No course description is available.',
+    });
   const linkRef = useRef<HTMLAnchorElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const openTimerRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null);
@@ -207,10 +215,13 @@ export function CourseCard({
         : undefined;
   const feedbackId = `catalog-course-${course.id}-action-feedback`;
   const actionVisual = courseActionVisual(action.presentation);
+  const actionLabelKey = catalogActionLabelKey(action.presentation, action.label);
   const actionLabel =
     action.kind === 'link' && action.presentation === 'enroll-free'
-      ? 'Enroll for free'
-      : catalogActionLabel(action.presentation, action.label);
+      ? t('catalog:enrollForFree')
+      : actionLabelKey
+        ? t(`catalog:${actionLabelKey}`)
+        : action.label;
   const ActionIcon =
     action.kind === 'link' ||
     (action.kind === 'button' &&
@@ -354,7 +365,7 @@ export function CourseCard({
                 {' · '}
               </span>
               <span className={styles.lessonCount}>
-                {course.totalLessonCount} lesson{course.totalLessonCount === 1 ? '' : 's'} available
+                {t('catalog:lessonAvailability', { count: course.totalLessonCount })}
               </span>
             </div>
           </div>
@@ -374,7 +385,7 @@ export function CourseCard({
             <div className={styles.tooltipContent} data-part="course-card-tooltip-content">
               {tooltipNotice ? <span className={styles.tooltipNotice}>{tooltipNotice}</span> : null}
               <span id={tooltipLabelId} className={styles.tooltipCourse}>
-                Course description: {course.title}
+                {t('catalog:courseDescription')} {course.title}
               </span>
               <span id={tooltipDescriptionId} className={styles.tooltipDescription}>
                 {description}
@@ -389,7 +400,7 @@ export function CourseCard({
               type="button"
               variant="secondary"
               className={styles.disclosureButton}
-              aria-label="View course details"
+              aria-label={t('catalog:viewCourseDetails', { defaultValue: 'View course details' })}
               aria-controls={statusExplanationId}
               aria-describedby={isDisclosureVisible ? tooltipDescriptionId : undefined}
               aria-expanded={isDisclosureVisible}
@@ -397,14 +408,21 @@ export function CourseCard({
               onClick={handleDisclosurePinToggle}
             >
               <span className={styles.disclosurePill} data-part="course-card-disclosure-pill">
-                Details
+                {t('catalog:details')}
               </span>
             </Button>
           </div>
         ) : null}
         <footer className={styles.footer} data-part="course-card-footer">
           <div className={styles.price} data-part="course-card-price">
-            <data value={course.price}>{formatCatalogPrice(course.price, course.currency)}</data>
+            <data value={course.price}>
+              {formatCatalogPrice(
+                course.price,
+                course.currency,
+                i18n.resolvedLanguage ?? i18n.language ?? 'en-US',
+                t('catalog:free'),
+              )}
+            </data>
           </div>
           <div className={styles.actions} data-part="course-card-actions">
             {action.kind === 'link' && action.to ? (

@@ -93,7 +93,7 @@ function asSessionRequest(
 }
 
 describe('instructor course editor API', () => {
-  it('does not map a hostile inherited 422 field location', () => {
+  it('does not map a hostile inherited 422 field location or emit a rendered summary', () => {
     const failure = mapInstructorEditorFormFailure(
       new ApiError({
         kind: 'validation',
@@ -108,18 +108,18 @@ describe('instructor course editor API', () => {
         ],
       }),
       {
-        action: 'save this course',
-        unauthorized: 'Sign in again before continuing.',
-        forbidden: 'You do not have permission to change this course.',
-        notFound: 'This course is no longer available.',
+        actionKey: 'courseEditorSaveThisCourse',
+        unauthorizedKey: 'courseEditorSignInAgainBeforeContinuing',
+        forbiddenKey: 'courseEditorYouDoNotHavePermissionToChangeThisCourse',
+        notFoundKey: 'courseEditorThisCourseIsNoLongerAvailable',
+        badRequestKey: null,
       },
-      { title: { field: 'title', label: 'Course title' } },
+      { title: { field: 'title', labelKey: 'courseEditorCourseTitle' } },
     );
 
-    expect(failure).toEqual({
-      fields: {},
-      summary: 'We could not process this form. Check your details and try again.',
-    });
+    expect(failure).toEqual({ fields: {}, summary: { kind: 'couldNotProcessForm' } });
+    expect(typeof failure.summary).not.toBe('string');
+    expect(JSON.stringify(failure)).not.toContain('PRIVATE_CONSTRUCTOR_DETAIL');
   });
 
   it('uses the registered course CRUD and lesson-create contracts with only verified fields', async () => {

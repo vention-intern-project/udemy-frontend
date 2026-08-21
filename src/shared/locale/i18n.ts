@@ -14,22 +14,36 @@ export interface LocaleRuntimeDiagnostics {
   readonly missingKeys: readonly LocaleMissingKeyDiagnostic[];
 }
 
-export function createLocaleRuntime(
+function initializeLocaleRuntime(
   initialLocale = resolveBrowserLocale(),
   diagnostics: LocaleRuntimeDiagnostics | null = null,
+  registerReactSingleton = false,
 ): i18n {
   const runtime = i18next.createInstance();
   runtime.on('missingKey', (_languages, namespace, key) => {
     if (!diagnostics || !import.meta.env.DEV) return;
     (diagnostics.missingKeys as LocaleMissingKeyDiagnostic[]).push({ namespace, key });
   });
-  void runtime.use(initReactI18next).init({
+  if (registerReactSingleton) runtime.use(initReactI18next);
+  void runtime.init({
     resources: LOCALE_RESOURCES,
     lng: initialLocale,
     fallbackLng: 'en',
     supportedLngs: SUPPORTED_LOCALES,
     defaultNS: 'common',
-    ns: ['common', 'navigation', 'a11y'],
+    ns: [
+      'common',
+      'navigation',
+      'auth',
+      'routes',
+      'a11y',
+      'catalog',
+      'course',
+      'cart',
+      'learning',
+      'ai',
+      'instructor',
+    ],
     interpolation: { escapeValue: false },
     returnEmptyString: false,
     returnNull: false,
@@ -40,4 +54,11 @@ export function createLocaleRuntime(
   return runtime;
 }
 
-export const localeRuntime = createLocaleRuntime();
+export function createLocaleRuntime(
+  initialLocale = resolveBrowserLocale(),
+  diagnostics: LocaleRuntimeDiagnostics | null = null,
+): i18n {
+  return initializeLocaleRuntime(initialLocale, diagnostics);
+}
+
+export const localeRuntime = initializeLocaleRuntime(undefined, null, true);

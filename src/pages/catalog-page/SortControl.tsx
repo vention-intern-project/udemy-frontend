@@ -1,16 +1,19 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { CATALOG_SORT_VALUES, type CatalogSort } from '@features/catalog-discovery';
 
 import styles from './SortControl.module.css';
 
-const SORT_LABEL: Readonly<Record<CatalogSort, string>> = {
-  created_at: 'Oldest',
-  '-created_at': 'Newest',
-  price: 'Low to High',
-  '-price': 'High to Low',
-  title: 'A to Z',
-  '-title': 'Z to A',
+const SORT_LABEL: Readonly<
+  Record<CatalogSort, { readonly key: string; readonly defaultValue: string }>
+> = {
+  created_at: { key: 'catalog:oldest', defaultValue: 'Oldest' },
+  '-created_at': { key: 'catalog:newest', defaultValue: 'Newest' },
+  price: { key: 'catalog:lowToHigh', defaultValue: 'Low to High' },
+  '-price': { key: 'catalog:highToLow', defaultValue: 'High to Low' },
+  title: { key: 'catalog:aToZ', defaultValue: 'A to Z' },
+  '-title': { key: 'catalog:zToA', defaultValue: 'Z to A' },
 };
 
 interface SortControlProps {
@@ -20,6 +23,7 @@ interface SortControlProps {
 }
 
 export function SortControl({ value, onChange, onPointerOptionCommit }: SortControlProps) {
+  const { t } = useTranslation();
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const focusListboxRef = useRef(false);
@@ -29,6 +33,10 @@ export function SortControl({ value, onChange, onPointerOptionCommit }: SortCont
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const selectedIndex = Math.max(0, CATALOG_SORT_VALUES.indexOf(value));
+  const labelFor = (sort: CatalogSort) => {
+    const label = SORT_LABEL[sort];
+    return t(label.key, { defaultValue: label.defaultValue });
+  };
   const activeOptionId = activeIndex === null ? undefined : `${listboxId}-option-${activeIndex}`;
 
   const setActive = useCallback((index: number | null) => {
@@ -111,7 +119,10 @@ export function SortControl({ value, onChange, onPointerOptionCommit }: SortCont
         className={styles.trigger}
         data-part="catalog-sort-trigger"
         type="button"
-        aria-label={`Sort by: ${SORT_LABEL[value]}`}
+        aria-label={t('catalog:sortBy', {
+          defaultValue: `Sort by: ${labelFor(value)}`,
+          sortLabel: labelFor(value),
+        })}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={open ? listboxId : undefined}
@@ -138,7 +149,7 @@ export function SortControl({ value, onChange, onPointerOptionCommit }: SortCont
           }
         }}
       >
-        <span>{SORT_LABEL[value]}</span>
+        <span>{labelFor(value)}</span>
         <span className={styles.chevron} data-part="catalog-sort-chevron" aria-hidden="true" />
       </button>
       {open ? (
@@ -148,7 +159,7 @@ export function SortControl({ value, onChange, onPointerOptionCommit }: SortCont
           data-part="catalog-sort-listbox"
           id={listboxId}
           role="listbox"
-          aria-label="Sort by options"
+          aria-label={t('catalog:sortByOptions', { defaultValue: 'Sort by options' })}
           tabIndex={-1}
           aria-activedescendant={activeOptionId}
           onKeyDown={(event) => {
@@ -194,7 +205,7 @@ export function SortControl({ value, onChange, onPointerOptionCommit }: SortCont
               onClick={(event) => select(index, event.detail !== 0, event.clientX, event.clientY)}
             >
               <span className={styles.radio} data-part="catalog-sort-radio" aria-hidden="true" />
-              {SORT_LABEL[sort]}
+              {labelFor(sort)}
             </div>
           ))}
         </div>

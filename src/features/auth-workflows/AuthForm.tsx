@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 
 import { createMutationAttemptIdentity, type MutationAttemptIdentity } from '@shared/api';
 import { Button, Input } from '@shared/ui/primitives';
@@ -84,6 +85,7 @@ export function PasswordField({
   disabled,
   onChange,
 }: PasswordFieldProps) {
+  const { t } = useTranslation();
   const [visible, setVisible] = useState(false);
   useEffect(() => {
     if (disabled) setVisible(false);
@@ -109,7 +111,7 @@ export function PasswordField({
             type="button"
             disabled={disabled}
             aria-controls={id}
-            aria-label={visible ? 'Hide password' : 'Show password'}
+            aria-label={visible ? t('auth:hidePassword') : t('auth:showPassword')}
             aria-pressed={visible}
             onClick={() => setVisible((current) => !current)}
           >

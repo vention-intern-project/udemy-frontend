@@ -1,6 +1,7 @@
 import { CircleCheck, ShoppingCart, Trash2, UserPlus, type LucideIcon } from 'lucide-react';
 
 import type { ButtonVariant } from '@shared/ui/primitives';
+import { LOCALE_RESOURCES, resolveLocale } from '@shared/locale';
 
 import type { CatalogCourseActionPresentation } from './useCatalogCourseActions';
 
@@ -29,33 +30,37 @@ export function courseActionVisual(
   }
 }
 
-export function catalogActionLabel(
+export function catalogActionLabelKey(
   presentation: CatalogCourseActionPresentation,
   label: string,
-): string {
-  if (presentation === 'add-to-cart' && label === 'Log in to add to cart') return 'Add to cart';
-  if (presentation === 'enroll-free' && label === 'Log in to enroll free') return 'Enroll free';
-  return presentation === 'neutral' && label === 'Course is not published'
-    ? 'Not published'
-    : label;
+): 'addToCart' | 'enrollFree' | 'notPublished' | null {
+  if (
+    presentation === 'add-to-cart' &&
+    (label === 'Log in to add to cart' || label === 'Add to cart')
+  )
+    return 'addToCart';
+  if (presentation === 'enroll-free' && label === 'Log in to enroll free') return 'enrollFree';
+  return presentation === 'neutral' && label === 'Course is not published' ? 'notPublished' : null;
 }
 
-export function formatCatalogPrice(price: string, currency: string): string {
-  if (!DECIMAL_PRICE.test(price) || !CURRENCY_CODE.test(currency)) return 'Price unavailable';
-  if (/^0(?:\.0+)?$/.test(price)) return 'FREE';
+export function formatCatalogPrice(
+  price: string,
+  currency: string,
+  locale: string,
+  freeLabel = 'FREE',
+): string {
+  const localizedResources = LOCALE_RESOURCES[resolveLocale({ browserLocales: [locale] })]
+    .catalog as Record<string, string>;
+  const priceUnavailable = () => localizedResources.priceUnavailable ?? 'Price unavailable';
+  if (!DECIMAL_PRICE.test(price) || !CURRENCY_CODE.test(currency)) return priceUnavailable();
+  if (/^0(?:\.0+)?$/.test(price)) return freeLabel;
   try {
-    const currencyMarker = new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat(locale, {
       style: 'currency',
       currency,
       currencyDisplay: 'narrowSymbol',
-    })
-      .formatToParts(0)
-      .find((part) => part.type === 'currency')?.value;
-    if (!currencyMarker) return 'Price unavailable';
-    return /^[\p{L}]+$/u.test(currencyMarker)
-      ? `${currencyMarker}\u00A0${price}`
-      : `${currencyMarker}${price}`;
+    }).format(Number(price));
   } catch {
-    return 'Price unavailable';
+    return priceUnavailable();
   }
 }

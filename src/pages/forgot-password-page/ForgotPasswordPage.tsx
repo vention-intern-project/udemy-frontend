@@ -1,4 +1,5 @@
 import { useLocation, useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 
 import {
   AuthFormShell,
@@ -9,24 +10,24 @@ import {
 import { Button, Input, Notice } from '@shared/ui/primitives';
 
 export function ForgotPasswordPage() {
+  const { t } = useTranslation();
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const workflow = useForgotPasswordWorkflow(location.key);
   return (
     <AuthFormShell
-      title="Forgot password"
-      description="Request help signing back in to your account."
-      footer={<AuthLink to="/login">Back to login</AuthLink>}
+      title={t('routes:forgotPasswordTitle')}
+      description={t('routes:forgotPasswordDescription')}
+      footer={<AuthLink to="/login">{t('auth:backToLogin')}</AuthLink>}
     >
       {searchParams.get('reason') === 'missing-token' ? (
-        <Notice tone="warning" title="Use your reset link">
-          Open the password-reset link from your recovery message to choose a new password.
+        <Notice tone="warning" title={t('auth:useYourResetLink')}>
+          {t('auth:openRecoveryLink')}
         </Notice>
       ) : null}
       {workflow.success ? (
-        <Notice tone="success" title="Request received">
-          If the account can use password recovery, the next steps will be available through the
-          configured recovery channel.
+        <Notice tone="success" title={t('auth:requestReceived')}>
+          {t('auth:recoveryChannel')}
         </Notice>
       ) : (
         <form noValidate onSubmit={workflow.submit}>
@@ -37,7 +38,7 @@ export function ForgotPasswordPage() {
             id="email"
             name="email"
             type="email"
-            label="Email"
+            label={t('auth:email')}
             autoComplete="email"
             required
             value={workflow.email}
@@ -49,9 +50,9 @@ export function ForgotPasswordPage() {
             type="submit"
             fullWidth
             state={workflow.isPending ? 'loading' : 'idle'}
-            loadingLabel="Submitting request..."
+            loadingLabel={t('auth:submittingRequest')}
           >
-            Continue
+            {t('common:continue')}
           </Button>
         </form>
       )}

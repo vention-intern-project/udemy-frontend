@@ -5,8 +5,12 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { Notice, Pagination, Skeleton, SkeletonGroup } from '../../../src/shared/ui/primitives';
+import { LocaleProvider, localeRuntime, type Locale } from '../../../src/shared/locale';
 
-afterEach(cleanup);
+afterEach(async () => {
+  cleanup();
+  await localeRuntime.changeLanguage('en');
+});
 
 describe('Notice', () => {
   it('uses assertive announcements for errors and polite announcements for informational updates', () => {
@@ -37,6 +41,19 @@ describe('Skeleton', () => {
 });
 
 describe('Pagination', () => {
+  it.each([
+    ['ru', 'Страница 2 из 4'],
+    ['uz', 'Sahifa 2 dan 4'],
+  ] as const)('announces the admitted current-page relation in %s', (locale: Locale, status) => {
+    render(
+      <LocaleProvider initialLocale={locale}>
+        <Pagination currentPage={2} totalPages={4} onPageChange={() => undefined} />
+      </LocaleProvider>,
+    );
+
+    expect(screen.getByRole('status').textContent).toBe(status);
+  });
+
   it('exposes the current page as non-action state and supports native keyboard activation for available directions', async () => {
     const user = userEvent.setup();
     const onPageChange = vi.fn();

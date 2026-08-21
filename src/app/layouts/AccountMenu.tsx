@@ -216,7 +216,7 @@ export function AccountMenu({ user, showLanguage = false }: AccountMenuProps) {
                 }}
               >
                 <LogOut aria-hidden="true" size={16} />
-                Log out
+                {t('auth:logOut')}
               </button>
             </>
           )}

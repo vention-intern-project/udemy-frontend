@@ -118,6 +118,46 @@ interface DiagnosticAssertions {
   assertClean(): void;
 }
 
+interface CourseResidualBrowserCopy {
+  readonly loadingDetails: string;
+  readonly loadingOutline: string;
+  readonly outlineHeading: string;
+  readonly emptyOutline: string;
+  readonly lessonMarker: string;
+  readonly draftCourse: string;
+  readonly notFoundDescription: string;
+}
+
+const courseResidualBrowserCopy: Readonly<Record<'en' | 'ru' | 'uz', CourseResidualBrowserCopy>> = {
+  en: {
+    loadingDetails: 'Loading course details',
+    loadingOutline: 'Loading course outline',
+    outlineHeading: 'Course outline',
+    emptyOutline: 'No lessons have been added yet.',
+    lessonMarker: 'lesson ·',
+    draftCourse: 'Draft course',
+    notFoundDescription: 'This course does not exist or is no longer available.',
+  },
+  ru: {
+    loadingDetails: 'Загрузка сведений о курсе',
+    loadingOutline: 'Загрузка программы курса',
+    outlineHeading: 'Программа курса',
+    emptyOutline: 'Уроки ещё не добавлены.',
+    lessonMarker: 'урок ·',
+    draftCourse: 'Черновик курса',
+    notFoundDescription: 'Курс не существует или больше недоступен.',
+  },
+  uz: {
+    loadingDetails: 'Kurs tafsilotlari yuklanmoqda',
+    loadingOutline: 'Kurs dasturi yuklanmoqda',
+    outlineHeading: 'Kurs dasturi',
+    emptyOutline: 'Hali darslar qo‘shilmagan.',
+    lessonMarker: 'dars ·',
+    draftCourse: 'Kurs qoralamasi',
+    notFoundDescription: 'Bu kurs mavjud emas yoki endi ochiq emas.',
+  },
+};
+
 function parseResourceStatusConsoleEntry(
   text: string,
   locationUrl: string,
@@ -211,6 +251,19 @@ async function installDiagnostics(page: Page) {
     },
   };
   return diagnostics;
+}
+
+async function expectNoHorizontalOverflow(page: Page) {
+  const geometry = await page.evaluate(() => ({
+    bodyWidth: document.body.scrollWidth,
+    documentWidth: document.documentElement.scrollWidth,
+    layoutWidth: document.documentElement.clientWidth,
+    scale: window.visualViewport?.scale ?? 1,
+    visualWidth: window.visualViewport?.width ?? window.innerWidth,
+  }));
+  expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.layoutWidth + 0.5);
+  expect(geometry.bodyWidth).toBeLessThanOrEqual(geometry.layoutWidth + 0.5);
+  return geometry;
 }
 
 test('binds a resource-status console allowance to the exact observed response URL', () => {
@@ -962,3 +1015,100 @@ test('preserves keyboard access and reflow without horizontal overflow', async (
   ).toBe('0ms');
   diagnostics.assertClean();
 });
+
+for (const locale of ['en', 'ru', 'uz'] as const) {
+  test(`resolves the complete admitted course residual family without overflow or writes in ${locale}`, async ({
+    page,
+  }) => {
+    test.slow();
+    const copy = courseResidualBrowserCopy[locale];
+    const diagnostics = await installDiagnostics(page);
+    let writes = 0;
+    let detailPending = true;
+    let outlinePending = true;
+    let draft = false;
+    let outlineItems = 1;
+    let resolveDetail: (() => void) | undefined;
+    let resolveOutline: (() => void) | undefined;
+    const detailGate = new Promise<void>((resolve) => {
+      resolveDetail = resolve;
+    });
+    const outlineGate = new Promise<void>((resolve) => {
+      resolveOutline = resolve;
+    });
+    page.on('request', (request) => {
+      if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method())) writes += 1;
+    });
+    await page.route('**/courses/7**', async (route) => {
+      if (isDocumentNavigation(route)) {
+        await route.fallback();
+        return;
+      }
+      const path = new URL(route.request().url()).pathname;
+      if (path.endsWith('/lessons')) {
+        if (outlinePending) await outlineGate;
+        await json(route, outline(null, outlineItems));
+        return;
+      }
+      if (detailPending) await detailGate;
+      await json(route, { ...detail, published_at: draft ? null : detail.published_at });
+    });
+
+    await page.goto('/courses/7');
+    if (locale !== 'en') {
+      await page.getByRole('button', { name: 'Change language' }).press('Enter');
+      await page
+        .getByRole('button', { name: locale === 'ru' ? 'Русский' : "O'zbek", exact: true })
+        .press('Enter');
+    }
+    await expect(page.getByRole('status', { name: copy.loadingDetails })).toBeVisible();
+
+    detailPending = false;
+    resolveDetail?.();
+    await expect(page.getByRole('heading', { level: 1, name: detail.title })).toBeVisible();
+    await expect(page.getByRole('status', { name: copy.loadingOutline })).toBeVisible();
+
+    outlinePending = false;
+    resolveOutline?.();
+    await expect(page.getByRole('heading', { level: 2, name: copy.outlineHeading })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 3, name: 'Welcome' })).toBeVisible();
+    await expect(page.getByText(new RegExp(`video ${copy.lessonMarker}`))).toBeVisible();
+    await expect(page.getByText('Ada Lovelace')).toBeVisible();
+
+    for (const width of [320, 390, 768, 1280] as const) {
+      await page.setViewportSize({ width, height: 900 });
+      const signIn = page.getByRole('link', { name: 'Sign in' });
+      await signIn.focus();
+      await expect(signIn).toBeFocused();
+      await expectNoHorizontalOverflow(page);
+    }
+
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 2 });
+    const scaledGeometry = await expectNoHorizontalOverflow(page);
+    expect(scaledGeometry.scale).toBeCloseTo(2, 1);
+    expect(scaledGeometry.visualWidth * scaledGeometry.scale).toBeCloseTo(
+      scaledGeometry.layoutWidth,
+      0,
+    );
+    await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 });
+    await cdp.detach();
+
+    draft = true;
+    outlineItems = 0;
+    await page.reload();
+    await expect(page.getByText(copy.draftCourse, { exact: true })).toBeVisible();
+    await expect(page.getByText(copy.emptyOutline, { exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: detail.title })).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+
+    await page.goto('/courses/not-a-number');
+    await expect(page.getByText(copy.notFoundDescription, { exact: true })).toBeVisible();
+    await expect(page.locator('body')).not.toContainText(
+      /Translation unavailable|a11y:\w+|course:(?:courseOutline|draftCourse|lessonMarker|noLessonsAdded|thisCourseDoesNotExistOr)/,
+    );
+    await expectNoHorizontalOverflow(page);
+    expect(writes).toBe(0);
+    diagnostics.assertClean();
+  });
+}

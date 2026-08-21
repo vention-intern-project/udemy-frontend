@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 
 import { courseDetailFailure, useCourseDetail } from '@features/course-detail';
@@ -30,16 +31,22 @@ interface CourseRetryFocusIntent {
 }
 
 function CourseNotFound() {
+  const { t } = useTranslation();
   return (
     <section className={styles.state} aria-labelledby="course-not-found-heading">
-      <h1 id="course-not-found-heading">Course not found</h1>
-      <p>This course does not exist or is no longer available.</p>
-      <ContextualNavigationLink to="/">Return to the course catalog</ContextualNavigationLink>
+      <h1 id="course-not-found-heading">
+        {t('course:courseNotFound', { defaultValue: 'Course not found' })}
+      </h1>
+      <p>{t('course:thisCourseDoesNotExistOr')}</p>
+      <ContextualNavigationLink to="/">
+        {t('course:returnToTheCourseCatalog', { defaultValue: 'Return to the course catalog' })}
+      </ContextualNavigationLink>
     </section>
   );
 }
 
 export function CourseDetailPage() {
+  const { t } = useTranslation();
   const { courseId: courseIdParam } = useParams();
   const courseId = parseCourseId(courseIdParam);
   const session = useSession();
@@ -61,14 +68,18 @@ export function CourseDetailPage() {
     if (intent?.identity !== retryIdentity) return;
     if (intent.target === 'detail' && detail.isSuccess) {
       retryIntentRef.current = null;
-      setRecoveryMessage('Course details recovered.');
+      setRecoveryMessage(
+        t('course:courseDetailsRecovered', { defaultValue: 'Course details recovered.' }),
+      );
       detailHeadingRef.current?.focus();
     } else if (intent.target === 'outline' && outline.isSuccess) {
       retryIntentRef.current = null;
-      setRecoveryMessage('Course outline recovered.');
+      setRecoveryMessage(
+        t('course:courseOutlineRecovered', { defaultValue: 'Course outline recovered.' }),
+      );
       outlineHeadingRef.current?.focus();
     }
-  }, [detail.isSuccess, outline.isSuccess, retryIdentity]);
+  }, [detail.isSuccess, outline.isSuccess, retryIdentity, t]);
 
   const finishRetry = (intent: CourseRetryFocusIntent, succeeded: boolean) => {
     if (!succeeded && retryIntentRef.current === intent) retryIntentRef.current = null;
@@ -96,7 +107,7 @@ export function CourseDetailPage() {
   if (courseId === null) return <CourseNotFound />;
   if (detail.isPending) {
     return (
-      <SkeletonGroup className={styles.loading} label="Loading course details">
+      <SkeletonGroup className={styles.loading} label={t('a11y:loadingCourseDetails')}>
         <Skeleton height="40px" width="70%" />
         <Skeleton height="24px" width="45%" />
         <Skeleton height="160px" width="100%" shape="rect" />
@@ -112,14 +123,18 @@ export function CourseDetailPage() {
         <Notice tone="error" title={failure.title}>
           {failure.message}
         </Notice>
-        <Button onClick={retryDetail}>Try again</Button>
+        <Button onClick={retryDetail}>{t('routes:tryAgain', { defaultValue: 'Try again' })}</Button>
       </section>
     );
   }
 
   const course = detail.data;
   const isDraft = course.publishedAt === null;
-  const description = course.description ?? 'No course description is available.';
+  const description =
+    course.description ??
+    t('catalog:noCourseDescriptionIsAvailable', {
+      defaultValue: 'No course description is available.',
+    });
 
   return (
     <article className={styles.page}>
@@ -130,23 +145,31 @@ export function CourseDetailPage() {
       ) : null}
       <header className={styles.summary}>
         <div className={styles.intro}>
-          <p className={styles.eyebrow}>{isDraft ? 'Draft course' : 'Course details'}</p>
+          <p className={styles.eyebrow}>
+            {isDraft
+              ? t('course:draftCourse')
+              : t('routes:courseDetailsTitle', { defaultValue: 'Course details' })}
+          </p>
           <h1 ref={detailHeadingRef} className={styles.recoveryTarget} tabIndex={-1}>
             {course.title}
           </h1>
           <p className={styles.description}>{description}</p>
           <dl className={styles.metadata}>
             <div>
-              <dt>Instructor</dt>
+              <dt>{t('course:instructor', { defaultValue: 'Instructor' })}</dt>
               <dd>{course.instructorName}</dd>
             </div>
             <div>
-              <dt>Total lessons</dt>
+              <dt>{t('course:totalLessons', { defaultValue: 'Total lessons' })}</dt>
               <dd>{outline.data?.total ?? course.lessons.length}</dd>
             </div>
             <div>
-              <dt>Status</dt>
-              <dd>{isDraft ? 'Draft' : 'Published'}</dd>
+              <dt>{t('course:status', { defaultValue: 'Status' })}</dt>
+              <dd>
+                {isDraft
+                  ? t('course:draft', { defaultValue: 'Draft' })
+                  : t('course:published', { defaultValue: 'Published' })}
+              </dd>
             </div>
           </dl>
         </div>

@@ -12,8 +12,12 @@ export {
 } from './api';
 export {
   mapInstructorEditorFormFailure,
+  resolveInstructorEditorFormFailure,
+  resolveInstructorEditorFailureMessage,
   type InstructorEditorErrorCopy,
   type InstructorEditorFieldDefinition,
+  type InstructorEditorFieldDefinitions,
+  type InstructorEditorFailureMessage,
   type InstructorEditorFormFailure,
 } from './validation';
 export type {

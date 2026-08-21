@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -20,6 +21,12 @@ export interface LanguageSelectorProps {
   readonly mobile?: boolean;
 }
 
+type HoverCloseTimer = ReturnType<typeof setTimeout>;
+type LanguageSelectorOpenMode = 'hover' | 'persistent' | null;
+
+const FINE_HOVER_QUERY = '(hover: hover) and (pointer: fine)';
+const HOVER_CLOSE_DELAY_MS = 240;
+
 export function LanguageSelector({
   className,
   menuClassName,
@@ -32,13 +39,67 @@ export function LanguageSelector({
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const hoverCloseTimerRef = useRef<HoverCloseTimer | null>(null);
+  const openModeRef = useRef<LanguageSelectorOpenMode>(null);
   const menuId = `language-menu-${useId()}`;
+
+  function cancelHoverClose() {
+    if (hoverCloseTimerRef.current === null) return;
+    clearTimeout(hoverCloseTimerRef.current);
+    hoverCloseTimerRef.current = null;
+  }
+
+  function supportsHover(event: ReactPointerEvent<HTMLDivElement>) {
+    return (
+      !mobile &&
+      event.pointerType === 'mouse' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia(FINE_HOVER_QUERY).matches
+    );
+  }
+
+  function openFromHover(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!supportsHover(event)) return;
+    cancelHoverClose();
+    if (openModeRef.current !== 'persistent') openModeRef.current = 'hover';
+    setOpen(true);
+  }
+
+  function retainHover(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!supportsHover(event)) return;
+    cancelHoverClose();
+  }
+
+  function closeAfterHover(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!supportsHover(event) || openModeRef.current !== 'hover') return;
+    cancelHoverClose();
+    hoverCloseTimerRef.current = setTimeout(() => {
+      hoverCloseTimerRef.current = null;
+      openModeRef.current = null;
+      setOpen(false);
+    }, HOVER_CLOSE_DELAY_MS);
+  }
+
+  function toggleFromClick() {
+    cancelHoverClose();
+    const shouldClose = open && openModeRef.current === 'persistent';
+    openModeRef.current = shouldClose ? null : 'persistent';
+    setOpen(!shouldClose);
+  }
+
+  useEffect(
+    () => () => {
+      if (hoverCloseTimerRef.current !== null) clearTimeout(hoverCloseTimerRef.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!open) return undefined;
     function dismiss(event: Event) {
       if (event.type === 'keydown' && (event as KeyboardEvent).key !== 'Escape') return;
       if (event.type === 'pointerdown' && ref.current?.contains(event.target as Node)) return;
+      openModeRef.current = null;
       setOpen(false);
       if (event.type === 'keydown') triggerRef.current?.focus({ preventScroll: true });
     }
@@ -55,18 +116,25 @@ export function LanguageSelector({
   function openFromKeyboard(event: ReactKeyboardEvent<HTMLButtonElement>) {
     if (open || (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Space')) return;
     event.preventDefault();
+    openModeRef.current = 'persistent';
     setOpen(true);
   }
 
   return (
-    <div className={className} ref={ref}>
+    <div
+      className={className}
+      ref={ref}
+      onPointerEnter={openFromHover}
+      onPointerLeave={closeAfterHover}
+      onPointerMove={retainHover}
+    >
       <button
         ref={triggerRef}
         aria-controls={menuId}
         aria-expanded={open}
         aria-label={t('navigation:changeLanguage')}
         type="button"
-        onClick={() => setOpen((value) => !value)}
+        onClick={toggleFromClick}
         onKeyDown={openFromKeyboard}
       >
         {mobile ? (
@@ -97,6 +165,7 @@ export function LanguageSelector({
                   .join(' ')}
                 type="button"
                 onClick={() => {
+                  openModeRef.current = null;
                   setLocale(candidate);
                   setOpen(false);
                   triggerRef.current?.focus({ preventScroll: true });

@@ -503,6 +503,27 @@ test('keeps a pending general request through mini-to-full expansion without a d
   expect(diagnostics.httpFailures).toEqual([]);
 });
 
+test('renders the D04 Russian pending course-chat state without overflow', async ({ page }) => {
+  const chatRequests: ChatRequestEvidence[] = [];
+  const diagnostics = captureRuntimeDiagnostics(page);
+  await installCourseChatFixture(page, chatRequests);
+  await page.addInitScript(() => localStorage.setItem('learnhub.locale', 'ru'));
+  await page.route('**/chat/', async (route) => {
+    await new Promise<void>(() => undefined);
+    await route.abort();
+  });
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.goto('/learning/enrollments/4');
+  await page.getByRole('button', { name: 'Открыть ИИ-ассистента' }).click();
+  const input = page.getByLabel('Написать ассистенту курса');
+  await input.fill('Вопрос');
+  await page.getByRole('button', { name: 'Отправить сообщение' }).click();
+  await expect(page.getByText('Думаю…')).toBeVisible();
+  await expectNoOverflow(page);
+  expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
+  expect(diagnostics.httpFailures).toEqual([]);
+});
+
 test('keeps the workspace chat bounded at desktop and effective 200% scale with reduced motion', async ({
   page,
 }) => {
@@ -1090,6 +1111,155 @@ test('uses one compact Suggested Actions disclosure below 1000px without changin
   expect(diagnostics.unexpectedRuntimeFailures).toEqual(
     Array.from({ length: acceptedNavigationRasterAbortCount }, () => acceptedNavigationRasterAbort),
   );
+  expect(diagnostics.httpFailures).toEqual([]);
+});
+
+test('keeps RU and Uzbek accumulated locale states, focus, zoom, reflow, and network behavior intact', async ({
+  page,
+}) => {
+  const chatRequests: ChatRequestEvidence[] = [];
+  const diagnostics = captureRuntimeDiagnostics(page);
+  await installCourseChatFixture(page, chatRequests, {
+    cart: {
+      id: 1,
+      items: [
+        {
+          id: 1,
+          course_id: 7,
+          added_at: '2026-01-01T00:00:00Z',
+          course: { id: 7, title: 'Localized course', price: '19.99', currency: 'USD' },
+        },
+      ],
+      total_price: '19.99',
+      currency: 'USD',
+      item_count: 1,
+    },
+  });
+
+  for (const [
+    locale,
+    assistant,
+    composer,
+    suggestedActions,
+    actions,
+    chatLabel,
+    catalogEmpty,
+    courseMissing,
+    clearCart,
+    preview,
+    learningEmpty,
+    openAssistant,
+  ] of [
+    [
+      'ru',
+      'Ассистент курса',
+      'Написать ассистенту курса',
+      'Предлагаемые действия',
+      'Действия с диалогом',
+      'Чат с ассистентом курса',
+      'Курсы не найдены',
+      'Курс не найден',
+      'Очистить корзину',
+      'Предпросмотр курса «Localized course»',
+      'Начните обучение',
+      'Открыть ИИ-ассистента',
+    ],
+    [
+      'uz',
+      'Kurs yordamchisi',
+      'Kurs yordamchisiga yozish',
+      'Tavsiya etilgan amallar',
+      'Suhbat amallari',
+      'Kurs yordamchisi chati',
+      'Kurslar topilmadi',
+      'Kurs topilmadi',
+      'Savatni tozalash',
+      'Localized course kursini oldindan ko‘rish',
+      'Ta’lim yo‘lingizni boshlang',
+      'AI yordamchini ochish',
+    ],
+  ] as const) {
+    await page.addInitScript((selectedLocale: string) => {
+      localStorage.setItem('learnhub.locale', selectedLocale);
+    }, locale);
+
+    for (const width of [320, 390, 768, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/ai-chat');
+      await expect(page.getByRole('region', { name: assistant })).toBeVisible();
+      await expect(page.getByLabel(composer)).toBeVisible();
+      if (width < 1000) {
+        const trigger = page.getByRole('button', { name: suggestedActions });
+        await expect(trigger).toBeVisible();
+        await trigger.focus();
+        await expect(trigger).toBeFocused();
+      } else {
+        await expect(page.getByRole('heading', { name: suggestedActions })).toBeVisible();
+      }
+      await expectNoOverflow(page);
+    }
+
+    await page.setViewportSize({ width: 390, height: 900 });
+    await page.goto('/');
+    await expect(page.getByText(catalogEmpty, { exact: true })).toBeVisible();
+    await expect(page.locator('body')).not.toContainText('Translation unavailable');
+    await expect(page.locator('body')).not.toContainText(
+      /(?:catalog|course|cart|learning|common|navigation|routes):/,
+    );
+    await expectNoOverflow(page);
+
+    await page.goto('/courses/not-a-course');
+    await expect(page.getByRole('heading', { name: courseMissing })).toBeVisible();
+    await expect(page.locator('body')).not.toContainText('Translation unavailable');
+    await expectNoOverflow(page);
+
+    await page.goto('/');
+    await page.locator('a[href="/cart"]').first().click();
+    await expect(page).toHaveURL('/cart');
+    const previewLink = page.getByRole('link', { name: preview });
+    await expect(previewLink).toBeVisible();
+    await previewLink.focus();
+    await expect(previewLink).toBeFocused();
+    await expect(page.getByRole('button', { name: clearCart })).toBeVisible();
+    await expect(page.locator('body')).not.toContainText('Translation unavailable');
+    await expectNoOverflow(page);
+
+    await page.goto('/learning');
+    await expect(page.getByRole('heading', { name: learningEmpty })).toBeVisible();
+    await expect(page.locator('body')).not.toContainText('Translation unavailable');
+    await expectNoOverflow(page);
+
+    await page.setViewportSize({ width: 768, height: 900 });
+    await page.goto('/learning/enrollments/4');
+    await page.getByRole('button', { name: openAssistant }).click();
+    await expect(page.getByRole('region', { name: chatLabel })).toBeVisible();
+    await expect(page.getByLabel(composer)).toBeFocused();
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
+    const actionTrigger = page.getByRole('button', { name: actions });
+    await actionTrigger.focus();
+    await expect(actionTrigger).toBeFocused();
+    await expectNoOverflow(page);
+  }
+
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    await page.setViewportSize({ width: 320, height: 900 });
+    await page.goto('/ai-chat');
+    await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 2 });
+    expect(await page.evaluate(() => window.visualViewport?.scale)).toBeCloseTo(2, 1);
+    await expectNoOverflow(page);
+  } finally {
+    await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 });
+    await cdp.detach();
+  }
+
+  expect(chatRequests).toEqual([]);
+  expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
   expect(diagnostics.httpFailures).toEqual([]);
 });
 

@@ -22,6 +22,7 @@ import type { EnrollmentStatus } from '../../src/entities/enrollment';
 import * as learningProgress from '../../src/features/learning-progress';
 import type { LearningWorkspaceWorkflow } from '../../src/features/learning-progress';
 import { LearningDetailPage } from '../../src/pages/learning-detail-page';
+import { LocaleProvider, type Locale } from '../../src/shared/locale';
 import { ApiError, type ApiClient, type ApiRequestOptions } from '../../src/shared/api';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -90,6 +91,7 @@ function decode<TResponse, TBody>(
 
 interface DetailHarnessOptions {
   readonly initialEntry?: string;
+  readonly locale?: Locale;
   readonly queryClient?: QueryClient;
   readonly sameCourseRouteChange?: boolean;
   readonly sessionChange?: boolean;
@@ -136,16 +138,18 @@ async function renderPageWithView(
 ) {
   const queryClient = options.queryClient ?? createAppQueryClient();
   const page = (
-    <QueryClientProvider client={queryClient}>
-      <SessionProvider client={{ request }} tokenStore={options.store ?? tokenStore()}>
-        <MemoryRouter initialEntries={[options.initialEntry ?? '/learning/enrollments/4']}>
-          <DetailHarnessControls {...options} />
-          <Routes>
-            <Route path="/learning/enrollments/:enrollmentId" element={<LearningDetailPage />} />
-          </Routes>
-        </MemoryRouter>
-      </SessionProvider>
-    </QueryClientProvider>
+    <LocaleProvider initialLocale={options.locale ?? 'en'}>
+      <QueryClientProvider client={queryClient}>
+        <SessionProvider client={{ request }} tokenStore={options.store ?? tokenStore()}>
+          <MemoryRouter initialEntries={[options.initialEntry ?? '/learning/enrollments/4']}>
+            <DetailHarnessControls {...options} />
+            <Routes>
+              <Route path="/learning/enrollments/:enrollmentId" element={<LearningDetailPage />} />
+            </Routes>
+          </MemoryRouter>
+        </SessionProvider>
+      </QueryClientProvider>
+    </LocaleProvider>
   );
   let view: ReturnType<typeof render> | undefined;
   await act(async () => {
@@ -264,6 +268,210 @@ describe('LearningDetailPage', () => {
     expect(link.querySelector('svg')?.getAttribute('width')).toBe('20');
     expect(link.textContent).toBe('My learning');
   }
+
+  it.each([
+    ['en', 'No course description is available.'],
+    ['ru', 'Описание курса отсутствует.'],
+    ['uz', 'Kurs tavsifi mavjud emas.'],
+  ] as const)(
+    'localizes the absent course-description state in %s while preserving API-authored content',
+    async (locale, expectedFallback) => {
+      const requestForDescription =
+        (description: string | null): ApiClient['request'] =>
+        async <TResponse, TBody>(options: ApiRequestOptions<TBody, TResponse>) => {
+          if (options.path === '/me') return decode(options, student);
+          if (options.path === '/enrollments/4')
+            return decode(options, {
+              ...activeEnrollment,
+              course: { ...activeEnrollment.course, description },
+            });
+          if (options.path === '/courses/7/progress')
+            return decode(options, {
+              course_id: 7,
+              completed_lessons: 0,
+              total_lessons: 0,
+              progress_percentage: 0,
+            });
+          if (options.path === '/courses/7/lessons')
+            return decode(options, {
+              items: [],
+              page: 1,
+              page_size: 100,
+              total: 0,
+              pages: 0,
+              has_next: false,
+              has_previous: false,
+            });
+          throw new Error(`Unexpected request ${options.path}`);
+        };
+
+      await renderPage(requestForDescription(null), { locale });
+      expect(await screen.findByText(expectedFallback)).toBeTruthy();
+      if (locale !== 'en')
+        expect(screen.queryByText('No course description is available.')).toBeNull();
+
+      cleanup();
+      const apiDescription = `API-authored ${locale} description`;
+      await renderPage(requestForDescription(apiDescription), { locale });
+      expect(await screen.findByText(apiDescription)).toBeTruthy();
+      expect(screen.queryByText(expectedFallback)).toBeNull();
+    },
+  );
+
+  it.each([
+    [
+      'ru',
+      'payment_completed',
+      'Тестовая оплата завершена. Статус записи обновлён; обучение откроется только после подтверждения активного статуса.',
+      'Хлебные крошки',
+    ],
+    [
+      'ru',
+      'payment_declined',
+      'Тестовая оплата отклонена. Эта запись остаётся заблокированной.',
+      'Хлебные крошки',
+    ],
+    [
+      'ru',
+      'payment_pending',
+      'Запись всё ещё ожидает обработки, поэтому вы можете выбрать новый результат тестовой оплаты.',
+      'Хлебные крошки',
+    ],
+    [
+      'ru',
+      'payment_status_unknown',
+      'Не удалось подтвердить статус тестовой оплаты. Перед следующим действием проверьте статус записи.',
+      'Хлебные крошки',
+    ],
+    ['ru', 'unauthorized', 'Войдите снова перед проверкой статуса оплаты.', 'Хлебные крошки'],
+    [
+      'ru',
+      'not_authorized',
+      'Это действие с оплатой недоступно для текущего аккаунта.',
+      'Хлебные крошки',
+    ],
+    [
+      'ru',
+      'unavailable',
+      'Тестовая оплата сейчас недоступна. Проверьте статус записи позже.',
+      'Хлебные крошки',
+    ],
+    [
+      'uz',
+      'payment_completed',
+      'Sinov to‘lovi yakunlandi. Ro‘yxatdan o‘tish holati yangilandi; ta’lim faqat faol holat tasdiqlangandan keyin ochiladi.',
+      'Yo‘l ko‘rsatkich',
+    ],
+    [
+      'uz',
+      'payment_declined',
+      'Sinov to‘lovi rad etildi. Bu ro‘yxatdan o‘tish yopiq qoladi.',
+      'Yo‘l ko‘rsatkich',
+    ],
+    [
+      'uz',
+      'payment_pending',
+      'Ro‘yxatdan o‘tish hali kutilmoqda, shuning uchun sinov to‘lovi uchun yangi natijani tanlashingiz mumkin.',
+      'Yo‘l ko‘rsatkich',
+    ],
+    [
+      'uz',
+      'payment_status_unknown',
+      'Sinov to‘lovi holatini tasdiqlab bo‘lmadi. Keyingi amalni bajarishdan oldin ro‘yxatdan o‘tish holatini tekshiring.',
+      'Yo‘l ko‘rsatkich',
+    ],
+    ['uz', 'unauthorized', 'To‘lov holatini tekshirishdan oldin yana kiring.', 'Yo‘l ko‘rsatkich'],
+    [
+      'uz',
+      'not_authorized',
+      'Bu to‘lov amali joriy akkaunt uchun mavjud emas.',
+      'Yo‘l ko‘rsatkich',
+    ],
+    [
+      'uz',
+      'unavailable',
+      'Sinov to‘lovi hozir mavjud emas. Ro‘yxatdan o‘tish holatini keyinroq tekshiring.',
+      'Yo‘l ko‘rsatkich',
+    ],
+  ] as const)(
+    'renders the exact %s DRAFT-22 %s feedback body without an English fallback',
+    async (locale, kind, expectedBody, breadcrumbLabel) => {
+      vi.spyOn(checkoutCart, 'useCheckoutCart').mockReturnValue(
+        checkoutWorkflowWithFeedback({ kind } as CheckoutFeedback),
+      );
+      const request: ApiClient['request'] = async <TResponse, TBody>(
+        options: ApiRequestOptions<TBody, TResponse>,
+      ) => {
+        if (options.path === '/me') return decode(options, student);
+        if (options.path === '/enrollments/4') return decode(options, activeEnrollment);
+        if (options.path === '/courses/7/progress')
+          return decode(options, {
+            course_id: 7,
+            completed_lessons: 0,
+            total_lessons: 0,
+            progress_percentage: 0,
+          });
+        if (options.path === '/courses/7/lessons')
+          return decode(options, {
+            items: [],
+            page: 1,
+            page_size: 100,
+            total: 0,
+            pages: 0,
+            has_next: false,
+            has_previous: false,
+          });
+        throw new Error(`Unexpected request ${options.path}`);
+      };
+
+      await renderPage(request, { locale });
+
+      expect(await screen.findByText(expectedBody)).toBeTruthy();
+      if (kind === 'payment_declined') {
+        const expectedTitle =
+          locale === 'ru' ? 'Тестовый платёж отклонён' : 'Sinov to‘lovi rad etildi';
+        expect(screen.getByText(expectedTitle)).toBeTruthy();
+        expect(expectedTitle).not.toBe(expectedBody);
+      }
+      expect(screen.getByRole('navigation', { name: breadcrumbLabel })).toBeTruthy();
+    },
+  );
+
+  it.each([
+    [
+      'ru',
+      'Тестовая оплата ожидает завершения. Обучение останется заблокированным, пока запись не станет активной.',
+      'Завершить тестовую оплату',
+      'Сымитировать сбой тестовой оплаты',
+      'Хлебные крошки',
+    ],
+    [
+      'uz',
+      'Sinov to‘lovi yakunlanishini kutmoqda. Ro‘yxatdan o‘tishingiz faol bo‘lmaguncha ta’lim yopiq qoladi.',
+      'Sinov to‘lovini yakunlash',
+      'Sinov to‘lovi xatosini taqlid qilish',
+      'Yo‘l ko‘rsatkich',
+    ],
+  ] as const)(
+    'renders the exact %s pending-payment body, actions, and Breadcrumb semantics',
+    async (locale, expectedBody, completeLabel, failureLabel, breadcrumbLabel) => {
+      const request: ApiClient['request'] = async <TResponse, TBody>(
+        options: ApiRequestOptions<TBody, TResponse>,
+      ) => {
+        if (options.path === '/me') return decode(options, student);
+        if (options.path === '/enrollments/4')
+          return decode(options, { ...activeEnrollment, status: 'pending_payment' });
+        throw new Error(`Unexpected request ${options.path}`);
+      };
+
+      await renderPage(request, { locale });
+
+      expect(await screen.findByText(expectedBody)).toBeTruthy();
+      expect(screen.getByRole('button', { name: completeLabel })).toBeTruthy();
+      expect(screen.getByRole('button', { name: failureLabel })).toBeTruthy();
+      expect(screen.getByRole('navigation', { name: breadcrumbLabel })).toBeTruthy();
+    },
+  );
 
   it('keeps submitted payment feedback polite and focused elsewhere through 4,999ms, then removes it at 5,000ms', async () => {
     vi.useFakeTimers();

@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, type KeyboardEvent } from 'react';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
 import { SendHorizontal, Sparkles } from 'lucide-react';
 
 import { Button, Notice, Textarea, VisuallyHidden } from '@shared/ui/primitives';
@@ -17,17 +19,32 @@ interface CourseChatPanelProps {
   readonly focusOnOpen?: boolean;
 }
 
-function errorCopy(error: ReturnType<typeof useCourseChat>['error']) {
+function errorCopy(t: TFunction, error: ReturnType<typeof useCourseChat>['error']) {
   if (error === 'sign_in_required')
-    return ['Sign in required', 'Sign in again before using the assistant.'] as const;
+    return [
+      t('cart:signInRequired', { defaultValue: 'Sign in required' }),
+      t('ai:signInAgainBeforeUsingThe', {
+        defaultValue: 'Sign in again before using the assistant.',
+      }),
+    ] as const;
   if (error === 'invalid_request')
-    return ['Message needs checking', 'Check the message and try again.'] as const;
+    return [
+      t('ai:messageNeedsChecking', { defaultValue: 'Message needs checking' }),
+      t('ai:checkTheMessageAndTryAgain', { defaultValue: 'Check the message and try again.' }),
+    ] as const;
   if (error === 'temporarily_unavailable')
     return [
-      'Assistant temporarily unavailable',
-      'The assistant is temporarily unavailable.',
+      t('ai:assistantTemporarilyUnavailable', {
+        defaultValue: 'Assistant temporarily unavailable',
+      }),
+      t('ai:theAssistantIsTemporarilyUnavailable', {
+        defaultValue: 'The assistant is temporarily unavailable.',
+      }),
     ] as const;
-  return ['Assistant unavailable', 'The assistant is unavailable.'] as const;
+  return [
+    t('ai:assistantUnavailable0331', { defaultValue: 'Assistant unavailable' }),
+    t('ai:theAssistantIsUnavailable', { defaultValue: 'The assistant is unavailable.' }),
+  ] as const;
 }
 
 interface CourseChatContentProps {
@@ -40,6 +57,10 @@ interface CourseChatContentProps {
 
 interface ChatMessageBubbleProps {
   readonly message: ChatMessage;
+}
+
+interface AssistantStatusProps {
+  readonly t: TFunction;
 }
 
 const AUTO_SCROLL_BOTTOM_THRESHOLD_PX = 24;
@@ -77,7 +98,7 @@ function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
   );
 }
 
-function AssistantTypingIndicator() {
+function AssistantTypingIndicator({ t }: AssistantStatusProps) {
   return (
     <div
       className={`${styles.messageRow} ${styles.assistantRow} ${styles.typingRow}`}
@@ -92,13 +113,15 @@ function AssistantTypingIndicator() {
           <span className={styles.typingDot} />
           <span className={styles.typingDot} />
         </span>
-        <span className={styles.typingLabel}>Thinking…</span>
+        <span className={styles.typingLabel}>
+          {t('ai:thinking', { defaultValue: 'Thinking…' })}
+        </span>
       </span>
     </div>
   );
 }
 
-function AssistantResponseError() {
+function AssistantResponseError({ t }: AssistantStatusProps) {
   return (
     <div
       className={`${styles.messageRow} ${styles.assistantRow} ${styles.responseErrorRow}`}
@@ -107,7 +130,9 @@ function AssistantResponseError() {
       <span className={`${styles.avatar} ${styles.assistantAvatar}`} aria-hidden="true">
         <Sparkles />
       </span>
-      <p className={styles.responseErrorCopy}>Couldn’t generate a response.</p>
+      <p className={styles.responseErrorCopy}>
+        {t('ai:couldntGenerateResponse', { defaultValue: 'Couldn’t generate a response.' })}
+      </p>
     </div>
   );
 }
@@ -119,6 +144,7 @@ export function CourseChatContent({
   focusOnOpen,
   focusRequest = 0,
 }: CourseChatContentProps) {
+  const { t } = useTranslation();
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   const shouldStickToBottomRef = useRef(true);
@@ -165,7 +191,7 @@ export function CourseChatContent({
     return () => globalThis.cancelAnimationFrame(frame);
   }, [compact, focusRequest]);
   const inlineResponseFailure = chat.error === 'response_failed';
-  const feedback = chat.error === null || inlineResponseFailure ? null : errorCopy(chat.error);
+  const feedback = chat.error === null || inlineResponseFailure ? null : errorCopy(t, chat.error);
   const hasComposerAction = chat.draft.trim() !== '';
   useLayoutEffect(() => {
     const messages = messagesRef.current;
@@ -181,7 +207,7 @@ export function CourseChatContent({
   return (
     <section
       className={`${styles.panel} ${compact ? styles.compact : styles.full}`}
-      aria-label="Course assistant"
+      aria-label={t('ai:courseAssistant0319', { defaultValue: 'Course assistant' })}
     >
       <div
         ref={messagesRef}
@@ -197,15 +223,19 @@ export function CourseChatContent({
         {chat.messages.length === 0 ? (
           <p className={styles.empty}>
             {context.kind === 'general'
-              ? 'Ask a question about your learning.'
-              : 'Ask a question about this course.'}
+              ? t('ai:askAQuestionAboutYourLearning', {
+                  defaultValue: 'Ask a question about your learning.',
+                })
+              : t('ai:askAQuestionAboutThisCourse', {
+                  defaultValue: 'Ask a question about this course.',
+                })}
           </p>
         ) : null}
         {chat.messages.map((message) => (
           <ChatMessageBubble key={message.id} message={message} />
         ))}
-        {chat.pending ? <AssistantTypingIndicator /> : null}
-        {inlineResponseFailure ? <AssistantResponseError /> : null}
+        {chat.pending ? <AssistantTypingIndicator t={t} /> : null}
+        {inlineResponseFailure ? <AssistantResponseError t={t} /> : null}
       </div>
       {feedback ? (
         <div className={compact ? styles.compactError : undefined}>
@@ -226,11 +256,19 @@ export function CourseChatContent({
         >
           <Textarea
             ref={inputRef}
-            label={<VisuallyHidden>Message the course assistant</VisuallyHidden>}
+            label={
+              <VisuallyHidden>
+                {t('ai:messageTheCourseAssistant', {
+                  defaultValue: 'Message the course assistant',
+                })}
+              </VisuallyHidden>
+            }
             value={chat.draft}
             onChange={(event) => chat.setDraft(event.target.value)}
             disabled={!compact && chat.pending}
-            placeholder="Ask about courses, lessons, or learning…"
+            placeholder={t('ai:askAboutCoursesLessonsOrLearning', {
+              defaultValue: 'Ask about courses, lessons, or learning…',
+            })}
             className={compact ? styles.compactInput : styles.fullInput}
             fieldClassName={compact ? styles.compactInputField : styles.fullInputField}
             rows={1}
@@ -240,10 +278,14 @@ export function CourseChatContent({
           {hasComposerAction ? (
             <Button
               type="submit"
-              aria-label="Send message"
+              aria-label={t('ai:sendMessage', { defaultValue: 'Send message' })}
               disabled={chat.pending}
               state={chat.pending ? 'loading' : 'idle'}
-              loadingLabel={<VisuallyHidden>Sending message</VisuallyHidden>}
+              loadingLabel={
+                <VisuallyHidden>
+                  {t('ai:sendingMessage', { defaultValue: 'Sending message' })}
+                </VisuallyHidden>
+              }
             >
               <SendHorizontal aria-hidden="true" />
             </Button>

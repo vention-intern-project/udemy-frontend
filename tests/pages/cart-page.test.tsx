@@ -2,14 +2,16 @@
 
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { I18nextProvider } from 'react-i18next';
 import { MemoryRouter, useLocation } from 'react-router-dom';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createAppQueryClient } from '../../src/app/query';
 import type { Cart } from '../../src/entities/cart';
 import { SessionProvider, type AccessTokenStore } from '../../src/features/auth-session';
 import { CartPage } from '../../src/pages/cart-page';
 import { ApiError, type ApiClient, type ApiRequestOptions } from '../../src/shared/api';
+import { localeRuntime } from '../../src/shared/locale';
 import { QueryClientProvider } from '@tanstack/react-query';
 
 const student = {
@@ -68,6 +70,156 @@ const cartWithThreeItems = {
   item_count: 3,
 };
 
+const CART_RESIDUAL_COPY = {
+  en: {
+    breadcrumb: 'Breadcrumb',
+    cart: 'Cart',
+    cartCourses: 'Cart courses',
+    cartTotal: 'Cart total',
+    courseCount: '2 courses',
+    courseLabel: 'Course',
+    empty: 'Your cart is empty',
+    mockCheckout: 'Mock checkout',
+    orderSummary: 'Order summary',
+    price: 'Price',
+    total: 'Total',
+  },
+  ru: {
+    breadcrumb: 'Хлебные крошки',
+    cart: 'Корзина',
+    cartCourses: 'Курсы в корзине',
+    cartTotal: 'Итог корзины',
+    courseCount: '2 курс',
+    courseLabel: 'Курс',
+    empty: 'Ваша корзина пуста',
+    mockCheckout: 'Тестовое оформление',
+    orderSummary: 'Итоги заказа',
+    price: 'Цена',
+    total: 'Итого',
+  },
+  uz: {
+    breadcrumb: 'Yo‘l ko‘rsatkich',
+    cart: 'Savat',
+    cartCourses: 'Savatdagi kurslar',
+    cartTotal: 'Savat jami',
+    courseCount: '2 kurs',
+    courseLabel: 'Kurs',
+    empty: 'Savatingiz bo‘sh',
+    mockCheckout: 'Sinov buyurtmasi',
+    orderSummary: 'Buyurtma yakuni',
+    price: 'Narx',
+    total: 'Jami',
+  },
+} as const;
+
+const CART_MAPPED_CONSUMER_COPY = {
+  en: {
+    clearAction: 'Clear cart',
+    clearDialog: 'Clear cart?',
+    clearStatus: 'Cart cleared.',
+    learningReturn: 'My learning',
+    removeStatus: 'Course removed from cart.',
+  },
+  ru: {
+    clearAction: 'Очистить корзину',
+    clearDialog: 'Очистить корзину?',
+    clearStatus: 'Корзина очищена.',
+    learningReturn: 'Моё обучение',
+    removeStatus: 'Курс удалён из корзины.',
+  },
+  uz: {
+    clearAction: 'Savatni tozalash',
+    clearDialog: 'Savat tozalansinmi?',
+    clearStatus: 'Savat tozalandi.',
+    learningReturn: 'Ta’limim',
+    removeStatus: 'Kurs savatdan olib tashlandi.',
+  },
+} as const;
+
+interface CartReturnTargetExpectation {
+  readonly expectedHref: string;
+  readonly labels: Readonly<Record<'en' | 'ru' | 'uz', string>>;
+  readonly returnTo?: string;
+}
+
+const CART_RETURN_TARGET_EXPECTATIONS: readonly CartReturnTargetExpectation[] = [
+  { expectedHref: '/', labels: { en: 'Catalog', ru: 'Каталог', uz: 'Katalog' } },
+  { returnTo: '/', expectedHref: '/', labels: { en: 'Catalog', ru: 'Каталог', uz: 'Katalog' } },
+  {
+    returnTo: '/courses/7?tab=outline#lessons',
+    expectedHref: '/courses/7?tab=outline#lessons',
+    labels: { en: 'Course details', ru: 'Сведения о курсе', uz: 'Kurs tafsilotlari' },
+  },
+  {
+    returnTo: '/signup',
+    expectedHref: '/signup',
+    labels: { en: 'Create account', ru: 'Создать аккаунт', uz: 'Akkaunt yaratish' },
+  },
+  {
+    returnTo: '/login',
+    expectedHref: '/login',
+    labels: { en: 'Log in', ru: 'Войти', uz: 'Kirish' },
+  },
+  {
+    returnTo: '/forgot-password',
+    expectedHref: '/forgot-password',
+    labels: { en: 'Forgot password', ru: 'Забыли пароль', uz: 'Parolni unutdingizmi' },
+  },
+  {
+    returnTo: '/reset-password',
+    expectedHref: '/reset-password',
+    labels: { en: 'Reset password', ru: 'Сбросить пароль', uz: 'Parolni tiklash' },
+  },
+  {
+    returnTo: '/learning?page=2#courses',
+    expectedHref: '/learning?page=2#courses',
+    labels: { en: 'My learning', ru: 'Моё обучение', uz: 'Ta’limim' },
+  },
+  {
+    returnTo: '/learning/enrollments/4',
+    expectedHref: '/learning/enrollments/4',
+    labels: {
+      en: 'Learning details',
+      ru: 'Сведения об обучении',
+      uz: 'Ta’lim tafsilotlari',
+    },
+  },
+  {
+    returnTo: '/learning/enrollments/4/ai-chat',
+    expectedHref: '/learning/enrollments/4/ai-chat',
+    labels: { en: 'Course assistant', ru: 'Ассистент курса', uz: 'Kurs yordamchisi' },
+  },
+  {
+    returnTo: '/ai-chat',
+    expectedHref: '/ai-chat',
+    labels: { en: 'AI assistant', ru: 'ИИ-ассистент', uz: 'AI yordamchi' },
+  },
+  {
+    returnTo: '/instructor/courses',
+    expectedHref: '/instructor/courses',
+    labels: {
+      en: 'Instructor courses',
+      ru: 'Курсы преподавателя',
+      uz: 'O‘qituvchi kurslari',
+    },
+  },
+  {
+    returnTo: '/instructor/courses/7/edit',
+    expectedHref: '/instructor/courses/7/edit',
+    labels: { en: 'Edit course', ru: 'Редактировать курс', uz: 'Kursni tahrirlash' },
+  },
+  {
+    returnTo: '/instructor/courses/7/enrollments',
+    expectedHref: '/instructor/courses/7/enrollments',
+    labels: { en: 'Course enrollments', ru: 'Записи на курс', uz: 'Kursga yozilishlar' },
+  },
+  {
+    returnTo: '/instructor/lessons/12/edit',
+    expectedHref: '/instructor/lessons/12/edit',
+    labels: { en: 'Edit lesson', ru: 'Редактировать урок', uz: 'Darsni tahrirlash' },
+  },
+];
+
 function tokenStore(token = 'student-token'): AccessTokenStore {
   let value: string | null = token;
   return {
@@ -106,25 +258,32 @@ async function renderCart(request: ApiClient['request'], initialEntry: CartIniti
   const queryClient = createAppQueryClient();
   await act(async () => {
     render(
-      <QueryClientProvider client={queryClient}>
-        <SessionProvider client={{ request }} tokenStore={tokenStore()}>
-          <MemoryRouter
-            future={{ v7_relativeSplatPath: true, v7_startTransition: true }}
-            initialEntries={[initialEntry]}
-          >
-            <LocationProbe />
-            <CartPage />
-          </MemoryRouter>
-        </SessionProvider>
-      </QueryClientProvider>,
+      <I18nextProvider i18n={localeRuntime}>
+        <QueryClientProvider client={queryClient}>
+          <SessionProvider client={{ request }} tokenStore={tokenStore()}>
+            <MemoryRouter
+              future={{ v7_relativeSplatPath: true, v7_startTransition: true }}
+              initialEntries={[initialEntry]}
+            >
+              <LocationProbe />
+              <CartPage />
+            </MemoryRouter>
+          </SessionProvider>
+        </QueryClientProvider>
+      </I18nextProvider>,
     );
   });
   return queryClient;
 }
 
 afterEach(() => {
+  cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+});
+
+beforeEach(async () => {
+  await localeRuntime.changeLanguage('en');
 });
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -167,6 +326,73 @@ async function removeCourseAndExpectFocus(courseId: number, expectedActionName: 
 }
 
 describe('CartPage', () => {
+  it.each(['en', 'ru', 'uz'] as const)(
+    'localizes every allocated safe return label in %s without changing its route target',
+    async (locale) => {
+      await act(() => localeRuntime.changeLanguage(locale));
+      const request: ApiClient['request'] = async <TResponse, TBody>(
+        options: ApiRequestOptions<TBody, TResponse>,
+      ) => {
+        if (options.path === '/me') return decode(options, student);
+        if (options.path === '/cart' && options.method === 'GET')
+          return decode(options, cartWithItems);
+        throw new Error(`Unexpected request ${options.method} ${options.path}`);
+      };
+
+      for (const expectation of CART_RETURN_TARGET_EXPECTATIONS) {
+        await renderCart(request, {
+          pathname: '/cart',
+          state:
+            expectation.returnTo === undefined ? undefined : { returnTo: expectation.returnTo },
+        });
+
+        const source = await screen.findByRole('link', { name: expectation.labels[locale] });
+        expect(source.getAttribute('href')).toBe(expectation.expectedHref);
+        if (locale !== 'en') expect(source.textContent).not.toBe(expectation.labels.en);
+        cleanup();
+      }
+    },
+  );
+
+  it.each(['en', 'ru', 'uz'] as const)(
+    'renders the admitted visible and accessible Cart family in %s',
+    async (locale) => {
+      const copy = CART_RESIDUAL_COPY[locale];
+      await act(() => localeRuntime.changeLanguage(locale));
+      const request: ApiClient['request'] = async <TResponse, TBody>(
+        options: ApiRequestOptions<TBody, TResponse>,
+      ) => {
+        if (options.path === '/me') return decode(options, student);
+        if (options.path === '/cart' && options.method === 'GET')
+          return decode(options, cartWithItems);
+        throw new Error(`Unexpected request ${options.method} ${options.path}`);
+      };
+
+      await renderCart(request);
+
+      expect(await screen.findByRole('heading', { level: 1, name: copy.cart })).toBeTruthy();
+      expect(screen.getByRole('navigation', { name: copy.breadcrumb })).toBeTruthy();
+      const courses = screen.getByRole('list', { name: copy.cartCourses });
+      expect(within(courses).getAllByText(copy.courseLabel)).toHaveLength(2);
+      expect(within(courses).getAllByText(copy.price)).toHaveLength(2);
+      expect(screen.getByText(copy.courseCount)).toBeTruthy();
+      const total = screen.getByRole('complementary', { name: copy.cartTotal });
+      expect(within(total).getByRole('heading', { name: copy.orderSummary })).toBeTruthy();
+      expect(within(total).getByText(copy.total)).toBeTruthy();
+      expect(within(total).getByRole('button', { name: copy.mockCheckout })).toBeTruthy();
+      expect(document.body.textContent).not.toMatch(/Translation unavailable|(?:cart|a11y):\w+/);
+      cleanup();
+
+      await renderCart(async <TResponse, TBody>(options: ApiRequestOptions<TBody, TResponse>) => {
+        if (options.path === '/me') return decode(options, student);
+        if (options.path === '/cart' && options.method === 'GET')
+          return decode(options, { ...cartWithItems, items: [], item_count: 0 });
+        throw new Error(`Unexpected request ${options.method} ${options.path}`);
+      });
+      expect(await screen.findByRole('heading', { name: copy.empty })).toBeTruthy();
+    },
+  );
+
   it.each([
     {
       entry: { pathname: '/cart', state: { returnTo: '/learning?page=2#courses' } },
@@ -1074,6 +1300,103 @@ describe('CartPage', () => {
     expect(clearRequests).toBe(1);
     expect(reads).toBe(2);
   });
+
+  it.each(['ru', 'uz'] as const)(
+    'announces the localized polite clear-cart status in %s without changing the write or focus contract',
+    async (locale) => {
+      await act(() => localeRuntime.changeLanguage(locale));
+      let reads = 0;
+      let clearRequests = 0;
+      const request: ApiClient['request'] = async <TResponse, TBody>(
+        options: ApiRequestOptions<TBody, TResponse>,
+      ) => {
+        if (options.path === '/me') return decode(options, student);
+        if (options.path === '/cart' && options.method === 'GET') {
+          reads += 1;
+          return decode(
+            options,
+            reads === 1
+              ? cartWithItems
+              : { id: 1, items: [], total_price: '0.00', currency: 'USD', item_count: 0 },
+          );
+        }
+        if (options.path === '/cart' && options.method === 'DELETE') {
+          clearRequests += 1;
+          return decode(options, undefined);
+        }
+        throw new Error(`Unexpected request ${options.method} ${options.path}`);
+      };
+      await renderCart(request);
+      const user = userEvent.setup();
+      const copy = CART_MAPPED_CONSUMER_COPY[locale];
+      const clear = await screen.findByRole('button', { name: copy.clearAction });
+
+      await interact(() => user.click(clear));
+      await interact(() =>
+        user.click(
+          within(screen.getByRole('dialog', { name: copy.clearDialog })).getByRole('button', {
+            name: copy.clearAction,
+          }),
+        ),
+      );
+
+      const status = screen.getByRole('status');
+      await waitFor(() => expect(status.textContent).toContain(copy.clearStatus));
+      expect(status.getAttribute('aria-live')).toBe('polite');
+      expect(status.textContent).not.toContain('Cart cleared.');
+      expect(clearRequests).toBe(1);
+      expect(reads).toBe(2);
+      await waitFor(() =>
+        expect(screen.getByRole('heading', { level: 1 })).toBe(document.activeElement),
+      );
+    },
+  );
+
+  it.each(['ru', 'uz'] as const)(
+    'announces the localized polite course-removal status in %s without changing the write contract',
+    async (locale) => {
+      await act(() => localeRuntime.changeLanguage(locale));
+      let reads = 0;
+      let removeRequests = 0;
+      const request: ApiClient['request'] = async <TResponse, TBody>(
+        options: ApiRequestOptions<TBody, TResponse>,
+      ) => {
+        if (options.path === '/me') return decode(options, student);
+        if (options.path === '/cart' && options.method === 'GET') {
+          reads += 1;
+          return decode(
+            options,
+            reads === 1
+              ? cartWithItems
+              : {
+                  ...cartWithItems,
+                  items: [cartWithItems.items[1]],
+                  total_price: '10.00',
+                  item_count: 1,
+                },
+          );
+        }
+        if (options.path === '/cart/items/7' && options.method === 'DELETE') {
+          removeRequests += 1;
+          return decode(options, undefined);
+        }
+        throw new Error(`Unexpected request ${options.method} ${options.path}`);
+      };
+      await renderCart(request);
+      const user = userEvent.setup();
+      const remove = await screen.findByRole('button', { name: /Long accessible course title/ });
+
+      await interact(() => user.click(remove));
+
+      const status = screen.getByRole('status');
+      const copy = CART_MAPPED_CONSUMER_COPY[locale];
+      await waitFor(() => expect(status.textContent).toContain(copy.removeStatus));
+      expect(status.getAttribute('aria-live')).toBe('polite');
+      expect(status.textContent).not.toContain('Course removed from cart.');
+      expect(removeRequests).toBe(1);
+      expect(reads).toBe(2);
+    },
+  );
 
   it('uses a truthful pending label while the confirmed cart clear is in flight', async () => {
     const request: ApiClient['request'] = async <TResponse, TBody>(

@@ -191,7 +191,7 @@ function StudentMobileNavigation({ itemCount }: CartNavigationLinkProps) {
   const cartPresentation = presentCart(itemCount);
   const { t } = useTranslation();
   return (
-    <nav className={styles.studentMobileNavigation} aria-label="Student navigation">
+    <nav className={styles.studentMobileNavigation} aria-label={t('a11y:studentNavigation')}>
       <NavLink className={styles.studentMobileNavigationLink} end to="/">
         <LibraryBig aria-hidden="true" focusable="false" size={20} />
         <span>{t('navigation:catalog')}</span>
@@ -235,7 +235,7 @@ function StudentMobileNavigation({ itemCount }: CartNavigationLinkProps) {
 function AnonymousMobileNavigation() {
   const { t } = useTranslation();
   return (
-    <nav className={styles.anonymousMobileNavigation} aria-label="Anonymous navigation">
+    <nav className={styles.anonymousMobileNavigation} aria-label={t('a11y:anonymousNavigation')}>
       <NavLink className={styles.anonymousMobileNavigationLink} end to="/">
         <LibraryBig aria-hidden="true" focusable="false" size={20} />
         <span>{t('navigation:catalog')}</span>
@@ -257,6 +257,7 @@ function NavigationLinks({
   onNavigate,
   showPrimaryNavigationIndicator = false,
 }: NavigationLinksProps) {
+  const { t } = useTranslation();
   return (
     <ul className={styles.navList}>
       {items.map((item) => (
@@ -283,7 +284,7 @@ function NavigationLinks({
             }}
             to={item.to}
           >
-            {item.label}
+            {t(`navigation:${item.labelKey}`)}
           </NavLink>
         </li>
       ))}
@@ -582,7 +583,7 @@ export function AppShell() {
   return (
     <div className={styles.shell} data-layout={layout}>
       <a className={styles.skipLink} href="#main-content">
-        Skip to main content
+        {t('a11y:skipToMainContent')}
       </a>
       <header
         className={[
@@ -602,7 +603,11 @@ export function AppShell() {
       >
         <div className={styles.headerInner}>
           <div className={styles.headerCatalogStart}>
-            <Link className={styles.brand} to={brandDestination} aria-label="LearnHub home">
+            <Link
+              className={styles.brand}
+              to={brandDestination}
+              aria-label={t('a11y:learnHubHome')}
+            >
               <img alt="" aria-hidden="true" className={styles.brandMark} src={learnHubBookMark} />
               <span className={styles.brandWordmark}>LearnHub</span>
             </Link>
@@ -746,7 +751,7 @@ export function AppShell() {
                 type="button"
                 onClick={handleInstructorCourseTitleFocus}
               >
-                Create course
+                {t('instructor:coursesCreateCourse')}
               </button>
             ) : null}
             {isStudentMobile ? <AccountMenu user={state.user} showLanguage /> : null}
@@ -868,7 +873,7 @@ export function AppShell() {
                   type="button"
                   onClick={handleInstructorCourseTitleFocus}
                 >
-                  Create course
+                  {t('instructor:coursesCreateCourse')}
                 </button>
               </div>
             ) : (

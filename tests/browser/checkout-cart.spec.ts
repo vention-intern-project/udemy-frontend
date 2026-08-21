@@ -33,6 +33,27 @@ const pendingEnrollment = {
   course,
 };
 
+const checkoutResidualCopy = {
+  en: {
+    checkStatus: 'Check checkout status',
+    mockCheckout: 'Mock checkout',
+    uncertain:
+      'Your cart still cannot prove whether checkout partially completed. Check My Learning before taking another checkout action.',
+  },
+  ru: {
+    checkStatus: 'Проверить статус оплаты',
+    mockCheckout: 'Тестовое оформление',
+    uncertain:
+      'Корзина пока не может подтвердить, завершилась ли оплата частично. Перед новой оплатой проверьте «Моё обучение».',
+  },
+  uz: {
+    checkStatus: 'To‘lov holatini tekshirish',
+    mockCheckout: 'Sinov buyurtmasi',
+    uncertain:
+      'Savat to‘lov qisman yakunlanganini hozircha tasdiqlay olmaydi. Yana to‘lov qilishdan oldin «Ta’limim»ni tekshiring.',
+  },
+} as const;
+
 function cart(
   items = [
     {
@@ -371,3 +392,72 @@ for (const scenario of [
     await expect(page.locator('body')).not.toContainText('private');
     expect(posts).toBe(1);
   });
+
+for (const locale of ['en', 'ru', 'uz'] as const) {
+  test(`localizes checkout reconciliation and preserves one-write recovery in ${locale}`, async ({
+    page,
+  }) => {
+    test.slow();
+    const copy = checkoutResidualCopy[locale];
+    const diagnostics: string[] = [];
+    let checkoutPosts = 0;
+    page.on('pageerror', (error) => diagnostics.push(error.stack ?? error.message));
+    page.on('console', (message) => {
+      if (message.type() === 'error') diagnostics.push(message.text());
+    });
+    await installStudent(page);
+    await routeCheckoutApi(page, async (route, path, method) => {
+      if (path === '/me') return json(route, student);
+      if (path === '/cart' && method === 'GET') return json(route, cart());
+      if (path === '/cart/checkout') {
+        checkoutPosts += 1;
+        return json(route, { detail: 'private' }, 503);
+      }
+      if (path === '/enrollments/my')
+        return json(route, {
+          items: [],
+          page: 1,
+          page_size: 20,
+          total: 0,
+          pages: 0,
+          has_next: false,
+          has_previous: false,
+        });
+      throw new Error(`Unexpected localized reconciliation request ${method} ${path}`);
+    });
+
+    await page.goto('/cart');
+    if (locale !== 'en') {
+      await page.getByRole('button', { name: 'Change language' }).press('Enter');
+      await page
+        .getByRole('button', { name: locale === 'ru' ? 'Русский' : "O'zbek", exact: true })
+        .press('Enter');
+    }
+    await page.getByRole('button', { name: copy.mockCheckout, exact: true }).press('Enter');
+    const recovery = page.getByRole('button', { name: copy.checkStatus, exact: true });
+    await expect(recovery).toBeVisible();
+    await recovery.focus();
+    await expect(recovery).toBeFocused();
+    await recovery.press('Enter');
+    await expect(page.getByText(copy.uncertain, { exact: true })).toBeVisible();
+    expect(checkoutPosts).toBe(1);
+
+    for (const width of [320, 390, 768, 1280] as const) {
+      await page.setViewportSize({ width, height: 900 });
+      const geometry = await assertNoOverflow(page);
+      expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.client);
+      expect(geometry.bodyWidth).toBeLessThanOrEqual(geometry.client);
+    }
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 2 });
+    const zoomed = await assertNoOverflow(page);
+    expect(zoomed.documentWidth).toBeLessThanOrEqual(zoomed.client);
+    expect(zoomed.bodyWidth).toBeLessThanOrEqual(zoomed.client);
+    await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 });
+    await cdp.detach();
+    await expect(page.locator('body')).not.toContainText(/Translation unavailable|cart:\w+/);
+    expect(diagnostics).toEqual([
+      'Failed to load resource: the server responded with a status of 503 (Service Unavailable)',
+    ]);
+  });
+}
