@@ -150,7 +150,9 @@ function cartReturnTarget(state: unknown): CartReturnTarget {
 }
 
 function getSummaryJumpState(summaryHeading: HTMLElement): SummaryJumpState {
-  const navigation = document.querySelector<HTMLElement>('[aria-label="Student navigation"]');
+  const navigation = document
+    .querySelector<HTMLAnchorElement>('nav a[href="/cart"]')
+    ?.closest<HTMLElement>('nav');
   const visibleViewportBottom = navigation?.getBoundingClientRect().top ?? window.innerHeight;
   const summaryBounds = summaryHeading.getBoundingClientRect();
 
@@ -330,7 +332,7 @@ function hasSingleCartCurrency(cart: Cart): boolean {
 }
 
 export function CartPage() {
-  const { i18n, t } = useTranslation();
+  const { t } = useTranslation();
   const location = useLocation();
   const { cart, clear, feedback, isBusy, isPendingClear, remove, retry } = useCartWorkflow();
   const checkout = useCheckoutCart('cart');
@@ -576,10 +578,7 @@ export function CartPage() {
             <h1 ref={headingRef} tabIndex={-1}>
               {t('common:cart')}
             </h1>
-            <p>
-              {currentCart.itemCount} {t('cart:courseLowercase')}
-              {i18n.resolvedLanguage === 'en' && currentCart.itemCount !== 1 ? 's' : ''}
-            </p>
+            <p>{t('catalog:resultCount', { count: currentCart.itemCount })}</p>
           </div>
           <Button
             variant="secondary"

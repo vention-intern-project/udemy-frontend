@@ -8,9 +8,31 @@ import type { CourseProgress, LessonCompletionState } from '../../src/features/l
 import { LocaleProvider, localeRuntime, type Locale } from '../../src/shared/locale';
 import { EnrollmentProgressPanel } from '../../src/widgets/enrollment-progress-panel';
 
+vi.mock('../../src/features/media-access', () => ({
+  LessonMediaAccess: () => null,
+}));
+
 const outline: LessonOutline = { total: 2, items: [] };
 
 const emptyOutline: LessonOutline = { total: 0, items: [] };
+
+function outlineWithLessonType(
+  lessonType: LessonOutline['items'][number]['lessonType'],
+): LessonOutline {
+  return {
+    total: 1,
+    items: [
+      {
+        id: 42,
+        title: 'Localized lesson type',
+        description: null,
+        lessonType,
+        isPublished: true,
+        mediaLocator: null,
+      },
+    ],
+  };
+}
 
 function completionState(): LessonCompletionState {
   return { status: 'known', completed: false };
@@ -46,6 +68,26 @@ afterEach(async () => {
 });
 
 describe('EnrollmentProgressPanel DRAFT-21 lesson-count noun localization', () => {
+  it.each([
+    ['en', 'video', 'Video'],
+    ['ru', 'video', 'Видео'],
+    ['ru', 'text', 'Текст'],
+    ['uz', 'text', 'Matn'],
+    ['uz', 'pdf', 'PDF'],
+  ] as const)(
+    'localizes the visible %s lesson-type presentation for %s',
+    (locale, lessonType, expected) => {
+      renderPanel(locale, undefined, outlineWithLessonType(lessonType));
+
+      expect(
+        screen.getByText(
+          (_, node) =>
+            node?.tagName === 'SPAN' && node.textContent?.startsWith(`${expected} `) === true,
+        ),
+      ).toBeTruthy();
+    },
+  );
+
   it.each([
     [
       'en',

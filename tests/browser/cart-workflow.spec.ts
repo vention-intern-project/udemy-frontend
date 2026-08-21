@@ -53,7 +53,7 @@ const cartResidualCopy = {
     cart: 'Savat',
     cartCourses: 'Savatdagi kurslar',
     cartTotal: 'Savat jami',
-    courseCount: '1 kurs',
+    courseCount: '1 ta kurs',
     courseLabel: 'Kurs',
     mockCheckout: 'Sinov buyurtmasi',
     orderSummary: 'Buyurtma yakuni',

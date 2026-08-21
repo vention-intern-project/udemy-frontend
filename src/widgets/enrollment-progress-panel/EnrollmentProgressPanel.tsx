@@ -2,7 +2,7 @@ import { useEffect, useId, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Check, Undo2 } from 'lucide-react';
 
-import type { LessonOutline } from '@entities/course';
+import type { LessonOutline, LessonType } from '@entities/course';
 import type { CourseProgress, LessonCompletionState } from '@features/learning-progress';
 import { lessonCompletionLabel } from '@features/learning-progress';
 import { LessonMediaAccess } from '@features/media-access';
@@ -53,6 +53,19 @@ interface LessonCompletionActionProps {
   readonly markComplete: boolean;
   readonly pending: boolean;
   readonly onSetCompletion: EnrollmentProgressPanelProps['onSetCompletion'];
+}
+
+const LESSON_TYPE_LABEL_KEYS: Record<LessonType, string> = {
+  video: 'instructor:courseEditorVideo',
+  text: 'instructor:courseEditorText',
+  pdf: 'instructor:courseEditorPdf',
+};
+
+function lessonTypeLabel(
+  lessonType: LessonType,
+  t: ReturnType<typeof useTranslation>['t'],
+): string {
+  return t(LESSON_TYPE_LABEL_KEYS[lessonType]);
 }
 
 function LessonCompletionAction({
@@ -288,7 +301,7 @@ export function EnrollmentProgressPanel({
                           })}
                       </p>
                       <span>
-                        {lesson.lessonType} {t('course:lessonMarker')}{' '}
+                        {lessonTypeLabel(lesson.lessonType, t)} {t('course:lessonMarker')}{' '}
                         {lesson.isPublished
                           ? t('learning:listedMetadata', { defaultValue: 'Listed metadata' })
                           : t('course:draftMetadata', { defaultValue: 'Draft metadata' })}

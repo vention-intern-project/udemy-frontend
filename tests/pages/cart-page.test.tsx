@@ -70,6 +70,27 @@ const cartWithThreeItems = {
   item_count: 3,
 };
 
+function cartWithItemCount(count: number) {
+  const items = Array.from({ length: count }, (_, index) => ({
+    id: index + 100,
+    course_id: index + 100,
+    added_at: '2026-01-01T00:00:00Z',
+    course: {
+      id: index + 100,
+      title: `Course ${index + 1}`,
+      price: '10.00',
+      currency: 'USD',
+    },
+  }));
+  return {
+    id: 1,
+    items,
+    total_price: `${count * 10}.00`,
+    currency: 'USD',
+    item_count: count,
+  };
+}
+
 const CART_RESIDUAL_COPY = {
   en: {
     breadcrumb: 'Breadcrumb',
@@ -89,7 +110,7 @@ const CART_RESIDUAL_COPY = {
     cart: 'Корзина',
     cartCourses: 'Курсы в корзине',
     cartTotal: 'Итог корзины',
-    courseCount: '2 курс',
+    courseCount: '2 курса',
     courseLabel: 'Курс',
     empty: 'Ваша корзина пуста',
     mockCheckout: 'Тестовое оформление',
@@ -102,7 +123,7 @@ const CART_RESIDUAL_COPY = {
     cart: 'Savat',
     cartCourses: 'Savatdagi kurslar',
     cartTotal: 'Savat jami',
-    courseCount: '2 kurs',
+    courseCount: '2 ta kurs',
     courseLabel: 'Kurs',
     empty: 'Savatingiz bo‘sh',
     mockCheckout: 'Sinov buyurtmasi',
@@ -326,6 +347,32 @@ async function removeCourseAndExpectFocus(courseId: number, expectedActionName: 
 }
 
 describe('CartPage', () => {
+  it.each([
+    ['en', 1, '1 course'],
+    ['en', 2, '2 courses'],
+    ['ru', 1, '1 курс'],
+    ['ru', 2, '2 курса'],
+    ['ru', 5, '5 курсов'],
+    ['uz', 2, '2 ta kurs'],
+  ] as const)(
+    'uses the existing natural course-count plural in %s for %i items',
+    async (locale, count, expected) => {
+      await act(() => localeRuntime.changeLanguage(locale));
+      const request: ApiClient['request'] = async <TResponse, TBody>(
+        options: ApiRequestOptions<TBody, TResponse>,
+      ) => {
+        if (options.path === '/me') return decode(options, student);
+        if (options.path === '/cart' && options.method === 'GET')
+          return decode(options, cartWithItemCount(count));
+        throw new Error(`Unexpected request ${options.method} ${options.path}`);
+      };
+
+      await renderCart(request);
+
+      expect(await screen.findByText(expected, { exact: true })).toBeTruthy();
+    },
+  );
+
   it.each(['en', 'ru', 'uz'] as const)(
     'localizes every allocated safe return label in %s without changing its route target',
     async (locale) => {
