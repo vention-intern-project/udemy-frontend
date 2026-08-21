@@ -8,6 +8,7 @@ import { sanitizeInternalReturnTo } from '@features/auth-session';
 import { cartFailureState, useCartWorkflow, type CartFailureState } from '@features/cart-workflow';
 import { useCheckoutCart, type CartRecovery, type CheckoutFeedback } from '@features/checkout-cart';
 import type { Cart } from '@entities/cart';
+import { formatLocaleCurrency } from '@shared/locale';
 import {
   Button,
   DestructiveConfirmation,
@@ -332,7 +333,7 @@ function hasSingleCartCurrency(cart: Cart): boolean {
 }
 
 export function CartPage() {
-  const { t } = useTranslation();
+  const { i18n, t } = useTranslation();
   const location = useLocation();
   const { cart, clear, feedback, isBusy, isPendingClear, remove, retry } = useCartWorkflow();
   const checkout = useCheckoutCart('cart');
@@ -645,7 +646,11 @@ export function CartPage() {
                   <div className={styles.price}>
                     <p className={styles.label}>{t('instructor:courseEditorPrice')}</p>
                     <p>
-                      {item.course.currency} {item.course.price}
+                      {formatLocaleCurrency({
+                        price: item.course.price,
+                        currency: item.course.currency,
+                        locale: i18n.language,
+                      })}
                     </p>
                   </div>
                   <div
@@ -688,7 +693,11 @@ export function CartPage() {
           <span className={styles.label}>{t('cart:total')}</span>
           {canDisplayTotal ? (
             <strong>
-              {currentCart.currency} {currentCart.totalPrice}
+              {formatLocaleCurrency({
+                price: currentCart.totalPrice,
+                currency: currentCart.currency,
+                locale: i18n.language,
+              })}
             </strong>
           ) : (
             <strong className={styles.totalUnavailable}>{t('cart:totalUnavailable')}</strong>

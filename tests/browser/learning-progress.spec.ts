@@ -1799,6 +1799,79 @@ for (const scenario of partialAvailabilityScenarios)
     );
   });
 
+const learningFailureCopy = {
+  en: {
+    title: 'Learning data is unavailable',
+    message: 'The server returned an invalid response. Try again.',
+    retry: 'Try again',
+  },
+  ru: {
+    title: 'Данные об обучении недоступны',
+    message: 'Сервер вернул некорректный ответ. Повторите попытку.',
+    retry: 'Повторить',
+  },
+  uz: {
+    title: 'Ta’lim ma’lumotlari mavjud emas',
+    message: 'Server noto‘g‘ri javob qaytardi. Qayta urinib ko‘ring.',
+    retry: 'Qayta urinish',
+  },
+} as const;
+
+for (const locale of ['en', 'ru', 'uz'] as const) {
+  test(`resolves a settled Learning failure in ${locale} without private server text`, async ({
+    page,
+  }) => {
+    await installStudent(page);
+    const diagnostics = captureRuntimeDiagnostics(page, {
+      abortedRequests: [expectedGetAbort('/enrollments/4', 1)],
+    });
+    let writes = 0;
+    page.on('request', (request) => {
+      if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method())) writes += 1;
+    });
+    await page.route('**/*', async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (url.origin !== 'http://127.0.0.1:4179') return route.fallback();
+      if (url.pathname === '/me') return json(route, student);
+      if (url.pathname === '/enrollments/4')
+        return json(route, { malformed: 'private learning failure' });
+      if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/'))
+        throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
+      return route.fallback();
+    });
+
+    await page.goto('/learning/enrollments/4');
+    if (locale !== 'en') {
+      await page.getByRole('button', { name: 'Change language' }).press('Enter');
+      await page
+        .getByRole('button', { name: locale === 'ru' ? 'Русский' : "O'zbek", exact: true })
+        .press('Enter');
+    }
+
+    const copy = learningFailureCopy[locale];
+    await expect(page.getByRole('heading', { level: 1, name: copy.title })).toBeVisible();
+    await expect(page.getByText(copy.message, { exact: true })).toBeVisible();
+    await expect(page.getByText('private learning failure')).toHaveCount(0);
+    const retry = page.getByRole('button', { name: copy.retry });
+    for (const width of [320, 390, 768, 1280] as const) {
+      await page.setViewportSize({ width, height: 900 });
+      await retry.focus();
+      await expect(retry).toBeFocused();
+      const geometry = await page.evaluate(() => ({
+        documentWidth: document.documentElement.scrollWidth,
+        bodyWidth: document.body.scrollWidth,
+        layoutWidth: document.documentElement.clientWidth,
+      }));
+      expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.layoutWidth);
+      expect(geometry.bodyWidth).toBeLessThanOrEqual(geometry.layoutWidth);
+    }
+    expect(writes).toBe(0);
+    expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
+    expect(diagnostics.httpFailures).toEqual([]);
+  });
+}
+
 test('recovers API-022 enrollment detail by keyboard and focuses the restored course heading', async ({
   page,
 }) => {

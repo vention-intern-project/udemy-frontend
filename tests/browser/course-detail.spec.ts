@@ -121,6 +121,7 @@ interface DiagnosticAssertions {
 interface CourseResidualBrowserCopy {
   readonly loadingDetails: string;
   readonly loadingOutline: string;
+  readonly coursePrice: string;
   readonly outlineHeading: string;
   readonly emptyOutline: string;
   readonly lessonMarker: string;
@@ -133,6 +134,7 @@ const courseResidualBrowserCopy: Readonly<Record<'en' | 'ru' | 'uz', CourseResid
   en: {
     loadingDetails: 'Loading course details',
     loadingOutline: 'Loading course outline',
+    coursePrice: '$19.9900',
     outlineHeading: 'Course outline',
     emptyOutline: 'No lessons have been added yet.',
     lessonMarker: 'lesson ·',
@@ -143,6 +145,7 @@ const courseResidualBrowserCopy: Readonly<Record<'en' | 'ru' | 'uz', CourseResid
   ru: {
     loadingDetails: 'Загрузка сведений о курсе',
     loadingOutline: 'Загрузка программы курса',
+    coursePrice: '19,9900 $',
     outlineHeading: 'Программа курса',
     emptyOutline: 'Уроки ещё не добавлены.',
     lessonMarker: 'урок ·',
@@ -153,6 +156,7 @@ const courseResidualBrowserCopy: Readonly<Record<'en' | 'ru' | 'uz', CourseResid
   uz: {
     loadingDetails: 'Kurs tafsilotlari yuklanmoqda',
     loadingOutline: 'Kurs dasturi yuklanmoqda',
+    coursePrice: '$ 19.9900',
     outlineHeading: 'Kurs dasturi',
     emptyOutline: 'Hali darslar qo‘shilmagan.',
     lessonMarker: 'dars ·',
@@ -372,6 +376,57 @@ test('clears a genuine invalid bearer after 401 and performs public metadata rea
   expect(await page.evaluate(() => localStorage.getItem('learnhub.access-token'))).toBeNull();
   diagnostics.assertClean();
 });
+
+const courseFailureCopy = {
+  en: { title: 'We could not load this course', message: 'Please try again.' },
+  ru: { title: 'Не удалось загрузить курс', message: 'Повторите попытку.' },
+  uz: { title: 'Kursni yuklab bo‘lmadi', message: 'Qayta urinib ko‘ring.' },
+} as const;
+
+for (const locale of ['en', 'ru', 'uz'] as const) {
+  test(`resolves a settled Course Detail failure in ${locale} without private server text`, async ({
+    page,
+  }) => {
+    const diagnostics = await installDiagnostics(page);
+    diagnostics.expectHttpFailure({ method: 'GET', pathname: '/courses/7', status: 500 });
+    diagnostics.expectHttpFailure({ method: 'GET', pathname: '/courses/7', status: 500 });
+    let writes = 0;
+    page.on('request', (request) => {
+      if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method())) writes += 1;
+    });
+    await page.route('**/courses/7', async (route) => {
+      if (isDocumentNavigation(route)) {
+        await route.fallback();
+        return;
+      }
+      await json(route, { detail: 'private course failure' }, 500);
+    });
+
+    await page.goto('/courses/7');
+    if (locale !== 'en') {
+      await page.getByRole('button', { name: 'Change language' }).press('Enter');
+      await page
+        .getByRole('button', { name: locale === 'ru' ? 'Русский' : "O'zbek", exact: true })
+        .press('Enter');
+    }
+
+    const copy = courseFailureCopy[locale];
+    await expect(page.getByRole('heading', { level: 1, name: copy.title })).toBeVisible();
+    await expect(page.getByText(copy.message, { exact: true })).toBeVisible();
+    await expect(page.getByText('private course failure')).toHaveCount(0);
+    const retry = page.getByRole('button', {
+      name: locale === 'ru' ? 'Повторить' : locale === 'uz' ? 'Qayta urinish' : 'Try again',
+    });
+    for (const width of [320, 390, 768, 1280] as const) {
+      await page.setViewportSize({ width, height: 900 });
+      await retry.focus();
+      await expect(retry).toBeFocused();
+      await expectNoHorizontalOverflow(page);
+    }
+    expect(writes).toBe(0);
+    diagnostics.assertClean();
+  });
+}
 
 test('recovers detail and outline independently with keyboard focus and polite status', async ({
   page,
@@ -1133,6 +1188,7 @@ for (const locale of ['en', 'ru', 'uz'] as const) {
     resolveOutline?.();
     await expect(page.getByRole('heading', { level: 2, name: copy.outlineHeading })).toBeVisible();
     await expect(page.getByRole('heading', { level: 3, name: 'Welcome' })).toBeVisible();
+    await expect(page.locator('aside data')).toHaveText(copy.coursePrice);
     await expect(
       page.getByText(new RegExp(`${copy.lessonType} ${copy.lessonMarker}`)),
     ).toBeVisible();

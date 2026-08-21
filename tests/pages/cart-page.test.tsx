@@ -1001,7 +1001,9 @@ describe('CartPage', () => {
     };
     await renderCart(request);
 
-    expect((await screen.findByLabelText('Cart total')).textContent).toContain(`USD ${totalPrice}`);
+    expect((await screen.findByLabelText('Cart total')).textContent).toContain(
+      '$1,000,000,000,000,000,000,000,019.0001',
+    );
   });
 
   it('composes the exact Cart list-and-summary hierarchy without a selection control', async () => {
@@ -1047,7 +1049,7 @@ describe('CartPage', () => {
     expect(within(summary).getByRole('heading', { name: 'Order summary' })).toBeTruthy();
     expect(within(summary).getByText('Total')).toBeTruthy();
     expect(within(summary).getByRole('separator')).toBeTruthy();
-    expect(summary.textContent).toContain('USD 29.990');
+    expect(summary.textContent).toContain('$29.990');
     const clearCart = screen.getByRole('button', { name: 'Clear cart' });
     expect(clearCart.querySelector('svg')).toBeTruthy();
     expect(clearCart.className).toContain('clearCartButton');
@@ -1090,8 +1092,8 @@ describe('CartPage', () => {
 
     expect(await screen.findByText('Total unavailable')).toBeTruthy();
     expect(screen.getByLabelText('Cart total').textContent).not.toContain('USD 29.990');
-    expect(screen.getByText('USD 19.990')).toBeTruthy();
-    expect(screen.getByText('EUR 10.00')).toBeTruthy();
+    expect(screen.getByText('$19.990')).toBeTruthy();
+    expect(screen.getByText('€10.00')).toBeTruthy();
   });
 
   it('centers an empty-cart recovery card with its real catalog link', async () => {
@@ -1262,7 +1264,7 @@ describe('CartPage', () => {
     });
     expect(await screen.findByText('Course removed from cart.')).toBeTruthy();
     await waitFor(() => expect(cartReads).toBe(2));
-    expect(screen.getAllByText('USD 10.00')).toHaveLength(2);
+    expect(screen.getAllByText('$10.00')).toHaveLength(2);
   });
 
   it('preserves stale content on a background failure and clears remove feedback only after a successful recovery', async () => {

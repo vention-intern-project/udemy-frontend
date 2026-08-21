@@ -1,6 +1,8 @@
 export { LocaleProvider, useLocale } from './LocaleProvider';
 export { LanguageSelector } from './LanguageSelector';
 export type { LanguageSelectorProps } from './LanguageSelector';
+export { formatLocaleCurrency } from './format-locale-currency';
+export type { LocaleCurrencyFormatInput } from './format-locale-currency';
 export { createLocaleRuntime, localeRuntime } from './i18n';
 export type { LocaleMissingKeyDiagnostic, LocaleRuntimeDiagnostics } from './i18n';
 export { NATIVE_LOCALE_METADATA } from './metadata';

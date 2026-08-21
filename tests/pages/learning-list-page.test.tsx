@@ -390,6 +390,27 @@ describe('LearningListPage', () => {
     expect(screen.queryByText('private')).toBeNull();
   });
 
+  it('resolves a settled learning-list failure in the current locale without exposing server detail', async () => {
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/enrollments/my')
+        throw new ApiError({
+          kind: 'invalid_response',
+          status: 200,
+          message: 'private decoder detail',
+        });
+      throw new Error(`Unexpected request ${options.path}`);
+    };
+
+    await renderPage(request, '/learning', 'uz');
+
+    expect(await screen.findByText('Ta’lim ma’lumotlari mavjud emas')).toBeTruthy();
+    expect(screen.getByText('Server noto‘g‘ri javob qaytardi. Qayta urinib ko‘ring.')).toBeTruthy();
+    expect(screen.queryByText('private decoder detail')).toBeNull();
+  });
+
   it('does not move focus when a failed list retry is followed by another failed refresh', async () => {
     let attempts = 0;
     const request: ApiClient['request'] = async <TResponse, TBody>(

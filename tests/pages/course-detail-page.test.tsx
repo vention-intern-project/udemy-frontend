@@ -359,7 +359,7 @@ describe('CourseDetailPage', () => {
     ).toBeTruthy();
     expect(await screen.findByRole('heading', { level: 3, name: 'Welcome' })).toBeTruthy();
     expect(screen.getByText('Ada Lovelace')).toBeTruthy();
-    expect(document.querySelector('data')?.textContent).toBe('USD 0.00');
+    expect(document.querySelector('data')?.textContent).toBe('$0.00');
     expect(screen.getByText('1', { selector: 'dd' })).toBeTruthy();
     const signIn = await screen.findByRole('link', { name: 'Sign in' });
     expect(signIn.getAttribute('href')).toBe('/login?returnTo=%2Fcourses%2F7');
@@ -457,6 +457,27 @@ describe('CourseDetailPage', () => {
       screen.getByRole('link', { name: 'Return to the course catalog' }).getAttribute('href'),
     ).toBe('/');
     expect(paths).toEqual(['/courses/7']);
+  });
+
+  it('resolves a settled course-detail failure in the current locale without exposing server detail', async () => {
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/courses/7')
+        throw new ApiError({
+          kind: 'invalid_response',
+          status: 200,
+          message: 'private decoder detail',
+        });
+      throw new Error(`Unexpected request ${options.path}`);
+    };
+    renderPage(request);
+
+    expect(await screen.findByRole('heading', { name: 'Course data is unavailable' })).toBeTruthy();
+    await act(() => localeRuntime.changeLanguage('ru'));
+    expect(await screen.findByRole('heading', { name: 'Данные курса недоступны' })).toBeTruthy();
+    expect(screen.getByText('Сервер вернул некорректный ответ. Повторите попытку.')).toBeTruthy();
+    expect(screen.queryByText('private decoder detail')).toBeNull();
   });
 
   it('retries only the failed outline query and exposes an empty outline distinctly', async () => {

@@ -1,4 +1,4 @@
-// Generated from MLUX-001-DRAFT-27 through prescribed @oai/artifact-tool inspection.
+// Generated from MLUX-001-DRAFT-28 through prescribed @oai/artifact-tool inspection.
 // This independent test oracle must never import runtime mapping or resources.
 
 export interface Mlux006FinalCorpusProjection {
@@ -6,6 +6,7 @@ export interface Mlux006FinalCorpusProjection {
   readonly sha256: string;
   readonly byteLength: number;
   readonly summary: Mlux006CorpusSummary;
+  readonly workbookFrontMatter: Mlux006WorkbookFrontMatter;
   readonly units: readonly Mlux006FinalCorpusUnit[];
   readonly occurrences: readonly Mlux006FinalCorpusOccurrence[];
   readonly acceptance: readonly Mlux006AcceptanceRecord[];
@@ -21,6 +22,10 @@ export interface Mlux006CorpusSummary {
   readonly draftStatus: string;
   readonly englishPolicy: string;
   readonly reviewProtocol: string;
+}
+
+export interface Mlux006WorkbookFrontMatter {
+  readonly occurrencesSubtitle: string;
 }
 
 export interface Mlux006LocalizedDraft {
@@ -98,7 +103,7 @@ export interface Mlux006ExclusionRecord {
   readonly boundaryReason: string;
 }
 
-export const MLUX006_FINAL_CORPUS_PROJECTION = {
+const MLUX006_DRAFT27_CORPUS_PROJECTION: Mlux006FinalCorpusProjection = {
   version: 'MLUX-001-DRAFT-27',
   sha256: '7D3AA5F65497C576B143D07327F7D51250FD4966C98BA75AF89DED2D6A74D026',
   byteLength: 107865,
@@ -111,6 +116,10 @@ export const MLUX006_FINAL_CORPUS_PROJECTION = {
     draftStatus: 'Draft',
     englishPolicy: 'Immutable source',
     reviewProtocol: 'Russian product owner + Uzbek native reviewer',
+  },
+  workbookFrontMatter: {
+    occurrencesSubtitle:
+      'All 669 source occurrences are deduplicated by semantic key and immutable English intent.',
   },
   units: [
     {
@@ -23753,4 +23762,468 @@ export const MLUX006_FINAL_CORPUS_PROJECTION = {
         'AppRouter.pageForRoute handles every current APP_ROUTES ID with a concrete page before its final PlaceholderPage fallback. This exact path/line/seam/value is non-renderable for the current registry; a route-coverage regression test must fail if a future registered route can reach the fallback.',
     },
   ],
-} as const satisfies Mlux006FinalCorpusProjection;
+} as const;
+
+const MLUX006_DRAFT28_OCCURRENCE_OVERRIDES = {
+  'MLUX-C0114': { occurrenceCount: 5, ownerTasks: ['MLUX-003', 'MLUX-004', 'MLUX-006-FOLLOWUP'] },
+  'MLUX-C0169': { occurrenceCount: 3, ownerTasks: ['MLUX-004', 'MLUX-006-FOLLOWUP'] },
+  'MLUX-C0170': { occurrenceCount: 2, ownerTasks: ['MLUX-004', 'MLUX-006-FOLLOWUP'] },
+  'MLUX-C0265': { occurrenceCount: 4, ownerTasks: ['MLUX-004', 'MLUX-006-FOLLOWUP'] },
+  'MLUX-C0266': { occurrenceCount: 3, ownerTasks: ['MLUX-004', 'MLUX-006-FOLLOWUP'] },
+} as const;
+
+const MLUX006_DRAFT28_UNITS: readonly Mlux006FinalCorpusUnit[] = [
+  {
+    unitId: 'MLUX-C0469',
+    namespace: 'common',
+    key: 'serverReturnedAnInvalidResponseTryAgain',
+    runtimeEnglish: 'The server returned an invalid response. Try again.',
+    variables: [],
+    plural: false,
+    sourceScreen: 'See Occurrences (2 verified sources)',
+    routeState: 'Course Detail and Learning / invalid-response failure',
+    english: 'The server returned an invalid response. Try again.',
+    russian: {
+      value: 'Сервер вернул некорректный ответ. Повторите попытку.',
+      resourceStatus: 'Draft',
+      reviewStatus: 'Pending',
+    },
+    uzbek: {
+      value: 'Server noto‘g‘ri javob qaytardi. Qayta urinib ko‘ring.',
+      resourceStatus: 'Draft',
+      reviewStatus: 'Pending',
+    },
+    ownerTasks: ['MLUX-006-FOLLOWUP'],
+    runtimeOwnerTasks: ['MLUX-006-FOLLOWUP'],
+    fallback: 'English source',
+    classification: 'Visible UI copy',
+    testTarget: 'MLUX-006-FOLLOWUP focused + browser matrix',
+    status: 'Draft',
+    notes:
+      'DRAFT-28 shared invalid-response descriptor; private server detail remains suppressed; draft translations await human review.',
+    occurrenceCount: 2,
+    dedupeDecision: 'Mapped to one phrase across 2 equivalent failure descriptors',
+  },
+  {
+    unitId: 'MLUX-C0470',
+    namespace: 'common',
+    key: 'youAppearOffline',
+    runtimeEnglish: 'You appear to be offline',
+    variables: [],
+    plural: false,
+    sourceScreen: 'See Occurrences (1 verified source)',
+    routeState: 'Course Detail / offline failure',
+    english: 'You appear to be offline',
+    russian: {
+      value: 'Похоже, нет подключения к интернету',
+      resourceStatus: 'Draft',
+      reviewStatus: 'Pending',
+    },
+    uzbek: {
+      value: 'Internet aloqasi yo‘q ko‘rinadi',
+      resourceStatus: 'Draft',
+      reviewStatus: 'Pending',
+    },
+    ownerTasks: ['MLUX-006-FOLLOWUP'],
+    runtimeOwnerTasks: ['MLUX-006-FOLLOWUP'],
+    fallback: 'English source',
+    classification: 'Visible UI copy',
+    testTarget: 'MLUX-006-FOLLOWUP focused + browser matrix',
+    status: 'Draft',
+    notes: 'DRAFT-28 Course Detail offline descriptor; draft translations await human review.',
+    occurrenceCount: 1,
+    dedupeDecision: 'Unique',
+  },
+  {
+    unitId: 'MLUX-C0471',
+    namespace: 'common',
+    key: 'checkConnectionAndTryAgain',
+    runtimeEnglish: 'Check your connection and try again.',
+    variables: [],
+    plural: false,
+    sourceScreen: 'See Occurrences (1 verified source)',
+    routeState: 'Course Detail / offline failure',
+    english: 'Check your connection and try again.',
+    russian: {
+      value: 'Проверьте подключение и повторите попытку.',
+      resourceStatus: 'Draft',
+      reviewStatus: 'Pending',
+    },
+    uzbek: {
+      value: 'Ulanishni tekshirib, qayta urinib ko‘ring.',
+      resourceStatus: 'Draft',
+      reviewStatus: 'Pending',
+    },
+    ownerTasks: ['MLUX-006-FOLLOWUP'],
+    runtimeOwnerTasks: ['MLUX-006-FOLLOWUP'],
+    fallback: 'English source',
+    classification: 'Visible UI copy',
+    testTarget: 'MLUX-006-FOLLOWUP focused + browser matrix',
+    status: 'Draft',
+    notes: 'DRAFT-28 Course Detail offline descriptor; draft translations await human review.',
+    occurrenceCount: 1,
+    dedupeDecision: 'Unique',
+  },
+  {
+    unitId: 'MLUX-C0472',
+    namespace: 'course',
+    key: 'courseDataUnavailable',
+    runtimeEnglish: 'Course data is unavailable',
+    variables: [],
+    plural: false,
+    sourceScreen: 'See Occurrences (1 verified source)',
+    routeState: 'Course Detail / invalid-response failure',
+    english: 'Course data is unavailable',
+    russian: { value: 'Данные курса недоступны', resourceStatus: 'Draft', reviewStatus: 'Pending' },
+    uzbek: {
+      value: 'Kurs ma’lumotlari mavjud emas',
+      resourceStatus: 'Draft',
+      reviewStatus: 'Pending',
+    },
+    ownerTasks: ['MLUX-006-FOLLOWUP'],
+    runtimeOwnerTasks: ['MLUX-006-FOLLOWUP'],
+    fallback: 'English source',
+    classification: 'Visible UI copy',
+    testTarget: 'MLUX-006-FOLLOWUP focused + browser matrix',
+    status: 'Draft',
+    notes:
+      'DRAFT-28 Course Detail invalid-response descriptor; draft translations await human review.',
+    occurrenceCount: 1,
+    dedupeDecision: 'Unique',
+  },
+  {
+    unitId: 'MLUX-C0473',
+    namespace: 'course',
+    key: 'courseLoadFailed',
+    runtimeEnglish: 'We could not load this course',
+    variables: [],
+    plural: false,
+    sourceScreen: 'See Occurrences (1 verified source)',
+    routeState: 'Course Detail / request failure',
+    english: 'We could not load this course',
+    russian: {
+      value: 'Не удалось загрузить курс',
+      resourceStatus: 'Draft',
+      reviewStatus: 'Pending',
+    },
+    uzbek: { value: 'Kursni yuklab bo‘lmadi', resourceStatus: 'Draft', reviewStatus: 'Pending' },
+    ownerTasks: ['MLUX-006-FOLLOWUP'],
+    runtimeOwnerTasks: ['MLUX-006-FOLLOWUP'],
+    fallback: 'English source',
+    classification: 'Visible UI copy',
+    testTarget: 'MLUX-006-FOLLOWUP focused + browser matrix',
+    status: 'Draft',
+    notes:
+      'DRAFT-28 Course Detail request-failure descriptor; draft translations await human review.',
+    occurrenceCount: 1,
+    dedupeDecision: 'Unique',
+  },
+  {
+    unitId: 'MLUX-C0474',
+    namespace: 'common',
+    key: 'pleaseTryAgain',
+    runtimeEnglish: 'Please try again.',
+    variables: [],
+    plural: false,
+    sourceScreen: 'See Occurrences (1 verified source)',
+    routeState: 'Course Detail / request failure',
+    english: 'Please try again.',
+    russian: { value: 'Повторите попытку.', resourceStatus: 'Draft', reviewStatus: 'Pending' },
+    uzbek: { value: 'Qayta urinib ko‘ring.', resourceStatus: 'Draft', reviewStatus: 'Pending' },
+    ownerTasks: ['MLUX-006-FOLLOWUP'],
+    runtimeOwnerTasks: ['MLUX-006-FOLLOWUP'],
+    fallback: 'English source',
+    classification: 'Visible UI copy',
+    testTarget: 'MLUX-006-FOLLOWUP focused + browser matrix',
+    status: 'Draft',
+    notes:
+      'DRAFT-28 Course Detail request-failure descriptor; draft translations await human review.',
+    occurrenceCount: 1,
+    dedupeDecision: 'Unique',
+  },
+  {
+    unitId: 'MLUX-C0475',
+    namespace: 'learning',
+    key: 'sessionEndedSignInToContinue',
+    runtimeEnglish: 'Your session has ended. Sign in to continue learning.',
+    variables: [],
+    plural: false,
+    sourceScreen: 'See Occurrences (1 verified source)',
+    routeState: 'Learning / session failure',
+    english: 'Your session has ended. Sign in to continue learning.',
+    russian: {
+      value: 'Сеанс завершился. Войдите снова, чтобы продолжить обучение.',
+      resourceStatus: 'Draft',
+      reviewStatus: 'Pending',
+    },
+    uzbek: {
+      value: 'Seansingiz tugadi. Ta’limni davom ettirish uchun qayta kiring.',
+      resourceStatus: 'Draft',
+      reviewStatus: 'Pending',
+    },
+    ownerTasks: ['MLUX-006-FOLLOWUP'],
+    runtimeOwnerTasks: ['MLUX-006-FOLLOWUP'],
+    fallback: 'English source',
+    classification: 'Visible UI copy',
+    testTarget: 'MLUX-006-FOLLOWUP focused + browser matrix',
+    status: 'Draft',
+    notes: 'DRAFT-28 Learning session descriptor; draft translations await human review.',
+    occurrenceCount: 1,
+    dedupeDecision: 'Unique',
+  },
+  {
+    unitId: 'MLUX-C0476',
+    namespace: 'learning',
+    key: 'learningDataUnavailable',
+    runtimeEnglish: 'Learning data is unavailable',
+    variables: [],
+    plural: false,
+    sourceScreen: 'See Occurrences (2 verified sources)',
+    routeState: 'Learning / data failure',
+    english: 'Learning data is unavailable',
+    russian: {
+      value: 'Данные об обучении недоступны',
+      resourceStatus: 'Draft',
+      reviewStatus: 'Pending',
+    },
+    uzbek: {
+      value: 'Ta’lim ma’lumotlari mavjud emas',
+      resourceStatus: 'Draft',
+      reviewStatus: 'Pending',
+    },
+    ownerTasks: ['MLUX-006-FOLLOWUP'],
+    runtimeOwnerTasks: ['MLUX-006-FOLLOWUP'],
+    fallback: 'English source',
+    classification: 'Visible UI copy',
+    testTarget: 'MLUX-006-FOLLOWUP focused + browser matrix',
+    status: 'Draft',
+    notes:
+      'DRAFT-28 Learning data descriptor; private server detail remains suppressed; draft translations await human review.',
+    occurrenceCount: 2,
+    dedupeDecision: 'Mapped to one phrase across 2 equivalent failure descriptors',
+  },
+  {
+    unitId: 'MLUX-C0477',
+    namespace: 'learning',
+    key: 'tryAgainInAMoment',
+    runtimeEnglish: 'Try again in a moment.',
+    variables: [],
+    plural: false,
+    sourceScreen: 'See Occurrences (1 verified source)',
+    routeState: 'Learning / request failure',
+    english: 'Try again in a moment.',
+    russian: {
+      value: 'Повторите попытку через некоторое время.',
+      resourceStatus: 'Draft',
+      reviewStatus: 'Pending',
+    },
+    uzbek: {
+      value: 'Birozdan so‘ng qayta urinib ko‘ring.',
+      resourceStatus: 'Draft',
+      reviewStatus: 'Pending',
+    },
+    ownerTasks: ['MLUX-006-FOLLOWUP'],
+    runtimeOwnerTasks: ['MLUX-006-FOLLOWUP'],
+    fallback: 'English source',
+    classification: 'Visible UI copy',
+    testTarget: 'MLUX-006-FOLLOWUP focused + browser matrix',
+    status: 'Draft',
+    notes: 'DRAFT-28 Learning request-failure descriptor; draft translations await human review.',
+    occurrenceCount: 1,
+    dedupeDecision: 'Unique',
+  },
+];
+
+const MLUX006_DRAFT28_OCCURRENCES: readonly Mlux006FinalCorpusOccurrence[] = [
+  [
+    '0670',
+    'C0169',
+    'src/features/course-detail/useCourseDetail.ts:116',
+    'Course Detail / not-found failure',
+    'Course not found',
+    'Merged with MLUX-C0169',
+    'src/features/course-detail/useCourseDetail.ts:116 — Course Detail not-found descriptor',
+  ],
+  [
+    '0671',
+    'C0170',
+    'src/features/course-detail/useCourseDetail.ts:117',
+    'Course Detail / not-found failure',
+    'This course does not exist or is no longer available.',
+    'Merged with MLUX-C0170',
+    'src/features/course-detail/useCourseDetail.ts:117 — Course Detail not-found descriptor',
+  ],
+  [
+    '0672',
+    'C0265',
+    'src/features/learning-progress/learning-progress-contracts.ts:88',
+    'Learning / unavailable failure',
+    'Learning workspace unavailable',
+    'Merged with MLUX-C0265',
+    'src/features/learning-progress/learning-progress-contracts.ts:88 — Learning unavailable descriptor',
+  ],
+  [
+    '0673',
+    'C0266',
+    'src/features/learning-progress/learning-progress-contracts.ts:89',
+    'Learning / unavailable failure',
+    'This learning workspace is unavailable.',
+    'Merged with MLUX-C0266',
+    'src/features/learning-progress/learning-progress-contracts.ts:89 — Learning unavailable descriptor',
+  ],
+  [
+    '0674',
+    'C0114',
+    'src/features/learning-progress/learning-progress-contracts.ts:95',
+    'Learning / session failure',
+    'Sign in required',
+    'Merged with MLUX-C0114',
+    'src/features/learning-progress/learning-progress-contracts.ts:95 — Learning sign-in descriptor',
+  ],
+  [
+    '0675',
+    'C0469',
+    'src/features/course-detail/useCourseDetail.ts:123',
+    'Course Detail / invalid-response failure',
+    'The server returned an invalid response. Try again.',
+    'Mapped to one phrase across 2 equivalent failure descriptors',
+    'src/features/course-detail/useCourseDetail.ts:123 — Course Detail load-failure descriptor',
+  ],
+  [
+    '0676',
+    'C0469',
+    'src/features/learning-progress/learning-progress-contracts.ts:103',
+    'Learning / invalid-response failure',
+    'The server returned an invalid response. Try again.',
+    'Mapped to one phrase across 2 equivalent failure descriptors',
+    'src/features/learning-progress/learning-progress-contracts.ts:103 — Learning load-failure descriptor',
+  ],
+  [
+    '0677',
+    'C0470',
+    'src/features/course-detail/useCourseDetail.ts:128',
+    'Course Detail / offline failure',
+    'You appear to be offline',
+    'Unique occurrence',
+    'src/features/course-detail/useCourseDetail.ts:128 — Course Detail offline descriptor',
+  ],
+  [
+    '0678',
+    'C0471',
+    'src/features/course-detail/useCourseDetail.ts:129',
+    'Course Detail / offline failure',
+    'Check your connection and try again.',
+    'Unique occurrence',
+    'src/features/course-detail/useCourseDetail.ts:129 — Course Detail offline descriptor',
+  ],
+  [
+    '0679',
+    'C0472',
+    'src/features/course-detail/useCourseDetail.ts:122',
+    'Course Detail / invalid-response failure',
+    'Course data is unavailable',
+    'Unique occurrence',
+    'src/features/course-detail/useCourseDetail.ts:122 — Course Detail invalid-response descriptor',
+  ],
+  [
+    '0680',
+    'C0473',
+    'src/features/course-detail/useCourseDetail.ts:133',
+    'Course Detail / request failure',
+    'We could not load this course',
+    'Unique occurrence',
+    'src/features/course-detail/useCourseDetail.ts:133 — Course Detail request-failure descriptor',
+  ],
+  [
+    '0681',
+    'C0474',
+    'src/features/course-detail/useCourseDetail.ts:134',
+    'Course Detail / request failure',
+    'Please try again.',
+    'Unique occurrence',
+    'src/features/course-detail/useCourseDetail.ts:134 — Course Detail request-failure descriptor',
+  ],
+  [
+    '0682',
+    'C0475',
+    'src/features/learning-progress/learning-progress-contracts.ts:96',
+    'Learning / session failure',
+    'Your session has ended. Sign in to continue learning.',
+    'Unique occurrence',
+    'src/features/learning-progress/learning-progress-contracts.ts:96 — Learning session descriptor',
+  ],
+  [
+    '0683',
+    'C0476',
+    'src/features/learning-progress/learning-progress-contracts.ts:102',
+    'Learning / invalid-response failure',
+    'Learning data is unavailable',
+    'Mapped to one phrase across 2 equivalent failure descriptors',
+    'src/features/learning-progress/learning-progress-contracts.ts:102 — Learning invalid-response descriptor',
+  ],
+  [
+    '0684',
+    'C0476',
+    'src/features/learning-progress/learning-progress-contracts.ts:108',
+    'Learning / request failure',
+    'Learning data is unavailable',
+    'Mapped to one phrase across 2 equivalent failure descriptors',
+    'src/features/learning-progress/learning-progress-contracts.ts:108 — Learning request-failure descriptor',
+  ],
+  [
+    '0685',
+    'C0477',
+    'src/features/learning-progress/learning-progress-contracts.ts:109',
+    'Learning / request failure',
+    'Try again in a moment.',
+    'Unique occurrence',
+    'src/features/learning-progress/learning-progress-contracts.ts:109 — Learning request-failure descriptor',
+  ],
+].map(([suffix, unitSuffix, sourceScreen, routeState, english, dedupeMapping, runtimeContext]) => ({
+  occurrenceId: `MLUX-O${suffix}`,
+  unitId: `MLUX-${unitSuffix}`,
+  sourceScreen,
+  routeState,
+  runtimeContext,
+  english,
+  classification: 'Visible UI copy',
+  ownerTask: 'MLUX-006-FOLLOWUP',
+  testTarget: 'MLUX-006-FOLLOWUP focused + browser matrix',
+  extractionKind: 'semantic descriptor',
+  dedupeMapping,
+}));
+
+export const MLUX006_FINAL_CORPUS_PROJECTION: Mlux006FinalCorpusProjection = {
+  ...MLUX006_DRAFT27_CORPUS_PROJECTION,
+  version: 'MLUX-001-DRAFT-28',
+  sha256: '869E02A40B55319DB9464E2FBAF6E7F5F39A21DAF5C9099761769E1DFB45C8F3',
+  byteLength: 110206,
+  summary: {
+    ...MLUX006_DRAFT27_CORPUS_PROJECTION.summary,
+    translationUnits: 480,
+    sourceOccurrences: 685,
+    mergedDuplicateRows: 205,
+    russianDrafts: 480,
+    uzbekDrafts: 480,
+  },
+  workbookFrontMatter: {
+    ...MLUX006_DRAFT27_CORPUS_PROJECTION.workbookFrontMatter,
+    occurrencesSubtitle:
+      'All 685 source occurrences are deduplicated by semantic key and immutable English intent.',
+  },
+  units: [
+    ...MLUX006_DRAFT27_CORPUS_PROJECTION.units.map((unit) => {
+      const override =
+        MLUX006_DRAFT28_OCCURRENCE_OVERRIDES[
+          unit.unitId as keyof typeof MLUX006_DRAFT28_OCCURRENCE_OVERRIDES
+        ];
+      return override ? { ...unit, ...override } : unit;
+    }),
+    ...MLUX006_DRAFT28_UNITS,
+  ],
+  occurrences: [...MLUX006_DRAFT27_CORPUS_PROJECTION.occurrences, ...MLUX006_DRAFT28_OCCURRENCES],
+  acceptance: MLUX006_DRAFT27_CORPUS_PROJECTION.acceptance.map((record) => ({
+    ...record,
+    corpusVersion: 'MLUX-001-DRAFT-28',
+  })),
+};

@@ -1,12 +1,9 @@
 import { CircleCheck, ShoppingCart, Trash2, UserPlus, type LucideIcon } from 'lucide-react';
 
 import type { ButtonVariant } from '@shared/ui/primitives';
-import { LOCALE_RESOURCES, resolveLocale } from '@shared/locale';
+import { LOCALE_RESOURCES, formatLocaleCurrency, resolveLocale } from '@shared/locale';
 
 import type { CatalogCourseActionPresentation } from './useCatalogCourseActions';
-
-const DECIMAL_PRICE = /^(?:0|[1-9]\d*)(?:\.\d+)?$/;
-const CURRENCY_CODE = /^[A-Z]{3}$/;
 
 export interface CourseActionVisual {
   Icon: LucideIcon | null;
@@ -55,16 +52,11 @@ export function formatCatalogPrice(
 ): string {
   const localizedResources = LOCALE_RESOURCES[resolveLocale({ browserLocales: [locale] })]
     .catalog as Record<string, string>;
-  const priceUnavailable = () => localizedResources.priceUnavailable ?? 'Price unavailable';
-  if (!DECIMAL_PRICE.test(price) || !CURRENCY_CODE.test(currency)) return priceUnavailable();
-  if (/^0(?:\.0+)?$/.test(price)) return freeLabel;
-  try {
-    return new Intl.NumberFormat(locale, {
-      style: 'currency',
-      currency,
-      currencyDisplay: 'narrowSymbol',
-    }).format(Number(price));
-  } catch {
-    return priceUnavailable();
-  }
+  return formatLocaleCurrency({
+    price,
+    currency,
+    locale,
+    freeLabel,
+    unavailableLabel: localizedResources.priceUnavailable ?? 'Price unavailable',
+  });
 }

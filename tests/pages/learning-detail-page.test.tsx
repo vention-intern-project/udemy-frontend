@@ -1148,6 +1148,29 @@ describe('LearningDetailPage', () => {
     },
   );
 
+  it('localizes a settled invalid enrollment response without exposing server detail', async () => {
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/enrollments/4')
+        throw new ApiError({
+          kind: 'invalid_response',
+          status: 200,
+          message: 'private enrollment decoder detail',
+        });
+      throw new Error(`Unexpected request ${options.path}`);
+    };
+
+    await renderPage(request, { locale: 'ru' });
+
+    expect(
+      await screen.findByRole('heading', { name: 'Данные об обучении недоступны' }),
+    ).toBeTruthy();
+    expect(screen.getByText('Сервер вернул некорректный ответ. Повторите попытку.')).toBeTruthy();
+    expect(screen.queryByText('private enrollment decoder detail')).toBeNull();
+  });
+
   it('renders one contextual return when enrollment data is missing', async () => {
     const originalUseLearningWorkspace = learningProgress.useLearningWorkspace;
     vi.spyOn(learningProgress, 'useLearningWorkspace').mockImplementation(

@@ -23,10 +23,22 @@ import {
 } from './api';
 
 export interface CourseDetailFailure {
-  title: string;
-  message: string;
-  notFound: boolean;
+  readonly titleKey: CourseDetailFailureTitleKey;
+  readonly messageKey: CourseDetailFailureMessageKey;
+  readonly notFound: boolean;
 }
+
+export type CourseDetailFailureTitleKey =
+  | 'common:youAppearOffline'
+  | 'course:courseDataUnavailable'
+  | 'course:courseLoadFailed'
+  | 'course:courseNotFound';
+
+export type CourseDetailFailureMessageKey =
+  | 'common:checkConnectionAndTryAgain'
+  | 'common:pleaseTryAgain'
+  | 'common:serverReturnedAnInvalidResponseTryAgain'
+  | 'course:thisCourseDoesNotExistOr';
 
 export type CourseMutationKind = 'enroll' | 'cart';
 
@@ -101,23 +113,27 @@ export function enrollmentQueryKey(subject: SessionCacheEpoch) {
 export function courseDetailFailure(error: unknown): CourseDetailFailure {
   if (error instanceof ApiError && error.status === 404)
     return {
-      title: 'Course not found',
-      message: 'This course does not exist or is no longer available.',
+      titleKey: 'course:courseNotFound',
+      messageKey: 'course:thisCourseDoesNotExistOr',
       notFound: true,
     };
   if (error instanceof ApiError && error.kind === 'invalid_response')
     return {
-      title: 'Course data is unavailable',
-      message: 'The server returned an invalid response. Try again.',
+      titleKey: 'course:courseDataUnavailable',
+      messageKey: 'common:serverReturnedAnInvalidResponseTryAgain',
       notFound: false,
     };
   if (error instanceof ApiError && error.kind === 'offline')
     return {
-      title: 'You appear to be offline',
-      message: 'Check your connection and try again.',
+      titleKey: 'common:youAppearOffline',
+      messageKey: 'common:checkConnectionAndTryAgain',
       notFound: false,
     };
-  return { title: 'We could not load this course', message: 'Please try again.', notFound: false };
+  return {
+    titleKey: 'course:courseLoadFailed',
+    messageKey: 'common:pleaseTryAgain',
+    notFound: false,
+  };
 }
 
 export function useCourseDetail(courseId: number | null) {

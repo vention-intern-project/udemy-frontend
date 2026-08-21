@@ -119,9 +119,9 @@ export function CourseDetailPage() {
     if (failure.notFound) return <CourseNotFound />;
     return (
       <section className={styles.state} aria-labelledby="course-error-heading">
-        <h1 id="course-error-heading">{failure.title}</h1>
-        <Notice tone="error" title={failure.title}>
-          {failure.message}
+        <h1 id="course-error-heading">{t(failure.titleKey)}</h1>
+        <Notice tone="error" title={t(failure.titleKey)}>
+          {t(failure.messageKey)}
         </Notice>
         <Button onClick={retryDetail}>{t('routes:tryAgain', { defaultValue: 'Try again' })}</Button>
       </section>

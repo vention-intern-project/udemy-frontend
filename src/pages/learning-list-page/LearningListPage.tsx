@@ -125,8 +125,8 @@ export function LearningListPage() {
         <h1 tabIndex={-1} ref={headingRef}>
           {t('navigation:myLearning', { defaultValue: 'My learning' })}
         </h1>
-        <Notice tone="error" title={failure.title}>
-          {failure.message}
+        <Notice tone="error" title={t(failure.titleKey)}>
+          {t(failure.messageKey)}
         </Notice>
         <Button
           onClick={() => {

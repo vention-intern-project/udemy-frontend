@@ -612,6 +612,20 @@ function projectionIntegrityViolations(projection: Mlux006FinalCorpusProjection)
   return violations;
 }
 
+function occurrenceSubtitleViolations(projection: Mlux006FinalCorpusProjection): string[] {
+  const match =
+    /^All (\d+) source occurrences are deduplicated by semantic key and immutable English intent\.$/.exec(
+      projection.workbookFrontMatter.occurrencesSubtitle,
+    );
+  if (!match) return ['invalid occurrences subtitle'];
+
+  const subtitleCount = Number(match[1]);
+  return subtitleCount === projection.summary.sourceOccurrences &&
+    subtitleCount === projection.occurrences.length
+    ? []
+    : [`wrong occurrences subtitle count ${subtitleCount}`];
+}
+
 function interpolateTemplate(template: string, values: Readonly<Record<string, string>>): string {
   return template.replace(/\{\{?([A-Za-z][A-Za-z0-9]*)}}?/g, (_match, variable: string) => {
     return values[variable] ?? '';
@@ -1096,35 +1110,35 @@ describe('MLUX-006 final corpus parity', () => {
     expect(browserSource).toContain('selectFixtureLocale(page, locale)');
   });
 
-  it('matches the exact DRAFT-27 identity, allocation, statuses and deferred linguistic gate', () => {
+  it('matches the exact DRAFT-28 identity, allocation, statuses and deferred linguistic gate', () => {
     expect(MLUX006_FINAL_CORPUS_PROJECTION).toMatchObject({
-      version: 'MLUX-001-DRAFT-27',
-      sha256: '7D3AA5F65497C576B143D07327F7D51250FD4966C98BA75AF89DED2D6A74D026',
-      byteLength: 107865,
+      version: 'MLUX-001-DRAFT-28',
+      sha256: '869E02A40B55319DB9464E2FBAF6E7F5F39A21DAF5C9099761769E1DFB45C8F3',
+      byteLength: 110206,
       summary: {
-        translationUnits: 471,
-        sourceOccurrences: 669,
-        mergedDuplicateRows: 198,
-        russianDrafts: 471,
-        uzbekDrafts: 471,
+        translationUnits: 480,
+        sourceOccurrences: 685,
+        mergedDuplicateRows: 205,
+        russianDrafts: 480,
+        uzbekDrafts: 480,
         draftStatus: 'Draft',
       },
     });
-    expect(MLUX006_FINAL_CORPUS_PROJECTION.units).toHaveLength(471);
-    expect(MLUX006_FINAL_CORPUS_PROJECTION.occurrences).toHaveLength(669);
+    expect(MLUX006_FINAL_CORPUS_PROJECTION.units).toHaveLength(480);
+    expect(MLUX006_FINAL_CORPUS_PROJECTION.occurrences).toHaveLength(685);
     expect(MLUX006_FINAL_CORPUS_PROJECTION.exclusions.map(({ id }) => id)).toEqual(
       Array.from({ length: 12 }, (_, index) => `MLUX-X${String(index + 1).padStart(3, '0')}`),
     );
     expect(MLUX006_FINAL_CORPUS_PROJECTION.acceptance).toEqual([
       expect.objectContaining({
-        corpusVersion: 'MLUX-001-DRAFT-27',
+        corpusVersion: 'MLUX-001-DRAFT-28',
         authority: 'Product owner',
         language: 'Russian',
         verdict: 'Pending',
         date: null,
       }),
       expect.objectContaining({
-        corpusVersion: 'MLUX-001-DRAFT-27',
+        corpusVersion: 'MLUX-001-DRAFT-28',
         authority: 'Selected native reviewer',
         language: 'Uzbek',
         verdict: 'Pending',
@@ -1132,6 +1146,19 @@ describe('MLUX-006 final corpus parity', () => {
       }),
     ]);
     expect(projectionIntegrityViolations(MLUX006_FINAL_CORPUS_PROJECTION)).toEqual([]);
+    expect(occurrenceSubtitleViolations(MLUX006_FINAL_CORPUS_PROJECTION)).toEqual([]);
+  });
+
+  it('rejects stale DRAFT-28 occurrence front matter even when the structural count is current', () => {
+    expect(
+      occurrenceSubtitleViolations({
+        ...MLUX006_FINAL_CORPUS_PROJECTION,
+        workbookFrontMatter: {
+          occurrencesSubtitle:
+            'All 669 source occurrences are deduplicated by semantic key and immutable English intent.',
+        },
+      }),
+    ).toEqual(['wrong occurrences subtitle count 669']);
   });
 
   it('binds X012 to one exact DRAFT-26 source seam and rejects every boundary drift', () => {
@@ -1229,10 +1256,10 @@ describe('MLUX-006 final corpus parity', () => {
       legacyClassificationContractViolations(occurrenceSources, wrongOwnerInheritance),
     ).toContain('wrong classification inheritance owner MLUX-O0001');
     expect(candidate.occurrences.every(({ classification }) => Boolean(classification))).toBe(true);
-    expect(candidate.units).toHaveLength(471);
-    expect(candidate.occurrences).toHaveLength(669);
+    expect(candidate.units).toHaveLength(480);
+    expect(candidate.occurrences).toHaveLength(685);
     expect(new Set(candidate.occurrences.map(({ occurrenceId }) => occurrenceId))).toHaveLength(
-      669,
+      685,
     );
     expect(collectParityViolations(MLUX006_FINAL_CORPUS_PROJECTION, candidate)).toEqual([]);
   });

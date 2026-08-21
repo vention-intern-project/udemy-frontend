@@ -1,5 +1,6 @@
 import type {
   LocaleMappingRecord,
+  LocaleNamespace,
   LocaleOccurrence,
   LocaleOccurrenceClassification,
   LocalePlaceholderContract,
@@ -20,7 +21,7 @@ interface Mlux006FollowupOccurrenceInput {
 
 interface Mlux006FollowupRecord {
   readonly unitId: string;
-  readonly namespace: 'auth';
+  readonly namespace: LocaleNamespace;
   readonly key: string;
   readonly english: string;
   readonly variables: readonly string[];
@@ -261,6 +262,171 @@ const records: readonly Mlux006FollowupRecord[] = [
       },
     ],
   },
+  {
+    unitId: 'MLUX-C0469',
+    namespace: 'common',
+    key: 'serverReturnedAnInvalidResponseTryAgain',
+    english: 'The server returned an invalid response. Try again.',
+    variables: [],
+    ru: 'Сервер вернул некорректный ответ. Повторите попытку.',
+    uz: 'Server noto‘g‘ri javob qaytardi. Qayta urinib ko‘ring.',
+    occurrences: [
+      {
+        id: 'O0675',
+        context:
+          'src/features/course-detail/useCourseDetail.ts:123 — Course Detail load-failure descriptor',
+        classification: 'Visible UI copy',
+      },
+      {
+        id: 'O0676',
+        context:
+          'src/features/learning-progress/learning-progress-contracts.ts:103 — Learning load-failure descriptor',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0470',
+    namespace: 'common',
+    key: 'youAppearOffline',
+    english: 'You appear to be offline',
+    variables: [],
+    ru: 'Похоже, нет подключения к интернету',
+    uz: 'Internet aloqasi yo‘q ko‘rinadi',
+    occurrences: [
+      {
+        id: 'O0677',
+        context:
+          'src/features/course-detail/useCourseDetail.ts:128 — Course Detail offline descriptor',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0471',
+    namespace: 'common',
+    key: 'checkConnectionAndTryAgain',
+    english: 'Check your connection and try again.',
+    variables: [],
+    ru: 'Проверьте подключение и повторите попытку.',
+    uz: 'Ulanishni tekshirib, qayta urinib ko‘ring.',
+    occurrences: [
+      {
+        id: 'O0678',
+        context:
+          'src/features/course-detail/useCourseDetail.ts:129 — Course Detail offline descriptor',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0472',
+    namespace: 'course',
+    key: 'courseDataUnavailable',
+    english: 'Course data is unavailable',
+    variables: [],
+    ru: 'Данные курса недоступны',
+    uz: 'Kurs ma’lumotlari mavjud emas',
+    occurrences: [
+      {
+        id: 'O0679',
+        context:
+          'src/features/course-detail/useCourseDetail.ts:122 — Course Detail invalid-response descriptor',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0473',
+    namespace: 'course',
+    key: 'courseLoadFailed',
+    english: 'We could not load this course',
+    variables: [],
+    ru: 'Не удалось загрузить курс',
+    uz: 'Kursni yuklab bo‘lmadi',
+    occurrences: [
+      {
+        id: 'O0680',
+        context:
+          'src/features/course-detail/useCourseDetail.ts:133 — Course Detail request-failure descriptor',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0474',
+    namespace: 'common',
+    key: 'pleaseTryAgain',
+    english: 'Please try again.',
+    variables: [],
+    ru: 'Повторите попытку.',
+    uz: 'Qayta urinib ko‘ring.',
+    occurrences: [
+      {
+        id: 'O0681',
+        context:
+          'src/features/course-detail/useCourseDetail.ts:134 — Course Detail request-failure descriptor',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0475',
+    namespace: 'learning',
+    key: 'sessionEndedSignInToContinue',
+    english: 'Your session has ended. Sign in to continue learning.',
+    variables: [],
+    ru: 'Сеанс завершился. Войдите снова, чтобы продолжить обучение.',
+    uz: 'Seansingiz tugadi. Ta’limni davom ettirish uchun qayta kiring.',
+    occurrences: [
+      {
+        id: 'O0682',
+        context:
+          'src/features/learning-progress/learning-progress-contracts.ts:96 — Learning session descriptor',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0476',
+    namespace: 'learning',
+    key: 'learningDataUnavailable',
+    english: 'Learning data is unavailable',
+    variables: [],
+    ru: 'Данные об обучении недоступны',
+    uz: 'Ta’lim ma’lumotlari mavjud emas',
+    occurrences: [
+      {
+        id: 'O0683',
+        context:
+          'src/features/learning-progress/learning-progress-contracts.ts:102 — Learning invalid-response descriptor',
+        classification: 'Visible UI copy',
+      },
+      {
+        id: 'O0684',
+        context:
+          'src/features/learning-progress/learning-progress-contracts.ts:108 — Learning request-failure descriptor',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0477',
+    namespace: 'learning',
+    key: 'tryAgainInAMoment',
+    english: 'Try again in a moment.',
+    variables: [],
+    ru: 'Повторите попытку через некоторое время.',
+    uz: 'Birozdan so‘ng qayta urinib ko‘ring.',
+    occurrences: [
+      {
+        id: 'O0685',
+        context:
+          'src/features/learning-progress/learning-progress-contracts.ts:109 — Learning request-failure descriptor',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
 ];
 
 export const MLUX_006_FOLLOWUP_TRANSLATIONS: readonly Mlux006FollowupTranslationEntry[] =
@@ -287,11 +453,56 @@ export const MLUX_006_FOLLOWUP_RUNTIME_MAPPING: readonly LocaleMappingRecord[] =
 );
 
 export type Mlux006FollowupSharedOccurrence = LocaleOccurrence & {
-  readonly unitId: 'MLUX-C0203' | 'MLUX-C0204' | 'MLUX-C0205' | 'MLUX-C0362' | 'MLUX-C0363';
+  readonly unitId:
+    | 'MLUX-C0114'
+    | 'MLUX-C0169'
+    | 'MLUX-C0170'
+    | 'MLUX-C0203'
+    | 'MLUX-C0204'
+    | 'MLUX-C0205'
+    | 'MLUX-C0265'
+    | 'MLUX-C0266'
+    | 'MLUX-C0362'
+    | 'MLUX-C0363';
   readonly ownerTask: 'MLUX-006-FOLLOWUP';
 };
 
 const sharedOccurrenceSources = [
+  {
+    id: 'O0670',
+    unitId: 'MLUX-C0169',
+    context:
+      'src/features/course-detail/useCourseDetail.ts:116 — Course Detail not-found descriptor',
+    classification: 'Visible UI copy',
+  },
+  {
+    id: 'O0671',
+    unitId: 'MLUX-C0170',
+    context:
+      'src/features/course-detail/useCourseDetail.ts:117 — Course Detail not-found descriptor',
+    classification: 'Visible UI copy',
+  },
+  {
+    id: 'O0672',
+    unitId: 'MLUX-C0265',
+    context:
+      'src/features/learning-progress/learning-progress-contracts.ts:88 — Learning unavailable descriptor',
+    classification: 'Visible UI copy',
+  },
+  {
+    id: 'O0673',
+    unitId: 'MLUX-C0266',
+    context:
+      'src/features/learning-progress/learning-progress-contracts.ts:89 — Learning unavailable descriptor',
+    classification: 'Visible UI copy',
+  },
+  {
+    id: 'O0674',
+    unitId: 'MLUX-C0114',
+    context:
+      'src/features/learning-progress/learning-progress-contracts.ts:95 — Learning sign-in descriptor',
+    classification: 'Visible UI copy',
+  },
   {
     id: 'O0646',
     unitId: 'MLUX-C0203',

@@ -22,6 +22,7 @@ const cartItem = {
   },
 };
 const exactLongTotal = '1000000000000000000000019.0001';
+const exactLongTotalEnglish = '$1,000,000,000,000,000,000,000,019.0001';
 
 const cartResidualCopy = {
   en: {
@@ -34,6 +35,7 @@ const cartResidualCopy = {
     mockCheckout: 'Mock checkout',
     orderSummary: 'Order summary',
     price: 'Price',
+    coursePrice: '$19.990',
     total: 'Total',
   },
   ru: {
@@ -46,6 +48,7 @@ const cartResidualCopy = {
     mockCheckout: 'Тестовое оформление',
     orderSummary: 'Итоги заказа',
     price: 'Цена',
+    coursePrice: '19,990\u00a0$',
     total: 'Итого',
   },
   uz: {
@@ -58,6 +61,7 @@ const cartResidualCopy = {
     mockCheckout: 'Sinov buyurtmasi',
     orderSummary: 'Buyurtma yakuni',
     price: 'Narx',
+    coursePrice: '$\u00a019.990',
     total: 'Jami',
   },
 } as const;
@@ -437,6 +441,7 @@ test.describe('FE-009 cart workflow QA harness', () => {
     await installStudent(page);
     const lifecycle = trackCartRequestLifecycle(page);
     let currentCart = cart();
+    expect(currentCart).toMatchObject({ total_price: exactLongTotal, currency: 'USD' });
     await page.route('**/me', (route) => json(route, student));
     await routeCartApi(page, async (route, request) => {
       const requestLabel = cartRequestLabel(request);
@@ -451,7 +456,7 @@ test.describe('FE-009 cart workflow QA harness', () => {
     await page.goto('/cart');
     await expect(page.getByRole('heading', { name: 'Cart', exact: true, level: 1 })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Cart (1)' })).toBeVisible();
-    await expect(page.getByLabel('Cart total')).toContainText(`USD ${exactLongTotal}`);
+    await expect(page.getByLabel('Cart total').locator('strong')).toHaveText(exactLongTotalEnglish);
     await expect.poll(() => lifecycle.completed).toEqual(['GET /cart']);
     await expect.poll(() => lifecycle.aborted).toEqual(['GET /cart']);
     expect(lifecycle.initiated).toEqual(['GET /cart', 'GET /cart']);
@@ -711,6 +716,7 @@ for (const locale of ['en', 'ru', 'uz'] as const) {
       const courses = page.getByRole('list', { name: copy.cartCourses });
       await expect(courses.getByText(copy.courseLabel, { exact: true })).toBeVisible();
       await expect(courses.getByText(copy.price, { exact: true })).toBeVisible();
+      await expect(courses.getByText(copy.coursePrice, { exact: true })).toBeVisible();
       await expect(page.getByText(copy.courseCount, { exact: true })).toBeVisible();
       const summary = page.getByRole('complementary', { name: copy.cartTotal });
       await expect(summary.getByRole('heading', { name: copy.orderSummary })).toBeVisible();

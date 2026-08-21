@@ -10,6 +10,7 @@ import type {
   CoursePrimaryActionState,
 } from '@features/course-detail';
 import { courseActionReconciliationUncertaintyMessage } from '@features/course-action-reconciliation';
+import { formatLocaleCurrency } from '@shared/locale';
 import { Button, Notice, type AsyncState } from '@shared/ui/primitives';
 
 import styles from './CourseDetailPage.module.css';
@@ -96,7 +97,7 @@ export function CourseActionPanel({
   onSubmitAction,
   preflight,
 }: CourseActionPanelProps) {
-  const { t } = useTranslation();
+  const { i18n, t } = useTranslation();
   const actionState = actionButtonState(mutationState);
   const notice = actionNotice(t, isDraft, mutationState, preflight);
 
@@ -106,7 +107,11 @@ export function CourseActionPanel({
       aria-label={t('course:courseAction', { defaultValue: 'Course action' })}
     >
       <data className={styles.price} value={course.price}>
-        {course.currency}&nbsp;{course.price}
+        {formatLocaleCurrency({
+          price: course.price,
+          currency: course.currency,
+          locale: i18n.language,
+        })}
       </data>
       {notice ? (
         <Notice tone={notice.tone} title={notice.title}>

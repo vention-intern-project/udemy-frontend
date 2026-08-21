@@ -285,10 +285,10 @@ export function LearningDetailPage() {
     return (
       <section className={styles.state}>
         <h1 tabIndex={-1} ref={headingRef}>
-          {failure.title}
+          {t(failure.titleKey)}
         </h1>
-        <Notice tone="error" title={failure.title}>
-          {failure.message}
+        <Notice tone="error" title={t(failure.titleKey)}>
+          {t(failure.messageKey)}
         </Notice>
         <LearningReturnLink />
         {!failure.unavailable ? (

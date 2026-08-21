@@ -56,9 +56,9 @@ export function CourseOutline({
         </SkeletonGroup>
       ) : null}
       {failure ? (
-        <Notice tone="error" title={failure.title}>
+        <Notice tone="error" title={t(failure.titleKey)}>
           <div className={styles.outlineRecovery}>
-            <p>{failure.message}</p>
+            <p>{t(failure.messageKey)}</p>
             <div className={styles.outlineRecoveryActions}>
               <Button variant="secondary" onClick={onRetry}>
                 {t('routes:tryAgain', { defaultValue: 'Try again' })}
