@@ -25,6 +25,10 @@ import {
   MLUX_005_RUNTIME_MAPPING,
   MLUX_005_SHARED_OCCURRENCES,
 } from '../../../src/shared/locale/mlux005-ledger';
+import {
+  MLUX_006_FOLLOWUP_RUNTIME_MAPPING,
+  MLUX_006_FOLLOWUP_SHARED_OCCURRENCES,
+} from '../../../src/shared/locale/mlux006-followup-ledger';
 import { SUPPORTED_LOCALES, type Locale } from '../../../src/shared/locale/types';
 import { MLUX_003_SOURCE_EXCLUSIONS } from '../../app/mlux003-source-exclusions';
 
@@ -170,6 +174,7 @@ const allRuntimeMappings: readonly LocaleMappingRecord[] = [
   ...MLUX_003_RUNTIME_MAPPING,
   ...MLUX_004_RUNTIME_MAPPING,
   ...MLUX_005_RUNTIME_MAPPING,
+  ...MLUX_006_FOLLOWUP_RUNTIME_MAPPING,
 ];
 
 function canonicalOccurrenceId(id: string): string {
@@ -206,6 +211,7 @@ function runtimeOccurrenceSources(): Mlux006RuntimeOccurrenceSource[] {
     ...MLUX_002_SHARED_OCCURRENCES,
     ...MLUX_004_SHARED_OCCURRENCES,
     ...MLUX_005_SHARED_OCCURRENCES,
+    ...MLUX_006_FOLLOWUP_SHARED_OCCURRENCES,
   ].map(
     (occurrence): Mlux006RuntimeOccurrenceSource => ({
       occurrenceId: canonicalOccurrenceId(occurrence.id),
@@ -864,35 +870,35 @@ function matchingUnitsForResidualHit(
 }
 
 describe('MLUX-006 final corpus parity', () => {
-  it('matches the exact DRAFT-25 identity, allocation, statuses and deferred linguistic gate', () => {
+  it('matches the exact DRAFT-26 identity, allocation, statuses and deferred linguistic gate', () => {
     expect(MLUX006_FINAL_CORPUS_PROJECTION).toMatchObject({
-      version: 'MLUX-001-DRAFT-25',
-      sha256: 'DA45ACC8DD7DBF76B8670167720060447FE5124C54CE4902F76B0BDB79A176AF',
-      byteLength: 103872,
+      version: 'MLUX-001-DRAFT-26',
+      sha256: '57B5DAE484C3664D84BBD6AAC61CBDFC8045E5F7D27D04711C38A0F33DA27128',
+      byteLength: 107700,
       summary: {
-        translationUnits: 459,
-        sourceOccurrences: 645,
-        mergedDuplicateRows: 186,
-        russianDrafts: 459,
-        uzbekDrafts: 459,
+        translationUnits: 471,
+        sourceOccurrences: 666,
+        mergedDuplicateRows: 195,
+        russianDrafts: 471,
+        uzbekDrafts: 471,
         draftStatus: 'Draft',
       },
     });
-    expect(MLUX006_FINAL_CORPUS_PROJECTION.units).toHaveLength(459);
-    expect(MLUX006_FINAL_CORPUS_PROJECTION.occurrences).toHaveLength(645);
+    expect(MLUX006_FINAL_CORPUS_PROJECTION.units).toHaveLength(471);
+    expect(MLUX006_FINAL_CORPUS_PROJECTION.occurrences).toHaveLength(666);
     expect(MLUX006_FINAL_CORPUS_PROJECTION.exclusions.map(({ id }) => id)).toEqual(
       Array.from({ length: 12 }, (_, index) => `MLUX-X${String(index + 1).padStart(3, '0')}`),
     );
     expect(MLUX006_FINAL_CORPUS_PROJECTION.acceptance).toEqual([
       expect.objectContaining({
-        corpusVersion: 'MLUX-001-DRAFT-25',
+        corpusVersion: 'MLUX-001-DRAFT-26',
         authority: 'Product owner',
         language: 'Russian',
         verdict: 'Pending',
         date: null,
       }),
       expect.objectContaining({
-        corpusVersion: 'MLUX-001-DRAFT-25',
+        corpusVersion: 'MLUX-001-DRAFT-26',
         authority: 'Selected native reviewer',
         language: 'Uzbek',
         verdict: 'Pending',
@@ -902,7 +908,7 @@ describe('MLUX-006 final corpus parity', () => {
     expect(projectionIntegrityViolations(MLUX006_FINAL_CORPUS_PROJECTION)).toEqual([]);
   });
 
-  it('binds X012 to one exact DRAFT-25 source seam and rejects every boundary drift', () => {
+  it('binds X012 to one exact DRAFT-26 source seam and rejects every boundary drift', () => {
     expect(x012ExclusionViolations(MLUX006_FINAL_CORPUS_PROJECTION)).toEqual([]);
 
     const x012 = MLUX_003_SOURCE_EXCLUSIONS[0];
@@ -997,10 +1003,10 @@ describe('MLUX-006 final corpus parity', () => {
       legacyClassificationContractViolations(occurrenceSources, wrongOwnerInheritance),
     ).toContain('wrong classification inheritance owner MLUX-O0001');
     expect(candidate.occurrences.every(({ classification }) => Boolean(classification))).toBe(true);
-    expect(candidate.units).toHaveLength(459);
-    expect(candidate.occurrences).toHaveLength(645);
+    expect(candidate.units).toHaveLength(471);
+    expect(candidate.occurrences).toHaveLength(666);
     expect(new Set(candidate.occurrences.map(({ occurrenceId }) => occurrenceId))).toHaveLength(
-      645,
+      666,
     );
     expect(collectParityViolations(MLUX006_FINAL_CORPUS_PROJECTION, candidate)).toEqual([]);
   });

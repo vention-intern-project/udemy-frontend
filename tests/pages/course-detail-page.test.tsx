@@ -84,6 +84,7 @@ interface CourseResidualLocaleScenario {
   readonly outlineHeading: string;
   readonly emptyOutline: string;
   readonly lessonMarker: string;
+  readonly lessonType: string;
   readonly draftCourse: string;
   readonly notFoundDescription: string;
 }
@@ -96,6 +97,7 @@ const courseResidualLocaleScenarios: readonly CourseResidualLocaleScenario[] = [
     outlineHeading: 'Course outline',
     emptyOutline: 'No lessons have been added yet.',
     lessonMarker: 'lesson ·',
+    lessonType: 'Video',
     draftCourse: 'Draft course',
     notFoundDescription: 'This course does not exist or is no longer available.',
   },
@@ -106,6 +108,7 @@ const courseResidualLocaleScenarios: readonly CourseResidualLocaleScenario[] = [
     outlineHeading: 'Программа курса',
     emptyOutline: 'Уроки ещё не добавлены.',
     lessonMarker: 'урок ·',
+    lessonType: 'Видео',
     draftCourse: 'Черновик курса',
     notFoundDescription: 'Курс не существует или больше недоступен.',
   },
@@ -116,6 +119,7 @@ const courseResidualLocaleScenarios: readonly CourseResidualLocaleScenario[] = [
     outlineHeading: 'Kurs dasturi',
     emptyOutline: 'Hali darslar qo‘shilmagan.',
     lessonMarker: 'dars ·',
+    lessonType: 'Video',
     draftCourse: 'Kurs qoralamasi',
     notFoundDescription: 'Bu kurs mavjud emas yoki endi ochiq emas.',
   },
@@ -312,7 +316,7 @@ describe('CourseDetailPage', () => {
         await screen.findByRole('heading', { level: 2, name: copy.outlineHeading }),
       ).toBeTruthy();
       expect(await screen.findByRole('heading', { level: 3, name: 'Welcome' })).toBeTruthy();
-      expect(screen.getByText(new RegExp(`video ${copy.lessonMarker}`))).toBeTruthy();
+      expect(screen.getByText(new RegExp(`${copy.lessonType} ${copy.lessonMarker}`))).toBeTruthy();
       expect(screen.getByText('Ada Lovelace')).toBeTruthy();
       populated.unmount();
 

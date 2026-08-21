@@ -1,7 +1,7 @@
 import type { RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import type { LessonOutlineItem } from '@entities/course';
+import type { LessonOutlineItem, LessonType } from '@entities/course';
 import { Button, Notice, Skeleton, SkeletonGroup } from '@shared/ui/primitives';
 
 import { courseDetailFailure } from '@features/course-detail';
@@ -16,6 +16,17 @@ interface CourseOutlineProps {
   readonly items: readonly LessonOutlineItem[] | undefined;
   readonly onRetry: () => void;
 }
+
+type LessonTypeLabelKey =
+  | 'instructor:courseEditorVideo'
+  | 'instructor:courseEditorText'
+  | 'instructor:courseEditorPdf';
+
+const LESSON_TYPE_LABEL_KEY: Readonly<Record<LessonType, LessonTypeLabelKey>> = {
+  video: 'instructor:courseEditorVideo',
+  text: 'instructor:courseEditorText',
+  pdf: 'instructor:courseEditorPdf',
+};
 
 export function CourseOutline({
   error,
@@ -69,7 +80,7 @@ export function CourseOutline({
                   })}
               </p>
               <span>
-                {lesson.lessonType} {t('course:lessonMarker')}{' '}
+                {t(LESSON_TYPE_LABEL_KEY[lesson.lessonType])} {t('course:lessonMarker')}{' '}
                 {lesson.isPublished
                   ? t('course:listed', { defaultValue: 'Listed' })
                   : t('course:draftMetadata', { defaultValue: 'Draft metadata' })}

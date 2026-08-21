@@ -5,6 +5,8 @@ import {
   AuthFormShell,
   AuthLink,
   FormErrorAlert,
+  resolveAuthFieldErrors,
+  resolveAuthMessage,
   useForgotPasswordWorkflow,
 } from '@features/auth-workflows';
 import { Button, Input, Notice } from '@shared/ui/primitives';
@@ -14,6 +16,8 @@ export function ForgotPasswordPage() {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const workflow = useForgotPasswordWorkflow(location.key);
+  const fieldErrors = resolveAuthFieldErrors(workflow.fieldErrors, t);
+  const summary = resolveAuthMessage(workflow.summary, t);
   return (
     <AuthFormShell
       title={t('routes:forgotPasswordTitle')}
@@ -31,8 +35,8 @@ export function ForgotPasswordPage() {
         </Notice>
       ) : (
         <form noValidate onSubmit={workflow.submit}>
-          {workflow.summary && Object.keys(workflow.fieldErrors).length === 0 ? (
-            <FormErrorAlert ref={workflow.summaryRef} summary={workflow.summary} />
+          {summary && Object.keys(workflow.fieldErrors).length === 0 ? (
+            <FormErrorAlert ref={workflow.summaryRef} summary={summary} />
           ) : null}
           <Input
             id="email"
@@ -42,7 +46,7 @@ export function ForgotPasswordPage() {
             autoComplete="email"
             required
             value={workflow.email}
-            error={workflow.fieldErrors.email}
+            error={fieldErrors.email}
             disabled={workflow.isPending}
             onChange={(event) => workflow.setEmail(event.currentTarget.value)}
           />

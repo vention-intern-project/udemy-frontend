@@ -2,6 +2,10 @@ import type { Resource } from 'i18next';
 
 import { MLUX_004_RUNTIME_MAPPING, MLUX_004_TRANSLATIONS } from './mapping';
 import { MLUX_005_RUNTIME_MAPPING, MLUX_005_TRANSLATIONS } from './mlux005-ledger';
+import {
+  MLUX_006_FOLLOWUP_RUNTIME_MAPPING,
+  MLUX_006_FOLLOWUP_TRANSLATIONS,
+} from './mlux006-followup-ledger';
 import type { Locale } from './types';
 
 const BASE_LOCALE_RESOURCES: Resource & Readonly<Record<Locale, Resource[Locale]>> = {
@@ -406,6 +410,12 @@ function withMlux004Resources(locale: Locale): Resource[Locale] {
       });
       return;
     }
+    namespaceResources[key] = translation[locale];
+  });
+  MLUX_006_FOLLOWUP_RUNTIME_MAPPING.forEach(({ namespace, key }, index) => {
+    const translation = MLUX_006_FOLLOWUP_TRANSLATIONS[index];
+    if (!translation) return;
+    const namespaceResources = (resources[namespace] ??= {});
     namespaceResources[key] = translation[locale];
   });
 

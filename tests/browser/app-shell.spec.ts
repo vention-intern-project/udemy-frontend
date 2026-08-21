@@ -1809,7 +1809,7 @@ test('shows authenticated account details on hover and clears the session throug
   await expect(accountDetails.locator('[data-part="account-menu-profile"]')).toBeVisible();
   await expect(accountDetails.getByText('student@example.com')).toBeVisible();
   await expect(accountDetails.getByText('Sam User')).toBeVisible();
-  const role = accountDetails.getByText('student', { exact: true });
+  const role = accountDetails.getByText('Student', { exact: true });
   await expect(role).toBeVisible();
   await expect(role).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await expect(role).toHaveCSS(

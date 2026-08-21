@@ -6,6 +6,8 @@ import {
   AuthLink,
   FormErrorAlert,
   PasswordField,
+  resolveAuthFieldErrors,
+  resolveAuthMessage,
   useLoginWorkflow,
 } from '@features/auth-workflows';
 import { sanitizeInternalReturnTo } from '@features/auth-session';
@@ -22,6 +24,8 @@ export function LoginPage() {
     ? `/signup?returnTo=${encodeURIComponent(returnTo)}`
     : '/signup';
   const workflow = useLoginWorkflow(location.key);
+  const fieldErrors = resolveAuthFieldErrors(workflow.fieldErrors, t);
+  const summary = resolveAuthMessage(workflow.summary, t);
   return (
     <AuthFormShell
       title={t('navigation:logIn')}
@@ -38,8 +42,8 @@ export function LoginPage() {
       }
     >
       <form noValidate onSubmit={workflow.submit}>
-        {workflow.summary && Object.keys(workflow.fieldErrors).length === 0 ? (
-          <FormErrorAlert ref={workflow.summaryRef} summary={workflow.summary} />
+        {summary && Object.keys(workflow.fieldErrors).length === 0 ? (
+          <FormErrorAlert ref={workflow.summaryRef} summary={summary} />
         ) : null}
         <Input
           id="email"
@@ -49,7 +53,7 @@ export function LoginPage() {
           autoComplete="email"
           required
           value={workflow.email}
-          error={workflow.fieldErrors.email}
+          error={fieldErrors.email}
           disabled={workflow.isPending}
           onChange={(event) => workflow.setEmail(event.currentTarget.value)}
         />
@@ -59,7 +63,7 @@ export function LoginPage() {
           label={t('auth:password')}
           autoComplete="current-password"
           value={workflow.password}
-          error={workflow.fieldErrors.password}
+          error={fieldErrors.password}
           disabled={workflow.isPending}
           onChange={workflow.setPassword}
         />

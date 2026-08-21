@@ -1041,11 +1041,17 @@ describe('locale foundation', () => {
     });
   });
 
-  it('exposes the exact decided occurrence-owner union, including the future MLUX-005 handoff', () => {
-    const futureOwner: LocaleOwnerTask = 'MLUX-005';
+  it('exposes the exact decided occurrence-owner union, including the MLUX-006 follow-up handoff', () => {
+    const followupOwner: LocaleOwnerTask = 'MLUX-006-FOLLOWUP';
 
-    expect(LOCALE_OWNER_TASKS).toEqual(['MLUX-002', 'MLUX-003', 'MLUX-004', 'MLUX-005']);
-    expect(futureOwner).toBe('MLUX-005');
+    expect(LOCALE_OWNER_TASKS).toEqual([
+      'MLUX-002',
+      'MLUX-003',
+      'MLUX-004',
+      'MLUX-005',
+      'MLUX-006-FOLLOWUP',
+    ]);
+    expect(followupOwner).toBe('MLUX-006-FOLLOWUP');
   });
 
   it('keeps the complete MLUX-004 DRAFT-22 allocation, non-plural resource parity, variables, plural flags, and Draft/Pending state', () => {

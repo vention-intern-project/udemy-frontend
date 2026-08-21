@@ -1,6 +1,6 @@
 interface Mlux003SourceExclusion {
   readonly id: 'MLUX-X012';
-  readonly corpusVersion: 'MLUX-001-DRAFT-25';
+  readonly corpusVersion: 'MLUX-001-DRAFT-26';
   readonly sourcePath: 'src/app/router/PlaceholderPage.tsx';
   readonly line: 16;
   readonly seam: 'jsx';
@@ -13,7 +13,7 @@ interface Mlux003SourceExclusion {
 export const MLUX_003_SOURCE_EXCLUSIONS = [
   {
     id: 'MLUX-X012',
-    corpusVersion: 'MLUX-001-DRAFT-25',
+    corpusVersion: 'MLUX-001-DRAFT-26',
     sourcePath: 'src/app/router/PlaceholderPage.tsx',
     line: 16,
     seam: 'jsx',

@@ -13,7 +13,13 @@ export type LocaleNamespace =
   | 'ai'
   | 'instructor';
 
-export const LOCALE_OWNER_TASKS = ['MLUX-002', 'MLUX-003', 'MLUX-004', 'MLUX-005'] as const;
+export const LOCALE_OWNER_TASKS = [
+  'MLUX-002',
+  'MLUX-003',
+  'MLUX-004',
+  'MLUX-005',
+  'MLUX-006-FOLLOWUP',
+] as const;
 
 export type LocaleOwnerTask = (typeof LOCALE_OWNER_TASKS)[number];
 

@@ -16,6 +16,15 @@ export {
 } from './mapping';
 export type { LocaleMappingRecord } from './mapping';
 export {
+  MLUX_006_FOLLOWUP_RUNTIME_MAPPING,
+  MLUX_006_FOLLOWUP_SHARED_OCCURRENCES,
+  MLUX_006_FOLLOWUP_TRANSLATIONS,
+} from './mlux006-followup-ledger';
+export type {
+  Mlux006FollowupSharedOccurrence,
+  Mlux006FollowupTranslationEntry,
+} from './mlux006-followup-ledger';
+export {
   MLUX_005_RUNTIME_MAPPING,
   MLUX_005_SHARED_OCCURRENCES,
   MLUX_005_TRANSLATIONS,

@@ -628,7 +628,7 @@ describe('AppShell student cart query and presentation', () => {
     expect(accountDetails).toBeTruthy();
     expect(screen.getByText('student@example.test')).toBeTruthy();
     expect(screen.getByText('student User')).toBeTruthy();
-    expect(screen.getByText('student', { exact: true })).toBeTruthy();
+    expect(screen.getByText('Student', { exact: true })).toBeTruthy();
     expect(
       accountDetails.querySelector('[data-part="account-menu-profile"]')?.textContent,
     ).toContain('student User');
@@ -888,14 +888,36 @@ describe('AppShell student cart query and presentation', () => {
     await act(async () => {
       await user.click(accountMenu);
     });
-    expect(accountMenu.getAttribute('aria-expanded')).toBe('true');
     const accountDetails = await screen.findByRole('group', {
       name: 'Account details for instructor User',
     });
+    expect(accountMenu.getAttribute('aria-expanded')).toBe('true');
     await act(async () => {
       await user.click(within(accountDetails).getByRole('button', { name: /Language/ }));
     });
     expect(screen.getByRole('button', { name: "O'zbek" })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Back' })).toBeTruthy();
   });
+
+  it.each([
+    ['en', 'student', 'Student', 'Account menu for student User'],
+    ['ru', 'instructor', 'Преподаватель', 'Меню аккаунта: instructor User'],
+    ['uz', 'admin', 'Administrator', 'admin User uchun akkaunt menyusi'],
+  ] as const)(
+    'localizes the visible %s account role for %s without changing the profile identity',
+    async (locale, role, expectedRole, accountMenuName) => {
+      localStorage.setItem('learnhub.locale', locale);
+      renderShell(authenticatedClient(role), `${role}-token`);
+
+      const accountMenu = await screen.findByRole('button', {
+        name: accountMenuName,
+      });
+      await act(async () => {
+        await userEvent.setup().click(accountMenu);
+      });
+
+      expect(await screen.findByText(expectedRole, { exact: true })).toBeTruthy();
+      expect(screen.queryByText(role, { exact: true })).toBeNull();
+    },
+  );
 });

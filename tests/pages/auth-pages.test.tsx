@@ -1301,8 +1301,7 @@ describe('authentication pages', () => {
       new ApiError({ kind: 'invalid_response', status: 200, message: 'HOSTILE_INVALID_RESPONSE' }),
     ]) {
       const failure = mapAuthFailure(error, 'reset');
-      expect(failure.summary).toMatch(/technical|try again/i);
-      expect(failure.summary).not.toContain('invalid or has expired');
+      expect(failure.summary).toEqual({ kind: 'request-failure' });
       expect(failure.fields).toEqual({});
     }
 
@@ -1373,4 +1372,90 @@ describe('authentication pages', () => {
       );
     },
   );
+
+  it('re-resolves settled client validation in the current locale without resubmitting', async () => {
+    renderAuth('/login', async () => ({}));
+    const user = userEvent.setup();
+    await screen.findByRole('button', { name: 'Log in' });
+
+    await interact(() => user.click(screen.getByRole('button', { name: 'Log in' })));
+    expect(document.getElementById('email-error')?.textContent).toBe('Email is required.');
+
+    await act(() => localeRuntime.changeLanguage('ru'));
+    expect(document.getElementById('email-error')?.textContent).toBe(
+      'Поле «Электронная почта» обязательно.',
+    );
+
+    await act(() => localeRuntime.changeLanguage('uz'));
+    expect(document.getElementById('email-error')?.textContent).toBe(
+      '«Elektron pochta» maydonini to‘ldirish shart.',
+    );
+  });
+
+  it('resolves a settled auth failure in the active locale without exposing private detail', async () => {
+    renderAuth('/login', async () => {
+      throw new ApiError({ kind: 'offline', status: null, message: 'PRIVATE_OFFLINE_DETAIL' });
+    });
+    const user = userEvent.setup();
+    await interact(() => user.type(screen.getByLabelText(/^Email/), 'learner@example.com'));
+    await interact(() => user.type(screen.getByLabelText(/^Password/), 'password'));
+    await interact(() => user.click(screen.getByRole('button', { name: 'Log in' })));
+
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      'You appear to be offline. Check your connection and submit again.',
+    );
+    await act(() => localeRuntime.changeLanguage('ru'));
+    expect(screen.getByRole('alert').textContent).toBe(
+      'Похоже, нет подключения к интернету. Проверьте соединение и отправьте форму снова.',
+    );
+    await act(() => localeRuntime.changeLanguage('uz'));
+    expect(screen.getByRole('alert').textContent).toBe(
+      'Internet aloqasi yo‘q ko‘rinadi. Ulanishni tekshirib, formani qayta yuboring.',
+    );
+    expect(screen.queryByText('PRIVATE_OFFLINE_DETAIL')).toBeNull();
+  });
+
+  it('settles a deferred public auth failure in the locale selected while the request is pending', async () => {
+    const pendingRequest = createDeferred<unknown>();
+    const { request } = renderAuth('/login', async (options) => {
+      if (options.path !== '/login') throw new Error(`Unexpected path ${options.path}`);
+      return pendingRequest.promise;
+    });
+    const user = userEvent.setup();
+    await interact(() => user.type(screen.getByLabelText(/^Email/), 'learner@example.com'));
+    await interact(() => user.type(screen.getByLabelText(/^Password/), 'password'));
+    await interact(() => user.click(screen.getByRole('button', { name: 'Log in' })));
+
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(1));
+    expect(request).toHaveBeenCalledWith(
+      expect.objectContaining({ authPolicy: 'public', path: '/login' }),
+    );
+    expect(screen.getByRole('button', { name: 'Logging in...' }).hasAttribute('disabled')).toBe(
+      true,
+    );
+    expect(screen.queryByRole('alert')).toBeNull();
+
+    await act(() => localeRuntime.changeLanguage('ru'));
+    expect(
+      screen.getByRole('button', { name: 'Выполняется вход...' }).hasAttribute('disabled'),
+    ).toBe(true);
+
+    await act(async () => {
+      pendingRequest.reject(
+        new ApiError({ kind: 'offline', status: null, message: 'PRIVATE_DEFERRED_OFFLINE_DETAIL' }),
+      );
+      await Promise.resolve();
+    });
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toBe(
+      'Похоже, нет подключения к интернету. Проверьте соединение и отправьте форму снова.',
+    );
+    expect(alert).toBe(document.activeElement);
+    expect(screen.queryByText(/PRIVATE_DEFERRED_OFFLINE_DETAIL/)).toBeNull();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Войти' }).hasAttribute('disabled')).toBe(false),
+    );
+    expect(request).toHaveBeenCalledTimes(1);
+  });
 });

@@ -6,6 +6,8 @@ import {
   AuthLink,
   FormErrorAlert,
   PasswordField,
+  resolveAuthFieldErrors,
+  resolveAuthMessage,
   useSignupWorkflow,
 } from '@features/auth-workflows';
 import { sanitizeInternalReturnTo } from '@features/auth-session';
@@ -22,6 +24,8 @@ export function SignupPage() {
   );
   const loginDestination = returnTo ? `/login?returnTo=${encodeURIComponent(returnTo)}` : '/login';
   const workflow = useSignupWorkflow(location.key);
+  const fieldErrors = resolveAuthFieldErrors(workflow.fieldErrors, t);
+  const summary = resolveAuthMessage(workflow.summary, t);
   return (
     <AuthFormShell
       title={t('routes:createAccountTitle')}
@@ -36,8 +40,8 @@ export function SignupPage() {
       }
     >
       <form noValidate onSubmit={workflow.submit}>
-        {workflow.summary && Object.keys(workflow.fieldErrors).length === 0 ? (
-          <FormErrorAlert ref={workflow.summaryRef} summary={workflow.summary} />
+        {summary && Object.keys(workflow.fieldErrors).length === 0 ? (
+          <FormErrorAlert ref={workflow.summaryRef} summary={summary} />
         ) : null}
         <Input
           id="email"
@@ -47,7 +51,7 @@ export function SignupPage() {
           autoComplete="email"
           required
           value={workflow.input.email}
-          error={workflow.fieldErrors.email}
+          error={fieldErrors.email}
           disabled={workflow.isPending}
           onChange={(event) => workflow.update('email', event.currentTarget.value)}
         />
@@ -59,7 +63,7 @@ export function SignupPage() {
             autoComplete="given-name"
             required
             value={workflow.input.name}
-            error={workflow.fieldErrors.name}
+            error={fieldErrors.name}
             disabled={workflow.isPending}
             onChange={(event) => workflow.update('name', event.currentTarget.value)}
           />
@@ -70,14 +74,14 @@ export function SignupPage() {
             autoComplete="family-name"
             required
             value={workflow.input.surname}
-            error={workflow.fieldErrors.surname}
+            error={fieldErrors.surname}
             disabled={workflow.isPending}
             onChange={(event) => workflow.update('surname', event.currentTarget.value)}
           />
         </div>
         <RolePicker
           value={workflow.input.role}
-          error={workflow.fieldErrors.role}
+          error={fieldErrors.role}
           disabled={workflow.isPending}
           onChange={(role) => workflow.update('role', role)}
         />
@@ -87,7 +91,7 @@ export function SignupPage() {
           label={t('auth:password')}
           autoComplete="new-password"
           value={workflow.input.password}
-          error={workflow.fieldErrors.password}
+          error={fieldErrors.password}
           disabled={workflow.isPending}
           onChange={(value) => workflow.update('password', value)}
         />
@@ -97,7 +101,7 @@ export function SignupPage() {
           label={t('auth:confirmPassword')}
           autoComplete="new-password"
           value={workflow.input.passwordConfirmation}
-          error={workflow.fieldErrors.passwordConfirmation}
+          error={fieldErrors.passwordConfirmation}
           disabled={workflow.isPending}
           onChange={(value) => workflow.update('passwordConfirmation', value)}
         />

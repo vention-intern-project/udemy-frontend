@@ -124,6 +124,7 @@ interface CourseResidualBrowserCopy {
   readonly outlineHeading: string;
   readonly emptyOutline: string;
   readonly lessonMarker: string;
+  readonly lessonType: string;
   readonly draftCourse: string;
   readonly notFoundDescription: string;
 }
@@ -135,6 +136,7 @@ const courseResidualBrowserCopy: Readonly<Record<'en' | 'ru' | 'uz', CourseResid
     outlineHeading: 'Course outline',
     emptyOutline: 'No lessons have been added yet.',
     lessonMarker: 'lesson ·',
+    lessonType: 'Video',
     draftCourse: 'Draft course',
     notFoundDescription: 'This course does not exist or is no longer available.',
   },
@@ -144,6 +146,7 @@ const courseResidualBrowserCopy: Readonly<Record<'en' | 'ru' | 'uz', CourseResid
     outlineHeading: 'Программа курса',
     emptyOutline: 'Уроки ещё не добавлены.',
     lessonMarker: 'урок ·',
+    lessonType: 'Видео',
     draftCourse: 'Черновик курса',
     notFoundDescription: 'Курс не существует или больше недоступен.',
   },
@@ -153,6 +156,7 @@ const courseResidualBrowserCopy: Readonly<Record<'en' | 'ru' | 'uz', CourseResid
     outlineHeading: 'Kurs dasturi',
     emptyOutline: 'Hali darslar qo‘shilmagan.',
     lessonMarker: 'dars ·',
+    lessonType: 'Video',
     draftCourse: 'Kurs qoralamasi',
     notFoundDescription: 'Bu kurs mavjud emas yoki endi ochiq emas.',
   },
@@ -1129,7 +1133,9 @@ for (const locale of ['en', 'ru', 'uz'] as const) {
     resolveOutline?.();
     await expect(page.getByRole('heading', { level: 2, name: copy.outlineHeading })).toBeVisible();
     await expect(page.getByRole('heading', { level: 3, name: 'Welcome' })).toBeVisible();
-    await expect(page.getByText(new RegExp(`video ${copy.lessonMarker}`))).toBeVisible();
+    await expect(
+      page.getByText(new RegExp(`${copy.lessonType} ${copy.lessonMarker}`)),
+    ).toBeVisible();
     await expect(page.getByText('Ada Lovelace')).toBeVisible();
 
     for (const width of [320, 390, 768, 1280] as const) {

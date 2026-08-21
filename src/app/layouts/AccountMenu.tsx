@@ -27,10 +27,18 @@ interface AccountRolePresentation {
   readonly Icon: LucideIcon;
 }
 
+type AccountRoleLabelKey = 'auth:student' | 'course:instructor' | 'auth:admin';
+
 const ACCOUNT_ROLE_PRESENTATION: Record<UserRole, AccountRolePresentation> = {
   student: { Icon: GraduationCap },
   instructor: { Icon: UserRound },
   admin: { Icon: ShieldCheck },
+};
+
+const ACCOUNT_ROLE_LABEL_KEY: Record<UserRole, AccountRoleLabelKey> = {
+  student: 'auth:student',
+  instructor: 'course:instructor',
+  admin: 'auth:admin',
 };
 
 export function AccountMenu({ user, showLanguage = false }: AccountMenuProps) {
@@ -50,6 +58,7 @@ export function AccountMenu({ user, showLanguage = false }: AccountMenuProps) {
   const initials =
     `${user.name.trim().charAt(0)}${user.surname.trim().charAt(0)}`.toLocaleUpperCase();
   const RoleIcon = ACCOUNT_ROLE_PRESENTATION[user.role].Icon;
+  const roleLabel = t(ACCOUNT_ROLE_LABEL_KEY[user.role]);
 
   useEffect(() => {
     if (!open) return;
@@ -190,7 +199,7 @@ export function AccountMenu({ user, showLanguage = false }: AccountMenuProps) {
                 </span>
                 <span className={styles.accountMenuRole}>
                   <RoleIcon data-part="account-menu-role-icon" aria-hidden="true" size={16} />
-                  <span>{user.role}</span>
+                  <span>{roleLabel}</span>
                 </span>
               </div>
               <div className={styles.accountMenuDivider} role="separator" />

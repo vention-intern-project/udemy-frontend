@@ -7,6 +7,8 @@ import {
   AuthLink,
   FormErrorAlert,
   PasswordField,
+  resolveAuthFieldErrors,
+  resolveAuthMessage,
   useResetPasswordWorkflow,
 } from '@features/auth-workflows';
 import { Button, Notice } from '@shared/ui/primitives';
@@ -21,6 +23,8 @@ interface ResetPasswordFormProps {
 function ResetPasswordForm({ ownerKey, token, onSuccess }: ResetPasswordFormProps) {
   const { t } = useTranslation();
   const workflow = useResetPasswordWorkflow({ ownerKey, token, onSuccess });
+  const fieldErrors = resolveAuthFieldErrors(workflow.fieldErrors, t);
+  const summary = resolveAuthMessage(workflow.summary, t);
   return (
     <AuthFormShell
       title={t('routes:resetPasswordTitle')}
@@ -29,8 +33,8 @@ function ResetPasswordForm({ ownerKey, token, onSuccess }: ResetPasswordFormProp
     >
       <form noValidate onSubmit={workflow.submit}>
         <p className={styles.tokenHelp}>{t('auth:resetTokenHelp')}</p>
-        {workflow.summary && Object.keys(workflow.fieldErrors).length === 0 ? (
-          <FormErrorAlert ref={workflow.summaryRef} summary={workflow.summary} />
+        {summary && Object.keys(workflow.fieldErrors).length === 0 ? (
+          <FormErrorAlert ref={workflow.summaryRef} summary={summary} />
         ) : null}
         <PasswordField
           id="password"
@@ -38,7 +42,7 @@ function ResetPasswordForm({ ownerKey, token, onSuccess }: ResetPasswordFormProp
           label={t('auth:newPassword')}
           autoComplete="new-password"
           value={workflow.newPassword}
-          error={workflow.fieldErrors.password}
+          error={fieldErrors.password}
           disabled={workflow.isPending}
           onChange={workflow.setNewPassword}
         />
@@ -48,7 +52,7 @@ function ResetPasswordForm({ ownerKey, token, onSuccess }: ResetPasswordFormProp
           label={t('auth:confirmNewPassword')}
           autoComplete="new-password"
           value={workflow.passwordConfirmation}
-          error={workflow.fieldErrors.passwordConfirmation}
+          error={fieldErrors.passwordConfirmation}
           disabled={workflow.isPending}
           onChange={workflow.setPasswordConfirmation}
         />

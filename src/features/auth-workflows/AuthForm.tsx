@@ -13,7 +13,7 @@ import { useTranslation } from 'react-i18next';
 
 import { createMutationAttemptIdentity, type MutationAttemptIdentity } from '@shared/api';
 import { Button, Input } from '@shared/ui/primitives';
-import type { AuthField, AuthFieldErrors } from './validation';
+import type { AuthField, AuthFieldErrors, AuthMessage } from './validation';
 import styles from './AuthForm.module.css';
 
 interface AuthFormShellProps {
@@ -136,7 +136,7 @@ export function AuthLink({ to, children, tone = 'default' }: AuthLinkProps) {
 }
 
 export function useAuthErrorFocus(
-  message: string | null,
+  message: AuthMessage | null,
   fields: AuthFieldErrors,
   fieldOrder: readonly AuthField[],
 ) {
