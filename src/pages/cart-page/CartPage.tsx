@@ -493,8 +493,8 @@ export function CartPage() {
         <h1 id="cart-heading" ref={headingRef} tabIndex={-1}>
           {t('common:cart')}
         </h1>
-        <Notice tone="error" title={initialLoadFailure.title}>
-          {initialLoadFailure.message}
+        <Notice tone="error" title={t(initialLoadFailure.titleKey)}>
+          {t(initialLoadFailure.messageKey)}
         </Notice>
         <CartRecoveryAction
           failure={initialLoadFailure}
@@ -602,19 +602,21 @@ export function CartPage() {
         />
       </div>
       {loadFailure ? (
-        <Notice tone="error" title={loadFailure.title}>
-          {loadFailure.message} <CartRecoveryAction failure={loadFailure} onRetry={retry} t={t} />
+        <Notice tone="error" title={t(loadFailure.titleKey)}>
+          {t(loadFailure.messageKey)}{' '}
+          <CartRecoveryAction failure={loadFailure} onRetry={retry} t={t} />
         </Notice>
       ) : null}
       {removeFailure ? (
-        <Notice tone="error" title={removeFailure.title}>
-          {removeFailure.message}{' '}
+        <Notice tone="error" title={t(removeFailure.titleKey)}>
+          {t(removeFailure.messageKey)}{' '}
           <CartRecoveryAction failure={removeFailure} onRetry={retry} t={t} />
         </Notice>
       ) : null}
       {clearFailure ? (
-        <Notice tone="error" title={clearFailure.title}>
-          {clearFailure.message} <CartRecoveryAction failure={clearFailure} onRetry={retry} t={t} />
+        <Notice tone="error" title={t(clearFailure.titleKey)}>
+          {t(clearFailure.messageKey)}{' '}
+          <CartRecoveryAction failure={clearFailure} onRetry={retry} t={t} />
         </Notice>
       ) : null}
       <div className={styles.content}>
@@ -727,7 +729,7 @@ export function CartPage() {
         confirmLabel={t('cart:clearCart', { defaultValue: 'Clear cart' })}
         confirming={isPendingClear()}
         pendingLabel={t('cart:clearingCart', { defaultValue: 'Clearing cart...' })}
-        error={clearFailure?.message}
+        error={clearFailure ? t(clearFailure.messageKey) : undefined}
         onCancel={() => {
           if (!isBusy) setClearOpen(false);
         }}

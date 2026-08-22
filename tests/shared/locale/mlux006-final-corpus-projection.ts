@@ -23780,8 +23780,8 @@ const MLUX006_DRAFT28_UNITS: readonly Mlux006FinalCorpusUnit[] = [
     runtimeEnglish: 'The server returned an invalid response. Try again.',
     variables: [],
     plural: false,
-    sourceScreen: 'See Occurrences (2 verified sources)',
-    routeState: 'Course Detail and Learning / invalid-response failure',
+    sourceScreen: 'See Occurrences (3 verified sources)',
+    routeState: '3 contexts — see Occurrences',
     english: 'The server returned an invalid response. Try again.',
     russian: {
       value: 'Сервер вернул некорректный ответ. Повторите попытку.',
@@ -23801,8 +23801,8 @@ const MLUX006_DRAFT28_UNITS: readonly Mlux006FinalCorpusUnit[] = [
     status: 'Draft',
     notes:
       'DRAFT-28 shared invalid-response descriptor; private server detail remains suppressed; draft translations await human review.',
-    occurrenceCount: 2,
-    dedupeDecision: 'Mapped to one phrase across 2 equivalent failure descriptors',
+    occurrenceCount: 3,
+    dedupeDecision: 'Merged equivalent occurrences',
   },
   {
     unitId: 'MLUX-C0470',
@@ -23811,8 +23811,8 @@ const MLUX006_DRAFT28_UNITS: readonly Mlux006FinalCorpusUnit[] = [
     runtimeEnglish: 'You appear to be offline',
     variables: [],
     plural: false,
-    sourceScreen: 'See Occurrences (1 verified source)',
-    routeState: 'Course Detail / offline failure',
+    sourceScreen: 'See Occurrences (2 verified sources)',
+    routeState: '2 contexts — see Occurrences',
     english: 'You appear to be offline',
     russian: {
       value: 'Похоже, нет подключения к интернету',
@@ -23831,8 +23831,8 @@ const MLUX006_DRAFT28_UNITS: readonly Mlux006FinalCorpusUnit[] = [
     testTarget: 'MLUX-006-FOLLOWUP focused + browser matrix',
     status: 'Draft',
     notes: 'DRAFT-28 Course Detail offline descriptor; draft translations await human review.',
-    occurrenceCount: 1,
-    dedupeDecision: 'Unique',
+    occurrenceCount: 2,
+    dedupeDecision: 'Merged equivalent occurrences',
   },
   {
     unitId: 'MLUX-C0471',
@@ -23841,8 +23841,8 @@ const MLUX006_DRAFT28_UNITS: readonly Mlux006FinalCorpusUnit[] = [
     runtimeEnglish: 'Check your connection and try again.',
     variables: [],
     plural: false,
-    sourceScreen: 'See Occurrences (1 verified source)',
-    routeState: 'Course Detail / offline failure',
+    sourceScreen: 'See Occurrences (2 verified sources)',
+    routeState: '2 contexts — see Occurrences',
     english: 'Check your connection and try again.',
     russian: {
       value: 'Проверьте подключение и повторите попытку.',
@@ -23861,8 +23861,8 @@ const MLUX006_DRAFT28_UNITS: readonly Mlux006FinalCorpusUnit[] = [
     testTarget: 'MLUX-006-FOLLOWUP focused + browser matrix',
     status: 'Draft',
     notes: 'DRAFT-28 Course Detail offline descriptor; draft translations await human review.',
-    occurrenceCount: 1,
-    dedupeDecision: 'Unique',
+    occurrenceCount: 2,
+    dedupeDecision: 'Merged equivalent occurrences',
   },
   {
     unitId: 'MLUX-C0472',
@@ -23925,8 +23925,8 @@ const MLUX006_DRAFT28_UNITS: readonly Mlux006FinalCorpusUnit[] = [
     runtimeEnglish: 'Please try again.',
     variables: [],
     plural: false,
-    sourceScreen: 'See Occurrences (1 verified source)',
-    routeState: 'Course Detail / request failure',
+    sourceScreen: 'See Occurrences (2 verified sources)',
+    routeState: '2 contexts — see Occurrences',
     english: 'Please try again.',
     russian: { value: 'Повторите попытку.', resourceStatus: 'Draft', reviewStatus: 'Pending' },
     uzbek: { value: 'Qayta urinib ko‘ring.', resourceStatus: 'Draft', reviewStatus: 'Pending' },
@@ -23938,8 +23938,8 @@ const MLUX006_DRAFT28_UNITS: readonly Mlux006FinalCorpusUnit[] = [
     status: 'Draft',
     notes:
       'DRAFT-28 Course Detail request-failure descriptor; draft translations await human review.',
-    occurrenceCount: 1,
-    dedupeDecision: 'Unique',
+    occurrenceCount: 2,
+    dedupeDecision: 'Merged equivalent occurrences',
   },
   {
     unitId: 'MLUX-C0475',
@@ -25021,6 +25021,180 @@ const MLUX006_DRAFT35_CORPUS_OCCURRENCES: readonly Mlux006FinalCorpusOccurrence[
   dedupeMapping: 'Unique occurrence',
 }));
 
+const MLUX006_DRAFT36_UNITS: readonly Mlux006Draft35UnitSeed[] = [
+  [
+    'C0507',
+    'cart',
+    'cartDataUnavailable',
+    'Cart invalid-response failure title',
+    'Cart data is unavailable',
+    'Данные корзины недоступны',
+    'Savat ma’lumotlari mavjud emas',
+    [],
+  ],
+  [
+    'C0508',
+    'cart',
+    'sessionExpired',
+    'Cart unauthorized failure title',
+    'Your session has expired',
+    'Срок действия сеанса истёк',
+    'Seansingiz muddati tugadi',
+    [],
+  ],
+  [
+    'C0509',
+    'cart',
+    'logInAgainToViewCart',
+    'Cart unauthorized failure message',
+    'Please log in again to view your cart.',
+    'Войдите снова, чтобы посмотреть корзину.',
+    'Savatingizni ko‘rish uchun qayta kiring.',
+    [],
+  ],
+  [
+    'C0510',
+    'cart',
+    'courseNoLongerInCart',
+    'Cart missing-item failure message',
+    'This course is no longer in your cart. Refresh to see the latest cart.',
+    'Этого курса больше нет в вашей корзине. Обновите страницу, чтобы увидеть актуальную корзину.',
+    'Bu kurs endi savatingizda yo‘q. Yangilangan savatni ko‘rish uchun sahifani yangilang.',
+    [],
+  ],
+  [
+    'C0511',
+    'cart',
+    'cartUnavailable',
+    'Cart forbidden failure title',
+    'Cart is unavailable',
+    'Корзина недоступна',
+    'Savat mavjud emas',
+    [],
+  ],
+  [
+    'C0512',
+    'cart',
+    'noAccessToCart',
+    'Cart forbidden failure message',
+    'You do not have access to this cart.',
+    'У вас нет доступа к этой корзине.',
+    'Bu savatga kirish huquqingiz yo‘q.',
+    [],
+  ],
+  [
+    'C0513',
+    'cart',
+    'cartUpdateNeedsRefresh',
+    'Cart synchronization failure title',
+    'Cart update needs a refresh',
+    'Корзину нужно обновить',
+    'Savatni yangilash kerak',
+    [],
+  ],
+  [
+    'C0514',
+    'cart',
+    'cartChangedLatestCouldNotLoad',
+    'Cart synchronization failure message',
+    'Your cart changed, but the latest cart could not be loaded. Refresh to see the current cart.',
+    'Корзина изменилась, но не удалось загрузить последние данные. Обновите страницу, чтобы увидеть текущую корзину.',
+    'Savatingiz o‘zgardi, ammo yangilangan savatni yuklab bo‘lmadi. Joriy savatni ko‘rish uchun sahifani yangilang.',
+    [],
+  ],
+  [
+    'C0515',
+    'cart',
+    'cartLoadFailed',
+    'Cart generic load-failure title',
+    'We could not load your cart',
+    'Не удалось загрузить корзину',
+    'Savatni yuklab bo‘lmadi',
+    [],
+  ],
+  [
+    'C0516',
+    'cart',
+    'unableToUpdateCart',
+    'Cart generic mutation-failure title',
+    'Unable to update cart',
+    'Не удалось обновить корзину',
+    'Savatni yangilab bo‘lmadi',
+    [],
+  ],
+];
+
+const MLUX006_DRAFT36_CORPUS_UNITS: readonly Mlux006FinalCorpusUnit[] = MLUX006_DRAFT36_UNITS.map(
+  ([suffix, namespace, key, routeState, english, russian, uzbek, variables]) => ({
+    unitId: `MLUX-${suffix}`,
+    namespace,
+    key,
+    runtimeEnglish: english,
+    variables,
+    plural: false,
+    sourceScreen: 'See Occurrences (1 verified source)',
+    routeState,
+    english,
+    russian: { value: russian, resourceStatus: 'Draft', reviewStatus: 'Pending' },
+    uzbek: { value: uzbek, resourceStatus: 'Draft', reviewStatus: 'Pending' },
+    ownerTasks: ['MLUX-006-FOLLOWUP'],
+    runtimeOwnerTasks: ['MLUX-006-FOLLOWUP'],
+    fallback: 'English source',
+    classification: 'Visible UI copy',
+    testTarget: 'MLUX-006-FOLLOWUP focused + browser matrix',
+    status: 'Draft',
+    notes: 'DRAFT-36 Cart failure descriptor correction; draft translations await human review.',
+    occurrenceCount: 1,
+    dedupeDecision: 'Unique',
+  }),
+);
+
+const MLUX006_DRAFT36_CORPUS_OCCURRENCES: readonly Mlux006FinalCorpusOccurrence[] = [
+  ['0728', 'C0507', 'Cart invalid-response failure title', 'Cart data is unavailable'],
+  ['0729', 'C0508', 'Cart unauthorized failure title', 'Your session has expired'],
+  ['0730', 'C0509', 'Cart unauthorized failure message', 'Please log in again to view your cart.'],
+  [
+    '0731',
+    'C0510',
+    'Cart missing-item failure message',
+    'This course is no longer in your cart. Refresh to see the latest cart.',
+  ],
+  ['0732', 'C0511', 'Cart forbidden failure title', 'Cart is unavailable'],
+  ['0733', 'C0512', 'Cart forbidden failure message', 'You do not have access to this cart.'],
+  ['0734', 'C0513', 'Cart synchronization failure title', 'Cart update needs a refresh'],
+  [
+    '0735',
+    'C0514',
+    'Cart synchronization failure message',
+    'Your cart changed, but the latest cart could not be loaded. Refresh to see the current cart.',
+  ],
+  ['0736', 'C0515', 'Cart generic load-failure title', 'We could not load your cart'],
+  ['0737', 'C0516', 'Cart generic mutation-failure title', 'Unable to update cart'],
+  [
+    '0738',
+    'C0469',
+    'Cart invalid-response failure message',
+    'The server returned an invalid response. Try again.',
+  ],
+  ['0739', 'C0470', 'Cart offline failure title', 'You appear to be offline'],
+  ['0740', 'C0471', 'Cart offline failure message', 'Check your connection and try again.'],
+  ['0741', 'C0474', 'Cart generic failure message', 'Please try again.'],
+].map(([suffix, unitSuffix, routeState, english]) => ({
+  occurrenceId: `MLUX-O${suffix}`,
+  unitId: `MLUX-${unitSuffix}`,
+  sourceScreen: 'src/features/cart-workflow/cart-state.ts',
+  routeState,
+  runtimeContext: `src/features/cart-workflow/cart-state.ts — ${routeState}`,
+  english,
+  classification: 'Visible UI copy',
+  ownerTask: 'MLUX-006-FOLLOWUP',
+  testTarget: 'MLUX-006-FOLLOWUP focused + browser matrix',
+  extractionKind: 'failure descriptor key',
+  dedupeMapping: unitSuffix.startsWith('C05')
+    ? 'Unique occurrence'
+    : `Merged with MLUX-${unitSuffix}`,
+}));
+
 const MLUX006_DRAFT35_AUTH_OCCURRENCE_OVERRIDES: ReadonlyMap<
   string,
   Pick<
@@ -25207,21 +25381,21 @@ const MLUX006_DRAFT33_OCCURRENCE_SOURCE_OVERRIDES: ReadonlyMap<
 
 export const MLUX006_FINAL_CORPUS_PROJECTION: Mlux006FinalCorpusProjection = {
   ...MLUX006_DRAFT27_CORPUS_PROJECTION,
-  version: 'MLUX-001-DRAFT-35',
-  sha256: '9D2F107F98484F08C08092824E7885028B3C29E6972E5C0DB4B647D6867B7DE4',
-  byteLength: 116430,
+  version: 'MLUX-001-DRAFT-36',
+  sha256: 'B821A2000614257AA7A6CDF9CE3F4AB435A9C2A8CC716CFAC0B80CA83F002A2E',
+  byteLength: 118482,
   summary: {
     ...MLUX006_DRAFT27_CORPUS_PROJECTION.summary,
-    translationUnits: 508,
-    sourceOccurrences: 724,
-    mergedDuplicateRows: 216,
-    russianDrafts: 508,
-    uzbekDrafts: 508,
+    translationUnits: 518,
+    sourceOccurrences: 738,
+    mergedDuplicateRows: 220,
+    russianDrafts: 518,
+    uzbekDrafts: 518,
   },
   workbookFrontMatter: {
     ...MLUX006_DRAFT27_CORPUS_PROJECTION.workbookFrontMatter,
     occurrencesSubtitle:
-      'All 724 source occurrences are deduplicated by semantic key and immutable English intent.',
+      'All 738 source occurrences are deduplicated by semantic key and immutable English intent.',
   },
   units: [
     ...MLUX006_DRAFT27_CORPUS_PROJECTION.units.map((unit) => {
@@ -25338,6 +25512,30 @@ export const MLUX006_FINAL_CORPUS_PROJECTION: Mlux006FinalCorpusProjection = {
           },
         };
       }
+      if (unit.unitId === 'MLUX-C0469') {
+        return {
+          ...unit,
+          sourceScreen: 'See Occurrences (3 verified sources)',
+          routeState: '3 contexts — see Occurrences',
+          ownerTasks: ['MLUX-006-FOLLOWUP'],
+          occurrenceCount: 3,
+          dedupeDecision: 'Merged equivalent occurrences',
+        };
+      }
+      if (
+        unit.unitId === 'MLUX-C0470' ||
+        unit.unitId === 'MLUX-C0471' ||
+        unit.unitId === 'MLUX-C0474'
+      ) {
+        return {
+          ...unit,
+          sourceScreen: 'See Occurrences (2 verified sources)',
+          routeState: '2 contexts — see Occurrences',
+          ownerTasks: ['MLUX-006-FOLLOWUP'],
+          occurrenceCount: 2,
+          dedupeDecision: 'Merged equivalent occurrences',
+        };
+      }
       return override ? { ...unit, ...override } : unit;
     }),
     ...MLUX006_DRAFT28_UNITS,
@@ -25345,6 +25543,7 @@ export const MLUX006_FINAL_CORPUS_PROJECTION: Mlux006FinalCorpusProjection = {
     ...MLUX006_DRAFT30_CORPUS_UNITS,
     ...MLUX006_DRAFT34_CORPUS_UNITS,
     ...MLUX006_DRAFT35_CORPUS_UNITS,
+    ...MLUX006_DRAFT36_CORPUS_UNITS,
   ],
   occurrences: [
     ...MLUX006_DRAFT27_CORPUS_PROJECTION.occurrences,
@@ -25355,6 +25554,7 @@ export const MLUX006_FINAL_CORPUS_PROJECTION: Mlux006FinalCorpusProjection = {
     ...MLUX006_DRAFT34_CORPUS_OCCURRENCES,
     ...MLUX006_DRAFT34_SHARED_OCCURRENCES,
     ...MLUX006_DRAFT35_CORPUS_OCCURRENCES,
+    ...MLUX006_DRAFT36_CORPUS_OCCURRENCES,
   ].map((occurrence) => {
     const sourceOverride = MLUX006_DRAFT33_OCCURRENCE_SOURCE_OVERRIDES.get(occurrence.occurrenceId);
     const authOverride = MLUX006_DRAFT35_AUTH_OCCURRENCE_OVERRIDES.get(occurrence.occurrenceId);
@@ -25368,6 +25568,6 @@ export const MLUX006_FINAL_CORPUS_PROJECTION: Mlux006FinalCorpusProjection = {
   }),
   acceptance: MLUX006_DRAFT27_CORPUS_PROJECTION.acceptance.map((record) => ({
     ...record,
-    corpusVersion: 'MLUX-001-DRAFT-35',
+    corpusVersion: 'MLUX-001-DRAFT-36',
   })),
 };

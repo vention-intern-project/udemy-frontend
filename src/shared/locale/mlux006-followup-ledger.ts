@@ -913,6 +913,167 @@ const records: readonly Mlux006FollowupRecord[] = [
       },
     ],
   },
+  {
+    unitId: 'MLUX-C0507',
+    namespace: 'cart',
+    key: 'cartDataUnavailable',
+    english: 'Cart data is unavailable',
+    variables: [],
+    ru: 'Данные корзины недоступны',
+    uz: 'Savat ma’lumotlari mavjud emas',
+    occurrences: [
+      {
+        id: 'O0728',
+        context: 'src/features/cart-workflow/cart-state.ts — Cart invalid-response failure title',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0508',
+    namespace: 'cart',
+    key: 'sessionExpired',
+    english: 'Your session has expired',
+    variables: [],
+    ru: 'Срок действия сеанса истёк',
+    uz: 'Seansingiz muddati tugadi',
+    occurrences: [
+      {
+        id: 'O0729',
+        context: 'src/features/cart-workflow/cart-state.ts — Cart unauthorized failure title',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0509',
+    namespace: 'cart',
+    key: 'logInAgainToViewCart',
+    english: 'Please log in again to view your cart.',
+    variables: [],
+    ru: 'Войдите снова, чтобы посмотреть корзину.',
+    uz: 'Savatingizni ko‘rish uchun qayta kiring.',
+    occurrences: [
+      {
+        id: 'O0730',
+        context: 'src/features/cart-workflow/cart-state.ts — Cart unauthorized failure message',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0510',
+    namespace: 'cart',
+    key: 'courseNoLongerInCart',
+    english: 'This course is no longer in your cart. Refresh to see the latest cart.',
+    variables: [],
+    ru: 'Этого курса больше нет в вашей корзине. Обновите страницу, чтобы увидеть актуальную корзину.',
+    uz: 'Bu kurs endi savatingizda yo‘q. Yangilangan savatni ko‘rish uchun sahifani yangilang.',
+    occurrences: [
+      {
+        id: 'O0731',
+        context: 'src/features/cart-workflow/cart-state.ts — Cart missing-item failure message',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0511',
+    namespace: 'cart',
+    key: 'cartUnavailable',
+    english: 'Cart is unavailable',
+    variables: [],
+    ru: 'Корзина недоступна',
+    uz: 'Savat mavjud emas',
+    occurrences: [
+      {
+        id: 'O0732',
+        context: 'src/features/cart-workflow/cart-state.ts — Cart forbidden failure title',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0512',
+    namespace: 'cart',
+    key: 'noAccessToCart',
+    english: 'You do not have access to this cart.',
+    variables: [],
+    ru: 'У вас нет доступа к этой корзине.',
+    uz: 'Bu savatga kirish huquqingiz yo‘q.',
+    occurrences: [
+      {
+        id: 'O0733',
+        context: 'src/features/cart-workflow/cart-state.ts — Cart forbidden failure message',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0513',
+    namespace: 'cart',
+    key: 'cartUpdateNeedsRefresh',
+    english: 'Cart update needs a refresh',
+    variables: [],
+    ru: 'Корзину нужно обновить',
+    uz: 'Savatni yangilash kerak',
+    occurrences: [
+      {
+        id: 'O0734',
+        context: 'src/features/cart-workflow/cart-state.ts — Cart synchronization failure title',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0514',
+    namespace: 'cart',
+    key: 'cartChangedLatestCouldNotLoad',
+    english:
+      'Your cart changed, but the latest cart could not be loaded. Refresh to see the current cart.',
+    variables: [],
+    ru: 'Корзина изменилась, но не удалось загрузить последние данные. Обновите страницу, чтобы увидеть текущую корзину.',
+    uz: 'Savatingiz o‘zgardi, ammo yangilangan savatni yuklab bo‘lmadi. Joriy savatni ko‘rish uchun sahifani yangilang.',
+    occurrences: [
+      {
+        id: 'O0735',
+        context: 'src/features/cart-workflow/cart-state.ts — Cart synchronization failure message',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0515',
+    namespace: 'cart',
+    key: 'cartLoadFailed',
+    english: 'We could not load your cart',
+    variables: [],
+    ru: 'Не удалось загрузить корзину',
+    uz: 'Savatni yuklab bo‘lmadi',
+    occurrences: [
+      {
+        id: 'O0736',
+        context: 'src/features/cart-workflow/cart-state.ts — Cart generic load-failure title',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0516',
+    namespace: 'cart',
+    key: 'unableToUpdateCart',
+    english: 'Unable to update cart',
+    variables: [],
+    ru: 'Не удалось обновить корзину',
+    uz: 'Savatni yangilab bo‘lmadi',
+    occurrences: [
+      {
+        id: 'O0737',
+        context: 'src/features/cart-workflow/cart-state.ts — Cart generic mutation-failure title',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
 ];
 
 export const MLUX_006_FOLLOWUP_TRANSLATIONS: readonly Mlux006FollowupTranslationEntry[] =
@@ -955,7 +1116,11 @@ export type Mlux006FollowupSharedOccurrence = LocaleOccurrence & {
     | 'MLUX-C0157'
     | 'MLUX-C0163'
     | 'MLUX-C0442'
-    | 'MLUX-C0443';
+    | 'MLUX-C0443'
+    | 'MLUX-C0469'
+    | 'MLUX-C0470'
+    | 'MLUX-C0471'
+    | 'MLUX-C0474';
   readonly ownerTask: 'MLUX-006-FOLLOWUP';
 };
 
@@ -1090,6 +1255,30 @@ const sharedOccurrenceSources = [
     unitId: 'MLUX-C0442',
     context:
       'src/features/course-detail/action-state.ts:187 — Course Detail / eligible paid action',
+    classification: 'Visible UI copy',
+  },
+  {
+    id: 'O0738',
+    unitId: 'MLUX-C0469',
+    context: 'src/features/cart-workflow/cart-state.ts — Cart invalid-response failure message',
+    classification: 'Visible UI copy',
+  },
+  {
+    id: 'O0739',
+    unitId: 'MLUX-C0470',
+    context: 'src/features/cart-workflow/cart-state.ts — Cart offline failure title',
+    classification: 'Visible UI copy',
+  },
+  {
+    id: 'O0740',
+    unitId: 'MLUX-C0471',
+    context: 'src/features/cart-workflow/cart-state.ts — Cart offline failure message',
+    classification: 'Visible UI copy',
+  },
+  {
+    id: 'O0741',
+    unitId: 'MLUX-C0474',
+    context: 'src/features/cart-workflow/cart-state.ts — Cart generic failure message',
     classification: 'Visible UI copy',
   },
 ] as const satisfies readonly Omit<Mlux006FollowupSharedOccurrence, 'ownerTask'>[];
