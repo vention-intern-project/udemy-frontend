@@ -6,7 +6,12 @@ import type { PropsWithChildren } from 'react';
 import { describe, expect, it } from 'vitest';
 
 import { createAppQueryClient } from '../../../src/app/query';
-import { cartFailureState, useCartWorkflow } from '../../../src/features/cart-workflow';
+import {
+  cartFailureState,
+  type CartFailureOperation,
+  type CartFailureState,
+  useCartWorkflow,
+} from '../../../src/features/cart-workflow';
 import {
   SessionProvider,
   useSession,
@@ -39,6 +44,93 @@ const cartWithItems = {
   currency: 'USD',
   item_count: 1,
 };
+
+type FixtureLocale = 'en' | 'ru' | 'uz';
+
+interface LocalizedFailureCopy {
+  readonly title: Record<FixtureLocale, string>;
+  readonly message: Record<FixtureLocale, string>;
+}
+
+interface CartFailureLocaleExpectation {
+  readonly name: string;
+  readonly error: ApiError;
+  readonly operation: CartFailureOperation;
+  readonly titleKey: CartFailureState['titleKey'];
+  readonly messageKey: CartFailureState['messageKey'];
+  readonly copy: LocalizedFailureCopy;
+}
+
+const CART_FAILURE_LOCALE_EXPECTATIONS: readonly CartFailureLocaleExpectation[] = [
+  {
+    name: 'load invalid response',
+    error: new ApiError({ kind: 'invalid_response', status: 200, message: 'private' }),
+    operation: 'load',
+    titleKey: 'cart:cartDataUnavailable',
+    messageKey: 'common:serverReturnedAnInvalidResponseTryAgain',
+    copy: {
+      title: {
+        en: 'Cart data is unavailable',
+        ru: 'Данные корзины недоступны',
+        uz: 'Savat ma’lumotlari mavjud emas',
+      },
+      message: {
+        en: 'The server returned an invalid response. Try again.',
+        ru: 'Сервер вернул некорректный ответ. Повторите попытку.',
+        uz: 'Server noto‘g‘ri javob qaytardi. Qayta urinib ko‘ring.',
+      },
+    },
+  },
+  {
+    name: 'remove missing item',
+    error: new ApiError({ kind: 'not_found', status: 404, message: 'private' }),
+    operation: 'remove',
+    titleKey: 'cart:cartChanged',
+    messageKey: 'cart:courseNoLongerInCart',
+    copy: {
+      title: { en: 'Cart changed', ru: 'Корзина изменилась', uz: 'Savat o‘zgardi' },
+      message: {
+        en: 'This course is no longer in your cart. Refresh to see the latest cart.',
+        ru: 'Этого курса больше нет в вашей корзине. Обновите страницу, чтобы увидеть актуальную корзину.',
+        uz: 'Bu kurs endi savatingizda yo‘q. Yangilangan savatni ko‘rish uchun sahifani yangilang.',
+      },
+    },
+  },
+  {
+    name: 'clear unavailable',
+    error: new ApiError({ kind: 'server', status: 503, message: 'private' }),
+    operation: 'clear',
+    titleKey: 'cart:unableToUpdateCart',
+    messageKey: 'common:pleaseTryAgain',
+    copy: {
+      title: {
+        en: 'Unable to update cart',
+        ru: 'Не удалось обновить корзину',
+        uz: 'Savatni yangilab bo‘lmadi',
+      },
+      message: { en: 'Please try again.', ru: 'Повторите попытку.', uz: 'Qayta urinib ko‘ring.' },
+    },
+  },
+  {
+    name: 'synchronization failure',
+    error: new ApiError({ kind: 'server', status: 503, message: 'private' }),
+    operation: 'synchronization',
+    titleKey: 'cart:cartUpdateNeedsRefresh',
+    messageKey: 'cart:cartChangedLatestCouldNotLoad',
+    copy: {
+      title: {
+        en: 'Cart update needs a refresh',
+        ru: 'Корзину нужно обновить',
+        uz: 'Savatni yangilash kerak',
+      },
+      message: {
+        en: 'Your cart changed, but the latest cart could not be loaded. Refresh to see the current cart.',
+        ru: 'Корзина изменилась, но не удалось загрузить последние данные. Обновите страницу, чтобы увидеть текущую корзину.',
+        uz: 'Savatingiz o‘zgardi, ammo yangilangan savatni yuklab bo‘lmadi. Joriy savatni ko‘rish uchun sahifani yangilang.',
+      },
+    },
+  },
+];
 
 function tokenStore(): AccessTokenStore {
   let value: string | null = 'student-token';
@@ -100,44 +192,15 @@ function createWorkflowHarness(request: ApiClient['request']) {
 }
 
 describe('cart workflow recovery projection', () => {
-  it.each([
-    [
-      'load invalid response',
-      new ApiError({ kind: 'invalid_response', status: 200, message: 'private' }),
-      'load',
-      'cart:cartDataUnavailable',
-      'common:serverReturnedAnInvalidResponseTryAgain',
-    ],
-    [
-      'remove missing item',
-      new ApiError({ kind: 'not_found', status: 404, message: 'private' }),
-      'remove',
-      'cart:cartChanged',
-      'cart:courseNoLongerInCart',
-    ],
-    [
-      'clear unavailable',
-      new ApiError({ kind: 'server', status: 503, message: 'private' }),
-      'clear',
-      'cart:unableToUpdateCart',
-      'common:pleaseTryAgain',
-    ],
-    [
-      'synchronization failure',
-      new ApiError({ kind: 'server', status: 503, message: 'private' }),
-      'synchronization',
-      'cart:cartUpdateNeedsRefresh',
-      'cart:cartChangedLatestCouldNotLoad',
-    ],
-  ] as const)(
-    'keeps $0 locale-neutral while every locale resolves its semantic copy',
-    async (_name, error, operation, titleKey, messageKey) => {
+  it.each(CART_FAILURE_LOCALE_EXPECTATIONS)(
+    'keeps $name locale-neutral while every locale resolves its semantic copy',
+    async ({ error, operation, titleKey, messageKey, copy }) => {
       const failure = cartFailureState(error, operation);
       expect(failure).toMatchObject({ titleKey, messageKey });
       for (const locale of ['en', 'ru', 'uz'] as const) {
         await localeRuntime.changeLanguage(locale);
-        expect(localeRuntime.t(failure.titleKey)).not.toBe(failure.titleKey.split(':')[1]);
-        expect(localeRuntime.t(failure.messageKey)).not.toBe(failure.messageKey.split(':')[1]);
+        expect(localeRuntime.t(failure.titleKey)).toBe(copy.title[locale]);
+        expect(localeRuntime.t(failure.messageKey)).toBe(copy.message[locale]);
         expect(localeRuntime.t(failure.titleKey)).not.toContain('private');
         expect(localeRuntime.t(failure.messageKey)).not.toContain('private');
       }
