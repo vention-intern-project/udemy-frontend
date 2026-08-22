@@ -14,6 +14,7 @@ import {
   type SessionContextValue,
 } from '../../../src/features/auth-session';
 import { ApiError, type ApiClient, type ApiRequestOptions } from '../../../src/shared/api';
+import { localeRuntime } from '../../../src/shared/locale';
 
 const student = {
   email: 'student@example.test',
@@ -99,6 +100,51 @@ function createWorkflowHarness(request: ApiClient['request']) {
 }
 
 describe('cart workflow recovery projection', () => {
+  it.each([
+    [
+      'load invalid response',
+      new ApiError({ kind: 'invalid_response', status: 200, message: 'private' }),
+      'load',
+      'cart:cartDataUnavailable',
+      'common:serverReturnedAnInvalidResponseTryAgain',
+    ],
+    [
+      'remove missing item',
+      new ApiError({ kind: 'not_found', status: 404, message: 'private' }),
+      'remove',
+      'cart:cartChanged',
+      'cart:courseNoLongerInCart',
+    ],
+    [
+      'clear unavailable',
+      new ApiError({ kind: 'server', status: 503, message: 'private' }),
+      'clear',
+      'cart:unableToUpdateCart',
+      'common:pleaseTryAgain',
+    ],
+    [
+      'synchronization failure',
+      new ApiError({ kind: 'server', status: 503, message: 'private' }),
+      'synchronization',
+      'cart:cartUpdateNeedsRefresh',
+      'cart:cartChangedLatestCouldNotLoad',
+    ],
+  ] as const)(
+    'keeps $0 locale-neutral while every locale resolves its semantic copy',
+    async (_name, error, operation, titleKey, messageKey) => {
+      const failure = cartFailureState(error, operation);
+      expect(failure).toMatchObject({ titleKey, messageKey });
+      for (const locale of ['en', 'ru', 'uz'] as const) {
+        await localeRuntime.changeLanguage(locale);
+        expect(localeRuntime.t(failure.titleKey)).not.toBe(failure.titleKey.split(':')[1]);
+        expect(localeRuntime.t(failure.messageKey)).not.toBe(failure.messageKey.split(':')[1]);
+        expect(localeRuntime.t(failure.titleKey)).not.toContain('private');
+        expect(localeRuntime.t(failure.messageKey)).not.toContain('private');
+      }
+      await localeRuntime.changeLanguage('en');
+    },
+  );
+
   it('keeps a missing remove action recoverable as a concurrent cart change', () => {
     expect(
       cartFailureState(
@@ -114,7 +160,7 @@ describe('cart workflow recovery projection', () => {
         new ApiError({ kind: 'invalid_response', status: 200, message: 'private' }),
         'load',
       ),
-    ).toMatchObject({ title: 'Cart data is unavailable', action: { kind: 'retry' } });
+    ).toMatchObject({ titleKey: 'cart:cartDataUnavailable', action: { kind: 'retry' } });
   });
 
   it('keeps an authenticated forbidden cart on a safe non-login recovery path', () => {
@@ -123,7 +169,7 @@ describe('cart workflow recovery projection', () => {
         new ApiError({ kind: 'forbidden', status: 403, message: 'private' }),
         'load',
       ),
-    ).toMatchObject({ title: 'Cart is unavailable', action: { kind: 'catalog' } });
+    ).toMatchObject({ titleKey: 'cart:cartUnavailable', action: { kind: 'catalog' } });
   });
 
   it('maps a session-expired cart request to the login recovery action', () => {
@@ -132,7 +178,7 @@ describe('cart workflow recovery projection', () => {
         new ApiError({ kind: 'unauthorized', status: 401, message: 'private' }),
         'load',
       ),
-    ).toMatchObject({ title: 'Your session has expired', action: { kind: 'login' } });
+    ).toMatchObject({ titleKey: 'cart:sessionExpired', action: { kind: 'login' } });
   });
 
   it('does not commit stale remove feedback after the public session changes', async () => {
