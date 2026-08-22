@@ -75,8 +75,7 @@ const DRAFT20_RESIDUAL_CONSUMERS: readonly ResidualConsumerExpectation[] = [
     requiredCalls: [
       "t('learning:updatingLessonProgress')",
       "t('a11y:loadingLearningProgress')",
-      "t('learning:availableNow')",
-      "t('learning:comingSoon')",
+      "t('learning:lessonAvailability'",
       "t('course:lessonMarker')",
       "t('learning:lessonCount'",
     ],

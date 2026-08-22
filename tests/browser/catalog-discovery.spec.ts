@@ -4138,7 +4138,11 @@ test('redirects Instructor Catalog root access without public Catalog or student
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: response([{ ...permittedCourse('Instructor course'), id: 7 }]),
+      body: response([
+        { ...permittedCourse('Instructor paid'), id: 7 },
+        { ...permittedCourse('Instructor free'), id: 8, price: '0.00' },
+        { ...permittedCourse('Instructor draft'), id: 9, published_at: null },
+      ]),
     });
   });
   const instructorCollection = page.waitForResponse(
@@ -4148,7 +4152,25 @@ test('redirects Instructor Catalog root access without public Catalog or student
   await Promise.all([instructorCollection, page.goto('/')]);
   await expect(page).toHaveURL('/instructor/courses');
   await expect(page.getByRole('heading', { level: 1, name: 'Instructor courses' })).toBeVisible();
-  await expect(page.getByRole('heading', { level: 2, name: 'Your courses' })).toBeVisible();
+  const courseList = page.getByRole('region', { name: 'Your courses' });
+  await expect(courseList).toBeVisible();
+  for (const [title, courseId] of [
+    ['Instructor paid', 7],
+    ['Instructor free', 8],
+    ['Instructor draft', 9],
+  ] as const) {
+    const card = courseList.getByRole('listitem').filter({
+      has: page.getByRole('heading', { level: 3, name: title }),
+    });
+    await expect(card.getByRole('link', { name: 'Edit course' })).toHaveAttribute(
+      'href',
+      `/instructor/courses/${courseId}/edit`,
+    );
+    await expect(card.getByRole('link', { name: 'Course enrollments' })).toHaveAttribute(
+      'href',
+      `/instructor/courses/${courseId}/enrollments`,
+    );
+  }
   await expect(page.locator('[data-part="catalog-page"]')).toHaveCount(0);
   expect(forbiddenRequests).toEqual([]);
   assertClean();
