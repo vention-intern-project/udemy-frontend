@@ -61,6 +61,7 @@ export function AccountMenu({ user, showLanguage = false }: AccountMenuProps) {
     setOpen(false);
     setPinned(false);
     setLanguageView(false);
+    pendingLanguageFocusRef.current = null;
   }, []);
 
   useEffect(() => {
@@ -142,7 +143,6 @@ export function AccountMenu({ user, showLanguage = false }: AccountMenuProps) {
         onClick={() => {
           if (pinned) {
             dismissAccountMenu();
-            pendingLanguageFocusRef.current = null;
             return;
           }
           setPinned(true);

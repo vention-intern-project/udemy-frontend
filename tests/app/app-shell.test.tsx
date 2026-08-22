@@ -781,6 +781,31 @@ describe('AppShell student cart query and presentation', () => {
     expect(accountDetails.querySelector('[data-part="account-menu-profile"]')).toBeTruthy();
   });
 
+  it('does not retain a deferred Language focus target after outside dismissal', async () => {
+    stubCompactViewport();
+    renderShell(authenticatedClient('student'), 'student-token');
+
+    const accountMenu = await screen.findByRole('button', {
+      name: 'Account menu for student User',
+    });
+    fireEvent.click(accountMenu);
+    fireEvent.click(screen.getByRole('button', { name: /Language/ }));
+    const back = screen.getByRole('button', { name: 'Back' });
+    const outsideTarget = document.createElement('button');
+    document.body.append(outsideTarget);
+
+    act(() => {
+      fireEvent.click(back);
+      fireEvent.pointerDown(outsideTarget);
+    });
+    expect(screen.queryByRole('group', { name: 'Account details for student User' })).toBeNull();
+
+    act(() => accountMenu.focus());
+    expect(document.activeElement).toBe(accountMenu);
+    expect(screen.getByRole('button', { name: /Language/ })).toBeTruthy();
+    outsideTarget.remove();
+  });
+
   it('resets the unpinned mobile account menu to its profile view after Tab leaves Language', async () => {
     stubCompactViewport();
     renderShell(authenticatedClient('student'), 'student-token');
