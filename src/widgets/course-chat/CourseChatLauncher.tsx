@@ -1,5 +1,6 @@
 import { MessageCircleMore } from 'lucide-react';
 import { type CSSProperties, useId, useLayoutEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
 
 import type { CourseAssistantContext } from '@features/course-chat';
@@ -16,6 +17,7 @@ interface CourseChatLauncherProps {
 const FOOTER_CLEARANCE_GAP_PX = 16;
 
 export function CourseChatLauncher({ assistant }: CourseChatLauncherProps) {
+  const { t } = useTranslation();
   const location = useLocation();
   const launcherDescriptionId = useId();
   const widgetId = useId();
@@ -124,7 +126,12 @@ export function CourseChatLauncher({ assistant }: CourseChatLauncherProps) {
     if (restoreFocus) launcherRef.current?.focus();
   };
   return (
-    <aside ref={rootRef} className={styles.root} style={rootStyle} aria-label="Course assistant">
+    <aside
+      ref={rootRef}
+      className={styles.root}
+      style={rootStyle}
+      aria-label={t('ai:courseAssistant0319')}
+    >
       {interactionMounted ? (
         <CourseChatLauncherInteraction
           assistant={assistant}
@@ -148,7 +155,7 @@ export function CourseChatLauncher({ assistant }: CourseChatLauncherProps) {
           className={styles.launcher}
           type="button"
           aria-describedby={launcherDescriptionId}
-          aria-label="Open AI assistant"
+          aria-label={t('a11y:openAiAssistant')}
           aria-controls={open ? widgetId : undefined}
           aria-expanded={open}
           onClick={() => {
@@ -163,7 +170,7 @@ export function CourseChatLauncher({ assistant }: CourseChatLauncherProps) {
           <MessageCircleMore aria-hidden="true" />
         </button>
         <span id={launcherDescriptionId} className={styles.launcherTooltip} role="tooltip">
-          Open AI assistant
+          {t('ai:openAiAssistant')}
         </span>
       </span>
     </aside>

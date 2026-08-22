@@ -16,6 +16,7 @@ import {
   mapAuthFailure,
   validateEmail,
   type AuthFieldErrors,
+  type AuthMessage,
 } from './validation';
 
 const FIELD_ORDER = ['email'] as const;
@@ -30,7 +31,7 @@ export interface ForgotPasswordWorkflow {
   readonly fieldErrors: AuthFieldErrors;
   readonly isPending: boolean;
   readonly success: boolean;
-  readonly summary: string | null;
+  readonly summary: AuthMessage | null;
   readonly summaryRef: RefObject<HTMLDivElement>;
   setEmail(value: string): void;
   submit(event: FormEvent): Promise<void>;
@@ -41,7 +42,7 @@ export function useForgotPasswordWorkflow(ownerKey: string): ForgotPasswordWorkf
   const [email, setEmailValue] = useState('');
   const [success, setSuccess] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<AuthFieldErrors>({});
-  const [summary, setSummary] = useState<string | null>(null);
+  const [summary, setSummary] = useState<AuthMessage | null>(null);
   const { ref: summaryRef, requestFocus: requestSummaryFocus } = useAuthErrorFocus(
     summary,
     fieldErrors,
@@ -69,7 +70,7 @@ export function useForgotPasswordWorkflow(ownerKey: string): ForgotPasswordWorkf
     const validation = compactFieldErrors({ email: validateEmail(input.email) });
     if (Object.keys(validation).length > 0) {
       setFieldErrors(validation);
-      setSummary('Review the highlighted field and submit again.');
+      setSummary({ kind: 'review-highlighted-field' });
       requestSummaryFocus();
       attempts.finish(attempt);
       return;

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 
 import {
@@ -19,7 +20,7 @@ import { SortControl } from './SortControl';
 import { useCatalogCourseActions } from './useCatalogCourseActions';
 
 type CourseDisclosureId = number;
-type RefreshAnnouncement = 'Course results updated.' | 'Updating course results…' | null;
+type RefreshAnnouncement = string | null;
 
 type DisclosureDismissOptions = {
   returnFocus?: boolean;
@@ -87,6 +88,7 @@ function restoreBrowserSelectedFocus(target: HTMLElement) {
 }
 
 export function CatalogPage() {
+  const { t, i18n } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
   const pendingPriceBlurSourceRef = useRef<HTMLInputElement | null>(null);
   const pendingPriceBlurTargetRef = useRef<HTMLElement | null>(null);
@@ -262,6 +264,13 @@ export function CatalogPage() {
         }
       : null;
   const courseActions = useCatalogCourseActions(results?.items ?? []);
+  const localizedResultCount =
+    visibleResultsTotal === null ? null : t('catalog:resultCount', { count: visibleResultsTotal });
+  const resultCountText = visibleResultsTotal === null ? null : String(visibleResultsTotal);
+  const resultCountSuffix =
+    localizedResultCount && resultCountText && localizedResultCount.startsWith(resultCountText)
+      ? localizedResultCount.slice(resultCountText.length)
+      : localizedResultCount;
 
   useLayoutEffect(() => {
     if (!currentResults) return;
@@ -280,23 +289,26 @@ export function CatalogPage() {
   useEffect(() => {
     if (isRefreshing) {
       refreshWasPendingRef.current = true;
-      setRefreshAnnouncement('Updating course results…');
+      setRefreshAnnouncement(
+        t('catalog:updatingCourseResults', { defaultValue: 'Updating course results…' }),
+      );
       return;
     }
     if (!refreshWasPendingRef.current) return;
     refreshWasPendingRef.current = false;
     setRefreshAnnouncement(
       discovery.status === 'populated' || discovery.status === 'empty'
-        ? 'Course results updated.'
+        ? t('catalog:courseResultsUpdated', { defaultValue: 'Course results updated.' })
         : null,
     );
-  }, [discovery.status, isRefreshing]);
+  }, [discovery.status, isRefreshing, t]);
 
   return (
     <section
       className={styles.page}
       data-part="catalog-page"
       aria-labelledby="catalog-page-title"
+      lang={i18n.resolvedLanguage ?? i18n.language}
       onBlurCapture={(event) => {
         const source = event.target;
         if (
@@ -318,11 +330,14 @@ export function CatalogPage() {
       <div className={styles.hero} data-part="catalog-hero">
         <div className={styles.heroContent}>
           <h1 id="catalog-page-title">
-            Master the Skills Shaping the <span className={styles.headingBreak}>Future</span>
+            {t('catalog:masterTheSkillsShapingThe')}{' '}
+            <span className={styles.headingBreak}>{t('catalog:future')}</span>
           </h1>
           <p>
-            Browse courses crafted by industry experts. Advance your career in technology, design,
-            business, and leadership.
+            {t('catalog:browseCoursesCraftedByIndustry', {
+              defaultValue:
+                'Browse courses crafted by industry experts. Advance your career in technology, design, business, and leadership.',
+            })}
           </p>
         </div>
       </div>
@@ -338,7 +353,9 @@ export function CatalogPage() {
                 <VisuallyHidden
                   as="p"
                   aria-atomic="true"
-                  aria-label="Catalog refresh status"
+                  aria-label={t('catalog:catalogRefreshStatus', {
+                    defaultValue: 'Catalog refresh status',
+                  })}
                   aria-live="polite"
                   data-part="catalog-refresh-status"
                   role="status"
@@ -347,18 +364,17 @@ export function CatalogPage() {
                 </VisuallyHidden>
                 <h2 id="catalog-results-title">
                   {isChangedCriteriaLoading ? (
-                    'Loading course results…'
+                    t('catalog:loadingCourseResults', { defaultValue: 'Loading course results…' })
                   ) : visibleResultsTotal !== null ? (
                     <>
-                      <span>Found </span>
+                      <span>{t('catalog:found')} </span>
                       <strong className={styles.resultsTotal}>{visibleResultsTotal}</strong>
-                      <span className={styles.resultsSuffix}>
-                        {' '}
-                        {visibleResultsTotal === 1 ? 'course' : 'courses'}
-                      </span>
+                      <span className={styles.resultsSuffix}>{resultCountSuffix}</span>
                     </>
                   ) : (
-                    'Course results unavailable.'
+                    t('catalog:courseResultsUnavailable', {
+                      defaultValue: 'Course results unavailable.',
+                    })
                   )}
                 </h2>
                 <div className={styles.toolbarControls} data-part="catalog-toolbar-controls">
@@ -367,10 +383,10 @@ export function CatalogPage() {
                     <div className={styles.sortField}>
                       <span className={styles.sortLabel} aria-hidden="true">
                         <span className={styles.sortBy} aria-hidden="true">
-                          Sort by:
+                          {t('catalog:sortByLabel')}
                         </span>
                         <span className={styles.sortCompact} aria-hidden="true">
-                          Sort:
+                          {t('catalog:sort')}
                         </span>
                       </span>
                       <SortControl
@@ -386,7 +402,7 @@ export function CatalogPage() {
                 <Notice tone="error" title={discovery.failure.title} className={styles.notice}>
                   <p>{discovery.failure.message}</p>
                   <Button variant="secondary" onClick={discovery.retry}>
-                    Try again
+                    {t('routes:tryAgain', { defaultValue: 'Try again' })}
                   </Button>
                 </Notice>
               ) : null}
@@ -404,8 +420,11 @@ export function CatalogPage() {
                 </ul>
               ) : null}
               {results?.items.length === 0 ? (
-                <Notice tone="info" title="No courses found">
-                  Try changing or clearing your filters.
+                <Notice
+                  tone="info"
+                  title={t('catalog:noCoursesFound', { defaultValue: 'No courses found' })}
+                >
+                  {t('catalog:tryChangingOrClearingYour')}
                 </Notice>
               ) : results ? (
                 <ul className={styles.list} data-part="catalog-result-list">
@@ -432,7 +451,7 @@ export function CatalogPage() {
                   totalPages={visiblePagination.totalPages}
                   hasNext={visiblePagination.hasNext}
                   hasPrevious={visiblePagination.hasPrevious}
-                  label="Course result pages"
+                  label={t('catalog:courseResultPages', { defaultValue: 'Course result pages' })}
                   directionDisplay="arrows"
                   onPageChange={(page) => navigate({ ...query, page })}
                 />

@@ -1,5 +1,6 @@
 import type { HTMLAttributes } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 import styles from './Pagination.module.css';
 import { VisuallyHidden } from './VisuallyHidden';
@@ -47,13 +48,14 @@ export function Pagination({
   currentPage,
   totalPages,
   onPageChange,
-  label = 'Pagination',
+  label,
   hasNext,
   hasPrevious,
   directionDisplay = 'text',
   className,
   ...props
 }: PaginationProps) {
+  const { t } = useTranslation();
   const safeTotal = positiveSafeInteger(totalPages) ?? 1;
   const positiveCurrent = positiveSafeInteger(currentPage) ?? 1;
   const usesServerAvailability = hasNext !== undefined || hasPrevious !== undefined;
@@ -94,23 +96,23 @@ export function Pagination({
   return (
     <nav
       {...props}
-      aria-label={label}
+      aria-label={label ?? t('a11y:pagination', { defaultValue: 'Pagination' })}
       className={[styles.pagination, 'ui-pagination', className].filter(Boolean).join(' ')}
     >
       <VisuallyHidden role="status" aria-live="polite" aria-atomic="true">
-        Page {safeCurrent} of {safeTotal}
+        {t('common:page')} {safeCurrent} {t('common:of')} {safeTotal}
       </VisuallyHidden>
       {previousAvailable && previousTarget !== undefined ? (
         <button
           type="button"
           className={directionClassName}
           onClick={() => changePage(previousTarget, true)}
-          aria-label="Go to previous page"
+          aria-label={t('a11y:goToPreviousPage', { defaultValue: 'Go to previous page' })}
         >
           {directionDisplay === 'arrows' ? (
             <ChevronLeft size={20} aria-hidden="true" />
           ) : (
-            'Previous'
+            t('common:previous', { defaultValue: 'Previous' })
           )}
         </button>
       ) : (
@@ -127,7 +129,10 @@ export function Pagination({
                 key={item}
                 className={[styles.currentPage, 'ui-pagination__current-page'].join(' ')}
                 aria-current="page"
-                aria-label={`Page ${item}, current page`}
+                aria-label={t('a11y:pageCurrentPage', {
+                  pageNumber: item,
+                  defaultValue: `Page ${item}, current page`,
+                })}
               >
                 {item}
               </span>
@@ -136,7 +141,10 @@ export function Pagination({
                 key={item}
                 type="button"
                 className={[styles.button, 'ui-pagination__button'].join(' ')}
-                aria-label={`Go to page ${item}`}
+                aria-label={t('a11y:goToPage', {
+                  pageNumber: item,
+                  defaultValue: `Go to page ${item}`,
+                })}
                 disabled={!pageAvailable(item)}
                 onClick={() => changePage(item)}
               >
@@ -157,7 +165,10 @@ export function Pagination({
           <span
             className={[styles.currentPage, 'ui-pagination__current-page'].join(' ')}
             aria-current="page"
-            aria-label={`Page ${safeCurrent}, current page`}
+            aria-label={t('a11y:pageCurrentPage', {
+              pageNumber: safeCurrent,
+              defaultValue: `Page ${safeCurrent}, current page`,
+            })}
           >
             {safeCurrent}
           </span>
@@ -168,9 +179,13 @@ export function Pagination({
           type="button"
           className={directionClassName}
           onClick={() => changePage(nextTarget, true)}
-          aria-label="Go to next page"
+          aria-label={t('a11y:goToNextPage', { defaultValue: 'Go to next page' })}
         >
-          {directionDisplay === 'arrows' ? <ChevronRight size={20} aria-hidden="true" /> : 'Next'}
+          {directionDisplay === 'arrows' ? (
+            <ChevronRight size={20} aria-hidden="true" />
+          ) : (
+            t('common:next', { defaultValue: 'Next' })
+          )}
         </button>
       ) : (
         <span

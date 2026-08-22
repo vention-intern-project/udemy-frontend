@@ -14,6 +14,7 @@ export const CATALOG_SORT_VALUES = [
 
 export type CatalogPriceField = 'min_price' | 'max_price';
 type CatalogDraftPriceValidation = number | undefined | 'invalid';
+export type CatalogFilterValidationErrorKey = 'nonNegativePrice' | 'maximumPriceMustBeAtLeast';
 
 export interface CatalogQuery {
   search_query?: string;
@@ -40,7 +41,9 @@ export interface CatalogPriceRange {
   max_price: number | undefined;
 }
 
-export type CatalogFilterValidationErrors = Readonly<Partial<Record<CatalogPriceField, string>>>;
+export type CatalogFilterValidationErrors = Readonly<
+  Partial<Record<CatalogPriceField, CatalogFilterValidationErrorKey>>
+>;
 
 export interface CatalogFilterValidation {
   value?: CatalogQuery;
@@ -126,9 +129,9 @@ function validateDraftPrice(value: string): CatalogDraftPriceValidation {
 export function validateCatalogDraft(draft: CatalogFilterDraft): CatalogFilterValidation {
   const min = validateDraftPrice(draft.min_price);
   const max = validateDraftPrice(draft.max_price);
-  const errors: Partial<Record<CatalogPriceField, string>> = {};
-  if (min === 'invalid') errors.min_price = 'Enter a non-negative price.';
-  if (max === 'invalid') errors.max_price = 'Enter a non-negative price.';
+  const errors: Partial<Record<CatalogPriceField, CatalogFilterValidationErrorKey>> = {};
+  if (min === 'invalid') errors.min_price = 'nonNegativePrice';
+  if (max === 'invalid') errors.max_price = 'nonNegativePrice';
   if (Object.keys(errors).length > 0) return { errors };
   const validMin = min === 'invalid' ? undefined : min;
   const validMax = max === 'invalid' ? undefined : max;

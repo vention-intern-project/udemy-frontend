@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   decodeCourseProgressDto,
   decodeLessonProgressDto,
-  lessonCompletionLabel,
+  lessonCompletionLabelKey,
   requestCourseProgress,
   requestLearningEnrollment,
   requestLearningEnrollments,
@@ -327,9 +327,9 @@ describe('learning-progress transport and row-state boundary', () => {
     expect(result).toEqual({ lessonId: 12, completed: false, completedAt: null });
   });
 
-  it('does not infer a fresh lesson row completion state from aggregate progress', () => {
-    expect(lessonCompletionLabel({ status: 'unknown' })).toBe('Completion status unavailable');
-    expect(lessonCompletionLabel({ status: 'known', completed: true })).toBe('Completed');
-    expect(lessonCompletionLabel({ status: 'known', completed: false })).toBe('Not completed');
+  it('keeps lesson completion state locale-neutral at the feature boundary', () => {
+    expect(lessonCompletionLabelKey({ status: 'unknown' })).toBe('notCompleted');
+    expect(lessonCompletionLabelKey({ status: 'known', completed: true })).toBe('completed');
+    expect(lessonCompletionLabelKey({ status: 'known', completed: false })).toBe('notCompleted');
   });
 });

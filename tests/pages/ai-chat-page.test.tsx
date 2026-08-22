@@ -9,6 +9,7 @@ import { useLearningWorkspace } from '../../src/features/learning-progress';
 import { SessionProvider } from '../../src/features/auth-session';
 import { CourseChatSessionProvider } from '../../src/features/course-chat';
 import { AiChatPage } from '../../src/pages/ai-chat-page';
+import { LocaleProvider, localeRuntime, type Locale } from '../../src/shared/locale';
 
 vi.mock('../../src/features/learning-progress', async (importOriginal) => ({
   ...(await importOriginal<typeof LearningProgress>()),
@@ -28,27 +29,79 @@ function workspaceFor(enrollment: Record<string, unknown>) {
   return { enrollment } as unknown as ReturnType<typeof useLearningWorkspace>;
 }
 
-function renderPage(path = '/learning/enrollments/4/ai-chat') {
+function renderPage(path = '/learning/enrollments/4/ai-chat', locale: Locale = 'en') {
   return render(
-    <SessionProvider tokenStore={{ get: () => null, set: () => true, clear: () => {} }}>
-      <CourseChatSessionProvider>
-        <MemoryRouter initialEntries={[path]}>
-          <Routes>
-            <Route path="/learning/enrollments/:enrollmentId/ai-chat" element={<AiChatPage />} />
-            <Route path="/ai-chat" element={<AiChatPage />} />
-          </Routes>
-        </MemoryRouter>
-      </CourseChatSessionProvider>
-    </SessionProvider>,
+    <LocaleProvider initialLocale={locale}>
+      <SessionProvider tokenStore={{ get: () => null, set: () => true, clear: () => {} }}>
+        <CourseChatSessionProvider>
+          <MemoryRouter initialEntries={[path]}>
+            <Routes>
+              <Route path="/learning/enrollments/:enrollmentId/ai-chat" element={<AiChatPage />} />
+              <Route path="/ai-chat" element={<AiChatPage />} />
+            </Routes>
+          </MemoryRouter>
+        </CourseChatSessionProvider>
+      </SessionProvider>
+    </LocaleProvider>,
   );
 }
 
-afterEach(() => {
+afterEach(async () => {
   vi.resetAllMocks();
   vi.unstubAllGlobals();
+  await localeRuntime.changeLanguage('en');
 });
 
 describe('AiChatPage eligibility states', () => {
+  it.each([
+    ['ru', 'Ассистент курса', 'Доступность ассистента неизвестна', 'Предлагаемые действия'],
+    ['uz', 'Kurs yordamchisi', 'Yordamchi holati noma’lum', 'Tavsiya etilgan amallar'],
+  ] as const)(
+    'uses exact %s AI resources in the visible and accessible active-course chat state',
+    (locale, courseAssistant, availabilityLabel, suggestedActions) => {
+      useLearningWorkspaceMock.mockReturnValue(
+        workspaceFor({ isPending: false, isError: false, data: activeEnrollment }),
+      );
+
+      renderPage('/learning/enrollments/4/ai-chat', locale);
+
+      expect(screen.getByText(courseAssistant)).toBeTruthy();
+      expect(screen.getByRole('img', { name: availabilityLabel })).toBeTruthy();
+      expect(screen.getByRole('heading', { name: suggestedActions })).toBeTruthy();
+    },
+  );
+
+  it.each([
+    [
+      'ru',
+      'БЕТА',
+      'ИИ-помощник для обучения',
+      'Чат с ИИ-помощником',
+      'Эта беседа остаётся доступной, пока вы пользуетесь помощником.',
+    ],
+    [
+      'uz',
+      'BETA',
+      'AI ta’lim yordamchisi',
+      'AI yordamchi chati',
+      'Yordamchidan foydalanganingizda ushbu suhbat saqlanadi.',
+    ],
+  ] as const)(
+    'renders the admitted DRAFT-20 hero, chat accessibility name, and persistence notice in %s',
+    (locale, beta, assistant, chatLabel, notice) => {
+      useLearningWorkspaceMock.mockReturnValue(
+        workspaceFor({ isPending: false, isError: false, data: activeEnrollment }),
+      );
+
+      renderPage('/learning/enrollments/4/ai-chat', locale);
+
+      expect(screen.getByText(beta)).toBeTruthy();
+      expect(screen.getByText(assistant)).toBeTruthy();
+      expect(screen.getByRole('region', { name: chatLabel })).toBeTruthy();
+      expect(screen.getByText(notice)).toBeTruthy();
+    },
+  );
+
   it('renders loading before unavailable guards during the initial enrollment request', () => {
     useLearningWorkspaceMock.mockReturnValue(
       workspaceFor({ isPending: true, isError: false, data: undefined }),

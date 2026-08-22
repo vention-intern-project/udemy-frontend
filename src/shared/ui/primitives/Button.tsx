@@ -1,4 +1,5 @@
 import { useId, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { joinIds } from '../../accessibility';
 import styles from './Button.module.css';
@@ -18,17 +19,11 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   fullWidth?: boolean;
 }
 
-const defaultStatus: Record<Exclude<AsyncState, 'idle'>, string> = {
-  loading: 'Action in progress',
-  success: 'Action completed',
-  error: 'Action failed',
-};
-
 export function Button({
   variant = 'primary',
   size = 'md',
   state = 'idle',
-  loadingLabel = 'Loading…',
+  loadingLabel,
   statusMessage,
   announceStatus = true,
   fullWidth = false,
@@ -40,11 +35,16 @@ export function Button({
   'aria-describedby': ariaDescribedBy,
   ...props
 }: ButtonProps) {
+  const { t } = useTranslation();
+  const defaultStatus: Record<Exclude<AsyncState, 'idle'>, string> = {
+    loading: t('a11y:actionInProgress', { defaultValue: 'Action in progress' }),
+    success: t('a11y:actionCompleted', { defaultValue: 'Action completed' }),
+    error: t('a11y:actionFailed', { defaultValue: 'Action failed' }),
+  };
   const statusId = `button-status-${useId()}`;
   const isLoading = state === 'loading';
-  const message = state === 'idle' || !announceStatus
-    ? null
-    : (statusMessage ?? defaultStatus[state]);
+  const message =
+    state === 'idle' || !announceStatus ? null : (statusMessage ?? defaultStatus[state]);
   const stateIndicator = state === 'success' ? '✓' : state === 'error' ? '!' : null;
 
   return (
@@ -54,7 +54,9 @@ export function Button({
         fullWidth && styles.wrapperFull,
         'ui-button-wrap',
         fullWidth && 'ui-button-wrap--full',
-      ].filter(Boolean).join(' ')}
+      ]
+        .filter(Boolean)
+        .join(' ')}
       data-part="button-wrapper"
     >
       <button
@@ -94,7 +96,11 @@ export function Button({
             {stateIndicator}
           </span>
         ) : null}
-        <span>{isLoading ? loadingLabel : children}</span>
+        <span>
+          {isLoading
+            ? (loadingLabel ?? t('common:loading', { defaultValue: 'Loading…' }))
+            : children}
+        </span>
       </button>
       {message ? (
         <VisuallyHidden id={statusId} role="status" aria-live="polite">

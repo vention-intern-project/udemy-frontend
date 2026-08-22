@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { requestCreateCourse, requestInstructorCourses } from '@features/instructor-courses';
 import { useSession } from '@features/auth-session';
@@ -10,10 +11,13 @@ import styles from './InstructorCoursesPage.module.css';
 
 const COURSE_TITLE_MAX_LENGTH = 255;
 
-function titleValidationMessage(value: string): string | null {
-  if (value.trim() === '') return 'Enter a course title.';
-  if (value.length > COURSE_TITLE_MAX_LENGTH)
-    return 'Course title must be 255 characters or fewer.';
+type CourseTitleValidationKey =
+  | 'courseEditorEnterACourseTitle'
+  | 'coursesCourseTitleMustBe255CharactersOrFewer';
+
+function titleValidationMessage(value: string): CourseTitleValidationKey | null {
+  if (value.trim() === '') return 'courseEditorEnterACourseTitle';
+  if (value.length > COURSE_TITLE_MAX_LENGTH) return 'coursesCourseTitleMustBe255CharactersOrFewer';
   return null;
 }
 
@@ -23,22 +27,23 @@ function pageFrom(value: string | null): number {
   return Number.isSafeInteger(page) ? page : 1;
 }
 
-function collectionFailure(error: unknown): string {
+function collectionFailure(error: unknown, t: (key: string) => string): string {
   if (error instanceof ApiError && error.status === 401)
-    return 'Sign in again to view your courses.';
+    return t('instructor:coursesSignInAgainToViewYourCourses');
   if (error instanceof ApiError && error.status === 403)
-    return 'You do not have permission to view instructor courses.';
+    return t('instructor:coursesYouDoNotHavePermissionToViewInstructorCourses');
   if (error instanceof ApiError && error.status === 422)
-    return 'The requested course page is not valid. Try another page.';
-  return 'We could not load your courses. Try again.';
+    return t('instructor:coursesTheRequestedCoursePageIsNotValidTryAnotherPage');
+  return t('instructor:coursesWeCouldNotLoadYourCoursesTryAgain');
 }
 
 export function InstructorCoursesPage() {
+  const { t } = useTranslation();
   const session = useSession();
   const queryClient = useQueryClient();
   const [params, setParams] = useSearchParams();
   const [title, setTitle] = useState('');
-  const [titleError, setTitleError] = useState<string | null>(null);
+  const [titleError, setTitleError] = useState<CourseTitleValidationKey | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   const failureSummaryRef = useRef<HTMLDivElement>(null);
   const collectionHeadingRef = useRef<HTMLHeadingElement>(null);
@@ -74,19 +79,19 @@ export function InstructorCoursesPage() {
   };
   return (
     <article className={styles.page}>
-      <h1 className={styles.pageTitle}>Instructor courses</h1>
+      <h1 className={styles.pageTitle}>{t('navigation:instructorCourses')}</h1>
       <section className={styles.collection} aria-labelledby="your-courses-heading">
         <h2 id="your-courses-heading" ref={collectionHeadingRef} tabIndex={-1}>
-          Your courses
+          {t('instructor:coursesYourCourses')}
         </h2>
         {collection.isPending ? (
-          <SkeletonGroup label="Loading your courses">
+          <SkeletonGroup label={t('instructor:coursesLoadingYourCourses')}>
             <Skeleton width="100%" height="120px" shape="rect" />
           </SkeletonGroup>
         ) : null}
         {collection.isError ? (
-          <Notice tone="error" title="Course list unavailable">
-            <p>{collectionFailure(collection.error)}</p>
+          <Notice tone="error" title={t('instructor:coursesCourseListUnavailable')}>
+            <p>{collectionFailure(collection.error, t)}</p>
             <Button
               type="button"
               variant="secondary"
@@ -98,37 +103,43 @@ export function InstructorCoursesPage() {
                 void collection.refetch();
               }}
             >
-              Try again
+              {t('routes:tryAgain')}
             </Button>
           </Notice>
         ) : null}
         {collection.data ? (
           <>
             {collection.data.items.length === 0 ? (
-              <Notice tone="info">You have not created any courses yet.</Notice>
+              <Notice tone="info">{t('instructor:coursesYouHaveNotCreatedAnyCoursesYet')}</Notice>
             ) : (
-              <ul className={styles.courseList} aria-label="Your courses">
+              <ul className={styles.courseList} aria-label={t('instructor:coursesYourCourses')}>
                 {collection.data.items.map((course) => (
                   <li key={course.id} className={styles.courseRow}>
                     <div>
                       <h3>{course.title}</h3>
                       {course.description ? <p>{course.description}</p> : null}
                       <span>
-                        {course.lessonCount} lesson{course.lessonCount === 1 ? '' : 's'}
+                        {course.lessonCount}{' '}
+                        {t('learning:lessonCount', { count: course.lessonCount })}
                       </span>
                     </div>
-                    <nav className={styles.courseActions} aria-label={`${course.title} actions`}>
+                    <nav
+                      className={styles.courseActions}
+                      aria-label={t('instructor:coursesCourseActions', {
+                        courseTitle: course.title,
+                      })}
+                    >
                       <Link
                         className={styles.successAction}
                         to={`/instructor/courses/${course.id}/edit`}
                       >
-                        Edit course
+                        {t('routes:editCourseTitle')}
                       </Link>
                       <Link
                         className={styles.successAction}
                         to={`/instructor/courses/${course.id}/enrollments`}
                       >
-                        Course enrollments
+                        {t('routes:courseEnrollmentsTitle')}
                       </Link>
                     </nav>
                   </li>
@@ -141,7 +152,7 @@ export function InstructorCoursesPage() {
                 totalPages={collection.data.pages}
                 hasNext={collection.data.hasNext}
                 hasPrevious={collection.data.hasPrevious}
-                label="Your courses pagination"
+                label={t('instructor:coursesYourCoursesPagination')}
                 directionDisplay="arrows"
                 onPageChange={(nextPage) =>
                   setParams(nextPage === 1 ? {} : { page: String(nextPage) })
@@ -152,17 +163,17 @@ export function InstructorCoursesPage() {
         ) : null}
       </section>
       <section className={styles.panel} aria-labelledby="create-course-heading">
-        <h2 id="create-course-heading">Create course</h2>
+        <h2 id="create-course-heading">{t('instructor:coursesCreateCourse')}</h2>
         <form onSubmit={submit} className={styles.form}>
           <Input
             ref={titleRef}
             id="instructor-course-title"
             name="title"
-            label="Course title"
+            label={t('instructor:courseEditorCourseTitle')}
             value={title}
             maxLength={COURSE_TITLE_MAX_LENGTH}
-            helpText="Maximum 255 characters."
-            error={titleError}
+            helpText={t('instructor:coursesMaximum255Characters')}
+            error={titleError ? t(`instructor:${titleError}`) : null}
             onChange={(event) => {
               setTitle(event.target.value);
               if (titleError !== null) setTitleError(null);
@@ -178,33 +189,36 @@ export function InstructorCoursesPage() {
           {create.isError ? (
             <div ref={failureSummaryRef} tabIndex={-1} role="alert">
               <Notice tone="error" politeness="off">
-                We could not create the course. Try again.
+                {t('instructor:coursesCouldNotCreateCourseTryAgain')}
               </Notice>
             </div>
           ) : null}
           <Button
             type="submit"
             state={create.isPending ? 'loading' : 'idle'}
-            loadingLabel="Creating course"
+            loadingLabel={t('instructor:coursesCreatingCourse')}
           >
-            Create course
+            {t('instructor:coursesCreateCourse')}
           </Button>
         </form>
         {create.data ? (
-          <Notice tone="success" title="Course created">
+          <Notice tone="success" title={t('instructor:coursesCourseCreated')}>
             <p>{create.data.title}</p>
-            <nav className={styles.successActions} aria-label="New course actions">
+            <nav
+              className={styles.successActions}
+              aria-label={t('instructor:coursesNewCourseActions')}
+            >
               <Link
                 className={styles.successAction}
                 to={`/instructor/courses/${create.data.id}/edit`}
               >
-                Edit course
+                {t('routes:editCourseTitle')}
               </Link>
               <Link
                 className={styles.successAction}
                 to={`/instructor/courses/${create.data.id}/enrollments`}
               >
-                Course enrollments
+                {t('routes:courseEnrollmentsTitle')}
               </Link>
             </nav>
           </Notice>

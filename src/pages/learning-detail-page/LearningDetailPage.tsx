@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import type { EnrollmentStatus } from '@entities/enrollment';
 import type {
   LearningFeedbackMotionPreferences,
@@ -89,49 +90,68 @@ function didRetrySucceed(result: unknown): boolean {
 }
 
 function PaymentFeedbackNotice({ feedback }: PaymentFeedbackNoticeProps) {
+  const { t } = useTranslation();
   if (feedback === null) return null;
   if (feedback.kind === 'payment_completed')
     return (
-      <Notice tone="info" title="Mock payment submitted">
-        The mock payment completed. Enrollment status was refreshed; learning unlocks only after
-        active status is observed.
+      <Notice
+        tone="info"
+        title={t('learning:mockPaymentSubmitted', { defaultValue: 'Mock payment submitted' })}
+      >
+        {t('learning:mockPaymentCompleted')}
       </Notice>
     );
   if (feedback.kind === 'payment_declined')
     return (
-      <Notice tone="error" title="Mock payment declined">
-        The mock payment was declined. This enrollment remains locked.
+      <Notice
+        tone="error"
+        title={t('learning:mockPaymentDeclined', { defaultValue: 'Mock payment declined' })}
+      >
+        {t('learning:mockPaymentDeclinedBody')}
       </Notice>
     );
   if (feedback.kind === 'payment_pending')
     return (
-      <Notice tone="info" title="Payment remains pending">
-        The enrollment is still pending, so you can choose a new mock payment outcome.
+      <Notice
+        tone="info"
+        title={t('learning:paymentRemainsPending', { defaultValue: 'Payment remains pending' })}
+      >
+        {t('learning:enrollmentPending')}
       </Notice>
     );
   if (feedback.kind === 'payment_status_unknown')
     return (
-      <Notice tone="error" title="Payment status needs checking">
-        We could not confirm the mock payment status. Check enrollment status before taking another
-        action.
+      <Notice
+        tone="error"
+        title={t('learning:paymentStatusNeedsChecking', {
+          defaultValue: 'Payment status needs checking',
+        })}
+      >
+        {t('learning:paymentStatusUnconfirmed')}
       </Notice>
     );
   if (feedback.kind === 'unauthorized')
     return (
-      <Notice tone="error" title="Sign in required">
-        Sign in again before checking payment status.
+      <Notice tone="error" title={t('cart:signInRequired', { defaultValue: 'Sign in required' })}>
+        {t('learning:signInBeforePaymentStatus')}
       </Notice>
     );
   if (feedback.kind === 'not_authorized')
     return (
-      <Notice tone="error" title="Payment unavailable">
-        This payment action is not available for the current account.
+      <Notice
+        tone="error"
+        title={t('learning:paymentUnavailable', { defaultValue: 'Payment unavailable' })}
+      >
+        {t('learning:paymentActionUnavailable')}
       </Notice>
     );
   if (feedback.kind === 'unavailable')
     return (
-      <Notice tone="error" title="Payment unavailable">
-        Mock payment is currently unavailable. Check enrollment status later.
+      <Notice
+        tone="error"
+        title={t('learning:paymentUnavailable', { defaultValue: 'Payment unavailable' })}
+      >
+        {t('learning:mockPaymentUnavailable')}
       </Notice>
     );
   return null;
@@ -142,11 +162,12 @@ interface LearningReturnLinkProps {
 }
 
 function LearningReturnLink({ currentCourseTitle }: LearningReturnLinkProps) {
+  const { t } = useTranslation();
   return (
-    <nav className={styles.breadcrumb} aria-label="Breadcrumb">
+    <nav className={styles.breadcrumb} aria-label={t('a11y:breadcrumb')}>
       <ContextualNavigationLink className={styles.backLink} to="/learning">
         <ChevronLeft size={20} aria-hidden="true" />
-        <span>My learning</span>
+        <span>{t('navigation:myLearning', { defaultValue: 'My learning' })}</span>
       </ContextualNavigationLink>
       {currentCourseTitle ? (
         <>
@@ -159,6 +180,7 @@ function LearningReturnLink({ currentCourseTitle }: LearningReturnLinkProps) {
 }
 
 export function LearningDetailPage() {
+  const { t } = useTranslation();
   const enrollmentId = parseEnrollmentId(useParams().enrollmentId);
   const session = useSession();
   const feedbackMotion = useLearningFeedbackMotionPreferences();
@@ -228,8 +250,16 @@ export function LearningDetailPage() {
   if (enrollmentId === null)
     return (
       <section className={styles.state}>
-        <h1>Learning workspace unavailable</h1>
-        <p>This learning workspace is unavailable.</p>
+        <h1>
+          {t('learning:learningWorkspaceUnavailable', {
+            defaultValue: 'Learning workspace unavailable',
+          })}
+        </h1>
+        <p>
+          {t('learning:thisLearningWorkspaceIsUnavailable', {
+            defaultValue: 'This learning workspace is unavailable.',
+          })}
+        </p>
         <LearningReturnLink />
       </section>
     );
@@ -237,7 +267,11 @@ export function LearningDetailPage() {
     return (
       <section className={styles.loading}>
         <LearningReturnLink />
-        <SkeletonGroup label="Loading learning workspace">
+        <SkeletonGroup
+          label={t('learning:loadingLearningWorkspace', {
+            defaultValue: 'Loading learning workspace',
+          })}
+        >
           <Skeleton height="40px" width="55%" />
           <Skeleton height="240px" width="100%" shape="rect" />
         </SkeletonGroup>
@@ -251,10 +285,10 @@ export function LearningDetailPage() {
     return (
       <section className={styles.state}>
         <h1 tabIndex={-1} ref={headingRef}>
-          {failure.title}
+          {t(failure.titleKey)}
         </h1>
-        <Notice tone="error" title={failure.title}>
-          {failure.message}
+        <Notice tone="error" title={t(failure.titleKey)}>
+          {t(failure.messageKey)}
         </Notice>
         <LearningReturnLink />
         {!failure.unavailable ? (
@@ -263,7 +297,7 @@ export function LearningDetailPage() {
               retryEnrollment();
             }}
           >
-            Try again
+            {t('routes:tryAgain', { defaultValue: 'Try again' })}
           </Button>
         ) : null}
       </section>
@@ -279,8 +313,16 @@ export function LearningDetailPage() {
   if (workspace.enrollment.data === undefined)
     return (
       <section className={styles.state}>
-        <h1>Learning workspace unavailable</h1>
-        <p>This learning workspace is unavailable.</p>
+        <h1>
+          {t('learning:learningWorkspaceUnavailable', {
+            defaultValue: 'Learning workspace unavailable',
+          })}
+        </h1>
+        <p>
+          {t('learning:thisLearningWorkspaceIsUnavailable', {
+            defaultValue: 'This learning workspace is unavailable.',
+          })}
+        </p>
         <LearningReturnLink />
       </section>
     );
@@ -295,10 +337,19 @@ export function LearningDetailPage() {
     return (
       <section className={styles.state}>
         <h1 tabIndex={-1} ref={headingRef}>
-          Learning workspace unavailable
+          {t('learning:learningWorkspaceUnavailable', {
+            defaultValue: 'Learning workspace unavailable',
+          })}
         </h1>
-        <Notice tone="error" title="Learning workspace unavailable">
-          This learning workspace is unavailable.
+        <Notice
+          tone="error"
+          title={t('learning:learningWorkspaceUnavailable', {
+            defaultValue: 'Learning workspace unavailable',
+          })}
+        >
+          {t('learning:thisLearningWorkspaceIsUnavailable', {
+            defaultValue: 'This learning workspace is unavailable.',
+          })}
         </Notice>
         <LearningReturnLink />
       </section>
@@ -310,15 +361,20 @@ export function LearningDetailPage() {
         <header className={styles.header}>
           <p className={`${styles.status} ${styles[`status${enrollment.status}`]}`}>
             {enrollment.status === 'active'
-              ? 'Active'
+              ? t('learning:active', { defaultValue: 'Active' })
               : enrollment.status === 'cancelled'
-                ? 'Cancelled'
-                : 'Payment pending'}
+                ? t('learning:cancelled', { defaultValue: 'Cancelled' })
+                : t('learning:paymentPending', { defaultValue: 'Payment pending' })}
           </p>
           <h1 tabIndex={-1} ref={headingRef}>
             {enrollment.course.title}
           </h1>
-          <p>{enrollment.course.description ?? 'No course description is available.'}</p>
+          <p>
+            {enrollment.course.description ??
+              t('catalog:noCourseDescriptionIsAvailable', {
+                defaultValue: 'No course description is available.',
+              })}
+          </p>
         </header>
         {checkout.feedback !== null &&
         (checkout.feedback.kind !== 'payment_completed' || submittedPaymentNoticeVisible) ? (
@@ -372,16 +428,15 @@ export function LearningDetailPage() {
             tone="info"
             title={
               enrollment.status === 'pending_payment'
-                ? 'Payment pending'
-                : 'Learning progress unavailable'
+                ? t('learning:paymentPending', { defaultValue: 'Payment pending' })
+                : t('learning:learningProgressUnavailable', {
+                    defaultValue: 'Learning progress unavailable',
+                  })
             }
           >
             {enrollment.status === 'pending_payment' ? (
               <>
-                <p>
-                  Mock payment is awaiting completion. Learning remains locked until your enrollment
-                  is active.
-                </p>
+                <p>{t('learning:mockPaymentAwaitingCompletion')}</p>
                 <div className={styles.paymentActions}>
                   {checkout.paymentActionsLocked ? (
                     <Button
@@ -389,9 +444,11 @@ export function LearningDetailPage() {
                       onClick={() => checkout.checkPaymentStatus(enrollment.id, enrollmentRefresh)}
                       disabled={checkout.pending}
                       state={checkout.pending ? 'loading' : 'idle'}
-                      loadingLabel="Checking payment status…"
+                      loadingLabel={t('learning:checkingPaymentStatus', {
+                        defaultValue: 'Checking payment status…',
+                      })}
                     >
-                      Check payment status
+                      {t('learning:checkPaymentStatus')}
                     </Button>
                   ) : (
                     <>
@@ -401,9 +458,11 @@ export function LearningDetailPage() {
                         }
                         disabled={checkout.pending}
                         state={checkout.pending ? 'loading' : 'idle'}
-                        loadingLabel="Completing mock payment…"
+                        loadingLabel={t('learning:completingMockPayment', {
+                          defaultValue: 'Completing mock payment…',
+                        })}
                       >
-                        Complete mock payment
+                        {t('learning:completeMockPayment')}
                       </Button>
                       <Button
                         variant="secondary"
@@ -412,14 +471,16 @@ export function LearningDetailPage() {
                         }
                         disabled={checkout.pending}
                       >
-                        Simulate mock payment failure
+                        {t('learning:simulateMockPaymentFailure')}
                       </Button>
                     </>
                   )}
                 </div>
               </>
             ) : (
-              'Learning progress is not available for this enrollment.'
+              t('learning:learningProgressIsNotAvailableFor', {
+                defaultValue: 'Learning progress is not available for this enrollment.',
+              })
             )}
           </Notice>
         )}

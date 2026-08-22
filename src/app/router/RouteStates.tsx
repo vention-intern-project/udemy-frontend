@@ -5,6 +5,7 @@ import {
   Skeleton,
   SkeletonGroup,
 } from '../../shared/ui/primitives';
+import { useTranslation } from 'react-i18next';
 import styles from './RouteStates.module.css';
 
 interface RetryStateProps {
@@ -12,12 +13,13 @@ interface RetryStateProps {
 }
 
 export function BootstrapState() {
+  const { t } = useTranslation();
   return (
     <main className={[styles.root, styles.centered].join(' ')} aria-busy="true">
       <div className={styles.card}>
-        <h1>Preparing your workspace</h1>
-        <p>We are verifying your session.</p>
-        <SkeletonGroup label="Loading application">
+        <h1>{t('routes:bootstrapHeading')}</h1>
+        <p>{t('routes:bootstrapDescription')}</p>
+        <SkeletonGroup label={t('routes:bootstrapLoadingLabel')}>
           <Skeleton width="100%" />
           <Skeleton width="82%" />
           <Skeleton width="64%" />
@@ -28,29 +30,31 @@ export function BootstrapState() {
 }
 
 export function SessionErrorState({ onRetry }: RetryStateProps) {
+  const { t } = useTranslation();
   return (
     <main className={[styles.root, styles.centered].join(' ')} id="main-content">
       <div className={styles.card}>
-        <h1>Session check failed</h1>
-        <Notice className={styles.notice} tone="error" title="Unable to start the application">
-          We could not verify your session. Check your connection and try again.
+        <h1>{t('routes:sessionErrorHeading')}</h1>
+        <Notice className={styles.notice} tone="error" title={t('routes:sessionErrorNoticeTitle')}>
+          {t('routes:sessionErrorNoticeDescription')}
         </Notice>
-        <Button onClick={onRetry}>Try again</Button>
+        <Button onClick={onRetry}>{t('routes:tryAgain')}</Button>
       </div>
     </main>
   );
 }
 
 export function RenderErrorState({ onRetry }: RetryStateProps) {
+  const { t } = useTranslation();
   return (
     <main className={[styles.root, styles.centered].join(' ')} id="main-content">
       <div className={styles.card} role="alert" aria-labelledby="render-error-title">
-        <h1 id="render-error-title">Something went wrong</h1>
-        <p>We could not display this page. Try again or return to the catalog.</p>
+        <h1 id="render-error-title">{t('routes:renderErrorHeading')}</h1>
+        <p>{t('routes:renderErrorDescription')}</p>
         <div>
-          <Button onClick={onRetry}>Try again</Button>
+          <Button onClick={onRetry}>{t('routes:tryAgain')}</Button>
           <ContextualNavigationLink className={styles.linkButton} to="/">
-            Back to catalog
+            {t('routes:backToCatalog')}
           </ContextualNavigationLink>
         </div>
       </div>
@@ -59,17 +63,18 @@ export function RenderErrorState({ onRetry }: RetryStateProps) {
 }
 
 export function ForbiddenState() {
+  const { t } = useTranslation();
   return (
     <section className={styles.root} aria-labelledby="forbidden-title">
       <div className={styles.card}>
         <p className={styles.eyebrow}>403</p>
-        <h1 id="forbidden-title">You do not have access to this page</h1>
-        <p>Use an account with the required role, or return to the catalog.</p>
+        <h1 id="forbidden-title">{t('routes:forbiddenHeading')}</h1>
+        <p>{t('routes:forbiddenDescription')}</p>
         <ContextualNavigationLink
           className={[styles.linkButton, styles.forbiddenLink].join(' ')}
           to="/"
         >
-          Back to catalog
+          {t('routes:backToCatalog')}
         </ContextualNavigationLink>
       </div>
     </section>
@@ -77,14 +82,15 @@ export function ForbiddenState() {
 }
 
 export function NotFoundState() {
+  const { t } = useTranslation();
   return (
     <section className={styles.root} aria-labelledby="not-found-title">
       <div className={styles.card}>
         <p className={styles.eyebrow}>404</p>
-        <h1 id="not-found-title">Page not found</h1>
-        <p>The address may be incorrect, or the page may have moved.</p>
+        <h1 id="not-found-title">{t('routes:notFoundHeading')}</h1>
+        <p>{t('routes:notFoundDescription')}</p>
         <ContextualNavigationLink className={styles.linkButton} to="/">
-          Back to catalog
+          {t('routes:backToCatalog')}
         </ContextualNavigationLink>
       </div>
     </section>

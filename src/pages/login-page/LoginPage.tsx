@@ -1,16 +1,20 @@
 import { useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 
 import {
   AuthFormShell,
   AuthLink,
   FormErrorAlert,
   PasswordField,
+  resolveAuthFieldErrors,
+  resolveAuthMessage,
   useLoginWorkflow,
 } from '@features/auth-workflows';
 import { sanitizeInternalReturnTo } from '@features/auth-session';
 import { Button, Input } from '@shared/ui/primitives';
 
 export function LoginPage() {
+  const { t } = useTranslation();
   const location = useLocation();
   const returnTo = sanitizeInternalReturnTo(
     new URLSearchParams(location.search).get('returnTo'),
@@ -20,59 +24,59 @@ export function LoginPage() {
     ? `/signup?returnTo=${encodeURIComponent(returnTo)}`
     : '/signup';
   const workflow = useLoginWorkflow(location.key);
+  const fieldErrors = resolveAuthFieldErrors(workflow.fieldErrors, t);
+  const summary = resolveAuthMessage(workflow.summary, t);
   return (
     <AuthFormShell
-      title="Log in"
+      title={t('navigation:logIn')}
       description={
-        returnTo === '/cart'
-          ? 'Log in with a student account to view your cart and continue checkout.'
-          : 'Access your learning or instructor workspace.'
+        returnTo === '/cart' ? t('auth:logInWithAStudentAccount') : t('routes:loginDescription')
       }
       footer={
         <>
-          <span>New to LearnHub?</span>{' '}
+          <span>{t('auth:newToLearnhub')}</span>{' '}
           <AuthLink tone="primary" to={signupDestination}>
-            Create an account
+            {t('auth:createAnAccount')}
           </AuthLink>
         </>
       }
     >
       <form noValidate onSubmit={workflow.submit}>
-        {workflow.summary && Object.keys(workflow.fieldErrors).length === 0 ? (
-          <FormErrorAlert ref={workflow.summaryRef} summary={workflow.summary} />
+        {summary && Object.keys(workflow.fieldErrors).length === 0 ? (
+          <FormErrorAlert ref={workflow.summaryRef} summary={summary} />
         ) : null}
         <Input
           id="email"
           name="email"
           type="email"
-          label="Email"
+          label={t('auth:email')}
           autoComplete="email"
           required
           value={workflow.email}
-          error={workflow.fieldErrors.email}
+          error={fieldErrors.email}
           disabled={workflow.isPending}
           onChange={(event) => workflow.setEmail(event.currentTarget.value)}
         />
         <PasswordField
           id="password"
           name="password"
-          label="Password"
+          label={t('auth:password')}
           autoComplete="current-password"
           value={workflow.password}
-          error={workflow.fieldErrors.password}
+          error={fieldErrors.password}
           disabled={workflow.isPending}
           onChange={workflow.setPassword}
         />
         <AuthLink tone="primary" to="/forgot-password">
-          Forgot your password?
+          {t('auth:forgotYourPassword')}
         </AuthLink>
         <Button
           type="submit"
           fullWidth
           state={workflow.isPending ? 'loading' : 'idle'}
-          loadingLabel="Logging in..."
+          loadingLabel={t('auth:loggingIn')}
         >
-          Log in
+          {t('navigation:logIn')}
         </Button>
       </form>
     </AuthFormShell>

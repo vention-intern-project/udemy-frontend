@@ -439,6 +439,15 @@
   box-shadow: var(--shadow-2);
 }
 
+.languageMenu::before {
+  position: absolute;
+  top: calc(-1 * var(--spacing-2));
+  right: 0;
+  left: 0;
+  height: var(--spacing-2);
+  content: '';
+}
+
 .languageOption {
   display: flex;
   min-height: 44px;

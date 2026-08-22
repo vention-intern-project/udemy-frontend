@@ -582,7 +582,7 @@ export function AppShell() {
   return (
     <div className={styles.shell} data-layout={layout}>
       <a className={styles.skipLink} href="#main-content">
-        Skip to main content
+        {t('a11y:skipToMainContent')}
       </a>
       <header
         className={[
@@ -602,7 +602,11 @@ export function AppShell() {
       >
         <div className={styles.headerInner}>
           <div className={styles.headerCatalogStart}>
-            <Link className={styles.brand} to={brandDestination} aria-label="LearnHub home">
+            <Link
+              className={styles.brand}
+              to={brandDestination}
+              aria-label={t('a11y:learnHubHome')}
+            >
               <img alt="" aria-hidden="true" className={styles.brandMark} src={learnHubBookMark} />
               <span className={styles.brandWordmark}>LearnHub</span>
             </Link>
@@ -746,7 +750,7 @@ export function AppShell() {
                 type="button"
                 onClick={handleInstructorCourseTitleFocus}
               >
-                Create course
+                {t('instructor:coursesCreateCourse')}
               </button>
             ) : null}
             {isStudentMobile ? <AccountMenu user={state.user} showLanguage /> : null}
@@ -868,7 +872,7 @@ export function AppShell() {
                   type="button"
                   onClick={handleInstructorCourseTitleFocus}
                 >
-                  Create course
+                  {t('instructor:coursesCreateCourse')}
                 </button>
               </div>
             ) : (

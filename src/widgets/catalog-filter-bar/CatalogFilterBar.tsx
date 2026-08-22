@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState, type FocusEvent } from 'react';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
 
 import {
   draftFromCatalogQuery,
   validateCatalogDraft,
   type CatalogFilterValidationErrors,
+  type CatalogFilterValidationErrorKey,
   type CatalogPriceField,
   type CatalogPriceRange,
   type CatalogPriceRangeDraft,
@@ -40,7 +43,15 @@ function hasInvertedPriceRange(draft: CatalogPriceRangeDraft): boolean {
   );
 }
 
+function validationErrorMessage(
+  t: TFunction,
+  error: CatalogFilterValidationErrorKey | undefined,
+): string | undefined {
+  return error ? t(`catalog:${error}`) : undefined;
+}
+
 export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState<CatalogPriceRangeDraft>(() =>
     priceDraftFromCatalogQuery(query),
   );
@@ -70,7 +81,7 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
 
   const applyDraft = (draftToApply = draftRef.current) => {
     if (hasInvertedPriceRange(draftToApply)) {
-      setErrors({ max_price: 'Maximum price must be at least the minimum price.' });
+      setErrors({ max_price: 'maximumPriceMustBeAtLeast' });
       return;
     }
     const currentQuery = queryRef.current;
@@ -114,11 +125,13 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
   const applyOnEnter = () => {
     applyDraft();
   };
+  const minimumError = validationErrorMessage(t, errors.min_price);
+  const maximumError = validationErrorMessage(t, errors.max_price);
 
   return (
     <form
       className={styles.root}
-      aria-label="Course filters"
+      aria-label={t('catalog:courseFilters', { defaultValue: 'Course filters' })}
       noValidate
       onSubmit={(event) => {
         event.preventDefault();
@@ -126,29 +139,31 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
       }}
     >
       <fieldset ref={priceRangeRef} className={styles.priceRange}>
-        <legend className={styles.legend}>Price range</legend>
+        <legend className={styles.legend}>
+          {t('catalog:priceRange', { defaultValue: 'Price range' })}
+        </legend>
         <span
           className={styles.priceLabel}
           data-part="catalog-filter-price-label"
           aria-hidden="true"
         >
-          Price:
+          {t('catalog:priceLabel', { defaultValue: 'Price:' })}
         </span>
         <Input
           label={
             <>
-              <span>Min</span>
-              <VisuallyHidden> price</VisuallyHidden>
+              <span>{t('catalog:min', { defaultValue: 'Min' })}</span>
+              <VisuallyHidden> {t('catalog:price', { defaultValue: 'price' })}</VisuallyHidden>
             </>
           }
           name="min_price"
           type="number"
-          placeholder="Min price"
+          placeholder={t('catalog:minPrice', { defaultValue: 'Min price' })}
           inputMode="decimal"
           min="0"
           fieldClassName={styles.field}
           value={draft.min_price}
-          error={errors.min_price}
+          error={minimumError}
           onChange={(event) => update('min_price', event.target.value)}
           onBlur={applyOnBlur}
           onKeyDown={(event) => {
@@ -161,18 +176,18 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
         <Input
           label={
             <>
-              <span>Max</span>
-              <VisuallyHidden> price</VisuallyHidden>
+              <span>{t('catalog:max', { defaultValue: 'Max' })}</span>
+              <VisuallyHidden> {t('catalog:price', { defaultValue: 'price' })}</VisuallyHidden>
             </>
           }
           name="max_price"
           type="number"
-          placeholder="Max price"
+          placeholder={t('catalog:maxPrice', { defaultValue: 'Max price' })}
           inputMode="decimal"
           min="0"
           fieldClassName={styles.field}
           value={draft.max_price}
-          error={errors.max_price}
+          error={maximumError}
           onChange={(event) => update('max_price', event.target.value)}
           onBlur={applyOnBlur}
           onKeyDown={(event) => {

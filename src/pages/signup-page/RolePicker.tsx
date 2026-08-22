@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import type { UserRoleDto } from '@entities/user';
 import { FieldShell, useFieldA11y } from '@shared/ui/primitives';
@@ -17,13 +18,16 @@ interface RolePickerProps {
   onChange(value: UserRoleDto): void;
 }
 
-const ROLE_OPTIONS: readonly RoleOption[] = [
-  { value: 'student', label: 'Student' },
-  { value: 'instructor', label: 'Instructor' },
-  { value: 'admin', label: 'Admin' },
-];
-
 export function RolePicker({ value, disabled, error, onChange }: RolePickerProps) {
+  const { t } = useTranslation();
+  const roleOptions = useMemo<readonly RoleOption[]>(
+    () => [
+      { value: 'student', label: t('auth:student') },
+      { value: 'instructor', label: t('course:instructor') },
+      { value: 'admin', label: t('auth:admin') },
+    ],
+    [t],
+  );
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const listboxRef = useRef<HTMLDivElement>(null);
@@ -32,7 +36,7 @@ export function RolePicker({ value, disabled, error, onChange }: RolePickerProps
   const listboxId = `signup-role-options-${useId()}`;
   const selectedIndex = Math.max(
     0,
-    ROLE_OPTIONS.findIndex((option) => option.value === value),
+    roleOptions.findIndex((option) => option.value === value),
   );
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
@@ -54,12 +58,12 @@ export function RolePicker({ value, disabled, error, onChange }: RolePickerProps
   );
   const select = useCallback(
     (index: number) => {
-      const option = ROLE_OPTIONS[index];
+      const option = roleOptions[index];
       if (!option) return;
       close(true);
       if (option.value !== value) onChange(option.value);
     },
-    [close, onChange, value],
+    [close, onChange, roleOptions, value],
   );
 
   useEffect(() => close(), [close, value]);
@@ -77,11 +81,11 @@ export function RolePicker({ value, disabled, error, onChange }: RolePickerProps
     listboxRef.current?.focus();
   }, [open]);
 
-  const selectedOption = ROLE_OPTIONS[selectedIndex] ?? ROLE_OPTIONS[0];
+  const selectedOption = roleOptions[selectedIndex] ?? roleOptions[0];
   const activeOptionId = activeIndex === null ? undefined : `${listboxId}-option-${activeIndex}`;
 
   return (
-    <FieldShell {...ids} label="Role" required error={error}>
+    <FieldShell {...ids} label={t('auth:role')} required error={error}>
       <div
         ref={rootRef}
         className={[styles.control, open && styles.controlOpen].filter(Boolean).join(' ')}
@@ -107,7 +111,7 @@ export function RolePicker({ value, disabled, error, onChange }: RolePickerProps
               openListbox(selectedIndex, true);
             } else if (event.key === 'ArrowDown') {
               event.preventDefault();
-              openListbox(Math.min(selectedIndex + 1, ROLE_OPTIONS.length - 1), true);
+              openListbox(Math.min(selectedIndex + 1, roleOptions.length - 1), true);
             } else if (event.key === 'ArrowUp') {
               event.preventDefault();
               openListbox(Math.max(selectedIndex - 1, 0), true);
@@ -121,7 +125,7 @@ export function RolePicker({ value, disabled, error, onChange }: RolePickerProps
           <div
             ref={listboxRef}
             aria-activedescendant={activeOptionId}
-            aria-label="Role options"
+            aria-label={t('auth:roleOptions')}
             aria-required="true"
             className={styles.listbox}
             id={listboxId}
@@ -131,7 +135,7 @@ export function RolePicker({ value, disabled, error, onChange }: RolePickerProps
               if (event.key === 'ArrowDown') {
                 event.preventDefault();
                 setActiveIndex(
-                  Math.min((activeIndex ?? selectedIndex) + 1, ROLE_OPTIONS.length - 1),
+                  Math.min((activeIndex ?? selectedIndex) + 1, roleOptions.length - 1),
                 );
               } else if (event.key === 'ArrowUp') {
                 event.preventDefault();
@@ -141,7 +145,7 @@ export function RolePicker({ value, disabled, error, onChange }: RolePickerProps
                 setActiveIndex(0);
               } else if (event.key === 'End') {
                 event.preventDefault();
-                setActiveIndex(ROLE_OPTIONS.length - 1);
+                setActiveIndex(roleOptions.length - 1);
               } else if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault();
                 if (activeIndex !== null) select(activeIndex);
@@ -153,7 +157,7 @@ export function RolePicker({ value, disabled, error, onChange }: RolePickerProps
               }
             }}
           >
-            {ROLE_OPTIONS.map((option, index) => (
+            {roleOptions.map((option, index) => (
               <div
                 key={option.value}
                 aria-selected={option.value === value}
