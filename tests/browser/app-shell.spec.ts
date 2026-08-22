@@ -105,6 +105,24 @@ const INSTRUCTOR_DESKTOP_BACKGROUND_OPTIONAL_ABORT: RequestFailureIdentity = {
   errorText: 'net::ERR_ABORTED',
 };
 
+const INSTRUCTOR_TABLET_BACKGROUND_OPTIONAL_ABORT: RequestFailureIdentity = {
+  method: 'GET',
+  path: '/src/pages/instructor-courses-page/assets/instructor-courses-background-tablet-uifd020.png',
+  errorText: 'net::ERR_ABORTED',
+};
+
+const INSTRUCTOR_COURSE_MANAGEMENT_OPTIONAL_BACKGROUND_ABORTS = [
+  INSTRUCTOR_DESKTOP_BACKGROUND_OPTIONAL_ABORT,
+  INSTRUCTOR_DESKTOP_BACKGROUND_OPTIONAL_ABORT,
+  INSTRUCTOR_TABLET_BACKGROUND_OPTIONAL_ABORT,
+] as const;
+
+const LEARNING_EMPTY_STATE_OPTIONAL_ABORT: RequestFailureIdentity = {
+  method: 'GET',
+  path: '/src/pages/learning-list-page/assets/my-learning-empty-state-ui022.png',
+  errorText: 'net::ERR_ABORTED',
+};
+
 async function readRepresentativeTokenSnapshot(page: Page): Promise<RepresentativeTokenSnapshot> {
   return page.evaluate(() => {
     const root = document.documentElement;
@@ -1205,6 +1223,7 @@ test('replaces attempted Instructor Catalog history with Instructor courses', as
     page,
     [],
     [{ ...INSTRUCTOR_COURSE_COLLECTION_STRICT_MODE_ABORT, occurrences: 4 }],
+    [INSTRUCTOR_DESKTOP_BACKGROUND_OPTIONAL_ABORT],
   );
   const publicCatalogRequests: string[] = [];
   page.on('request', (request) => {
@@ -2023,6 +2042,7 @@ test('preserves student header geometry when Catalog alone requires a document s
       { ...CART_STRICT_MODE_ABORT, occurrences: 13 },
       { ...ENROLLMENTS_STRICT_MODE_ABORT, occurrences: 4 },
     ],
+    [LEARNING_EMPTY_STATE_OPTIONAL_ABORT],
   );
   await mockAuthenticatedSession(page, 'student');
   await mockStudentWorkspaceData(page);
@@ -2890,7 +2910,7 @@ test('keeps instructor course-management content readable without student destin
         errorText: 'net::ERR_ABORTED',
       },
     ],
-    [INSTRUCTOR_DESKTOP_BACKGROUND_OPTIONAL_ABORT],
+    INSTRUCTOR_COURSE_MANAGEMENT_OPTIONAL_BACKGROUND_ABORTS,
   );
   await mockAuthenticatedSession(page, 'instructor');
   await mockInstructorCourseCollection(page);

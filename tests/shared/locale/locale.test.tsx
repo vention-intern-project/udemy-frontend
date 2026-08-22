@@ -8,6 +8,7 @@ import {
   createBrowserLocaleStore,
   createLocaleRuntime,
   createLocaleLookup,
+  localeRuntime,
   LocaleProvider,
   MLUX_002_RUNTIME_MAPPING,
   resolveLocale,
@@ -87,6 +88,7 @@ describe('locale foundation', () => {
 
   it('runs only the approved locales with immutable English fallback and actionable missing-key output', () => {
     const diagnostics: LocaleRuntimeDiagnostics = { missingKeys: [] };
+    diagnostics.missingKeys.push({ namespace: 'test', key: 'direct-diagnostic-contract' });
     const runtime = createLocaleRuntime('ru', diagnostics);
 
     expect((runtime.options.supportedLngs || []).filter((locale) => locale !== 'cimode')).toEqual([
@@ -98,6 +100,24 @@ describe('locale foundation', () => {
     expect(runtime.t('common:language')).toBe('Язык');
     expect(runtime.t('common:not-a-real-key')).toBe('Translation unavailable');
     expect(diagnostics.missingKeys).toContainEqual({ namespace: 'common', key: 'not-a-real-key' });
+    expect(diagnostics.missingKeys).toContainEqual({
+      namespace: 'test',
+      key: 'direct-diagnostic-contract',
+    });
+  });
+
+  it('keeps the exported runtime stable when a provider initializes its own locale', async () => {
+    await localeRuntime.changeLanguage('en');
+
+    render(
+      <LocaleProvider initialLocale="ru">
+        <LocaleProbe />
+      </LocaleProvider>,
+    );
+
+    expect(screen.getByLabelText('active locale').textContent).toBe('ru');
+    expect(localeRuntime.language).toBe('en');
+    expect(document.documentElement.lang).toBe('ru');
   });
 
   it('provides the canonical MLUX-C0369 logout copy in every supported locale', () => {

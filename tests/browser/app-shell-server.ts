@@ -8,7 +8,10 @@ export default async function startAppShellServer() {
     logLevel: 'warn',
     envFile: false,
     appType: 'spa',
-    optimizeDeps: { noDiscovery: true, include: ['react', 'react-dom/client', 'react-i18next'] },
+    optimizeDeps: {
+      noDiscovery: true,
+      include: ['react', 'react-dom/client', 'react-i18next', 'i18next'],
+    },
     server: {
       host: '127.0.0.1',
       port,

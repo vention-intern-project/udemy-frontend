@@ -31,9 +31,9 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.stubGlobal('scrollTo', vi.fn());
-  void localeRuntime.changeLanguage('en');
+  await localeRuntime.changeLanguage('en');
   localStorage.clear();
 });
 
@@ -625,7 +625,10 @@ describe('AppShell student cart query and presentation', () => {
     await act(async () => {
       await user.click(accountMenu);
     });
-    expect(screen.getByRole('group', { name: 'Account details for instructor User' })).toBeTruthy();
+    await waitFor(() => expect(accountMenu.getAttribute('aria-expanded')).toBe('true'));
+    expect(
+      await screen.findByRole('group', { name: 'Account details for instructor User' }),
+    ).toBeTruthy();
     await act(async () => {
       await user.click(screen.getByRole('button', { name: /Language/ }));
     });
