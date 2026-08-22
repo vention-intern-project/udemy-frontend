@@ -72,6 +72,16 @@ const D07_OCCURRENCE_IDS = new Set([
   ...Array.from({ length: 95 }, (_, index) => `MLUX-O${String(index + 534).padStart(4, '0')}`),
 ]);
 
+const CURRENT_CORPUS_UNIT_BY_ID = new Map(
+  MLUX006_FINAL_CORPUS_PROJECTION.units.map((unit) => [unit.unitId, unit]),
+);
+
+function currentCorpusUzbekValue(unitId: string): string {
+  const unit = CURRENT_CORPUS_UNIT_BY_ID.get(unitId);
+  if (!unit) throw new Error(`missing current corpus unit ${unitId}`);
+  return unit.uzbek.value;
+}
+
 function normalizeTemplate(value: string): string {
   return value.replace(/\{\{([^{}]+)}}/g, '{$1}');
 }
@@ -189,7 +199,11 @@ export function collectMlux004Draft20ParityViolations(
       ['key', expected.key, actual.key],
       ['English', expected.runtimeEnglish, actual.english],
       ['Russian', normalizeTemplate(expected.russian.value), normalizeTemplate(actual.russian)],
-      ['Uzbek', normalizeTemplate(expected.uzbek.value), normalizeTemplate(actual.uzbek)],
+      [
+        'Uzbek',
+        normalizeTemplate(currentCorpusUzbekValue(expected.unitId)),
+        normalizeTemplate(actual.uzbek),
+      ],
       ['plural', String(expected.plural), String(actual.plural)],
       ['resource status', expected.status, actual.resourceStatus],
       ['Russian review', expected.russian.reviewStatus, actual.russianReview],
@@ -568,6 +582,24 @@ describe('MLUX-004 DRAFT-22 independent parity', () => {
     ).toEqual([]);
   });
 
+  it('rejects the stale historical Uzbek C0437 value against the current runtime contract', () => {
+    const candidate = mappingCandidate();
+    const historical = MLUX004_DRAFT20_CORPUS_PROJECTION.units.find(
+      ({ unitId }) => unitId === 'MLUX-C0437',
+    );
+    if (!historical) throw new Error('DRAFT-22 C0437 is absent');
+
+    expect(historical.uzbek.value).not.toBe(currentCorpusUzbekValue('MLUX-C0437'));
+    expect(
+      collectMlux004Draft20ParityViolations(MLUX004_DRAFT20_CORPUS_PROJECTION, {
+        ...candidate,
+        units: candidate.units.map((unit) =>
+          unit.unitId === 'MLUX-C0437' ? { ...unit, uzbek: historical.uzbek.value } : unit,
+        ),
+      }),
+    ).toContain('wrong Uzbek MLUX-C0437');
+  });
+
   it('keeps the DRAFT-22 declined-payment title and body separately addressable in EN, RU, and UZ', () => {
     const runtime = createLocaleRuntime('en');
     const title = MLUX004_DRAFT20_CORPUS_PROJECTION.units.find(
@@ -634,7 +666,9 @@ describe('MLUX-004 DRAFT-22 independent parity', () => {
         const expectedTemplate =
           locale === 'en'
             ? expected.english
-            : expected[locale === 'ru' ? 'russian' : 'uzbek'].value;
+            : locale === 'ru'
+              ? expected.russian.value
+              : currentCorpusUzbekValue(expected.unitId);
         const expectedValue = expected.plural
           ? locale === 'en' && expected.unitId === 'MLUX-C0401'
             ? '1 lesson available'
