@@ -581,15 +581,26 @@ describe('AppShell student cart query and presentation', () => {
       await user.click(accountMenu);
     });
     const language = screen.getByRole('button', { name: /Language/ });
+    act(() => language.focus());
+    expect(document.activeElement).toBe(language);
     await act(async () => {
       await user.click(language);
     });
     expect(screen.getByRole('button', { name: 'Русский' })).toBeTruthy();
     const back = screen.getByRole('button', { name: 'Back' });
+    expect(document.activeElement).toBe(back);
     await act(async () => {
       await user.click(back);
     });
-    expect(screen.getByRole('button', { name: /Language/ })).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /Language/ }));
+
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: /Language/ }));
+    });
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Русский' }));
+    });
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /Язык/ }));
   });
 
   it('keeps authenticated instructor mobile language choices in the account popover alongside navigation', async () => {
@@ -614,10 +625,16 @@ describe('AppShell student cart query and presentation', () => {
     await act(async () => {
       await user.click(accountMenu);
     });
+    expect(screen.getByRole('group', { name: 'Account details for instructor User' })).toBeTruthy();
     await act(async () => {
       await user.click(screen.getByRole('button', { name: /Language/ }));
     });
+    const back = screen.getByRole('button', { name: 'Back' });
+    expect(document.activeElement).toBe(back);
     expect(screen.getByRole('button', { name: "O'zbek" })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Back' })).toBeTruthy();
+    await act(async () => {
+      await user.click(back);
+    });
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /Language/ }));
   });
 });

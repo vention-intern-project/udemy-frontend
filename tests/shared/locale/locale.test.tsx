@@ -100,8 +100,33 @@ describe('locale foundation', () => {
     expect(diagnostics.missingKeys).toContainEqual({ namespace: 'common', key: 'not-a-real-key' });
   });
 
+  it('provides the canonical MLUX-C0369 logout copy in every supported locale', () => {
+    const runtime = createLocaleRuntime('en');
+    const mapping = MLUX_002_RUNTIME_MAPPING.find(({ unitId }) => unitId === 'MLUX-C0369');
+
+    expect(mapping).toMatchObject({
+      namespace: 'auth',
+      key: 'logOut',
+      english: 'Log out',
+      occurrences: [
+        {
+          id: 'O0521',
+          context: 'src/app/layouts/AccountMenu.tsx:219 — AppShell / authenticated account menu',
+        },
+      ],
+    });
+    expect({
+      en: runtime.getResource('en', 'auth', 'logOut'),
+      ru: runtime.getResource('ru', 'auth', 'logOut'),
+      uz: runtime.getResource('uz', 'auth', 'logOut'),
+    }).toEqual({ en: 'Log out', ru: 'Выйти', uz: 'Chiqish' });
+  });
+
   it('keeps the independently enumerated DRAFT-11 allocation, resource review state and occurrences complete', () => {
     const runtime = createLocaleRuntime('en');
+    const foundationMapping = MLUX_002_RUNTIME_MAPPING.filter(
+      ({ unitId }) => unitId !== 'MLUX-C0369',
+    );
     const expectedIds = [
       'MLUX-C0001',
       'MLUX-C0002',
@@ -128,14 +153,15 @@ describe('locale foundation', () => {
       'MLUX-C0023',
     ];
 
-    expect(MLUX_002_RUNTIME_MAPPING.map((mapping) => mapping.unitId)).toEqual(expectedIds);
-    expect(MLUX_002_RUNTIME_MAPPING.flatMap((mapping) => mapping.occurrences)).toHaveLength(33);
+    expect(foundationMapping.map((mapping) => mapping.unitId)).toEqual(expectedIds);
+    expect(foundationMapping.flatMap((mapping) => mapping.occurrences)).toHaveLength(33);
     expect(
-      MLUX_002_RUNTIME_MAPPING.flatMap((mapping) => mapping.occurrences)
+      foundationMapping
+        .flatMap((mapping) => mapping.occurrences)
         .map(({ id }) => id)
         .sort(),
     ).toEqual(Array.from({ length: 33 }, (_, index) => `O${String(index + 1).padStart(4, '0')}`));
-    for (const mapping of MLUX_002_RUNTIME_MAPPING) {
+    for (const mapping of foundationMapping) {
       expect(mapping.unitId).toMatch(/^MLUX-C\d{4}$/);
       expect(mapping.key).not.toMatch(/^MLUX-/);
       expect(mapping.resourceStatus).toBe('Draft');

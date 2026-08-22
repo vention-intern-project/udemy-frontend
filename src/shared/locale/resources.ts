@@ -29,6 +29,9 @@ export const LOCALE_RESOURCES: Resource & Readonly<Record<Locale, Resource[Local
       myLearning: 'My learning',
       instructorCourses: 'Instructor courses',
     },
+    auth: {
+      logOut: 'Log out',
+    },
     a11y: {
       localeOption: '{{language}} language',
       localeOptionSelected: '{{language}} language, selected',
@@ -72,6 +75,9 @@ export const LOCALE_RESOURCES: Resource & Readonly<Record<Locale, Resource[Local
       myLearning: 'Моё обучение',
       instructorCourses: 'Курсы преподавателя',
     },
+    auth: {
+      logOut: 'Выйти',
+    },
     a11y: {
       localeOption: 'Язык {{language}}',
       localeOptionSelected: 'Язык {{language}}, выбран',
@@ -114,6 +120,9 @@ export const LOCALE_RESOURCES: Resource & Readonly<Record<Locale, Resource[Local
       signUp: 'Ro‘yxatdan o‘tish',
       myLearning: 'Ta’limim',
       instructorCourses: 'O‘qituvchi kurslari',
+    },
+    auth: {
+      logOut: 'Chiqish',
     },
     a11y: {
       localeOption: '{{language}} tili',

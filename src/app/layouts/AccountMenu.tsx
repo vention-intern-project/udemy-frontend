@@ -44,6 +44,9 @@ export function AccountMenu({ user, showLanguage = false }: AccountMenuProps) {
   const accountMenuRef = useRef<HTMLDivElement>(null);
   const accountTriggerRef = useRef<HTMLButtonElement>(null);
   const accountDetailsRef = useRef<HTMLDivElement>(null);
+  const languageBackRef = useRef<HTMLButtonElement>(null);
+  const languageRowRef = useRef<HTMLButtonElement>(null);
+  const pendingLanguageFocusRef = useRef<'back' | 'language' | null>(null);
   const suppressNextAccountFocusOpenRef = useRef(false);
   const menuId = `account-menu-${useId()}`;
   const identity = `${user.name} ${user.surname}`;
@@ -91,6 +94,15 @@ export function AccountMenu({ user, showLanguage = false }: AccountMenuProps) {
       window.removeEventListener('scroll', closeOnScroll);
     };
   }, [open]);
+
+  useEffect(() => {
+    const focusTarget = pendingLanguageFocusRef.current;
+    if (!open || focusTarget === null) return;
+
+    const target = focusTarget === 'back' ? languageBackRef.current : languageRowRef.current;
+    target?.focus({ preventScroll: true });
+    pendingLanguageFocusRef.current = null;
+  }, [languageView, open]);
 
   return (
     <div
@@ -147,8 +159,12 @@ export function AccountMenu({ user, showLanguage = false }: AccountMenuProps) {
             <div className={styles.accountLanguageView} data-part="account-language-view">
               <button
                 className={styles.accountMenuLanguage}
+                ref={languageBackRef}
                 type="button"
-                onClick={() => setLanguageView(false)}
+                onClick={() => {
+                  pendingLanguageFocusRef.current = 'language';
+                  setLanguageView(false);
+                }}
               >
                 <ArrowLeft aria-hidden="true" size={16} />
                 <span>{t('common:back')}</span>
@@ -169,6 +185,7 @@ export function AccountMenu({ user, showLanguage = false }: AccountMenuProps) {
                     type="button"
                     onClick={() => {
                       setLocale(candidate);
+                      pendingLanguageFocusRef.current = 'language';
                       setLanguageView(false);
                     }}
                   >
@@ -197,8 +214,12 @@ export function AccountMenu({ user, showLanguage = false }: AccountMenuProps) {
               {showLanguage ? (
                 <button
                   className={styles.accountMenuLanguage}
+                  ref={languageRowRef}
                   type="button"
-                  onClick={() => setLanguageView(true)}
+                  onClick={() => {
+                    pendingLanguageFocusRef.current = 'back';
+                    setLanguageView(true);
+                  }}
                 >
                   <span>{t('common:language')}</span>
                   <span className={styles.accountMenuLanguageValue}>
@@ -216,7 +237,7 @@ export function AccountMenu({ user, showLanguage = false }: AccountMenuProps) {
                 }}
               >
                 <LogOut aria-hidden="true" size={16} />
-                Log out
+                {t('auth:logOut')}
               </button>
             </>
           )}

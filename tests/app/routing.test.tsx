@@ -171,7 +171,9 @@ interface RenderAppOptions {
 }
 
 function headerSemanticOrder(header: HTMLElement): string[] {
-  return Array.from(header.querySelectorAll('a, input, [data-account-initials]')).map((element) => {
+  return Array.from(
+    header.querySelectorAll('a, button[aria-label], input, [data-account-initials]'),
+  ).map((element) => {
     if (element instanceof HTMLInputElement) {
       return (
         element.getAttribute('aria-label') ??
@@ -362,6 +364,7 @@ describe('application routing and guards', () => {
       'Cart',
       'Log in',
       'Sign up',
+      'Change language',
     ]);
   });
 
@@ -417,6 +420,7 @@ describe('application routing and guards', () => {
       'Cart',
       'Log in',
       'Sign up',
+      'Change language',
     ]);
     expect(screen.getByRole('link', { name: 'Cart' }).getAttribute('href')).toBe('/cart');
     expect(within(navigation).queryByRole('link', { name: 'Cart' })).toBe(null);
@@ -497,8 +501,9 @@ describe('application routing and guards', () => {
         'My learning',
         'Search courses',
         'Open AI assistant',
-        'Account menu for Sam User',
         'Cart',
+        'Account menu for Sam User',
+        'Change language',
       ],
     ],
     [
@@ -506,7 +511,7 @@ describe('application routing and guards', () => {
       'instructor' as const,
       'Instructor courses',
       'Indira User',
-      ['LearnHub home', 'Instructor courses', 'Account menu for Indira User'],
+      ['LearnHub home', 'Instructor courses', 'Account menu for Indira User', 'Change language'],
     ],
   ])(
     'uses the D04 desktop header order and account-menu trigger for %s',

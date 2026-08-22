@@ -1,4 +1,4 @@
-export type LocaleNamespace = 'common' | 'navigation' | 'a11y';
+export type LocaleNamespace = 'common' | 'navigation' | 'auth' | 'a11y';
 
 export interface LocaleOccurrence {
   readonly id: string;
@@ -257,5 +257,18 @@ export const MLUX_002_RUNTIME_MAPPING: readonly LocaleMappingRecord[] = [
     'Accessible learning, built for every role.',
     [],
     [{ id: 'O0033', context: 'AppShell JSX' }],
+  ),
+  record(
+    'MLUX-C0369',
+    'auth',
+    'logOut',
+    'Log out',
+    [],
+    [
+      {
+        id: 'O0521',
+        context: 'src/app/layouts/AccountMenu.tsx:219 — AppShell / authenticated account menu',
+      },
+    ],
   ),
 ];

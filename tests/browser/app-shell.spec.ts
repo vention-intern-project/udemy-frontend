@@ -1146,11 +1146,14 @@ test('uses native buttons for authenticated-mobile language selection and preser
   const account = page.getByRole('button', { name: 'Account menu for Sam User' });
   await account.click();
   await page.getByRole('button', { name: 'Language' }).click();
+  await expect(page.getByRole('button', { name: 'Back' })).toBeFocused();
   const russian = page.getByRole('button', { name: 'Русский' });
   await expect(russian).toHaveAttribute('aria-pressed', 'false');
   await russian.click();
-  await expect(page.getByRole('button', { name: 'Язык' })).toBeVisible();
-  await page.getByRole('button', { name: 'Язык' }).click();
+  const localizedLanguage = page.getByRole('button', { name: /Язык/ });
+  await expect(localizedLanguage).toBeVisible();
+  await expect(localizedLanguage).toBeFocused();
+  await localizedLanguage.click();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: 'Русский' })).toHaveCount(0);
   await expect(page.locator('[data-account-initials]')).toBeFocused();
@@ -1173,7 +1176,9 @@ test('preserves the authenticated-instructor mobile language flow in the profile
 
   const profile = page.getByRole('button', { name: 'Account menu for Indira User' });
   await profile.click();
+  await expect(page.getByRole('group', { name: 'Account details for Indira User' })).toBeVisible();
   await page.getByRole('button', { name: 'Language' }).click();
+  await expect(page.getByRole('button', { name: 'Back' })).toBeFocused();
   const english = page.getByRole('button', { name: 'English' });
   const russian = page.getByRole('button', { name: 'Русский' });
   await expect(english).toHaveAttribute('aria-pressed', 'true');
@@ -1182,10 +1187,12 @@ test('preserves the authenticated-instructor mobile language flow in the profile
 
   const localizedLanguage = page.getByRole('button', { name: 'Язык' });
   await expect(localizedLanguage).toBeVisible();
+  await expect(localizedLanguage).toBeFocused();
   await localizedLanguage.click();
   await expect(russian).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Назад' }).click();
   await expect(localizedLanguage).toBeVisible();
+  await expect(localizedLanguage).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: 'Русский' })).toHaveCount(0);
   await expect(page.locator('[data-account-initials]')).toBeFocused();
