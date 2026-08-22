@@ -1491,7 +1491,7 @@ const records: readonly Mlux005RuntimeRecord[] = [
     key: 'courseEditorValidationCheckField',
     english: 'Check {fieldLabel} and submit again.',
     ru: 'Проверьте поле {fieldLabel} и отправьте форму снова.',
-    uz: '{fieldLabel} maydonini tekshirib, qayta yuboring.',
+    uz: 'Iltimos, {fieldLabel} maydonini tekshirib, qayta yuboring.',
     occurrences: [
       {
         id: 'O0507',

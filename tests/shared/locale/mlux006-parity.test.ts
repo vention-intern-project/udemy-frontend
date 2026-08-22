@@ -130,10 +130,37 @@ interface Mlux006CourseActionOccurrenceAssociation {
   readonly routeState: string;
 }
 
+interface Mlux006AuthValidationSourceCall {
+  readonly occurrenceId: 'MLUX-O0665' | 'MLUX-O0666';
+  readonly unitId: 'MLUX-C0504' | 'MLUX-C0505';
+  readonly key: 'auth:validationReviewHighlightedFields' | 'auth:validationCouldNotProcessForm';
+  readonly line: number;
+  readonly routeState: string;
+}
+
 const MLUX006_INSTRUCTOR_LESSON_LIST_SOURCE_PATH =
   'src/pages/instructor-course-editor-page/InstructorCourseEditorPage.tsx';
 
 const MLUX006_COURSE_ACTION_SOURCE_PATH = 'src/features/course-detail/action-state.ts';
+
+const MLUX006_AUTH_VALIDATION_SOURCE_PATH = 'src/features/auth-workflows/validation.ts';
+
+const MLUX006_AUTH_VALIDATION_SOURCE_CALLS: readonly Mlux006AuthValidationSourceCall[] = [
+  {
+    occurrenceId: 'MLUX-O0665',
+    unitId: 'MLUX-C0504',
+    key: 'auth:validationReviewHighlightedFields',
+    line: 243,
+    routeState: 'Auth workflow / known validation summary',
+  },
+  {
+    occurrenceId: 'MLUX-O0666',
+    unitId: 'MLUX-C0505',
+    key: 'auth:validationCouldNotProcessForm',
+    line: 245,
+    routeState: 'Auth workflow / unknown validation summary',
+  },
+];
 
 const MLUX006_COURSE_ACTION_OCCURRENCE_ASSOCIATIONS: readonly Mlux006CourseActionOccurrenceAssociation[] =
   [
@@ -782,8 +809,8 @@ const MLUX006_HISTORICAL_X010_EXACT_RESIDUAL_FINGERPRINTS = new Set([
   'src/widgets/course-chat/CourseChatLauncherInteraction.tsx:178:jsx:Close chat',
   'src/widgets/enrollment-progress-panel/EnrollmentProgressPanel.tsx:122:jsx:Updating lesson progress.',
   'src/widgets/enrollment-progress-panel/EnrollmentProgressPanel.tsx:166:label:Loading learning progress',
-  'src/widgets/enrollment-progress-panel/EnrollmentProgressPanel.tsx:253:jsx:available now ·',
-  'src/widgets/enrollment-progress-panel/EnrollmentProgressPanel.tsx:254:jsx:coming soon',
+  'src/widgets/enrollment-progress-panel/EnrollmentProgressPanel.tsx:267:jsx:available now ·',
+  'src/widgets/enrollment-progress-panel/EnrollmentProgressPanel.tsx:267:jsx:coming soon',
   'src/widgets/enrollment-progress-panel/EnrollmentProgressPanel.tsx:292:jsx:lesson ·',
 ]);
 
@@ -1099,6 +1126,101 @@ function courseActionOccurrenceAssociationViolations(
   return violations;
 }
 
+function authValidationOccurrenceAssociationViolations(
+  projection: Mlux006FinalCorpusProjection = MLUX006_FINAL_CORPUS_PROJECTION,
+  runtimeMapping: readonly LocaleMappingRecord[] = MLUX_006_FOLLOWUP_RUNTIME_MAPPING,
+  sharedOccurrences: readonly (typeof MLUX_006_FOLLOWUP_SHARED_OCCURRENCES)[number][] = MLUX_006_FOLLOWUP_SHARED_OCCURRENCES,
+): string[] {
+  const repositoryRoot = fileURLToPath(new URL('../../../', import.meta.url));
+  const source = readFileSync(
+    pathToFileURL(join(repositoryRoot, MLUX006_AUTH_VALIDATION_SOURCE_PATH)),
+    'utf8',
+  );
+  const sourceFile = ts.createSourceFile(
+    MLUX006_AUTH_VALIDATION_SOURCE_PATH,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  const sourceCalls = new Map<string, number>();
+  const visitNode = (node: ts.Node): void => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === 't' &&
+      node.arguments.length === 1 &&
+      ts.isStringLiteral(node.arguments[0])
+    ) {
+      sourceCalls.set(
+        node.arguments[0].text,
+        sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1,
+      );
+    }
+    ts.forEachChild(node, visitNode);
+  };
+  visitNode(sourceFile);
+
+  const violations: string[] = [];
+  for (const association of MLUX006_AUTH_VALIDATION_SOURCE_CALLS) {
+    const sourceScreen = `${MLUX006_AUTH_VALIDATION_SOURCE_PATH}:${association.line}`;
+    const runtimeContext = `${sourceScreen} — ${association.routeState}`;
+    if (sourceCalls.get(association.key) !== association.line) {
+      violations.push(`wrong source key ${association.occurrenceId}`);
+    }
+    const projectionOccurrences = projection.occurrences.filter(
+      ({ occurrenceId }) => occurrenceId === association.occurrenceId,
+    );
+    const ledgerOccurrences = [
+      ...runtimeMapping.flatMap((record) =>
+        record.occurrences
+          .filter(({ id }) => id === association.occurrenceId.replace('MLUX-', ''))
+          .map((occurrence) => ({ ...occurrence, unitId: record.unitId })),
+      ),
+      ...sharedOccurrences.filter(({ id }) => id === association.occurrenceId.replace('MLUX-', '')),
+    ];
+    if (projectionOccurrences.length !== 1) {
+      violations.push(`wrong projection association count ${association.occurrenceId}`);
+      continue;
+    }
+    if (ledgerOccurrences.length !== 1) {
+      violations.push(`wrong ledger association count ${association.occurrenceId}`);
+      continue;
+    }
+    const projectionOccurrence = projectionOccurrences[0]!;
+    const ledgerOccurrence = ledgerOccurrences[0]!;
+    if (projectionOccurrence.unitId !== association.unitId) {
+      violations.push(`wrong projection unit ${association.occurrenceId}`);
+    }
+    if (ledgerOccurrence.unitId !== association.unitId) {
+      violations.push(`wrong ledger unit ${association.occurrenceId}`);
+    }
+    if (projectionOccurrence.sourceScreen !== sourceScreen) {
+      violations.push(`wrong projection source seam ${association.occurrenceId}`);
+    }
+    if (projectionOccurrence.runtimeContext !== runtimeContext) {
+      violations.push(`wrong projection context ${association.occurrenceId}`);
+    }
+    if (ledgerOccurrence.context !== runtimeContext) {
+      violations.push(`wrong ledger context ${association.occurrenceId}`);
+    }
+  }
+  for (const duplicateId of ['MLUX-O0725', 'MLUX-O0726']) {
+    if (projection.occurrences.some(({ occurrenceId }) => occurrenceId === duplicateId)) {
+      violations.push(`duplicate projection auth occurrence ${duplicateId}`);
+    }
+    if (
+      runtimeMapping.some((record) =>
+        record.occurrences.some(({ id }) => canonicalOccurrenceId(id) === duplicateId),
+      ) ||
+      sharedOccurrences.some(({ id }) => canonicalOccurrenceId(id) === duplicateId)
+    ) {
+      violations.push(`duplicate ledger auth occurrence ${duplicateId}`);
+    }
+  }
+  return violations;
+}
+
 function collectResidualSourceHits(): Mlux006ResidualSourceHit[] {
   const repositoryRoot = fileURLToPath(new URL('../../../', import.meta.url));
   const sourceRoot = join(repositoryRoot, 'src');
@@ -1256,6 +1378,28 @@ function matchingUnitsForResidualHit(
 }
 
 describe('MLUX-006 final corpus parity', () => {
+  it('binds the two auth validation calls to their canonical reused occurrence identities', () => {
+    expect(authValidationOccurrenceAssociationViolations()).toEqual([]);
+  });
+
+  it('rejects a duplicate auth occurrence even when its English copy and source key match', () => {
+    const duplicated = {
+      ...MLUX006_FINAL_CORPUS_PROJECTION,
+      occurrences: [
+        ...MLUX006_FINAL_CORPUS_PROJECTION.occurrences,
+        {
+          ...MLUX006_FINAL_CORPUS_PROJECTION.occurrences.find(
+            ({ occurrenceId }) => occurrenceId === 'MLUX-O0665',
+          )!,
+          occurrenceId: 'MLUX-O0725',
+        },
+      ],
+    };
+    expect(authValidationOccurrenceAssociationViolations(duplicated)).toContain(
+      'duplicate projection auth occurrence MLUX-O0725',
+    );
+  });
+
   it('derives the unique instructor lesson-list seam and binds each reused Video/Text/PDF occurrence to it', () => {
     const oracle = instructorLessonListSourceOracle();
 
@@ -1326,35 +1470,35 @@ describe('MLUX-006 final corpus parity', () => {
     expect(browserSource).toContain('selectFixtureLocale(page, locale)');
   });
 
-  it('matches the exact DRAFT-34 identity, allocation, statuses and deferred linguistic gate', () => {
+  it('matches the exact DRAFT-35 identity, allocation, statuses and deferred linguistic gate', () => {
     expect(MLUX006_FINAL_CORPUS_PROJECTION).toMatchObject({
-      version: 'MLUX-001-DRAFT-34',
-      sha256: '55FE729717A075BA58A3CE5556D9D806619E9F6F6B72BEAB010E1FF88BB77AE1',
-      byteLength: 115726,
+      version: 'MLUX-001-DRAFT-35',
+      sha256: '9D2F107F98484F08C08092824E7885028B3C29E6972E5C0DB4B647D6867B7DE4',
+      byteLength: 116430,
       summary: {
-        translationUnits: 505,
-        sourceOccurrences: 723,
-        mergedDuplicateRows: 218,
-        russianDrafts: 505,
-        uzbekDrafts: 505,
+        translationUnits: 508,
+        sourceOccurrences: 724,
+        mergedDuplicateRows: 216,
+        russianDrafts: 508,
+        uzbekDrafts: 508,
         draftStatus: 'Draft',
       },
     });
-    expect(MLUX006_FINAL_CORPUS_PROJECTION.units).toHaveLength(505);
-    expect(MLUX006_FINAL_CORPUS_PROJECTION.occurrences).toHaveLength(723);
+    expect(MLUX006_FINAL_CORPUS_PROJECTION.units).toHaveLength(508);
+    expect(MLUX006_FINAL_CORPUS_PROJECTION.occurrences).toHaveLength(724);
     expect(MLUX006_FINAL_CORPUS_PROJECTION.exclusions.map(({ id }) => id)).toEqual(
       Array.from({ length: 12 }, (_, index) => `MLUX-X${String(index + 1).padStart(3, '0')}`),
     );
     expect(MLUX006_FINAL_CORPUS_PROJECTION.acceptance).toEqual([
       expect.objectContaining({
-        corpusVersion: 'MLUX-001-DRAFT-34',
+        corpusVersion: 'MLUX-001-DRAFT-35',
         authority: 'Product owner',
         language: 'Russian',
         verdict: 'Pending',
         date: null,
       }),
       expect.objectContaining({
-        corpusVersion: 'MLUX-001-DRAFT-34',
+        corpusVersion: 'MLUX-001-DRAFT-35',
         authority: 'Selected native reviewer',
         language: 'Uzbek',
         verdict: 'Pending',
@@ -1491,10 +1635,10 @@ describe('MLUX-006 final corpus parity', () => {
       legacyClassificationContractViolations(occurrenceSources, wrongOwnerInheritance),
     ).toContain('wrong classification inheritance owner MLUX-O0001');
     expect(candidate.occurrences.every(({ classification }) => Boolean(classification))).toBe(true);
-    expect(candidate.units).toHaveLength(505);
-    expect(candidate.occurrences).toHaveLength(723);
+    expect(candidate.units).toHaveLength(508);
+    expect(candidate.occurrences).toHaveLength(724);
     expect(new Set(candidate.occurrences.map(({ occurrenceId }) => occurrenceId))).toHaveLength(
-      723,
+      724,
     );
     expect(collectParityViolations(MLUX006_FINAL_CORPUS_PROJECTION, candidate)).toEqual([]);
   });

@@ -24919,6 +24919,141 @@ const MLUX006_DRAFT34_SHARED_OCCURRENCES: readonly Mlux006FinalCorpusOccurrence[
   dedupeMapping: `Merged with MLUX-${unitSuffix}`,
 }));
 
+type Mlux006Draft35UnitSeed = readonly [
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+  readonly string[],
+];
+
+const MLUX006_DRAFT35_UNITS: readonly Mlux006Draft35UnitSeed[] = [
+  [
+    'C0504',
+    'auth',
+    'validationReviewHighlightedFields',
+    'Auth workflow / known validation summary',
+    'Review the highlighted fields and submit again.',
+    'Проверьте выделенные поля и отправьте форму снова.',
+    'Belgilangan maydonlarni tekshirib, qayta yuboring.',
+    [],
+  ],
+  [
+    'C0505',
+    'auth',
+    'validationCouldNotProcessForm',
+    'Auth workflow / unknown validation summary',
+    'We could not process this form. Check your details and try again.',
+    'Не удалось обработать форму. Проверьте данные и повторите попытку.',
+    'Shaklni qayta ishlab bo‘lmadi. Ma’lumotlarni tekshirib, qayta urinib ko‘ring.',
+    [],
+  ],
+  [
+    'C0506',
+    'learning',
+    'lessonAvailability',
+    'Learning / available and coming-soon lesson summary',
+    '{{availableLessonCount}} available now · {{comingSoonLessons}} coming soon',
+    'Сейчас доступно: {{availableLessonCount}} · скоро будет доступно: {{comingSoonLessons}}',
+    'Hozir {{availableLessonCount}} ta dars mavjud · {{comingSoonLessons}} tez orada mavjud',
+    ['availableLessonCount', 'comingSoonLessons'],
+  ],
+];
+
+const MLUX006_DRAFT35_CORPUS_UNITS: readonly Mlux006FinalCorpusUnit[] = MLUX006_DRAFT35_UNITS.map(
+  ([suffix, namespace, key, routeState, english, russian, uzbek, variables]) => ({
+    unitId: `MLUX-${suffix}`,
+    namespace,
+    key,
+    runtimeEnglish: english,
+    variables,
+    ...(variables.length > 0
+      ? {
+          placeholdersByLocale: {
+            en: variables,
+            ru: variables,
+            uz: variables,
+          },
+        }
+      : {}),
+    plural: false,
+    sourceScreen: 'See Occurrences (1 verified source)',
+    routeState,
+    english,
+    russian: { value: russian, resourceStatus: 'Draft', reviewStatus: 'Pending' },
+    uzbek: { value: uzbek, resourceStatus: 'Draft', reviewStatus: 'Pending' },
+    ownerTasks: ['MLUX-006-FOLLOWUP'],
+    runtimeOwnerTasks: ['MLUX-006-FOLLOWUP'],
+    fallback: 'English source',
+    classification:
+      suffix === 'C0506' ? 'Visible UI copy' : 'Visible UI copy + accessibility label',
+    testTarget: 'MLUX-006-FOLLOWUP focused + browser matrix',
+    status: 'Draft',
+    notes: 'DRAFT-35 PR53 CodeRabbit correction; draft translations await human review.',
+    occurrenceCount: 1,
+    dedupeDecision: 'Unique',
+  }),
+);
+
+const MLUX006_DRAFT35_CORPUS_OCCURRENCES: readonly Mlux006FinalCorpusOccurrence[] = [
+  [
+    '0727',
+    'C0506',
+    'src/widgets/enrollment-progress-panel/EnrollmentProgressPanel.tsx',
+    'Learning / available and coming-soon lesson summary',
+    '{{availableLessonCount}} available now · {{comingSoonLessons}} coming soon',
+    'Visible UI copy',
+  ],
+].map(([suffix, unitSuffix, sourceScreen, routeState, english, classification]) => ({
+  occurrenceId: `MLUX-O${suffix}`,
+  unitId: `MLUX-${unitSuffix}`,
+  sourceScreen,
+  routeState,
+  runtimeContext: `${sourceScreen} — ${routeState}`,
+  english,
+  classification,
+  ownerTask: 'MLUX-006-FOLLOWUP',
+  testTarget: 'MLUX-006-FOLLOWUP focused + browser matrix',
+  extractionKind: 'translation key',
+  dedupeMapping: 'Unique occurrence',
+}));
+
+const MLUX006_DRAFT35_AUTH_OCCURRENCE_OVERRIDES: ReadonlyMap<
+  string,
+  Pick<
+    Mlux006FinalCorpusOccurrence,
+    'unitId' | 'sourceScreen' | 'routeState' | 'runtimeContext' | 'extractionKind' | 'dedupeMapping'
+  >
+> = new Map([
+  [
+    'MLUX-O0665',
+    {
+      unitId: 'MLUX-C0504',
+      sourceScreen: 'src/features/auth-workflows/validation.ts:243',
+      routeState: 'Auth workflow / known validation summary',
+      runtimeContext:
+        'src/features/auth-workflows/validation.ts:243 — Auth workflow / known validation summary',
+      extractionKind: 't(auth:validationReviewHighlightedFields)',
+      dedupeMapping: 'Unique occurrence',
+    },
+  ],
+  [
+    'MLUX-O0666',
+    {
+      unitId: 'MLUX-C0505',
+      sourceScreen: 'src/features/auth-workflows/validation.ts:245',
+      routeState: 'Auth workflow / unknown validation summary',
+      runtimeContext:
+        'src/features/auth-workflows/validation.ts:245 — Auth workflow / unknown validation summary',
+      extractionKind: 't(auth:validationCouldNotProcessForm)',
+      dedupeMapping: 'Unique occurrence',
+    },
+  ],
+]);
+
 interface Mlux006Draft33OccurrenceSourceOverride {
   readonly sourceScreen: string;
   readonly runtimeContext: string;
@@ -25072,21 +25207,21 @@ const MLUX006_DRAFT33_OCCURRENCE_SOURCE_OVERRIDES: ReadonlyMap<
 
 export const MLUX006_FINAL_CORPUS_PROJECTION: Mlux006FinalCorpusProjection = {
   ...MLUX006_DRAFT27_CORPUS_PROJECTION,
-  version: 'MLUX-001-DRAFT-34',
-  sha256: '55FE729717A075BA58A3CE5556D9D806619E9F6F6B72BEAB010E1FF88BB77AE1',
-  byteLength: 115726,
+  version: 'MLUX-001-DRAFT-35',
+  sha256: '9D2F107F98484F08C08092824E7885028B3C29E6972E5C0DB4B647D6867B7DE4',
+  byteLength: 116430,
   summary: {
     ...MLUX006_DRAFT27_CORPUS_PROJECTION.summary,
-    translationUnits: 505,
-    sourceOccurrences: 723,
-    mergedDuplicateRows: 218,
-    russianDrafts: 505,
-    uzbekDrafts: 505,
+    translationUnits: 508,
+    sourceOccurrences: 724,
+    mergedDuplicateRows: 216,
+    russianDrafts: 508,
+    uzbekDrafts: 508,
   },
   workbookFrontMatter: {
     ...MLUX006_DRAFT27_CORPUS_PROJECTION.workbookFrontMatter,
     occurrencesSubtitle:
-      'All 723 source occurrences are deduplicated by semantic key and immutable English intent.',
+      'All 724 source occurrences are deduplicated by semantic key and immutable English intent.',
   },
   units: [
     ...MLUX006_DRAFT27_CORPUS_PROJECTION.units.map((unit) => {
@@ -25174,12 +25309,42 @@ export const MLUX006_FINAL_CORPUS_PROJECTION: Mlux006FinalCorpusProjection = {
           dedupeDecision: 'Merged equivalent occurrences',
         };
       }
+      if (unit.unitId === 'MLUX-C0361') {
+        return {
+          ...unit,
+          uzbek: {
+            ...unit.uzbek,
+            value: 'Iltimos, {fieldLabel} maydonini tekshirib, qayta yuboring.',
+          },
+        };
+      }
+      if (unit.unitId === 'MLUX-C0362' || unit.unitId === 'MLUX-C0363') {
+        return {
+          ...unit,
+          sourceScreen: 'See Occurrences (1 verified source)',
+          routeState: 'Instructor editor validation summary — see Occurrences',
+          ownerTasks: ['MLUX-005'],
+          notes: 'DRAFT-15 instructor-editor validation shell.',
+          occurrenceCount: 1,
+          dedupeDecision: 'Unique',
+        };
+      }
+      if (unit.unitId === 'MLUX-C0437') {
+        return {
+          ...unit,
+          uzbek: {
+            ...unit.uzbek,
+            value: 'Kelajakni shakllantiruvchi ko‘nikmalarni egallang',
+          },
+        };
+      }
       return override ? { ...unit, ...override } : unit;
     }),
     ...MLUX006_DRAFT28_UNITS,
     ...MLUX006_DRAFT29_CORPUS_UNITS,
     ...MLUX006_DRAFT30_CORPUS_UNITS,
     ...MLUX006_DRAFT34_CORPUS_UNITS,
+    ...MLUX006_DRAFT35_CORPUS_UNITS,
   ],
   occurrences: [
     ...MLUX006_DRAFT27_CORPUS_PROJECTION.occurrences,
@@ -25189,17 +25354,20 @@ export const MLUX006_FINAL_CORPUS_PROJECTION: Mlux006FinalCorpusProjection = {
     ...MLUX006_DRAFT33_ROLE_OCCURRENCES,
     ...MLUX006_DRAFT34_CORPUS_OCCURRENCES,
     ...MLUX006_DRAFT34_SHARED_OCCURRENCES,
+    ...MLUX006_DRAFT35_CORPUS_OCCURRENCES,
   ].map((occurrence) => {
     const sourceOverride = MLUX006_DRAFT33_OCCURRENCE_SOURCE_OVERRIDES.get(occurrence.occurrenceId);
-    return sourceOverride
+    const authOverride = MLUX006_DRAFT35_AUTH_OCCURRENCE_OVERRIDES.get(occurrence.occurrenceId);
+    return sourceOverride || authOverride
       ? {
           ...occurrence,
           ...sourceOverride,
+          ...authOverride,
         }
       : occurrence;
   }),
   acceptance: MLUX006_DRAFT27_CORPUS_PROJECTION.acceptance.map((record) => ({
     ...record,
-    corpusVersion: 'MLUX-001-DRAFT-34',
+    corpusVersion: 'MLUX-001-DRAFT-35',
   })),
 };

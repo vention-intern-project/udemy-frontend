@@ -4652,7 +4652,7 @@ test('renders the D20 Catalog vertical slice in Russian and Uzbek without changi
     },
     {
       locale: 'uz',
-      heroTitle: 'Kelajakni shakllantirayotgan ko‘nikmalarni egallang Kelajak',
+      heroTitle: 'Kelajakni shakllantiruvchi ko‘nikmalarni egallang',
       resultCount: 'Topildi 2 ta kurs',
       sortBy: 'Saralash:',
       sortCompact: 'Saralash:',

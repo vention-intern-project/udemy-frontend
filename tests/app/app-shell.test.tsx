@@ -922,6 +922,15 @@ describe('AppShell student cart query and presentation', () => {
     await act(() => vi.advanceTimersByTime(240));
     expect(trigger.getAttribute('aria-expanded')).toBe('true');
 
+    firePointerTransition(selector, 'pointerout', 'mouse');
+    fireEvent.keyDown(trigger, { key: 'Enter' });
+    await act(() => vi.advanceTimersByTime(240));
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+
+    fireEvent.click(trigger);
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    firePointerTransition(selector, 'pointerover', 'mouse');
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
     fireEvent.click(trigger);
     expect(trigger.getAttribute('aria-expanded')).toBe('true');
     fireEvent.click(trigger);

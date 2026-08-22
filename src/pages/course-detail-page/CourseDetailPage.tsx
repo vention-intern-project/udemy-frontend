@@ -24,6 +24,7 @@ function parseCourseId(value: string | undefined): number | null {
 }
 
 type CourseRecoveryTarget = 'detail' | 'outline';
+type CourseRecoveryMessageKey = 'courseDetailsRecovered' | 'courseOutlineRecovered';
 
 interface CourseRetryFocusIntent {
   readonly identity: string;
@@ -55,7 +56,7 @@ export function CourseDetailPage() {
   const detailHeadingRef = useRef<HTMLHeadingElement>(null);
   const outlineHeadingRef = useRef<HTMLHeadingElement>(null);
   const retryIntentRef = useRef<CourseRetryFocusIntent | null>(null);
-  const [recoveryMessage, setRecoveryMessage] = useState<string | null>(null);
+  const [recoveryMessage, setRecoveryMessage] = useState<CourseRecoveryMessageKey | null>(null);
   const retryIdentity = `${session.cacheEpoch ?? 'anonymous'}:${courseId ?? 'invalid'}`;
 
   useEffect(() => {
@@ -68,18 +69,14 @@ export function CourseDetailPage() {
     if (intent?.identity !== retryIdentity) return;
     if (intent.target === 'detail' && detail.isSuccess) {
       retryIntentRef.current = null;
-      setRecoveryMessage(
-        t('course:courseDetailsRecovered', { defaultValue: 'Course details recovered.' }),
-      );
+      setRecoveryMessage('courseDetailsRecovered');
       detailHeadingRef.current?.focus();
     } else if (intent.target === 'outline' && outline.isSuccess) {
       retryIntentRef.current = null;
-      setRecoveryMessage(
-        t('course:courseOutlineRecovered', { defaultValue: 'Course outline recovered.' }),
-      );
+      setRecoveryMessage('courseOutlineRecovered');
       outlineHeadingRef.current?.focus();
     }
-  }, [detail.isSuccess, outline.isSuccess, retryIdentity, t]);
+  }, [detail.isSuccess, outline.isSuccess, retryIdentity]);
 
   const finishRetry = (intent: CourseRetryFocusIntent, succeeded: boolean) => {
     if (!succeeded && retryIntentRef.current === intent) retryIntentRef.current = null;
@@ -140,7 +137,12 @@ export function CourseDetailPage() {
     <article className={styles.page}>
       {recoveryMessage ? (
         <VisuallyHidden as="p" role="status" aria-live="polite">
-          {recoveryMessage}
+          {t(`course:${recoveryMessage}`, {
+            defaultValue:
+              recoveryMessage === 'courseDetailsRecovered'
+                ? 'Course details recovered.'
+                : 'Course outline recovered.',
+          })}
         </VisuallyHidden>
       ) : null}
       <header className={styles.summary}>

@@ -261,9 +261,15 @@ export function EnrollmentProgressPanel({
             </h2>
             {availableLessonCount !== undefined && comingSoonLessonCount !== null ? (
               <p className={styles.lessonAvailability}>
-                {availableLessonCount} {t('learning:availableNow')} {comingSoonLessonCount}{' '}
-                {t('learning:lessonCount', { count: comingSoonLessonCount })}{' '}
-                {t('learning:comingSoon')}
+                {t('learning:lessonAvailability', {
+                  defaultValue:
+                    '{{availableLessonCount}} available now · {{comingSoonLessons}} coming soon',
+                  availableLessonCount,
+                  comingSoonLessonCount,
+                  comingSoonLessons: `${comingSoonLessonCount} ${t('learning:lessonCount', {
+                    count: comingSoonLessonCount,
+                  })}`,
+                })}
               </p>
             ) : null}
           </div>

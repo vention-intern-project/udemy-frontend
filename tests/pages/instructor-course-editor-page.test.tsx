@@ -581,7 +581,9 @@ describe('InstructorCourseEditorPage', () => {
     await act(async () => {
       await setTestLocale('uz');
     });
-    expect(await screen.findByText('kurs nomi maydonini tekshirib, qayta yuboring.')).toBeTruthy();
+    expect(
+      await screen.findByText('Iltimos, kurs nomi maydonini tekshirib, qayta yuboring.'),
+    ).toBeTruthy();
     expect((screen.getByRole('textbox', { name: 'Kurs nomi' }) as HTMLInputElement).value).toBe(
       'Deferred course title',
     );

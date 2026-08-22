@@ -112,14 +112,14 @@ describe('EnrollmentProgressPanel DRAFT-21 lesson-count noun localization', () =
       5,
       'Завершено: 0 из 5 уроков',
       'Завершено: 0 из 5 уроков, 0%',
-      '2 доступно сейчас · 3 урока скоро будет доступно',
+      'Сейчас доступно: 2 · скоро будет доступно: 3 урока',
     ],
     [
       'uz',
       2,
       '2 ta darsdan 0 tasi yakunlandi',
       '2 ta darsdan 0 tasi yakunlandi, 0%',
-      '2 hozir mavjud · 0 dars tez orada mavjud',
+      'Hozir 2 ta dars mavjud · 0 dars tez orada mavjud',
     ],
   ] as const)(
     'keeps numeric progress in its existing template and localizes only the noun in %s',

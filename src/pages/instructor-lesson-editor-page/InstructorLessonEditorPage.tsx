@@ -131,6 +131,7 @@ export function InstructorLessonEditorPage() {
     onSuccess: async (updatedLesson) => {
       setFormFailure(null);
       if (updatedLesson.lessonType !== lesson.data?.lessonType) {
+        setUploadSuccess(false);
         const nextRule = uploadRule(updatedLesson.lessonType, t);
         setFile(null);
         if (fileRef.current) fileRef.current.value = '';
