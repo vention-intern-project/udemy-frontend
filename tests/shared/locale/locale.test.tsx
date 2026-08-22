@@ -38,6 +38,7 @@ import {
 
 import { MLUX004_DRAFT22_CORPUS_PROJECTION } from './mlux004-draft20-projection';
 import { MLUX_004_DRAFT17_PROJECTION } from './mlux004-draft11-projection';
+import { MLUX006_FINAL_CORPUS_PROJECTION } from './mlux006-final-corpus-projection';
 import {
   MLUX_005_DRAFT15_COUNTS,
   MLUX_005_DRAFT15_INSTRUCTOR_UNIT_IDS,
@@ -47,6 +48,21 @@ import {
   MLUX_005_DRAFT15_UNIT_FIXTURE,
   type Mlux005Draft15OccurrenceFixture,
 } from './mlux005-draft13-projection';
+
+const MLUX_006_CURRENT_UNIT_BY_ID = new Map(
+  MLUX006_FINAL_CORPUS_PROJECTION.units.map((unit) => [unit.unitId, unit]),
+);
+
+function currentCorpusUzbekValue(unitId: string): string {
+  const unit = MLUX_006_CURRENT_UNIT_BY_ID.get(unitId);
+  if (!unit) throw new Error(`missing current corpus unit ${unitId}`);
+  return unit.uzbek.value;
+}
+
+const MLUX_005_CURRENT_UNIT_FIXTURE = MLUX_005_DRAFT15_UNIT_FIXTURE.map((unit) => ({
+  ...unit,
+  uzbek: currentCorpusUzbekValue(unit.unitId),
+}));
 
 interface ExpectedMlux003Occurrence {
   readonly id: string;
@@ -276,7 +292,7 @@ function collectMlux005Draft15ContractViolations(
   candidate: Mlux005Draft15Candidate,
 ): readonly string[] {
   const violations: string[] = [];
-  const expectedUnits = MLUX_005_DRAFT15_UNIT_FIXTURE;
+  const expectedUnits = MLUX_005_CURRENT_UNIT_FIXTURE;
   const expectedOccurrences = MLUX_005_DRAFT15_OCCURRENCE_FIXTURE;
   const expectedUnitIds = new Set(expectedUnits.map(({ unitId }) => unitId));
   const expectedOccurrenceIds = new Set(
@@ -313,8 +329,7 @@ function collectMlux005Draft15ContractViolations(
       violations.push(`wrong semantic key ${expected.unitId}`);
     if (resource?.english !== expected.english) violations.push(`wrong English ${expected.unitId}`);
     if (resource?.russian !== expected.russian) violations.push(`wrong Russian ${expected.unitId}`);
-    if (resource?.uzbek !== currentMlux005UzbekValue(expected))
-      violations.push(`wrong Uzbek ${expected.unitId}`);
+    if (resource?.uzbek !== expected.uzbek) violations.push(`wrong Uzbek ${expected.unitId}`);
     if (actual.resourceStatus !== expected.resourceStatus)
       violations.push(`wrong resource status ${expected.unitId}`);
     if (
@@ -349,12 +364,12 @@ function collectMlux005Draft15ContractViolations(
 }
 
 function createMlux005Draft15RuntimeCandidate(): Mlux005Draft15Candidate {
-  const expectedUnitIds = new Set(MLUX_005_DRAFT15_UNIT_FIXTURE.map(({ unitId }) => unitId));
+  const expectedUnitIds = new Set(MLUX_005_CURRENT_UNIT_FIXTURE.map(({ unitId }) => unitId));
   const sharedUnits = MLUX_004_RUNTIME_MAPPING.filter(({ unitId }) => expectedUnitIds.has(unitId));
   const units = [...MLUX_005_RUNTIME_MAPPING, ...sharedUnits];
   const runtime = createLocaleRuntime('en');
   const resources = Object.fromEntries(
-    MLUX_005_DRAFT15_UNIT_FIXTURE.map((expected) => [
+    MLUX_005_CURRENT_UNIT_FIXTURE.map((expected) => [
       expected.unitId,
       {
         english: singleBraceMlux005Draft15ResourceValue(
@@ -382,7 +397,7 @@ function createMlux005Draft15RuntimeCandidate(): Mlux005Draft15Candidate {
             expected.plural ? `${expected.key}_one` : expected.key,
           ),
           expected.variables,
-          currentMlux005UzbekValue(expected).includes('{{'),
+          expected.uzbek.includes('{{'),
         ),
       },
     ]),
@@ -406,14 +421,6 @@ function createMlux005Draft15RuntimeCandidate(): Mlux005Draft15Candidate {
     })),
   ];
   return { units, occurrences, resources };
-}
-
-function currentMlux005UzbekValue(
-  expected: (typeof MLUX_005_DRAFT15_UNIT_FIXTURE)[number],
-): string {
-  return expected.unitId === 'MLUX-C0361'
-    ? 'Iltimos, {fieldLabel} maydonini tekshirib, qayta yuboring.'
-    : expected.uzbek;
 }
 
 function singleBraceMlux005Draft15ResourceValue(
@@ -888,7 +895,7 @@ const MLUX_004_DRAFT22_RUNTIME_PROJECTION: readonly ExpectedMlux004RuntimeUnit[]
         review: unit.russian.reviewStatus,
       },
       uzbek: {
-        value: unit.uzbek.value,
+        value: currentCorpusUzbekValue(unit.unitId),
         resource: unit.uzbek.resourceStatus,
         review: unit.uzbek.reviewStatus,
       },
@@ -1108,12 +1115,7 @@ describe('locale foundation', () => {
         asI18nextResourceValue(expected.russian.value, expected.variables),
       );
       expect(runtime.getResource('uz', namespace, expected.key)).toBe(
-        asI18nextResourceValue(
-          expected.unitId === 'MLUX-C0437'
-            ? 'Kelajakni shakllantiruvchi ko‘nikmalarni egallang'
-            : expected.uzbek.value,
-          expected.variables,
-        ),
+        asI18nextResourceValue(expected.uzbek.value, expected.variables),
       );
     }
   });
