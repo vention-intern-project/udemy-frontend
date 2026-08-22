@@ -1161,10 +1161,10 @@ describe('AppShell student cart query and presentation', () => {
     await act(async () => {
       await user.click(accountMenu);
     });
-    await waitFor(() => expect(accountMenu.getAttribute('aria-expanded')).toBe('true'));
     const accountDetails = await screen.findByRole('group', {
       name: 'Account details for instructor User',
     });
+    expect(accountMenu.getAttribute('aria-expanded')).toBe('true');
     expect(accountDetails).toBeTruthy();
     await act(async () => {
       await user.click(within(accountDetails).getByRole('button', { name: /Language/ }));
