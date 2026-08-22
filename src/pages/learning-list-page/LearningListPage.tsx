@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { ChevronLeft } from 'lucide-react';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
 import { Link, useSearchParams } from 'react-router-dom';
 
 import type { EnrollmentStatus } from '@entities/enrollment';
@@ -24,10 +26,10 @@ function parsePage(value: string | null): number {
     : 1;
 }
 
-function enrollmentStatusLabel(status: EnrollmentStatus): string {
-  if (status === 'active') return 'Active';
-  if (status === 'cancelled') return 'Cancelled';
-  return 'Payment pending';
+function enrollmentStatusLabel(status: EnrollmentStatus, t: TFunction): string {
+  if (status === 'active') return t('learning:active', { defaultValue: 'Active' });
+  if (status === 'cancelled') return t('learning:cancelled', { defaultValue: 'Cancelled' });
+  return t('learning:paymentPending', { defaultValue: 'Payment pending' });
 }
 
 interface LearningListRetryFocusIntent {
@@ -45,6 +47,7 @@ function didRetrySucceed(result: unknown): boolean {
 }
 
 export function LearningListPage() {
+  const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
   const page = parsePage(searchParams.get('page'));
   const session = useSession();
@@ -102,10 +105,13 @@ export function LearningListPage() {
       <article className={styles.page}>
         <header className={styles.pageHeader}>
           <h1 tabIndex={-1} ref={headingRef}>
-            My learning
+            {t('navigation:myLearning', { defaultValue: 'My learning' })}
           </h1>
         </header>
-        <SkeletonGroup className={styles.loading} label="Loading your learning">
+        <SkeletonGroup
+          className={styles.loading}
+          label={t('learning:loadingYourLearning', { defaultValue: 'Loading your learning' })}
+        >
           <Skeleton height="40px" width="45%" />
           <Skeleton height="120px" width="100%" shape="rect" />
         </SkeletonGroup>
@@ -117,17 +123,17 @@ export function LearningListPage() {
     return (
       <article className={styles.state}>
         <h1 tabIndex={-1} ref={headingRef}>
-          My learning
+          {t('navigation:myLearning', { defaultValue: 'My learning' })}
         </h1>
-        <Notice tone="error" title={failure.title}>
-          {failure.message}
+        <Notice tone="error" title={t(failure.titleKey)}>
+          {t(failure.messageKey)}
         </Notice>
         <Button
           onClick={() => {
             retryList();
           }}
         >
-          Try again
+          {t('routes:tryAgain', { defaultValue: 'Try again' })}
         </Button>
       </article>
     );
@@ -138,7 +144,7 @@ export function LearningListPage() {
       <article className={[styles.page, styles.emptyPage].join(' ')}>
         <header className={styles.pageHeader}>
           <h1 tabIndex={-1} ref={headingRef}>
-            My learning
+            {t('navigation:myLearning', { defaultValue: 'My learning' })}
           </h1>
         </header>
         <section className={styles.emptyState} aria-labelledby="learning-empty-heading">
@@ -149,13 +155,19 @@ export function LearningListPage() {
             aria-hidden="true"
           />
           <div className={styles.emptyContent}>
-            <h2 id="learning-empty-heading">Start your learning journey</h2>
+            <h2 id="learning-empty-heading">
+              {t('learning:startYourLearningJourney', {
+                defaultValue: 'Start your learning journey',
+              })}
+            </h2>
             <p>
-              You haven’t enrolled in any courses yet. Browse the catalog and choose your first
-              course.
+              {t('learning:noCoursesEnrolledYet', {
+                defaultValue:
+                  'You haven’t enrolled in any courses yet. Browse the catalog and choose your first course.',
+              })}
             </p>
             <Link className={styles.primaryAction} to="/">
-              Browse courses
+              {t('learning:browseCourses', { defaultValue: 'Browse courses' })}
             </Link>
           </div>
         </section>
@@ -165,27 +177,32 @@ export function LearningListPage() {
   return (
     <article className={styles.page}>
       <header className={styles.pageHeader}>
-        <nav className={styles.returnPath} aria-label="Breadcrumb">
+        <nav className={styles.returnPath} aria-label={t('a11y:breadcrumb')}>
           <ContextualNavigationLink
             className={styles.backLink}
             to="/"
             onKeyDown={activateContextualNavigationOnSpace}
           >
             <ChevronLeft size={20} aria-hidden="true" />
-            <span>Catalog</span>
+            <span>{t('navigation:catalog', { defaultValue: 'Catalog' })}</span>
           </ContextualNavigationLink>
           <div className={styles.returnCurrent} aria-current="page">
             <span aria-hidden="true">/</span>
-            <span>My learning</span>
+            <span>{t('navigation:myLearning', { defaultValue: 'My learning' })}</span>
           </div>
         </nav>
         <div className={styles.headingContent}>
           <h1 tabIndex={-1} ref={headingRef}>
-            My learning
+            {t('navigation:myLearning', { defaultValue: 'My learning' })}
           </h1>
           <p className={styles.summary} aria-live="polite">
-            {result.total} enrollment{result.total === 1 ? '' : 's'} · Page {result.page} of{' '}
-            {Math.max(1, result.pages)}
+            {t('learning:enrollmentSummary', {
+              defaultValue: '{{total}} enrollment{{suffix}} · Page {{page}} of {{pages}}',
+              total: result.total,
+              suffix: result.total === 1 ? '' : 's',
+              page: result.page,
+              pages: Math.max(1, result.pages),
+            })}
           </p>
         </div>
       </header>
@@ -195,14 +212,14 @@ export function LearningListPage() {
             <div className={styles.cardContent}>
               <h2>{enrollment.course.title}</h2>
               <p className={`${styles.status} ${styles[`status${enrollment.status}`]}`}>
-                {enrollmentStatusLabel(enrollment.status)}
+                {enrollmentStatusLabel(enrollment.status, t)}
               </p>
               {enrollment.course.description !== null ? (
                 <p className={styles.description}>{enrollment.course.description}</p>
               ) : null}
             </div>
             <Link className={styles.workspaceAction} to={`/learning/enrollments/${enrollment.id}`}>
-              Open course
+              {t('learning:openCourse', { defaultValue: 'Open course' })}
             </Link>
           </li>
         ))}
@@ -214,7 +231,9 @@ export function LearningListPage() {
           hasNext={result.hasNext}
           hasPrevious={result.hasPrevious}
           onPageChange={changePage}
-          label="Learning enrollments pagination"
+          label={t('learning:learningEnrollmentsPagination', {
+            defaultValue: 'Learning enrollments pagination',
+          })}
         />
       ) : null}
     </article>

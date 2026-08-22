@@ -9,8 +9,15 @@ export type CourseActionRecoveryState = 'idle' | 'recovery-available' | 'recover
 
 export type CourseActionRecoveryEvent = 'start' | 'failure' | 'success' | 'retire';
 
-export const courseActionReconciliationUncertaintyMessage =
-  'We could not verify your enrollment or cart.';
+/**
+ * Locale-neutral owner for the reconciliation failure rendered by both course
+ * action surfaces. The localized copy remains in the `course` namespace.
+ */
+export const courseActionReconciliationUncertaintyMessageKey =
+  'courseActionReconciliationUncertainty' as const;
+
+export type CourseActionReconciliationMessageKey =
+  typeof courseActionReconciliationUncertaintyMessageKey;
 
 export function isCurrentCourseActionReconciliationAttempt({
   attemptIdentity,

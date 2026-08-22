@@ -1,11 +1,14 @@
 import { useState } from 'react';
 import { Navigate, useLocation, useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 
 import {
   AuthFormShell,
   AuthLink,
   FormErrorAlert,
   PasswordField,
+  resolveAuthFieldErrors,
+  resolveAuthMessage,
   useResetPasswordWorkflow,
 } from '@features/auth-workflows';
 import { Button, Notice } from '@shared/ui/primitives';
@@ -18,37 +21,38 @@ interface ResetPasswordFormProps {
 }
 
 function ResetPasswordForm({ ownerKey, token, onSuccess }: ResetPasswordFormProps) {
+  const { t } = useTranslation();
   const workflow = useResetPasswordWorkflow({ ownerKey, token, onSuccess });
+  const fieldErrors = resolveAuthFieldErrors(workflow.fieldErrors, t);
+  const summary = resolveAuthMessage(workflow.summary, t);
   return (
     <AuthFormShell
-      title="Reset password"
-      description="Choose a new password for your account."
-      footer={<AuthLink to="/login">Back to login</AuthLink>}
+      title={t('routes:resetPasswordTitle')}
+      description={t('routes:resetPasswordDescription')}
+      footer={<AuthLink to="/login">{t('auth:backToLogin')}</AuthLink>}
     >
       <form noValidate onSubmit={workflow.submit}>
-        <p className={styles.tokenHelp}>
-          Your reset link supplies a private token. It stays hidden while you complete this form.
-        </p>
-        {workflow.summary && Object.keys(workflow.fieldErrors).length === 0 ? (
-          <FormErrorAlert ref={workflow.summaryRef} summary={workflow.summary} />
+        <p className={styles.tokenHelp}>{t('auth:resetTokenHelp')}</p>
+        {summary && Object.keys(workflow.fieldErrors).length === 0 ? (
+          <FormErrorAlert ref={workflow.summaryRef} summary={summary} />
         ) : null}
         <PasswordField
           id="password"
           name="newPassword"
-          label="New password"
+          label={t('auth:newPassword')}
           autoComplete="new-password"
           value={workflow.newPassword}
-          error={workflow.fieldErrors.password}
+          error={fieldErrors.password}
           disabled={workflow.isPending}
           onChange={workflow.setNewPassword}
         />
         <PasswordField
           id="passwordConfirmation"
           name="passwordConfirmation"
-          label="Confirm new password"
+          label={t('auth:confirmNewPassword')}
           autoComplete="new-password"
           value={workflow.passwordConfirmation}
-          error={workflow.fieldErrors.passwordConfirmation}
+          error={fieldErrors.passwordConfirmation}
           disabled={workflow.isPending}
           onChange={workflow.setPasswordConfirmation}
         />
@@ -56,9 +60,9 @@ function ResetPasswordForm({ ownerKey, token, onSuccess }: ResetPasswordFormProp
           type="submit"
           fullWidth
           state={workflow.isPending ? 'loading' : 'idle'}
-          loadingLabel="Resetting password..."
+          loadingLabel={t('auth:resettingPassword')}
         >
-          Reset password
+          {t('routes:resetPasswordTitle')}
         </Button>
       </form>
     </AuthFormShell>
@@ -66,6 +70,7 @@ function ResetPasswordForm({ ownerKey, token, onSuccess }: ResetPasswordFormProp
 }
 
 export function ResetPasswordPage() {
+  const { t } = useTranslation();
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token')?.trim() ?? '';
@@ -74,13 +79,13 @@ export function ResetPasswordPage() {
   if (resetSucceeded)
     return (
       <AuthFormShell
-        title="Reset password"
-        description="Choose a new password for your account."
-        footer={<AuthLink to="/login">Back to login</AuthLink>}
+        title={t('routes:resetPasswordTitle')}
+        description={t('routes:resetPasswordDescription')}
+        footer={<AuthLink to="/login">{t('auth:backToLogin')}</AuthLink>}
       >
-        <Notice tone="success" title="Password reset complete">
-          Your password has been updated.{' '}
-          <AuthLink to="/login">Log in with your new password</AuthLink>.
+        <Notice tone="success" title={t('auth:passwordResetComplete')}>
+          {t('auth:passwordUpdated')}{' '}
+          <AuthLink to="/login">{t('auth:logInWithYourNewPassword')}</AuthLink>.
         </Notice>
       </AuthFormShell>
     );

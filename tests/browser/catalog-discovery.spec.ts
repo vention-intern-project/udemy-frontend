@@ -4044,7 +4044,7 @@ test('recovers only authoritative preflight after a successful Catalog mutation 
   assertClean();
 });
 
-test('keeps instructor CourseCard actions neutral without student reads or mutations', async ({
+test('routes instructors to their course workspace without student reads or mutations', async ({
   page,
 }) => {
   const privateRequests: string[] = [];
@@ -4086,48 +4086,26 @@ test('keeps instructor CourseCard actions neutral without student reads or mutat
     });
   });
   await page.goto('/');
-  const cards = await Promise.all(
-    ['Instructor paid', 'Instructor free', 'Instructor draft'].map(async (title) =>
-      page
-        .locator('[data-part="course-card"]')
-        .filter({ has: page.getByRole('heading', { level: 3, name: title }) }),
-    ),
-  );
-  const actions = [
-    cards[0].getByRole('button', { name: 'Not available for this account' }),
-    cards[1].getByRole('button', { name: 'Not available for this account' }),
-    cards[2].getByRole('button', { name: 'Not published' }),
-  ];
-  for (const action of actions) {
-    await expect(action).toBeDisabled();
-    await expect(action.locator('svg')).toHaveCount(0);
+  await page.waitForURL('**/instructor/courses');
+  const courseList = page.getByRole('region', { name: 'Your courses' });
+  await expect(courseList).toBeVisible();
+  for (const [title, courseId] of [
+    ['Instructor paid', 7],
+    ['Instructor free', 8],
+    ['Instructor draft', 9],
+  ] as const) {
+    const card = courseList.getByRole('listitem').filter({
+      has: page.getByRole('heading', { level: 3, name: title }),
+    });
+    await expect(card.getByRole('link', { name: 'Edit course' })).toHaveAttribute(
+      'href',
+      `/instructor/courses/${courseId}/edit`,
+    );
+    await expect(card.getByRole('link', { name: 'Course enrollments' })).toHaveAttribute(
+      'href',
+      `/instructor/courses/${courseId}/enrollments`,
+    );
   }
-  const geometry = await Promise.all(
-    actions.map((action) =>
-      action.evaluate((element) => {
-        const style = getComputedStyle(element);
-        const rect = element.getBoundingClientRect();
-        return {
-          height: rect.height,
-          width: rect.width,
-          paddingInlineStart: style.paddingInlineStart,
-          paddingInlineEnd: style.paddingInlineEnd,
-          whiteSpace: style.whiteSpace,
-        };
-      }),
-    ),
-  );
-  expect(
-    geometry.every(
-      (action) =>
-        action.height >= 44 &&
-        action.width >= 120 &&
-        action.paddingInlineStart === '12px' &&
-        action.paddingInlineEnd === '12px' &&
-        action.whiteSpace === 'nowrap',
-    ),
-  ).toBe(true);
-  expect(geometry[2].width).toBeCloseTo(120, 1);
   expect(privateRequests).toEqual([]);
 });
 

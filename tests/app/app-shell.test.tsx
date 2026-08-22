@@ -14,10 +14,18 @@ import { AppRouter } from '../../src/app/router/AppRouter';
 import { SessionProvider, type AccessTokenStore } from '../../src/features/auth-session';
 import type { ApiClient, ApiRequestOptions } from '../../src/shared/api';
 import { ThemeProvider } from '../../src/shared/ui/theme';
-import { LocaleProvider, localeRuntime } from '../../src/shared/locale';
+import { localeRuntime, LocaleProvider } from '../../src/shared/locale';
 
 const APP_SHELL_STYLES = readFileSync(
   pathToFileURL(resolve(process.cwd(), 'src/app/layouts/AppShell.module.css')),
+  'utf8',
+);
+const APP_SHELL_SOURCE = readFileSync(
+  pathToFileURL(resolve(process.cwd(), 'src/app/layouts/AppShell.tsx')),
+  'utf8',
+);
+const ACCOUNT_MENU_SOURCE = readFileSync(
+  pathToFileURL(resolve(process.cwd(), 'src/app/layouts/AccountMenu.tsx')),
   'utf8',
 );
 const DESKTOP_MEDIA_QUERY_MARKER = '@media (min-width: 768px) {';
@@ -121,7 +129,157 @@ function stubCompactViewport(matches = true) {
   }));
 }
 
+function stubFinePointer(matches = true) {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === '(hover: hover) and (pointer: fine)' ? matches : false,
+    addEventListener() {},
+    removeEventListener() {},
+  }));
+}
+
+function firePointerTransition(
+  target: Element,
+  type: 'pointerover' | 'pointerout',
+  pointerType: 'mouse' | 'touch',
+) {
+  const event = new Event(type, { bubbles: true });
+  Object.defineProperty(event, 'pointerType', { value: pointerType });
+  fireEvent(target, event);
+}
+
+interface ResidualLocaleExpectation {
+  readonly locale: 'en' | 'ru' | 'uz';
+  readonly logOut: string;
+  readonly studentNavigation: string;
+  readonly anonymousNavigation: string;
+  readonly skipToMainContent: string;
+  readonly learnHubHome: string;
+  readonly createCourse: string;
+}
+
+interface HeaderNavigationLocaleExpectation {
+  readonly locale: 'en' | 'ru' | 'uz';
+  readonly catalog: string;
+  readonly logIn: string;
+  readonly signUp: string;
+  readonly myLearning: string;
+  readonly instructorCourses: string;
+}
+
+const RESIDUAL_LOCALE_EXPECTATIONS: readonly ResidualLocaleExpectation[] = [
+  {
+    locale: 'en',
+    logOut: 'Log out',
+    studentNavigation: 'Student navigation',
+    anonymousNavigation: 'Anonymous navigation',
+    skipToMainContent: 'Skip to main content',
+    learnHubHome: 'LearnHub home',
+    createCourse: 'Create course',
+  },
+  {
+    locale: 'ru',
+    logOut: 'Выйти',
+    studentNavigation: 'Навигация студента',
+    anonymousNavigation: 'Навигация гостя',
+    skipToMainContent: 'Перейти к основному содержимому',
+    learnHubHome: 'Главная LearnHub',
+    createCourse: 'Создать курс',
+  },
+  {
+    locale: 'uz',
+    logOut: 'Chiqish',
+    studentNavigation: 'Talaba navigatsiyasi',
+    anonymousNavigation: 'Mehmon navigatsiyasi',
+    skipToMainContent: "Asosiy mazmunga o'tish",
+    learnHubHome: 'LearnHub bosh sahifasi',
+    createCourse: 'Kurs yaratish',
+  },
+];
+
+const HEADER_NAVIGATION_LOCALE_EXPECTATIONS: readonly HeaderNavigationLocaleExpectation[] = [
+  {
+    locale: 'en',
+    catalog: 'Catalog',
+    logIn: 'Log in',
+    signUp: 'Sign up',
+    myLearning: 'My learning',
+    instructorCourses: 'Instructor courses',
+  },
+  {
+    locale: 'ru',
+    catalog: 'Каталог',
+    logIn: 'Войти',
+    signUp: 'Регистрация',
+    myLearning: 'Моё обучение',
+    instructorCourses: 'Курсы преподавателя',
+  },
+  {
+    locale: 'uz',
+    catalog: 'Katalog',
+    logIn: 'Kirish',
+    signUp: 'Ro‘yxatdan o‘tish',
+    myLearning: 'Ta’limim',
+    instructorCourses: 'O‘qituvchi kurslari',
+  },
+];
+
 describe('AppShell student cart query and presentation', () => {
+  it.each(HEADER_NAVIGATION_LOCALE_EXPECTATIONS)(
+    'localizes desktop and instructor-compact navigation through the one runtime in $locale',
+    async ({ locale, catalog, logIn, signUp, myLearning, instructorCourses }) => {
+      localStorage.setItem('learnhub.locale', locale);
+      renderShell(authenticatedClient('student'), null, '/');
+
+      const primaryNavigation = await screen.findByRole('navigation', {
+        name: /Primary navigation|Основная навигация|Asosiy navigatsiya/,
+      });
+      const accountNavigation = screen.getByRole('navigation', {
+        name: /Account navigation|Навигация по аккаунту|Akkaunt navigatsiyasi/,
+      });
+      expect(
+        within(primaryNavigation).getByRole('link', { name: catalog }).getAttribute('href'),
+      ).toBe('/');
+      expect(
+        within(accountNavigation).getByRole('link', { name: logIn }).getAttribute('href'),
+      ).toBe('/login');
+      expect(
+        within(accountNavigation).getByRole('link', { name: signUp }).getAttribute('href'),
+      ).toBe('/signup');
+      cleanup();
+
+      renderShell(authenticatedClient('student'), 'student-token', '/learning');
+      const studentNavigation = await screen.findByRole('navigation', {
+        name: /Primary navigation|Основная навигация|Asosiy navigatsiya/,
+      });
+      expect(
+        within(studentNavigation).getByRole('link', { name: catalog }).getAttribute('href'),
+      ).toBe('/');
+      expect(
+        within(studentNavigation).getByRole('link', { name: myLearning }).getAttribute('href'),
+      ).toBe('/learning');
+      cleanup();
+
+      stubCompactViewport();
+      renderShell(authenticatedClient('instructor'), 'instructor-token', '/instructor/courses');
+      const mobileNavigationTrigger = await waitFor(() => {
+        const trigger = document.querySelector<HTMLButtonElement>(
+          '[aria-controls="mobile-navigation"]',
+        );
+        expect(trigger).toBeTruthy();
+        return trigger!;
+      });
+      fireEvent.click(mobileNavigationTrigger);
+      const compactNavigation = await screen.findByRole('navigation', {
+        name: /Mobile navigation|Мобильная навигация|Mobil navigatsiya/,
+      });
+      expect(
+        within(compactNavigation)
+          .getByRole('link', { name: instructorCourses })
+          .getAttribute('href'),
+      ).toBe('/instructor/courses');
+    },
+  );
+
   it('keeps Instructor courses active beside LearnHub and styles Create course as the active header action', async () => {
     const request = vi.fn(
       async <TResponse, TBody>(options: ApiRequestOptions<TBody, TResponse>) => {
@@ -366,6 +524,72 @@ describe('AppShell student cart query and presentation', () => {
     await act(() => vi.advanceTimersByTime(500));
     expect(screen.getByRole('tooltip', { name: 'AI chat' })).toBeTruthy();
   });
+
+  it('leaves no localizable DRAFT-18 residual literals while retaining only the exact LearnHub wordmark invariant', () => {
+    expect(ACCOUNT_MENU_SOURCE).not.toMatch(/>\s*Log out\s*</);
+    expect(APP_SHELL_SOURCE).not.toContain('aria-label="Student navigation"');
+    expect(APP_SHELL_SOURCE).not.toContain('aria-label="Anonymous navigation"');
+    expect(APP_SHELL_SOURCE).not.toMatch(/>\s*Skip to main content\s*</);
+    expect(APP_SHELL_SOURCE).not.toContain('aria-label="LearnHub home"');
+    expect(APP_SHELL_SOURCE).not.toMatch(/>\s*Create course\s*</);
+    expect(
+      APP_SHELL_SOURCE.match(/<span className=\{styles\.brandWordmark\}>LearnHub<\/span>/g),
+    ).toHaveLength(1);
+  });
+
+  it.each(RESIDUAL_LOCALE_EXPECTATIONS)(
+    'localizes every DRAFT-18 AppShell and AccountMenu seam in $locale',
+    async ({
+      locale,
+      logOut,
+      studentNavigation,
+      anonymousNavigation,
+      skipToMainContent,
+      learnHubHome,
+      createCourse,
+    }) => {
+      localStorage.setItem('learnhub.locale', locale);
+      renderShell(authenticatedClient('instructor'), 'instructor-token', '/instructor/courses');
+
+      const brand = await screen.findByRole('link', { name: learnHubHome });
+      expect(brand.textContent?.trim()).toBe('LearnHub');
+      expect(brand.getAttribute('href')).toBe('/instructor/courses');
+      expect(screen.getByRole('link', { name: skipToMainContent }).getAttribute('href')).toBe(
+        '#main-content',
+      );
+      expect(screen.getByRole('button', { name: createCourse })).toBeTruthy();
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: new RegExp('Account menu|Меню аккаунта|akkaunt menyusi'),
+        }),
+      );
+      expect(screen.getByRole('button', { name: logOut })).toBeTruthy();
+      cleanup();
+
+      stubCompactViewport();
+      renderShell(authenticatedClient('instructor'), 'instructor-token', '/instructor/courses');
+      await screen.findByRole('button', {
+        name: new RegExp('Account menu|Меню аккаунта|akkaunt menyusi'),
+      });
+      const mobileNavigationTrigger = await waitFor(() => {
+        const trigger = document.querySelector<HTMLButtonElement>(
+          '[aria-controls="mobile-navigation"]',
+        );
+        expect(trigger).toBeTruthy();
+        return trigger!;
+      });
+      fireEvent.click(mobileNavigationTrigger);
+      expect(screen.getByRole('button', { name: createCourse })).toBeTruthy();
+      cleanup();
+
+      renderShell(authenticatedClient('student'), 'student-token');
+      expect(await screen.findByRole('navigation', { name: studentNavigation })).toBeTruthy();
+      cleanup();
+
+      renderShell(authenticatedClient('student'), null);
+      expect(screen.getByRole('navigation', { name: anonymousNavigation })).toBeTruthy();
+    },
+  );
 
   it('renders the Instructor LearnHub brand as an accessible Instructor courses home link', async () => {
     renderShell(authenticatedClient('instructor'), 'instructor-token', '/instructor/courses');
@@ -677,6 +901,66 @@ describe('AppShell student cart query and presentation', () => {
     },
   );
 
+  it('opens the desktop language menu for a fine mouse pointer and bridges the menu gap', async () => {
+    stubFinePointer();
+    renderShell(authenticatedClient('student'), 'student-token', '/learning');
+
+    const trigger = await screen.findByRole('button', { name: 'Change language' });
+    vi.useFakeTimers();
+    const selector = trigger.parentElement;
+    expect(selector).toBeTruthy();
+    if (!selector) return;
+
+    firePointerTransition(selector, 'pointerover', 'mouse');
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByLabelText('Language menu')).toBeTruthy();
+    expect(document.activeElement).not.toBe(trigger);
+
+    firePointerTransition(selector, 'pointerout', 'mouse');
+    await act(() => vi.advanceTimersByTime(120));
+    firePointerTransition(selector, 'pointerover', 'mouse');
+    await act(() => vi.advanceTimersByTime(240));
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+
+    firePointerTransition(selector, 'pointerout', 'mouse');
+    fireEvent.keyDown(trigger, { key: 'Enter' });
+    await act(() => vi.advanceTimersByTime(240));
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+
+    fireEvent.click(trigger);
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    firePointerTransition(selector, 'pointerover', 'mouse');
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(trigger);
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(trigger);
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    firePointerTransition(selector, 'pointerover', 'mouse');
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+
+    firePointerTransition(selector, 'pointerout', 'mouse');
+    await act(() => vi.advanceTimersByTime(240));
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByLabelText('Language menu')).toBeNull();
+  });
+
+  it('does not use hover disclosure for touch or coarse pointers', async () => {
+    stubFinePointer(false);
+    renderShell(authenticatedClient('student'), 'student-token', '/learning');
+
+    const trigger = await screen.findByRole('button', { name: 'Change language' });
+    const selector = trigger.parentElement;
+    expect(selector).toBeTruthy();
+    if (!selector) return;
+
+    firePointerTransition(selector, 'pointerover', 'mouse');
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+
+    stubFinePointer(true);
+    firePointerTransition(selector, 'pointerover', 'touch');
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+  });
+
   it('orders desktop student controls as AI, Cart, Profile, then Language', async () => {
     renderShell(authenticatedClient('student'), 'student-token', '/learning');
 
@@ -877,12 +1161,13 @@ describe('AppShell student cart query and presentation', () => {
     await act(async () => {
       await user.click(accountMenu);
     });
-    await waitFor(() => expect(accountMenu.getAttribute('aria-expanded')).toBe('true'));
-    expect(
-      await screen.findByRole('group', { name: 'Account details for instructor User' }),
-    ).toBeTruthy();
+    const accountDetails = await screen.findByRole('group', {
+      name: 'Account details for instructor User',
+    });
+    expect(accountMenu.getAttribute('aria-expanded')).toBe('true');
+    expect(accountDetails).toBeTruthy();
     await act(async () => {
-      await user.click(screen.getByRole('button', { name: /Language/ }));
+      await user.click(within(accountDetails).getByRole('button', { name: /Language/ }));
     });
     const back = screen.getByRole('button', { name: 'Back' });
     expect(document.activeElement).toBe(back);
@@ -892,4 +1177,26 @@ describe('AppShell student cart query and presentation', () => {
     });
     expect(document.activeElement).toBe(screen.getByRole('button', { name: /Language/ }));
   });
+
+  it.each([
+    ['en', 'student', 'Student', 'Account menu for student User'],
+    ['ru', 'instructor', 'Преподаватель', 'Меню аккаунта: instructor User'],
+    ['uz', 'admin', 'Administrator', 'admin User uchun akkaunt menyusi'],
+  ] as const)(
+    'localizes the visible %s account role for %s without changing the profile identity',
+    async (locale, role, expectedRole, accountMenuName) => {
+      localStorage.setItem('learnhub.locale', locale);
+      renderShell(authenticatedClient(role), `${role}-token`);
+
+      const accountMenu = await screen.findByRole('button', {
+        name: accountMenuName,
+      });
+      await act(async () => {
+        await userEvent.setup().click(accountMenu);
+      });
+
+      expect(await screen.findByText(expectedRole, { exact: true })).toBeTruthy();
+      expect(screen.queryByText(role, { exact: true })).toBeNull();
+    },
+  );
 });

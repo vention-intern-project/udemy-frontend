@@ -9,6 +9,7 @@ import { createAppQueryClient } from '../../src/app/query';
 import { SessionProvider, type AccessTokenStore } from '../../src/features/auth-session';
 import { InstructorCourseEditorPage } from '../../src/pages/instructor-course-editor-page';
 import { ApiError, type ApiClient, type ApiRequestOptions } from '../../src/shared/api';
+import { LocaleProvider, useLocale, type Locale } from '../../src/shared/locale';
 
 const instructor = {
   email: 'instructor@example.test',
@@ -49,6 +50,29 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+interface LocaleTestControlProps {
+  readonly locale: Locale;
+}
+
+function LocaleTestControl({ locale }: LocaleTestControlProps) {
+  const { setLocale } = useLocale();
+  return (
+    <button
+      type="button"
+      aria-label={`Set test locale to ${locale}`}
+      onClick={() => setLocale(locale)}
+    >
+      Set test locale to {locale}
+    </button>
+  );
+}
+
+async function setTestLocale(locale: Locale) {
+  await userEvent
+    .setup()
+    .click(screen.getByRole('button', { name: `Set test locale to ${locale}` }));
+}
+
 function decode<TResponse, TBody>(
   options: ApiRequestOptions<TBody, TResponse>,
   value: unknown,
@@ -57,23 +81,37 @@ function decode<TResponse, TBody>(
   return options.decode(value);
 }
 
-async function renderPage(client: ApiClient, initialEntry = '/instructor/courses/7/edit') {
+async function renderPage(
+  client: ApiClient,
+  initialEntry = '/instructor/courses/7/edit',
+  locale: Locale = 'en',
+) {
   await act(async () => {
     render(
       <QueryClientProvider client={createAppQueryClient()}>
-        <SessionProvider client={client} tokenStore={tokenStore}>
-          <MemoryRouter initialEntries={[initialEntry]}>
-            <Routes>
-              <Route
-                path="/instructor/courses/:courseId/edit"
-                element={<InstructorCourseEditorPage />}
-              />
-            </Routes>
-          </MemoryRouter>
-        </SessionProvider>
+        <LocaleProvider initialLocale={locale}>
+          <LocaleTestControl locale="en" />
+          <LocaleTestControl locale="ru" />
+          <LocaleTestControl locale="uz" />
+          <SessionProvider client={client} tokenStore={tokenStore}>
+            <MemoryRouter initialEntries={[initialEntry]}>
+              <Routes>
+                <Route
+                  path="/instructor/courses/:courseId/edit"
+                  element={<InstructorCourseEditorPage />}
+                />
+              </Routes>
+            </MemoryRouter>
+          </SessionProvider>
+        </LocaleProvider>
       </QueryClientProvider>,
     );
   });
+}
+
+async function getResolvedEditorAction(action: string): Promise<HTMLElement> {
+  await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+  return screen.getByRole('button', { name: action });
 }
 
 function expectContextualReturnBeforeEditorHeading() {
@@ -91,6 +129,204 @@ function expectContextualReturnBeforeEditorHeading() {
 }
 
 describe('InstructorCourseEditorPage', () => {
+  it.each([
+    ['en', 'Save course'],
+    ['ru', 'Сохранить курс'],
+    ['uz', 'Kursni saqlash'],
+  ] as const)(
+    'renders the immutable save-course control label in %s',
+    async (locale, saveLabel) => {
+      const request: ApiClient['request'] = async (options) => {
+        if (options.path === '/me') return decode(options, instructor);
+        if (options.path === '/courses/7' && options.method === 'GET')
+          return decode(options, course);
+        throw new Error(`Unexpected request: ${options.method} ${options.path}`);
+      };
+
+      await renderPage({ request }, '/instructor/courses/7/edit', locale);
+      expect(await getResolvedEditorAction(saveLabel)).toBeTruthy();
+    },
+  );
+
+  it.each([
+    ['en', ['Video', 'Text', 'PDF']],
+    ['ru', ['Видео', 'Текст', 'PDF']],
+    ['uz', ['Video', 'Matn', 'PDF']],
+  ] as const)(
+    'renders immutable lesson types through localized instructor labels in %s',
+    async (locale, lessonTypeLabels) => {
+      const request: ApiClient['request'] = async (options) => {
+        if (options.path === '/me') return decode(options, instructor);
+        if (options.path === '/courses/7' && options.method === 'GET')
+          return decode(options, {
+            ...course,
+            lessons: [
+              { ...course.lessons[0], id: 8, title: 'Video lesson', lesson_type: 'video' },
+              { ...course.lessons[0], id: 9, title: 'Text lesson', lesson_type: 'text' },
+              { ...course.lessons[0], id: 10, title: 'PDF lesson', lesson_type: 'pdf' },
+            ],
+          });
+        throw new Error(`Unexpected request: ${options.method} ${options.path}`);
+      };
+
+      await renderPage({ request }, '/instructor/courses/7/edit', locale);
+      for (const [index, label] of lessonTypeLabels.entries()) {
+        const lessonTitle = ['Video lesson', 'Text lesson', 'PDF lesson'][index]!;
+        const lessonRow = (await screen.findByRole('heading', { name: lessonTitle })).closest('li');
+        expect(lessonRow).not.toBeNull();
+        expect(
+          within(lessonRow!).getByText(
+            (_, element) =>
+              element?.tagName === 'P' && element.textContent?.startsWith(`${label} · `),
+          ),
+        ).toBeTruthy();
+      }
+    },
+  );
+
+  it.each([
+    ['en', 'Breadcrumb', 'This course address is not valid.'],
+    ['ru', 'Хлебные крошки', 'Адрес курса указан неверно.'],
+    ['uz', 'Yo‘l ko‘rsatkich', 'Kurs manzili noto‘g‘ri.'],
+  ] as const)(
+    'localizes the invalid course address and breadcrumb accessible name in %s',
+    async (locale, breadcrumbName, invalidAddress) => {
+      const request: ApiClient['request'] = async (options) => {
+        if (options.path === '/me') return decode(options, instructor);
+        throw new Error(`Unexpected request: ${options.method} ${options.path}`);
+      };
+
+      await renderPage({ request }, '/instructor/courses/not-a-course/edit', locale);
+      expect(await screen.findByText(invalidAddress)).toBeTruthy();
+      expect(screen.getByRole('navigation', { name: breadcrumbName })).toBeTruthy();
+    },
+  );
+
+  it.each([
+    [
+      'ru',
+      'Удалить курс',
+      'Удалить этот курс?',
+      'Удалить курс «Verified course»? Это действие необратимо.',
+      'Удалить урок',
+      'Удалить этот урок?',
+      'Удалить урок «Existing lesson»? Это действие необратимо.',
+    ],
+    [
+      'uz',
+      'Kursni o‘chirish',
+      'Bu kurs o‘chirilsinmi?',
+      'Verified course kursi o‘chirilsinmi? Bu amalni ortga qaytarib bo‘lmaydi.',
+      'Darsni o‘chirish',
+      'Bu dars o‘chirilsinmi?',
+      'Existing lesson darsi o‘chirilsinmi? Bu amalni ortga qaytarib bo‘lmaydi.',
+    ],
+  ] as const)(
+    'renders localized destructive dialog copy in %s',
+    async (
+      locale,
+      courseAction,
+      courseDialogName,
+      courseDescription,
+      lessonAction,
+      lessonDialogName,
+      lessonDescription,
+    ) => {
+      const request: ApiClient['request'] = async (options) => {
+        if (options.path === '/me') return decode(options, instructor);
+        if (options.path === '/courses/7' && options.method === 'GET')
+          return decode(options, course);
+        throw new Error(`Unexpected request: ${options.method} ${options.path}`);
+      };
+      await renderPage({ request }, '/instructor/courses/7/edit', locale);
+      const user = userEvent.setup();
+      const deleteCourse = await getResolvedEditorAction(courseAction);
+
+      await act(async () => {
+        await user.click(deleteCourse);
+      });
+      expect((await screen.findByRole('dialog', { name: courseDialogName })).textContent).toContain(
+        courseDescription,
+      );
+      await act(async () => {
+        await user.keyboard('{Escape}');
+      });
+
+      await act(async () => {
+        await user.click(await getResolvedEditorAction(lessonAction));
+      });
+      expect((await screen.findByRole('dialog', { name: lessonDialogName })).textContent).toContain(
+        lessonDescription,
+      );
+    },
+  );
+
+  it.each([
+    ['ru', 'Удалить урок', 'Удалить этот урок?', 'Курс или урок больше недоступен.'],
+    ['uz', 'Darsni o‘chirish', 'Bu dars o‘chirilsinmi?', 'Kurs yoki dars endi mavjud emas.'],
+  ] as const)(
+    'renders a localized delete failure in %s',
+    async (locale, action, dialogName, failureMessage) => {
+      const request: ApiClient['request'] = async (options) => {
+        if (options.path === '/me') return decode(options, instructor);
+        if (options.path === '/courses/7' && options.method === 'GET')
+          return decode(options, course);
+        if (options.method === 'DELETE')
+          throw new ApiError({ kind: 'not_found', status: 404, message: 'PRIVATE_DELETE_DETAIL' });
+        throw new Error(`Unexpected request: ${options.method} ${options.path}`);
+      };
+      await renderPage({ request }, '/instructor/courses/7/edit', locale);
+      const user = userEvent.setup();
+      const deleteAction = await getResolvedEditorAction(action);
+      await act(async () => {
+        await user.click(deleteAction);
+      });
+      const dialog = await screen.findByRole('dialog', { name: dialogName });
+      await act(async () => {
+        await user.click(within(dialog).getByRole('button', { name: action }));
+      });
+      expect(await screen.findByText(failureMessage)).toBeTruthy();
+      expect(screen.queryByText('PRIVATE_DELETE_DETAIL')).toBeNull();
+    },
+  );
+
+  it.each([
+    ['ru', 401, 'Удалить урок', 'Удалить этот урок?', 'Войдите снова, чтобы продолжить.'],
+    ['ru', 403, 'Удалить урок', 'Удалить этот урок?', 'У вас нет разрешения изменять этот курс.'],
+    ['uz', 401, 'Darsni o‘chirish', 'Bu dars o‘chirilsinmi?', 'Davom etish uchun qayta kiring.'],
+    [
+      'uz',
+      403,
+      'Darsni o‘chirish',
+      'Bu dars o‘chirilsinmi?',
+      'Bu kursni o‘zgartirish huquqingiz yo‘q.',
+    ],
+  ] as const)(
+    'renders the localized delete authorization failure in %s (%i)',
+    async (locale, status, action, dialogName, failureMessage) => {
+      const request: ApiClient['request'] = async (options) => {
+        if (options.path === '/me') return decode(options, instructor);
+        if (options.path === '/courses/7' && options.method === 'GET')
+          return decode(options, course);
+        if (options.method === 'DELETE')
+          throw new ApiError({ kind: 'http', status, message: 'PRIVATE_AUTHORIZATION_DETAIL' });
+        throw new Error(`Unexpected request: ${options.method} ${options.path}`);
+      };
+      await renderPage({ request }, '/instructor/courses/7/edit', locale);
+      const user = userEvent.setup();
+      const deleteAction = await getResolvedEditorAction(action);
+      await act(async () => {
+        await user.click(deleteAction);
+      });
+      const dialog = await screen.findByRole('dialog', { name: dialogName });
+      await act(async () => {
+        await user.click(within(dialog).getByRole('button', { name: action }));
+      });
+      expect(await screen.findByText(failureMessage)).toBeTruthy();
+      expect(screen.queryByText('PRIVATE_AUTHORIZATION_DETAIL')).toBeNull();
+    },
+  );
+
   it('renders the contextual return before the editor heading in invalid, loading, error, and resolved states', async () => {
     const request: ApiClient['request'] = async (options) => {
       if (options.path === '/me') return decode(options, instructor);
@@ -240,6 +476,119 @@ describe('InstructorCourseEditorPage', () => {
     expect(screen.queryByText('PRIVATE_COURSE_TITLE_DETAIL')).toBeNull();
   });
 
+  it('resolves a persistent 422 field descriptor in EN, RU and UZ without clearing the input', async () => {
+    const request: ApiClient['request'] = async (options) => {
+      if (options.path === '/me') return decode(options, instructor);
+      if (options.path === '/courses/7' && options.method === 'GET') return decode(options, course);
+      if (options.path === '/courses/7' && options.method === 'PATCH') {
+        throw new ApiError({
+          kind: 'validation',
+          status: 422,
+          message: 'PRIVATE_LOCALE_SWITCH_DETAIL',
+          issues: [
+            {
+              location: ['body', 'title'],
+              message: 'PRIVATE_LOCALE_SWITCH_DETAIL',
+              type: 'missing',
+            },
+          ],
+        });
+      }
+      throw new Error(`Unexpected request: ${options.method} ${options.path}`);
+    };
+    await renderPage({ request });
+    const user = userEvent.setup();
+    const title = await screen.findByRole('textbox', { name: 'Course title' });
+    await act(async () => {
+      await user.clear(title);
+      await user.type(title, 'Persistent title');
+      await user.click(screen.getByRole('button', { name: 'Save course' }));
+    });
+    expect(await screen.findByText('Course title is required.')).toBeTruthy();
+    expect(title.getAttribute('aria-describedby')).toContain('error');
+    expect((title as HTMLInputElement).value).toBe('Persistent title');
+    await act(async () => {
+      await setTestLocale('ru');
+    });
+    expect(await screen.findByText('Название курса обязательно.')).toBeTruthy();
+    expect(
+      (screen.getByRole('textbox', { name: 'Название курса' }) as HTMLInputElement).value,
+    ).toBe('Persistent title');
+    await act(async () => {
+      await setTestLocale('uz');
+    });
+    expect(await screen.findByText('Kurs nomi kiritilishi shart.')).toBeTruthy();
+    expect(screen.queryByText('PRIVATE_LOCALE_SWITCH_DETAIL')).toBeNull();
+  });
+
+  it('settles an in-flight course mutation through the current locale without duplicate writes', async () => {
+    let rejectUpdate: (reason: unknown) => void = () => {};
+    const updateResponse = new Promise<never>((_resolve, reject) => {
+      rejectUpdate = reject;
+    });
+    const updateRequests: ApiRequestOptions[] = [];
+    const request: ApiClient['request'] = async (options) => {
+      if (options.path === '/me') return decode(options, instructor);
+      if (options.path === '/courses/7' && options.method === 'GET') return decode(options, course);
+      if (options.path === '/courses/7' && options.method === 'PATCH') {
+        updateRequests.push(options);
+        return decode(options, await updateResponse);
+      }
+      throw new Error(`Unexpected request: ${options.method} ${options.path}`);
+    };
+    await renderPage({ request });
+    const user = userEvent.setup();
+    const title = await screen.findByRole('textbox', { name: 'Course title' });
+    await act(async () => {
+      await user.clear(title);
+      await user.type(title, 'Deferred course title');
+      await user.click(screen.getByRole('button', { name: 'Save course' }));
+    });
+    await waitFor(() => expect(updateRequests).toHaveLength(1));
+    expect(screen.getByRole('button', { name: 'Saving course' }).hasAttribute('disabled')).toBe(
+      true,
+    );
+    expect(updateRequests).toHaveLength(1);
+    expect((title as HTMLInputElement).disabled).toBe(true);
+
+    await act(async () => {
+      await setTestLocale('ru');
+      rejectUpdate(
+        new ApiError({
+          kind: 'validation',
+          status: 422,
+          message: 'PRIVATE_DEFERRED_COURSE_DETAIL',
+          issues: [
+            {
+              location: ['body', 'title'],
+              message: 'PRIVATE_DEFERRED_COURSE_DETAIL',
+              type: 'value_error',
+            },
+          ],
+        }),
+      );
+    });
+
+    const russianTitle = await screen.findByRole('textbox', { name: 'Название курса' });
+    expect(
+      await screen.findByText('Проверьте поле название курса и отправьте форму снова.'),
+    ).toBeTruthy();
+    expect(russianTitle.getAttribute('aria-describedby')).toContain('error');
+    expect((russianTitle as HTMLInputElement).value).toBe('Deferred course title');
+    await waitFor(() => expect(document.activeElement).toBe(russianTitle));
+    expect(screen.queryByText('PRIVATE_DEFERRED_COURSE_DETAIL')).toBeNull();
+
+    await act(async () => {
+      await setTestLocale('uz');
+    });
+    expect(
+      await screen.findByText('Iltimos, kurs nomi maydonini tekshirib, qayta yuboring.'),
+    ).toBeTruthy();
+    expect((screen.getByRole('textbox', { name: 'Kurs nomi' }) as HTMLInputElement).value).toBe(
+      'Deferred course title',
+    );
+  });
+
   it('preserves unsaved course edits when a course refetch returns the same identity', async () => {
     let courseRequestCount = 0;
     const request: ApiClient['request'] = async (options) => {
@@ -266,6 +615,104 @@ describe('InstructorCourseEditorPage', () => {
     await waitFor(() => expect(courseRequestCount).toBeGreaterThan(1));
     expect((courseTitle as HTMLInputElement).value).toBe('Unsaved instructor edit');
   });
+
+  it.each([
+    'Ordinary course title',
+    'Dollar $& title',
+    'Dollar $` title',
+    "Dollar $' title",
+    'Braces {courseTitle}',
+    'Unicode курс — dars',
+  ])('keeps the literal destructive course title %s and returns focus on cancel', async (title) => {
+    const request: ApiClient['request'] = async (options) => {
+      if (options.path === '/me') return decode(options, instructor);
+      if (options.path === '/courses/7' && options.method === 'GET')
+        return decode(options, { ...course, title });
+      throw new Error(`Unexpected request: ${options.method} ${options.path}`);
+    };
+    await renderPage({ request });
+    const user = userEvent.setup();
+    const deleteCourse = await screen.findByRole('button', { name: 'Delete course' });
+    await act(async () => {
+      await user.click(deleteCourse);
+    });
+    const dialog = await screen.findByRole('dialog', { name: 'Delete this course?' });
+    expect(dialog.textContent).toContain(title);
+    const descriptionId = dialog.getAttribute('aria-describedby');
+    expect(descriptionId).toBeTruthy();
+    expect(document.getElementById(descriptionId ?? '')?.textContent).toContain(title);
+    await act(async () => {
+      await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    });
+    await waitFor(() => expect(document.activeElement).toBe(deleteCourse));
+  });
+
+  it.each([
+    'Dollar $& lesson',
+    'Dollar $` lesson',
+    "Dollar $' lesson",
+    'Braces {lessonTitle}',
+    'Unicode урок — dars',
+    'Ordinary lesson title',
+  ])(
+    'preserves the literal hostile lesson title %s through cancel and one exact pending delete',
+    async (title) => {
+      let resolveDelete: (value: unknown) => void = () => {};
+      const deleteResponse = new Promise<unknown>((resolve) => {
+        resolveDelete = resolve;
+      });
+      const deleteRequests: ApiRequestOptions[] = [];
+      const request: ApiClient['request'] = async (options) => {
+        if (options.path === '/me') return decode(options, instructor);
+        if (options.path === '/courses/7' && options.method === 'GET') {
+          return decode(options, {
+            ...course,
+            lessons: [{ ...course.lessons[0], title }],
+          });
+        }
+        if (options.path === '/courses/7/lessons/8' && options.method === 'DELETE') {
+          deleteRequests.push(options);
+          return decode(options, await deleteResponse);
+        }
+        throw new Error(`Unexpected request: ${options.method} ${options.path}`);
+      };
+      await renderPage({ request });
+      const user = userEvent.setup();
+      const deleteLesson = await screen.findByRole('button', { name: 'Delete lesson' });
+      await act(async () => {
+        await user.click(deleteLesson);
+      });
+      const dialog = await screen.findByRole('dialog', { name: 'Delete this lesson?' });
+      expect(dialog.textContent).toContain(title);
+      const descriptionId = dialog.getAttribute('aria-describedby');
+      expect(document.getElementById(descriptionId ?? '')?.textContent).toContain(title);
+      await act(async () => {
+        await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+      });
+      await waitFor(() => expect(document.activeElement).toBe(deleteLesson));
+
+      await act(async () => {
+        await user.click(deleteLesson);
+      });
+      const pendingDialog = await screen.findByRole('dialog', { name: 'Delete this lesson?' });
+      const confirmation = within(pendingDialog).getByRole('button', { name: 'Delete lesson' });
+      await act(async () => {
+        await user.click(confirmation);
+      });
+      await waitFor(() => expect(deleteRequests).toHaveLength(1));
+      expect(
+        screen.getByRole('button', { name: 'Deleting lesson...' }).hasAttribute('disabled'),
+      ).toBe(true);
+      expect(deleteRequests).toHaveLength(1);
+      expect(deleteRequests[0]?.path).toBe('/courses/7/lessons/8');
+      expect(screen.getByRole('status').textContent).toContain('Deleting lesson...');
+
+      await act(async () => {
+        resolveDelete({ message: 'Lesson deleted.' });
+        await deleteResponse;
+      });
+    },
+  );
 
   it('locks all course inputs for the full pending-save duration', async () => {
     let resolveUpdate: (updatedCourse: typeof course) => void = () => {};

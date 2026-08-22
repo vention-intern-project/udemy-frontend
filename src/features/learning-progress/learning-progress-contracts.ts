@@ -5,10 +5,21 @@ import { ApiError, type SessionCacheEpoch } from '@shared/api';
 import type { LessonCompletionState, LessonProgressAttempt } from './model';
 
 export interface LearningFailure {
-  title: string;
-  message: string;
-  unavailable: boolean;
+  readonly titleKey: LearningFailureTitleKey;
+  readonly messageKey: LearningFailureMessageKey;
+  readonly unavailable: boolean;
 }
+
+export type LearningFailureTitleKey =
+  | 'cart:signInRequired'
+  | 'learning:learningDataUnavailable'
+  | 'learning:learningWorkspaceUnavailable';
+
+export type LearningFailureMessageKey =
+  | 'common:serverReturnedAnInvalidResponseTryAgain'
+  | 'learning:sessionEndedSignInToContinue'
+  | 'learning:thisLearningWorkspaceIsUnavailable'
+  | 'learning:tryAgainInAMoment';
 
 export interface LessonRowStateScope {
   readonly identity: string;
@@ -74,28 +85,28 @@ export function attemptFor(
 export function learningFailure(error: unknown): LearningFailure {
   if (error instanceof ApiError && (error.status === 403 || error.status === 404)) {
     return {
-      title: 'Learning workspace unavailable',
-      message: 'This learning workspace is unavailable.',
+      titleKey: 'learning:learningWorkspaceUnavailable',
+      messageKey: 'learning:thisLearningWorkspaceIsUnavailable',
       unavailable: true,
     };
   }
   if (error instanceof ApiError && error.status === 401) {
     return {
-      title: 'Sign in required',
-      message: 'Your session has ended. Sign in to continue learning.',
+      titleKey: 'cart:signInRequired',
+      messageKey: 'learning:sessionEndedSignInToContinue',
       unavailable: false,
     };
   }
   if (error instanceof ApiError && error.kind === 'invalid_response') {
     return {
-      title: 'Learning data is unavailable',
-      message: 'The server returned an invalid response. Try again.',
+      titleKey: 'learning:learningDataUnavailable',
+      messageKey: 'common:serverReturnedAnInvalidResponseTryAgain',
       unavailable: false,
     };
   }
   return {
-    title: 'Learning data is unavailable',
-    message: 'Try again in a moment.',
+    titleKey: 'learning:learningDataUnavailable',
+    messageKey: 'learning:tryAgainInAMoment',
     unavailable: false,
   };
 }

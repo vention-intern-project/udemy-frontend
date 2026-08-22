@@ -3,17 +3,27 @@
 import { QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { I18nextProvider } from 'react-i18next';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createAppQueryClient } from '../../src/app/query';
 import {
   SessionProvider,
   useSession,
   type AccessTokenStore,
+  type SessionContextValue,
 } from '../../src/features/auth-session';
+import * as authSession from '../../src/features/auth-session';
 import { CourseDetailPage } from '../../src/pages/course-detail-page';
+import { CourseActionPanel } from '../../src/pages/course-detail-page/CourseActionPanel';
+import {
+  courseMutationDisposition,
+  type CourseMutationDisposition,
+  type CoursePrimaryActionState,
+} from '../../src/features/course-detail';
 import { ApiError, type ApiClient, type ApiRequestOptions } from '../../src/shared/api';
+import { localeRuntime, type Locale } from '../../src/shared/locale';
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean | undefined;
@@ -33,6 +43,72 @@ const course = {
   instructor: { id: 2, name: 'Ada', surname: 'Lovelace' },
   lessons: [],
 };
+
+const courseActionPanelCourse = {
+  id: course.id,
+  instructorId: course.instructor.id,
+  instructorName: `${course.instructor.name} ${course.instructor.surname}`,
+  title: course.title,
+  description: course.description,
+  price: course.price,
+  currency: course.currency,
+  publishedAt: course.published_at,
+  lessons: [],
+};
+
+interface LocalizedCourseActionScenario {
+  readonly locale: Locale;
+  readonly guestGuidance: string;
+  readonly guestLabel: string;
+  readonly disabled: readonly [CoursePrimaryActionState, string][];
+}
+
+interface LocalizedCourseActionPriceScenario {
+  readonly locale: Locale;
+  readonly freeLabel: string;
+  readonly unavailableLabel: string;
+}
+
+const localizedCourseActionScenarios: readonly LocalizedCourseActionScenario[] = [
+  {
+    locale: 'ru',
+    guestGuidance: 'Войти, чтобы записаться бесплатно.',
+    guestLabel: 'Записаться бесплатно',
+    disabled: [
+      [{ kind: 'disabled', labelKey: 'course:courseIsNotPublished' }, 'Курс не опубликован'],
+      [{ kind: 'disabled', labelKey: 'course:actionUnavailable' }, 'Действие недоступно'],
+      [
+        { kind: 'disabled', labelKey: 'course:unavailableForAccount' },
+        'Недоступно для этого аккаунта',
+      ],
+      [{ kind: 'disabled', labelKey: 'course:checkingAvailability' }, 'Проверяем доступность'],
+      [{ kind: 'disabled', labelKey: 'course:alreadyEnrolled' }, 'Вы уже записаны'],
+      [{ kind: 'disabled', labelKey: 'course:alreadyInCart' }, 'Уже в корзине'],
+    ],
+  },
+  {
+    locale: 'uz',
+    guestGuidance: 'Kiring bepul yozilish uchun.',
+    guestLabel: 'Bepul yozilish',
+    disabled: [
+      [{ kind: 'disabled', labelKey: 'course:courseIsNotPublished' }, 'Kurs nashr qilinmagan'],
+      [{ kind: 'disabled', labelKey: 'course:actionUnavailable' }, 'Amal mavjud emas'],
+      [
+        { kind: 'disabled', labelKey: 'course:unavailableForAccount' },
+        'Bu akkaunt uchun mavjud emas',
+      ],
+      [{ kind: 'disabled', labelKey: 'course:checkingAvailability' }, 'Mavjudligi tekshirilmoqda'],
+      [{ kind: 'disabled', labelKey: 'course:alreadyEnrolled' }, 'Siz allaqachon yozilgansiz'],
+      [{ kind: 'disabled', labelKey: 'course:alreadyInCart' }, 'Savatda allaqachon bor'],
+    ],
+  },
+];
+
+const localizedCourseActionPriceScenarios: readonly LocalizedCourseActionPriceScenario[] = [
+  { locale: 'en', freeLabel: 'FREE', unavailableLabel: 'Price unavailable' },
+  { locale: 'ru', freeLabel: 'БЕСПЛАТНО', unavailableLabel: 'Цена недоступна' },
+  { locale: 'uz', freeLabel: 'BEPUL', unavailableLabel: 'Narx mavjud emas' },
+];
 
 const studentProfile = {
   email: 'student@example.test',
@@ -75,6 +151,126 @@ const cartItemMutation = {
   course: { id: 7, title: course.title, price: '19.99', currency: course.currency },
 };
 
+interface CourseActionRendererScenario {
+  readonly name: string;
+  readonly disposition: CourseMutationDisposition;
+  readonly message: string;
+}
+
+const courseActionRendererScenarios: readonly CourseActionRendererScenario[] = [
+  {
+    name: 'retryable failure',
+    disposition: courseMutationDisposition(
+      new ApiError({ kind: 'offline', status: null, message: 'private offline detail' }),
+    ),
+    message: 'The action failed. Check your connection and try again.',
+  },
+  {
+    name: 'generic failure',
+    disposition: courseMutationDisposition(
+      new ApiError({ kind: 'validation', status: 422, message: 'private validation detail' }),
+    ),
+    message: 'This action is currently unavailable.',
+  },
+  {
+    name: 'publication failure',
+    disposition: courseMutationDisposition(
+      new ApiError({ kind: 'bad_request', status: 400, message: 'Course is not published' }),
+    ),
+    message: 'Course is not published',
+  },
+  {
+    name: 'unauthorized failure',
+    disposition: courseMutationDisposition(
+      new ApiError({ kind: 'unauthorized', status: 401, message: 'private credentials detail' }),
+    ),
+    message: 'Log in again to continue.',
+  },
+  {
+    name: 'forbidden failure',
+    disposition: courseMutationDisposition(
+      new ApiError({ kind: 'forbidden', status: 403, message: 'private authorization detail' }),
+    ),
+    message: 'This action is not available for your account.',
+  },
+  {
+    name: 'not-found failure',
+    disposition: courseMutationDisposition(
+      new ApiError({ kind: 'not_found', status: 404, message: 'private missing detail' }),
+    ),
+    message: 'This course is no longer available.',
+  },
+  {
+    name: 'already-enrolled conflict',
+    disposition: courseMutationDisposition(
+      new ApiError({ kind: 'conflict', status: 409, message: 'Already enrolled in this course' }),
+    ),
+    message: 'The course is already in your learning list.',
+  },
+  {
+    name: 'already-in-cart conflict',
+    disposition: courseMutationDisposition(
+      new ApiError({ kind: 'conflict', status: 409, message: 'Course already in cart' }),
+    ),
+    message: 'The course is already in your cart.',
+  },
+  {
+    name: 'stale conflict',
+    disposition: courseMutationDisposition(
+      new ApiError({ kind: 'conflict', status: 409, message: 'private stale conflict detail' }),
+    ),
+    message: 'The course state changed. Availability has been refreshed.',
+  },
+];
+
+interface CourseResidualLocaleScenario {
+  readonly locale: Locale;
+  readonly loadingDetails: string;
+  readonly loadingOutline: string;
+  readonly outlineHeading: string;
+  readonly emptyOutline: string;
+  readonly lessonMarker: string;
+  readonly lessonType: string;
+  readonly draftCourse: string;
+  readonly notFoundDescription: string;
+}
+
+const courseResidualLocaleScenarios: readonly CourseResidualLocaleScenario[] = [
+  {
+    locale: 'en',
+    loadingDetails: 'Loading course details',
+    loadingOutline: 'Loading course outline',
+    outlineHeading: 'Course outline',
+    emptyOutline: 'No lessons have been added yet.',
+    lessonMarker: 'lesson ·',
+    lessonType: 'Video',
+    draftCourse: 'Draft course',
+    notFoundDescription: 'This course does not exist or is no longer available.',
+  },
+  {
+    locale: 'ru',
+    loadingDetails: 'Загрузка сведений о курсе',
+    loadingOutline: 'Загрузка программы курса',
+    outlineHeading: 'Программа курса',
+    emptyOutline: 'Уроки ещё не добавлены.',
+    lessonMarker: 'урок ·',
+    lessonType: 'Видео',
+    draftCourse: 'Черновик курса',
+    notFoundDescription: 'Курс не существует или больше недоступен.',
+  },
+  {
+    locale: 'uz',
+    loadingDetails: 'Kurs tafsilotlari yuklanmoqda',
+    loadingOutline: 'Kurs dasturi yuklanmoqda',
+    outlineHeading: 'Kurs dasturi',
+    emptyOutline: 'Hali darslar qo‘shilmagan.',
+    lessonMarker: 'dars ·',
+    lessonType: 'Video',
+    draftCourse: 'Kurs qoralamasi',
+    notFoundDescription: 'Bu kurs mavjud emas yoki endi ochiq emas.',
+  },
+];
+
 function lesson(downloadUrl: string | null) {
   return {
     id: 3,
@@ -88,13 +284,13 @@ function lesson(downloadUrl: string | null) {
   };
 }
 
-function outline(downloadUrl: string | null) {
+function outline(downloadUrl: string | null, items = 1) {
   return {
-    items: [lesson(downloadUrl)],
+    items: items === 0 ? [] : [lesson(downloadUrl)],
     page: 1,
     page_size: 100,
-    total: 1,
-    pages: 1,
+    total: items,
+    pages: items,
     has_next: false,
     has_previous: false,
   };
@@ -158,22 +354,28 @@ function renderPage(
 ) {
   const queryClient = createAppQueryClient();
   const view = render(
-    <QueryClientProvider client={queryClient}>
-      <SessionProvider client={{ request }} tokenStore={options.tokenStore ?? store(token)}>
-        <MemoryRouter
-          initialEntries={[path]}
-          future={{ v7_relativeSplatPath: true, v7_startTransition: true }}
-        >
-          <PageHarnessControls {...options} />
-          <Routes>
-            <Route path="/courses/:courseId" element={<CourseDetailPage />} />
-          </Routes>
-        </MemoryRouter>
-      </SessionProvider>
-    </QueryClientProvider>,
+    <I18nextProvider i18n={localeRuntime}>
+      <QueryClientProvider client={queryClient}>
+        <SessionProvider client={{ request }} tokenStore={options.tokenStore ?? store(token)}>
+          <MemoryRouter
+            initialEntries={[path]}
+            future={{ v7_relativeSplatPath: true, v7_startTransition: true }}
+          >
+            <PageHarnessControls {...options} />
+            <Routes>
+              <Route path="/courses/:courseId" element={<CourseDetailPage />} />
+            </Routes>
+          </MemoryRouter>
+        </SessionProvider>
+      </QueryClientProvider>
+    </I18nextProvider>,
   );
   return { ...view, queryClient };
 }
+
+beforeEach(async () => {
+  await localeRuntime.changeLanguage('en');
+});
 
 afterEach(() => {
   cleanup();
@@ -181,6 +383,303 @@ afterEach(() => {
 });
 
 describe('CourseDetailPage', () => {
+  it.each(localizedCourseActionScenarios)(
+    'renders every guest and disabled Course Action descriptor in $locale',
+    async ({ locale, guestGuidance, guestLabel, disabled }) => {
+      await localeRuntime.changeLanguage(locale);
+      const renderAction = (action: CoursePrimaryActionState) =>
+        render(
+          <I18nextProvider i18n={localeRuntime}>
+            <MemoryRouter>
+              <CourseActionPanel
+                action={action}
+                course={courseActionPanelCourse}
+                isDraft={false}
+                mutationState={{ status: 'idle' }}
+                onRetryPreflight={() => {}}
+                onSubmitAction={() => {}}
+                preflight="eligible"
+              />
+            </MemoryRouter>
+          </I18nextProvider>,
+        );
+
+      renderAction({
+        kind: 'login',
+        helper: {
+          linkTextKey: 'course:signIn',
+          guidanceKey: 'course:signInToEnrollForFree',
+        },
+        labelKey: 'course:enrollForFree',
+        to: '/login?returnTo=%2Fcourses%2F7',
+      });
+      const guestLink = screen.getByRole('link', { name: locale === 'ru' ? 'Войти' : 'Kiring' });
+      expect(guestLink.closest('p')?.textContent).toBe(guestGuidance);
+      expect((screen.getByRole('button', { name: guestLabel }) as HTMLButtonElement).disabled).toBe(
+        true,
+      );
+      cleanup();
+
+      disabled.forEach(([action, label]) => {
+        renderAction(action);
+        expect((screen.getByRole('button', { name: label }) as HTMLButtonElement).disabled).toBe(
+          true,
+        );
+        cleanup();
+      });
+    },
+  );
+
+  it.each(localizedCourseActionPriceScenarios)(
+    'renders localized free and unavailable Course Action prices in $locale without exposing raw invalid data',
+    async ({ locale, freeLabel, unavailableLabel }) => {
+      await localeRuntime.changeLanguage(locale);
+      const renderAction = (price: string) =>
+        render(
+          <I18nextProvider i18n={localeRuntime}>
+            <MemoryRouter>
+              <CourseActionPanel
+                action={{ kind: 'enroll', labelKey: 'catalog:enrollFree' }}
+                course={{ ...courseActionPanelCourse, price }}
+                isDraft={false}
+                mutationState={{ status: 'idle' }}
+                onRetryPreflight={() => {}}
+                onSubmitAction={() => {}}
+                preflight="eligible"
+              />
+            </MemoryRouter>
+          </I18nextProvider>,
+        );
+
+      const freeView = renderAction('0.00');
+      expect(screen.getByText(freeLabel)).toBeTruthy();
+      expect(document.querySelector('data')?.getAttribute('value')).toBe('0.00');
+      freeView.unmount();
+
+      renderAction('not-a-decimal');
+      expect(screen.getByText(unavailableLabel)).toBeTruthy();
+      expect(document.body.textContent).not.toContain('USD not-a-decimal');
+      expect(document.querySelector('data')?.getAttribute('value')).toBe('not-a-decimal');
+    },
+  );
+
+  it.each(courseActionRendererScenarios)(
+    'renders the exact public message for $name without private mutation detail',
+    ({ disposition, message }) => {
+      render(
+        <I18nextProvider i18n={localeRuntime}>
+          <MemoryRouter>
+            <CourseActionPanel
+              action={{ kind: 'enroll', labelKey: 'catalog:enrollFree' }}
+              course={courseActionPanelCourse}
+              isDraft={false}
+              mutationState={{ status: 'error', disposition }}
+              onRetryPreflight={() => {}}
+              onSubmitAction={() => {}}
+              preflight="eligible"
+            />
+          </MemoryRouter>
+        </I18nextProvider>,
+      );
+
+      expect(screen.getByText(message)).toBeTruthy();
+      expect(document.body.textContent).not.toContain('private');
+    },
+  );
+
+  it('keeps the shared reconciliation message locale-reactive while it remains visible', async () => {
+    render(
+      <I18nextProvider i18n={localeRuntime}>
+        <MemoryRouter>
+          <CourseActionPanel
+            action={{ kind: 'enroll', labelKey: 'catalog:enrollFree' }}
+            course={courseActionPanelCourse}
+            isDraft={false}
+            mutationState={{ status: 'idle' }}
+            onRetryPreflight={() => {}}
+            onSubmitAction={() => {}}
+            preflight="unavailable"
+          />
+        </MemoryRouter>
+      </I18nextProvider>,
+    );
+
+    expect(screen.getByText('We could not verify your enrollment or cart.')).toBeTruthy();
+    await act(async () => {
+      await localeRuntime.changeLanguage('ru');
+    });
+    expect(screen.getByText('Не удалось проверить запись на курс или корзину.')).toBeTruthy();
+    await act(async () => {
+      await localeRuntime.changeLanguage('uz');
+    });
+    expect(screen.getByText('Kursga yozilish yoki savatni tekshirib bo‘lmadi.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Qayta urinish' })).toBeTruthy();
+  });
+
+  it.each([
+    {
+      locale: 'ru' as const,
+      price: '0.00',
+      label: 'Записаться бесплатно',
+      mutationPath: '/enrollments',
+      mutationResponse: enrollmentMutation,
+    },
+    {
+      locale: 'uz' as const,
+      price: '19.99',
+      label: 'Savatga qo‘shish',
+      mutationPath: '/cart/items',
+      mutationResponse: cartItemMutation,
+    },
+  ])(
+    'localizes the eligible authenticated primary action in $locale without changing its write target',
+    async ({ locale, price, label, mutationPath, mutationResponse }) => {
+      await localeRuntime.changeLanguage(locale);
+      let mutationRequests = 0;
+      const request: ApiClient['request'] = async <TResponse, TBody>(
+        options: ApiRequestOptions<TBody, TResponse>,
+      ) => {
+        if (options.path === '/me') return decode(options, studentProfile);
+        if (options.path === '/courses/7') return decode(options, { ...course, price });
+        if (options.path === '/courses/7/lessons') return decode(options, outline(null));
+        if (options.path === '/cart') return decode(options, emptyCart);
+        if (options.path === '/enrollments/my') return decode(options, emptyEnrollments);
+        if (options.path === mutationPath) {
+          mutationRequests += 1;
+          return decode(options, mutationResponse);
+        }
+        throw new Error(`Unexpected request ${options.path}`);
+      };
+      renderPage(request, 'token');
+
+      const action = await screen.findByRole('button', { name: label });
+      await act(async () => {
+        await userEvent.setup().click(action);
+      });
+      await waitFor(() => expect(mutationRequests).toBe(1));
+    },
+  );
+
+  it('keeps an authenticated session without a cache epoch in non-actionable preflight state', async () => {
+    let preflightReads = 0;
+    let writes = 0;
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/courses/7') return decode(options, course);
+      if (options.path === '/courses/7/lessons') return decode(options, outline(null));
+      if (options.path === '/cart' || options.path === '/enrollments/my') {
+        preflightReads += 1;
+        return decode(options, options.path === '/cart' ? emptyCart : emptyEnrollments);
+      }
+      if (options.path === '/enrollments' || options.path === '/cart/items') writes += 1;
+      throw new Error(`Unexpected request ${options.path}`);
+    };
+    const requestSession = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ): Promise<TResponse> => request(options);
+    const session: SessionContextValue = {
+      state: {
+        status: 'authenticated',
+        user: {
+          email: studentProfile.email,
+          name: studentProfile.name,
+          surname: studentProfile.surname,
+          role: 'student',
+          birthday: studentProfile.birthday,
+          phoneNumber: studentProfile.phone_number,
+          createdAt: studentProfile.created_at,
+        },
+      },
+      cacheEpoch: null,
+      retryBootstrap: () => {},
+      acceptAccessToken: () => {},
+      clearSession: () => {},
+      requestPublic: requestSession,
+      requestRequired: requestSession,
+      requestOptional: requestSession,
+    };
+    const useSessionSpy = vi.spyOn(authSession, 'useSession').mockReturnValue(session);
+    const queryClient = createAppQueryClient();
+    render(
+      <I18nextProvider i18n={localeRuntime}>
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter initialEntries={['/courses/7']}>
+            <Routes>
+              <Route path="/courses/:courseId" element={<CourseDetailPage />} />
+            </Routes>
+          </MemoryRouter>
+        </QueryClientProvider>
+      </I18nextProvider>,
+    );
+
+    const action = await screen.findByRole('button', { name: 'Checking availability' });
+    expect((action as HTMLButtonElement).disabled).toBe(true);
+    expect(preflightReads).toBe(0);
+    await userEvent.setup().click(action);
+    expect(writes).toBe(0);
+    useSessionSpy.mockRestore();
+  });
+
+  it.each(courseResidualLocaleScenarios)(
+    'resolves every admitted course residual in $locale without changing API-authored data',
+    async (copy) => {
+      await localeRuntime.changeLanguage(copy.locale);
+      const pendingDetailRequest: ApiClient['request'] = async <TResponse,>() =>
+        await new Promise<TResponse>(() => undefined);
+      const detailLoading = renderPage(pendingDetailRequest);
+      expect(screen.getByRole('status', { name: copy.loadingDetails })).toBeTruthy();
+      detailLoading.unmount();
+
+      const pendingOutlineRequest: ApiClient['request'] = async <TResponse, TBody>(
+        options: ApiRequestOptions<TBody, TResponse>,
+      ) => {
+        if (options.path === '/courses/7') return decode(options, course);
+        return await new Promise<TResponse>(() => undefined);
+      };
+      const outlineLoading = renderPage(pendingOutlineRequest);
+      expect(
+        await screen.findByRole('heading', { level: 1, name: 'React foundations' }),
+      ).toBeTruthy();
+      expect(screen.getByRole('status', { name: copy.loadingOutline })).toBeTruthy();
+      outlineLoading.unmount();
+
+      const populatedRequest: ApiClient['request'] = async <TResponse, TBody>(
+        options: ApiRequestOptions<TBody, TResponse>,
+      ) => {
+        if (options.path === '/courses/7') return decode(options, course);
+        if (options.path === '/courses/7/lessons') return decode(options, outline(null));
+        throw new Error(`Unexpected request ${options.path}`);
+      };
+      const populated = renderPage(populatedRequest);
+      expect(
+        await screen.findByRole('heading', { level: 2, name: copy.outlineHeading }),
+      ).toBeTruthy();
+      expect(await screen.findByRole('heading', { level: 3, name: 'Welcome' })).toBeTruthy();
+      expect(screen.getByText(new RegExp(`${copy.lessonType} ${copy.lessonMarker}`))).toBeTruthy();
+      expect(screen.getByText('Ada Lovelace')).toBeTruthy();
+      populated.unmount();
+
+      const draftRequest: ApiClient['request'] = async <TResponse, TBody>(
+        options: ApiRequestOptions<TBody, TResponse>,
+      ) => {
+        if (options.path === '/courses/7')
+          return decode(options, { ...course, published_at: null });
+        if (options.path === '/courses/7/lessons') return decode(options, outline(null, 0));
+        throw new Error(`Unexpected request ${options.path}`);
+      };
+      const draft = renderPage(draftRequest);
+      expect(await screen.findByText(copy.draftCourse)).toBeTruthy();
+      expect(await screen.findByText(copy.emptyOutline)).toBeTruthy();
+      draft.unmount();
+
+      const invalidRequest = vi.fn(async () => undefined) as unknown as ApiClient['request'];
+      renderPage(invalidRequest, null, '/courses/not-a-number');
+      expect(screen.getByText(copy.notFoundDescription)).toBeTruthy();
+      expect(invalidRequest).not.toHaveBeenCalled();
+    },
+  );
+
   it.each([
     ['/media/lessons/private.mp4', 'populated-link'],
     [null, 'anonymous-redacted'],
@@ -200,7 +699,8 @@ describe('CourseDetailPage', () => {
     ).toBeTruthy();
     expect(await screen.findByRole('heading', { level: 3, name: 'Welcome' })).toBeTruthy();
     expect(screen.getByText('Ada Lovelace')).toBeTruthy();
-    expect(document.querySelector('data')?.textContent).toBe('USD 0.00');
+    expect(document.querySelector('data')?.textContent).toBe('FREE');
+    expect(document.querySelector('data')?.getAttribute('value')).toBe('0.00');
     expect(screen.getByText('1', { selector: 'dd' })).toBeTruthy();
     const signIn = await screen.findByRole('link', { name: 'Sign in' });
     expect(signIn.getAttribute('href')).toBe('/login?returnTo=%2Fcourses%2F7');
@@ -298,6 +798,27 @@ describe('CourseDetailPage', () => {
       screen.getByRole('link', { name: 'Return to the course catalog' }).getAttribute('href'),
     ).toBe('/');
     expect(paths).toEqual(['/courses/7']);
+  });
+
+  it('resolves a settled course-detail failure in the current locale without exposing server detail', async () => {
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/courses/7')
+        throw new ApiError({
+          kind: 'invalid_response',
+          status: 200,
+          message: 'private decoder detail',
+        });
+      throw new Error(`Unexpected request ${options.path}`);
+    };
+    renderPage(request);
+
+    expect(await screen.findByRole('heading', { name: 'Course data is unavailable' })).toBeTruthy();
+    await act(() => localeRuntime.changeLanguage('ru'));
+    expect(await screen.findByRole('heading', { name: 'Данные курса недоступны' })).toBeTruthy();
+    expect(screen.getByText('Сервер вернул некорректный ответ. Повторите попытку.')).toBeTruthy();
+    expect(screen.queryByText('private decoder detail')).toBeNull();
   });
 
   it('retries only the failed outline query and exposes an empty outline distinctly', async () => {
@@ -768,6 +1289,51 @@ describe('CourseDetailPage', () => {
       expect(mutationRequests).toBe(1);
     },
   );
+
+  it('re-resolves a retained mutation failure when the active locale changes', async () => {
+    let mutationRequests = 0;
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/me') return decode(options, studentProfile);
+      if (options.path === '/courses/7') return decode(options, course);
+      if (options.path === '/courses/7/lessons') return decode(options, outline(null));
+      if (options.path === '/cart') return decode(options, emptyCart);
+      if (options.path === '/enrollments/my') return decode(options, emptyEnrollments);
+      if (options.path === '/enrollments') {
+        mutationRequests += 1;
+        throw new ApiError({ kind: 'offline', status: null, message: 'private mutation detail' });
+      }
+      throw new Error(`Unexpected request ${options.path}`);
+    };
+    renderPage(request, 'token');
+
+    const enroll = await screen.findByRole('button', { name: 'Enroll free' });
+    await act(async () => {
+      await userEvent.setup().click(enroll);
+    });
+    expect(
+      await screen.findByText('The action failed. Check your connection and try again.'),
+    ).toBeTruthy();
+    await act(async () => {
+      await localeRuntime.changeLanguage('ru');
+    });
+    expect(
+      await screen.findByText(
+        'Не удалось выполнить действие. Проверьте подключение и повторите попытку.',
+      ),
+    ).toBeTruthy();
+    await act(async () => {
+      await localeRuntime.changeLanguage('uz');
+    });
+    expect(
+      await screen.findByText(
+        'Amalni bajarib bo‘lmadi. Ulanishni tekshirib, qayta urinib ko‘ring.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText('private mutation detail')).toBeNull();
+    expect(mutationRequests).toBe(1);
+  });
 
   it.each([
     [

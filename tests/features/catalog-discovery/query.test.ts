@@ -9,6 +9,17 @@ import {
 } from '../../../src/features/catalog-discovery';
 
 describe('catalog URL query contract', () => {
+  it('returns locale-neutral validation keys instead of rendered validation copy', () => {
+    expect(
+      validateCatalogDraft({
+        search_query: '',
+        min_price: '-1',
+        max_price: '',
+        sort: 'created_at',
+      }).errors,
+    ).toEqual({ min_price: 'nonNegativePrice' });
+  });
+
   it('uses API-008 names and customer-facing non-default sorts', () => {
     const query = parseCatalogQuery(
       new URLSearchParams('search_query=%20React%20&min_price=10&max_price=30&sort=-price&page=2'),

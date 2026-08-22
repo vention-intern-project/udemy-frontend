@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { matchPath } from 'react-router-dom';
 
+import { MLUX_003_RUNTIME_MAPPING } from '../../src/shared/locale';
 import {
   APP_ROUTE_BY_ID,
   APP_ROUTES,
@@ -8,6 +9,44 @@ import {
   homeForRole,
   routeForPath,
 } from '../../src/app/router';
+
+interface ExpectedRouteTitleBinding {
+  readonly id: (typeof APP_ROUTES)[number]['id'];
+  readonly titleKey: (typeof APP_ROUTES)[number]['titleKey'];
+}
+
+const MLUX_003_EXPECTED_ROUTE_TITLE_BINDINGS: readonly ExpectedRouteTitleBinding[] = [
+  { id: 'PAGE-001', titleKey: 'routes:courseCatalogTitle' },
+  { id: 'PAGE-002', titleKey: 'routes:courseDetailsTitle' },
+  { id: 'PAGE-003', titleKey: 'routes:createAccountTitle' },
+  { id: 'PAGE-004', titleKey: 'navigation:logIn' },
+  { id: 'PAGE-005', titleKey: 'routes:forgotPasswordTitle' },
+  { id: 'PAGE-006', titleKey: 'routes:resetPasswordTitle' },
+  { id: 'PAGE-007', titleKey: 'common:cart' },
+  { id: 'PAGE-008', titleKey: 'navigation:myLearning' },
+  { id: 'PAGE-009', titleKey: 'routes:learningDetailsTitle' },
+  { id: 'PAGE-014', titleKey: 'routes:courseAssistantTitle' },
+  { id: 'PAGE-015', titleKey: 'routes:aiAssistantTitle' },
+  { id: 'PAGE-010', titleKey: 'navigation:instructorCourses' },
+  { id: 'PAGE-011', titleKey: 'routes:editCourseTitle' },
+  { id: 'PAGE-012', titleKey: 'routes:courseEnrollmentsTitle' },
+  { id: 'PAGE-013', titleKey: 'routes:editLessonTitle' },
+];
+
+function routeBindingViolations(bindings: readonly ExpectedRouteTitleBinding[]): readonly string[] {
+  const expectedById = new Map(
+    MLUX_003_EXPECTED_ROUTE_TITLE_BINDINGS.map(({ id, titleKey }) => [id, titleKey]),
+  );
+  const violations: string[] = [];
+
+  for (const { id, titleKey } of bindings) {
+    if (expectedById.get(id) !== titleKey) {
+      violations.push(`${id} must use ${expectedById.get(id)}`);
+    }
+  }
+
+  return violations;
+}
 
 describe('application route registry', () => {
   it('matches every installed PAGE-to-path/access/layout row', () => {
@@ -60,6 +99,29 @@ describe('application route registry', () => {
     expect(Object.keys(APP_ROUTE_BY_ID)).toHaveLength(15);
     expect('PAGE-014' in APP_ROUTE_BY_ID).toBe(true);
     expect('PAGE-015' in APP_ROUTE_BY_ID).toBe(true);
+  });
+
+  it('keeps every registered page bound to the independently enumerated MLUX-003 title key', () => {
+    const bindings = APP_ROUTES.map(({ id, titleKey }) => ({ id, titleKey }));
+    const mappedLocaleKeys = new Set(
+      MLUX_003_RUNTIME_MAPPING.map(({ namespace, key }) => `${namespace}:${key}`),
+    );
+
+    expect(bindings).toEqual(MLUX_003_EXPECTED_ROUTE_TITLE_BINDINGS);
+    expect(routeBindingViolations(bindings)).toEqual([]);
+    for (const { titleKey } of MLUX_003_EXPECTED_ROUTE_TITLE_BINDINGS) {
+      expect(mappedLocaleKeys).toContain(titleKey);
+    }
+  });
+
+  it('rejects a wrong registered route title binding', () => {
+    const mutatedBindings = APP_ROUTES.map(({ id, titleKey }) =>
+      id === 'PAGE-001' ? { id, titleKey: 'routes:courseDetailsTitle' as const } : { id, titleKey },
+    );
+
+    expect(routeBindingViolations(mutatedBindings)).toEqual([
+      'PAGE-001 must use routes:courseCatalogTitle',
+    ]);
   });
 
   it('uses role-correct homes without inventing an admin workspace', () => {

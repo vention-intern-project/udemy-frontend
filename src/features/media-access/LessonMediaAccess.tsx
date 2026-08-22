@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, type SyntheticEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import type { LessonMediaLocator, LessonType } from '@entities/course';
 import { Button, VisuallyHidden } from '@shared/ui/primitives';
@@ -15,6 +16,7 @@ export interface LessonMediaAccessProps {
 }
 
 export function LessonMediaAccess({ lessonType, locator }: LessonMediaAccessProps) {
+  const { t } = useTranslation();
   const media = useAuthorizedLessonMedia(lessonType, locator);
   const videoRef = useRef<HTMLVideoElement>(null);
   const statusRef = useRef<HTMLParagraphElement>(null);
@@ -62,14 +64,14 @@ export function LessonMediaAccess({ lessonType, locator }: LessonMediaAccessProp
         role={requestedUnavailable ? 'status' : undefined}
         tabIndex={requestedUnavailable ? -1 : undefined}
       >
-        Media unavailable in this workspace
+        {t('course:mediaUnavailableInWorkspace')}
       </p>
     );
   }
   if (media.state.status === 'sign_in_required') {
     return (
       <p ref={statusRef} className={styles.unavailable} role="status" tabIndex={-1}>
-        Sign in required
+        {t('cart:signInRequired')}
       </p>
     );
   }
@@ -80,7 +82,7 @@ export function LessonMediaAccess({ lessonType, locator }: LessonMediaAccessProp
           ref={videoRef}
           className={styles.media}
           aria-busy={media.state.presentation === 'loading_metadata' || undefined}
-          aria-label="Lesson video preview"
+          aria-label={t('learning:lessonVideoPreview', { defaultValue: 'Lesson video preview' })}
           controls
           onError={handleVideoError}
           onLoadedMetadata={handleVideoLoadedMetadata}
@@ -89,7 +91,9 @@ export function LessonMediaAccess({ lessonType, locator }: LessonMediaAccessProp
           tabIndex={0}
         />
         <VisuallyHidden as="p" role="status">
-          {media.state.presentation === 'ready' ? 'Video ready.' : 'Preparing video…'}
+          {media.state.presentation === 'ready'
+            ? t('learning:videoReady', { defaultValue: 'Video ready.' })
+            : t('learning:preparingVideo', { defaultValue: 'Preparing video…' })}
         </VisuallyHidden>
       </div>
     ) : (
@@ -97,7 +101,7 @@ export function LessonMediaAccess({ lessonType, locator }: LessonMediaAccessProp
         <Suspense
           fallback={
             <p className={styles.pdfLoading} role="status">
-              Preparing PDF preview…
+              {t('course:preparingPdfPreview')}
             </p>
           }
         >
@@ -109,23 +113,30 @@ export function LessonMediaAccess({ lessonType, locator }: LessonMediaAccessProp
   if (media.state.status === 'error') {
     return (
       <div ref={retryContainerRef} className={styles.failure}>
-        <p role="status">Media could not be loaded. Try again.</p>
+        <p role="status">
+          {t('learning:mediaCouldNotBeLoadedTry', {
+            defaultValue: 'Media could not be loaded. Try again.',
+          })}
+        </p>
         <Button variant="secondary" onClick={media.load}>
-          Try again
+          {t('routes:tryAgain', { defaultValue: 'Try again' })}
         </Button>
       </div>
     );
   }
-  const label = lessonType === 'video' ? 'Load video' : 'Load PDF';
+  const label =
+    lessonType === 'video'
+      ? t('learning:loadVideo', { defaultValue: 'Load video' })
+      : t('learning:loadPdf', { defaultValue: 'Load PDF' });
   const isLoading = media.state.status === 'loading';
   return (
     <>
       <Button variant="secondary" aria-busy={isLoading || undefined} onClick={media.load}>
-        {isLoading ? 'Loading media…' : label}
+        {isLoading ? t('learning:loadingMedia', { defaultValue: 'Loading media…' }) : label}
       </Button>
       {isLoading ? (
         <VisuallyHidden as="p" role="status">
-          Loading media…
+          {t('learning:loadingMedia', { defaultValue: 'Loading media…' })}
         </VisuallyHidden>
       ) : null}
     </>

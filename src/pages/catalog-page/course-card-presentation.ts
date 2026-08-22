@@ -1,11 +1,9 @@
 import { CircleCheck, ShoppingCart, Trash2, UserPlus, type LucideIcon } from 'lucide-react';
 
 import type { ButtonVariant } from '@shared/ui/primitives';
+import { LOCALE_RESOURCES, formatLocaleCurrency, resolveLocale } from '@shared/locale';
 
 import type { CatalogCourseActionPresentation } from './useCatalogCourseActions';
-
-const DECIMAL_PRICE = /^(?:0|[1-9]\d*)(?:\.\d+)?$/;
-const CURRENCY_CODE = /^[A-Z]{3}$/;
 
 export interface CourseActionVisual {
   Icon: LucideIcon | null;
@@ -29,33 +27,19 @@ export function courseActionVisual(
   }
 }
 
-export function catalogActionLabel(
-  presentation: CatalogCourseActionPresentation,
-  label: string,
+export function formatCatalogPrice(
+  price: string,
+  currency: string,
+  locale: string,
+  freeLabel = 'FREE',
 ): string {
-  if (presentation === 'add-to-cart' && label === 'Log in to add to cart') return 'Add to cart';
-  if (presentation === 'enroll-free' && label === 'Log in to enroll free') return 'Enroll free';
-  return presentation === 'neutral' && label === 'Course is not published'
-    ? 'Not published'
-    : label;
-}
-
-export function formatCatalogPrice(price: string, currency: string): string {
-  if (!DECIMAL_PRICE.test(price) || !CURRENCY_CODE.test(currency)) return 'Price unavailable';
-  if (/^0(?:\.0+)?$/.test(price)) return 'FREE';
-  try {
-    const currencyMarker = new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency,
-      currencyDisplay: 'narrowSymbol',
-    })
-      .formatToParts(0)
-      .find((part) => part.type === 'currency')?.value;
-    if (!currencyMarker) return 'Price unavailable';
-    return /^[\p{L}]+$/u.test(currencyMarker)
-      ? `${currencyMarker}\u00A0${price}`
-      : `${currencyMarker}${price}`;
-  } catch {
-    return 'Price unavailable';
-  }
+  const localizedResources = LOCALE_RESOURCES[resolveLocale({ browserLocales: [locale] })]
+    .catalog as Record<string, string>;
+  return formatLocaleCurrency({
+    price,
+    currency,
+    locale,
+    freeLabel,
+    unavailableLabel: localizedResources.priceUnavailable ?? 'Price unavailable',
+  });
 }

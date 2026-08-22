@@ -6,7 +6,12 @@ import type { PropsWithChildren } from 'react';
 import { describe, expect, it } from 'vitest';
 
 import { createAppQueryClient } from '../../../src/app/query';
-import { cartFailureState, useCartWorkflow } from '../../../src/features/cart-workflow';
+import {
+  cartFailureState,
+  type CartFailureOperation,
+  type CartFailureState,
+  useCartWorkflow,
+} from '../../../src/features/cart-workflow';
 import {
   SessionProvider,
   useSession,
@@ -14,6 +19,7 @@ import {
   type SessionContextValue,
 } from '../../../src/features/auth-session';
 import { ApiError, type ApiClient, type ApiRequestOptions } from '../../../src/shared/api';
+import { localeRuntime } from '../../../src/shared/locale';
 
 const student = {
   email: 'student@example.test',
@@ -38,6 +44,93 @@ const cartWithItems = {
   currency: 'USD',
   item_count: 1,
 };
+
+type FixtureLocale = 'en' | 'ru' | 'uz';
+
+interface LocalizedFailureCopy {
+  readonly title: Record<FixtureLocale, string>;
+  readonly message: Record<FixtureLocale, string>;
+}
+
+interface CartFailureLocaleExpectation {
+  readonly name: string;
+  readonly error: ApiError;
+  readonly operation: CartFailureOperation;
+  readonly titleKey: CartFailureState['titleKey'];
+  readonly messageKey: CartFailureState['messageKey'];
+  readonly copy: LocalizedFailureCopy;
+}
+
+const CART_FAILURE_LOCALE_EXPECTATIONS: readonly CartFailureLocaleExpectation[] = [
+  {
+    name: 'load invalid response',
+    error: new ApiError({ kind: 'invalid_response', status: 200, message: 'private' }),
+    operation: 'load',
+    titleKey: 'cart:cartDataUnavailable',
+    messageKey: 'common:serverReturnedAnInvalidResponseTryAgain',
+    copy: {
+      title: {
+        en: 'Cart data is unavailable',
+        ru: 'Данные корзины недоступны',
+        uz: 'Savat ma’lumotlari mavjud emas',
+      },
+      message: {
+        en: 'The server returned an invalid response. Try again.',
+        ru: 'Сервер вернул некорректный ответ. Повторите попытку.',
+        uz: 'Server noto‘g‘ri javob qaytardi. Qayta urinib ko‘ring.',
+      },
+    },
+  },
+  {
+    name: 'remove missing item',
+    error: new ApiError({ kind: 'not_found', status: 404, message: 'private' }),
+    operation: 'remove',
+    titleKey: 'cart:cartChanged',
+    messageKey: 'cart:courseNoLongerInCart',
+    copy: {
+      title: { en: 'Cart changed', ru: 'Корзина изменилась', uz: 'Savat o‘zgardi' },
+      message: {
+        en: 'This course is no longer in your cart. Refresh to see the latest cart.',
+        ru: 'Этого курса больше нет в вашей корзине. Обновите страницу, чтобы увидеть актуальную корзину.',
+        uz: 'Bu kurs endi savatingizda yo‘q. Yangilangan savatni ko‘rish uchun sahifani yangilang.',
+      },
+    },
+  },
+  {
+    name: 'clear unavailable',
+    error: new ApiError({ kind: 'server', status: 503, message: 'private' }),
+    operation: 'clear',
+    titleKey: 'cart:unableToUpdateCart',
+    messageKey: 'common:pleaseTryAgain',
+    copy: {
+      title: {
+        en: 'Unable to update cart',
+        ru: 'Не удалось обновить корзину',
+        uz: 'Savatni yangilab bo‘lmadi',
+      },
+      message: { en: 'Please try again.', ru: 'Повторите попытку.', uz: 'Qayta urinib ko‘ring.' },
+    },
+  },
+  {
+    name: 'synchronization failure',
+    error: new ApiError({ kind: 'server', status: 503, message: 'private' }),
+    operation: 'synchronization',
+    titleKey: 'cart:cartUpdateNeedsRefresh',
+    messageKey: 'cart:cartChangedLatestCouldNotLoad',
+    copy: {
+      title: {
+        en: 'Cart update needs a refresh',
+        ru: 'Корзину нужно обновить',
+        uz: 'Savatni yangilash kerak',
+      },
+      message: {
+        en: 'Your cart changed, but the latest cart could not be loaded. Refresh to see the current cart.',
+        ru: 'Корзина изменилась, но не удалось загрузить последние данные. Обновите страницу, чтобы увидеть текущую корзину.',
+        uz: 'Savatingiz o‘zgardi, ammo yangilangan savatni yuklab bo‘lmadi. Joriy savatni ko‘rish uchun sahifani yangilang.',
+      },
+    },
+  },
+];
 
 function tokenStore(): AccessTokenStore {
   let value: string | null = 'student-token';
@@ -99,6 +192,22 @@ function createWorkflowHarness(request: ApiClient['request']) {
 }
 
 describe('cart workflow recovery projection', () => {
+  it.each(CART_FAILURE_LOCALE_EXPECTATIONS)(
+    'keeps $name locale-neutral while every locale resolves its semantic copy',
+    async ({ error, operation, titleKey, messageKey, copy }) => {
+      const failure = cartFailureState(error, operation);
+      expect(failure).toMatchObject({ titleKey, messageKey });
+      for (const locale of ['en', 'ru', 'uz'] as const) {
+        await localeRuntime.changeLanguage(locale);
+        expect(localeRuntime.t(failure.titleKey)).toBe(copy.title[locale]);
+        expect(localeRuntime.t(failure.messageKey)).toBe(copy.message[locale]);
+        expect(localeRuntime.t(failure.titleKey)).not.toContain('private');
+        expect(localeRuntime.t(failure.messageKey)).not.toContain('private');
+      }
+      await localeRuntime.changeLanguage('en');
+    },
+  );
+
   it('keeps a missing remove action recoverable as a concurrent cart change', () => {
     expect(
       cartFailureState(
@@ -114,7 +223,7 @@ describe('cart workflow recovery projection', () => {
         new ApiError({ kind: 'invalid_response', status: 200, message: 'private' }),
         'load',
       ),
-    ).toMatchObject({ title: 'Cart data is unavailable', action: { kind: 'retry' } });
+    ).toMatchObject({ titleKey: 'cart:cartDataUnavailable', action: { kind: 'retry' } });
   });
 
   it('keeps an authenticated forbidden cart on a safe non-login recovery path', () => {
@@ -123,7 +232,7 @@ describe('cart workflow recovery projection', () => {
         new ApiError({ kind: 'forbidden', status: 403, message: 'private' }),
         'load',
       ),
-    ).toMatchObject({ title: 'Cart is unavailable', action: { kind: 'catalog' } });
+    ).toMatchObject({ titleKey: 'cart:cartUnavailable', action: { kind: 'catalog' } });
   });
 
   it('maps a session-expired cart request to the login recovery action', () => {
@@ -132,7 +241,7 @@ describe('cart workflow recovery projection', () => {
         new ApiError({ kind: 'unauthorized', status: 401, message: 'private' }),
         'load',
       ),
-    ).toMatchObject({ title: 'Your session has expired', action: { kind: 'login' } });
+    ).toMatchObject({ titleKey: 'cart:sessionExpired', action: { kind: 'login' } });
   });
 
   it('does not commit stale remove feedback after the public session changes', async () => {

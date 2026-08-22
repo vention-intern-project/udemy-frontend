@@ -1,4 +1,5 @@
 import type { CSSProperties, HTMLAttributes, ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import styles from './Skeleton.module.css';
 
@@ -20,13 +21,9 @@ export function Skeleton({
     <span
       {...props}
       aria-hidden="true"
-      className={[
-        styles.skeleton,
-        styles[shape],
-        'ui-skeleton',
-        `ui-skeleton--${shape}`,
-        className,
-      ].filter(Boolean).join(' ')}
+      className={[styles.skeleton, styles[shape], 'ui-skeleton', `ui-skeleton--${shape}`, className]
+        .filter(Boolean)
+        .join(' ')}
       data-part="skeleton"
       style={{ ...style, width, height }}
     />
@@ -38,19 +35,15 @@ export interface SkeletonGroupProps extends HTMLAttributes<HTMLDivElement> {
   children: ReactNode;
 }
 
-export function SkeletonGroup({
-  label = 'Loading content',
-  className,
-  children,
-  ...props
-}: SkeletonGroupProps) {
+export function SkeletonGroup({ label, className, children, ...props }: SkeletonGroupProps) {
+  const { t } = useTranslation();
   return (
     <div
       {...props}
       role="status"
       aria-live="polite"
       aria-busy="true"
-      aria-label={label}
+      aria-label={label ?? t('a11y:loadingContent', { defaultValue: 'Loading content' })}
       className={[styles.group, 'ui-skeleton-group', className].filter(Boolean).join(' ')}
     >
       {children}
