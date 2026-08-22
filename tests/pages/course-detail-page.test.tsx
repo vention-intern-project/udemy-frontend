@@ -12,7 +12,9 @@ import {
   SessionProvider,
   useSession,
   type AccessTokenStore,
+  type SessionContextValue,
 } from '../../src/features/auth-session';
+import * as authSession from '../../src/features/auth-session';
 import { CourseDetailPage } from '../../src/pages/course-detail-page';
 import { CourseActionPanel } from '../../src/pages/course-detail-page/CourseActionPanel';
 import {
@@ -557,6 +559,67 @@ describe('CourseDetailPage', () => {
       await waitFor(() => expect(mutationRequests).toBe(1));
     },
   );
+
+  it('keeps an authenticated session without a cache epoch in non-actionable preflight state', async () => {
+    let preflightReads = 0;
+    let writes = 0;
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/courses/7') return decode(options, course);
+      if (options.path === '/courses/7/lessons') return decode(options, outline(null));
+      if (options.path === '/cart' || options.path === '/enrollments/my') {
+        preflightReads += 1;
+        return decode(options, options.path === '/cart' ? emptyCart : emptyEnrollments);
+      }
+      if (options.path === '/enrollments' || options.path === '/cart/items') writes += 1;
+      throw new Error(`Unexpected request ${options.path}`);
+    };
+    const requestSession = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ): Promise<TResponse> => request(options);
+    const session: SessionContextValue = {
+      state: {
+        status: 'authenticated',
+        user: {
+          email: studentProfile.email,
+          name: studentProfile.name,
+          surname: studentProfile.surname,
+          role: 'student',
+          birthday: studentProfile.birthday,
+          phoneNumber: studentProfile.phone_number,
+          createdAt: studentProfile.created_at,
+        },
+      },
+      cacheEpoch: null,
+      retryBootstrap: () => {},
+      acceptAccessToken: () => {},
+      clearSession: () => {},
+      requestPublic: requestSession,
+      requestRequired: requestSession,
+      requestOptional: requestSession,
+    };
+    const useSessionSpy = vi.spyOn(authSession, 'useSession').mockReturnValue(session);
+    const queryClient = createAppQueryClient();
+    render(
+      <I18nextProvider i18n={localeRuntime}>
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter initialEntries={['/courses/7']}>
+            <Routes>
+              <Route path="/courses/:courseId" element={<CourseDetailPage />} />
+            </Routes>
+          </MemoryRouter>
+        </QueryClientProvider>
+      </I18nextProvider>,
+    );
+
+    const action = await screen.findByRole('button', { name: 'Checking availability' });
+    expect((action as HTMLButtonElement).disabled).toBe(true);
+    expect(preflightReads).toBe(0);
+    await userEvent.setup().click(action);
+    expect(writes).toBe(0);
+    useSessionSpy.mockRestore();
+  });
 
   it.each(courseResidualLocaleScenarios)(
     'resolves every admitted course residual in $locale without changing API-authored data',

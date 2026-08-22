@@ -163,7 +163,9 @@ export function useCourseDetail(courseId: number | null) {
     queryFn: ({ signal }) => requestLessonOutline(session, courseId as number, signal),
     enabled: courseId !== null && detail.isSuccess,
   });
-  const preflightEnabled = Boolean(student && detail.data && detail.data.publishedAt !== null);
+  const preflightEnabled = Boolean(
+    student && subject && detail.data && detail.data.publishedAt !== null,
+  );
   const cart = useQuery({
     queryKey: subject ? cartQueryKey(subject) : ['disabled', 'course-detail-cart'],
     queryFn: ({ signal }) => requestCart(session, signal),
@@ -177,6 +179,10 @@ export function useCourseDetail(courseId: number | null) {
 
   const queryPreflight = useMemo<CoursePreflightState>(() => {
     if (!student) return 'not-required';
+    // An authenticated state becomes actionable only after its cache epoch is
+    // available. Until then submitAction cannot construct its identity, so
+    // exposing an eligible action would present a no-op control.
+    if (!subject) return 'loading';
     if (!preflightEnabled) return 'not-required';
     if (cart.isPending || enrollments.isPending) return 'loading';
     if (cart.isError || enrollments.isError) return 'unavailable';
@@ -194,6 +200,7 @@ export function useCourseDetail(courseId: number | null) {
     enrollments.isPending,
     preflightEnabled,
     student,
+    subject,
   ]);
   const preflightIsConverging =
     cart.isPending || cart.isFetching || enrollments.isPending || enrollments.isFetching;
