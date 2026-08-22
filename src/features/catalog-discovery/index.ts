@@ -22,6 +22,7 @@ export {
 export type {
   CatalogFilterDraft,
   CatalogFilterValidation,
+  CatalogFilterValidationErrorKey,
   CatalogFilterValidationErrors,
   CatalogPriceField,
   CatalogPriceRange,

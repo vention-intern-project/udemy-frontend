@@ -1,4 +1,5 @@
 import type { HTMLAttributes, ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import styles from './Notice.module.css';
 
@@ -18,12 +19,14 @@ export function Notice({
   title,
   politeness = tone === 'error' ? 'assertive' : 'polite',
   onDismiss,
-  dismissLabel = 'Dismiss notification',
+  dismissLabel,
   className,
   children,
   ...props
 }: NoticeProps) {
-  const role = politeness === 'assertive' ? 'alert' : politeness === 'polite' ? 'status' : undefined;
+  const { t } = useTranslation();
+  const role =
+    politeness === 'assertive' ? 'alert' : politeness === 'polite' ? 'status' : undefined;
 
   return (
     <div
@@ -32,16 +35,14 @@ export function Notice({
       aria-live={politeness === 'off' ? undefined : politeness}
       aria-atomic={politeness === 'off' ? undefined : true}
       data-tone={tone}
-      className={[
-        styles.notice,
-        styles[tone],
-        'ui-notice',
-        `ui-notice--${tone}`,
-        className,
-      ].filter(Boolean).join(' ')}
+      className={[styles.notice, styles[tone], 'ui-notice', `ui-notice--${tone}`, className]
+        .filter(Boolean)
+        .join(' ')}
     >
       <div className={[styles.content, 'ui-notice__content'].join(' ')}>
-        {title ? <strong className={[styles.title, 'ui-notice__title'].join(' ')}>{title}</strong> : null}
+        {title ? (
+          <strong className={[styles.title, 'ui-notice__title'].join(' ')}>{title}</strong>
+        ) : null}
         <div>{children}</div>
       </div>
       {onDismiss ? (
@@ -49,7 +50,9 @@ export function Notice({
           className={[styles.dismiss, 'ui-notice__dismiss'].join(' ')}
           type="button"
           onClick={onDismiss}
-          aria-label={dismissLabel}
+          aria-label={
+            dismissLabel ?? t('a11y:dismissNotification', { defaultValue: 'Dismiss notification' })
+          }
         >
           ×
         </button>

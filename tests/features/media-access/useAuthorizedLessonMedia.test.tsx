@@ -6,6 +6,7 @@ import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, type ApiBinaryResponse } from '../../../src/shared/api';
 import { mapLessonMediaLocator } from '../../../src/entities/course';
 import { LessonMediaAccess } from '../../../src/features/media-access';
+import { LocaleProvider, localeRuntime, type Locale } from '../../../src/shared/locale';
 
 const mediaMocks = vi.hoisted(() => ({
   requestAuthorizedLessonMedia: vi.fn(),
@@ -42,13 +43,14 @@ interface PendingMediaRequest {
   resolve(response: ApiBinaryResponse): void;
 }
 
-afterEach(() => {
+afterEach(async () => {
   requestAuthorizedLessonMedia.mockReset();
   mediaMocks.renderedPdf = null;
   createObjectUrl.mockReset();
   createObjectUrl.mockReturnValue(objectUrl);
   revokeObjectUrl.mockReset();
   vi.unstubAllGlobals();
+  await localeRuntime.changeLanguage('en');
 });
 
 afterAll(() => {
@@ -74,6 +76,26 @@ function signalPlayableMetadata(video: HTMLVideoElement) {
 }
 
 describe('LessonMediaAccess', () => {
+  it.each([
+    ['ru', 'Медиа недоступны в этом разделе'],
+    ['uz', 'Media bu bo‘limda mavjud emas'],
+  ] as const)(
+    'renders the admitted unavailable-media copy in %s',
+    (locale: Locale, expectedCopy) => {
+      render(
+        <LocaleProvider initialLocale={locale}>
+          <LessonMediaAccess
+            lessonType="pdf"
+            locator={mapLessonMediaLocator('/media/lessons/%00private.pdf')}
+          />
+        </LocaleProvider>,
+      );
+
+      expect(screen.getByText(expectedCopy)).toBeTruthy();
+      expect(requestAuthorizedLessonMedia).not.toHaveBeenCalled();
+    },
+  );
+
   it('does not request or render media for a text lesson', () => {
     render(<LessonMediaAccess lessonType="text" locator={null} />);
 

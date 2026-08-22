@@ -15,6 +15,7 @@ import {
   mapAuthFailure,
   validateSignup,
   type AuthFieldErrors,
+  type AuthMessage,
 } from './validation';
 
 const INITIAL: SignupInput = {
@@ -43,7 +44,7 @@ export interface SignupWorkflow {
   readonly fieldErrors: AuthFieldErrors;
   readonly input: SignupInput;
   readonly isPending: boolean;
-  readonly summary: string | null;
+  readonly summary: AuthMessage | null;
   readonly summaryRef: RefObject<HTMLDivElement>;
   submit(event: FormEvent): Promise<void>;
   update<K extends keyof SignupInput>(key: K, value: SignupInput[K]): void;
@@ -53,7 +54,7 @@ export function useSignupWorkflow(ownerKey: string): SignupWorkflow {
   const session = useSession();
   const [input, setInput] = useState(INITIAL);
   const [fieldErrors, setFieldErrors] = useState<AuthFieldErrors>({});
-  const [summary, setSummary] = useState<string | null>(null);
+  const [summary, setSummary] = useState<AuthMessage | null>(null);
   const { ref: summaryRef, requestFocus: requestSummaryFocus } = useAuthErrorFocus(
     summary,
     fieldErrors,
@@ -90,7 +91,7 @@ export function useSignupWorkflow(ownerKey: string): SignupWorkflow {
     const validation = compactFieldErrors(validateSignup(values));
     if (Object.keys(validation).length > 0) {
       setFieldErrors(validation);
-      setSummary('Review the highlighted fields and submit again.');
+      setSummary({ kind: 'review-highlighted-fields' });
       requestSummaryFocus();
       attempts.finish(attempt);
       return;

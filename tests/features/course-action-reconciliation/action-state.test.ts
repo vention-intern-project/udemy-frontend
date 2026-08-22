@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  courseActionReconciliationUncertaintyMessage,
+  courseActionReconciliationUncertaintyMessageKey,
   courseActionRecoveryTransition,
   isCurrentCourseActionReconciliationAttempt,
   type CourseActionRecoveryState,
@@ -30,8 +30,8 @@ describe('course action reconciliation recovery transitions', () => {
         currentIdentity: '["epoch-b",7]',
       }),
     ).toBe(false);
-    expect(courseActionReconciliationUncertaintyMessage).toBe(
-      'We could not verify your enrollment or cart.',
+    expect(courseActionReconciliationUncertaintyMessageKey).toBe(
+      'courseActionReconciliationUncertainty',
     );
   });
 });
