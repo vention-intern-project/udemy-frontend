@@ -2,16 +2,18 @@
 
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   createBrowserLocaleStore,
   createLocaleRuntime,
   createLocaleLookup,
+  getBrowserLocales,
   localeRuntime,
   LocaleProvider,
   MLUX_006_FOLLOWUP_RUNTIME_MAPPING,
   MLUX_002_RUNTIME_MAPPING,
+  normalizeLocale,
   resolveLocale,
   useLocale,
   type LocaleStorage,
@@ -42,7 +44,52 @@ function LocaleProbe() {
   );
 }
 
+function withBrowserNavigator(value: unknown, assertion: () => void): void {
+  const originalDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value });
+
+  try {
+    assertion();
+  } finally {
+    if (originalDescriptor) {
+      Object.defineProperty(globalThis, 'navigator', originalDescriptor);
+    } else {
+      Reflect.deleteProperty(globalThis, 'navigator');
+    }
+  }
+}
+
 describe('locale foundation', () => {
+  it('collects browser language preferences only from available string-valued sources', () => {
+    withBrowserNavigator(undefined, () => {
+      expect(getBrowserLocales()).toEqual([]);
+    });
+    withBrowserNavigator({ language: 'ru-RU' }, () => {
+      expect(getBrowserLocales()).toEqual(['ru-RU']);
+    });
+    withBrowserNavigator({ languages: [], language: 'uz-UZ' }, () => {
+      expect(getBrowserLocales()).toEqual(['uz-UZ']);
+    });
+    withBrowserNavigator({ languages: ['uz-Cyrl-UZ', 'ru-RU'], language: 'en-US' }, () => {
+      expect(getBrowserLocales()).toEqual(['uz-Cyrl-UZ', 'ru-RU']);
+    });
+    withBrowserNavigator({ languages: [], language: undefined }, () => {
+      expect(getBrowserLocales()).toEqual([]);
+    });
+  });
+
+  it('normalizes locale tags independently from host-specific case rules', () => {
+    const localeLowerCase = vi
+      .spyOn(String.prototype, 'toLocaleLowerCase')
+      .mockImplementation(() => 'turkish-locale-result');
+
+    try {
+      expect(normalizeLocale('RU-ru')).toBe('ru');
+    } finally {
+      localeLowerCase.mockRestore();
+    }
+  });
+
   it('uses a supported saved preference before browser languages and persists the selected locale', async () => {
     const storage = memoryStorage({ 'learnhub.locale': 'ru-RU' });
     const store = createBrowserLocaleStore(storage);

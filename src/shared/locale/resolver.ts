@@ -10,9 +10,14 @@ import type {
 
 export const LOCALE_STORAGE_KEY = 'learnhub.locale';
 
+interface BrowserLanguagePreferences {
+  readonly languages?: readonly string[];
+  readonly language?: string;
+}
+
 export function normalizeLocale(value: unknown): Locale | undefined {
   if (typeof value !== 'string') return undefined;
-  const language = value.trim().toLocaleLowerCase().split(/[-_]/, 1)[0];
+  const language = value.trim().toLowerCase().split(/[-_]/, 1)[0];
   if (language === 'en' || language === 'ru' || language === 'uz') return language;
   return undefined;
 }
@@ -31,7 +36,9 @@ export function resolveLocale({ storedLocale, browserLocales = [] }: LocaleResol
 
 export function getBrowserLocales(): readonly string[] {
   if (typeof navigator === 'undefined') return [];
-  return navigator.languages.length > 0 ? navigator.languages : [navigator.language];
+  const preferences = navigator as BrowserLanguagePreferences;
+  if (preferences.languages?.length) return preferences.languages;
+  return typeof preferences.language === 'string' ? [preferences.language] : [];
 }
 
 export function createBrowserLocaleStore(
