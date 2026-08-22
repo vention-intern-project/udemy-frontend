@@ -636,6 +636,26 @@ describe('AppShell student cart query and presentation', () => {
     outsideTarget.remove();
   });
 
+  it('closes the desktop locale menu when focus moves outside while preserving inside focus', async () => {
+    const removeEventListener = vi.spyOn(document, 'removeEventListener');
+    renderShell(authenticatedClient('student'), 'student-token', '/learning');
+
+    const trigger = await screen.findByRole('button', { name: 'Change language' });
+    fireEvent.click(trigger);
+    const russian = screen.getByRole('button', { name: 'Русский' });
+    act(() => russian.focus());
+    expect(screen.getByRole('button', { name: 'Русский' })).toBeTruthy();
+
+    const outsideTarget = document.createElement('button');
+    document.body.append(outsideTarget);
+    act(() => outsideTarget.focus());
+
+    expect(screen.queryByRole('button', { name: 'Русский' })).toBeNull();
+    expect(document.activeElement).toBe(outsideTarget);
+    expect(removeEventListener).toHaveBeenCalledWith('focusin', expect.any(Function));
+    outsideTarget.remove();
+  });
+
   it.each(['{Enter}', '{Space}'])(
     'opens the desktop language menu once when the focused native trigger receives %s',
     async (key) => {

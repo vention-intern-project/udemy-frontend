@@ -18,6 +18,8 @@ import {
   type LocaleRuntimeDiagnostics,
 } from '../../../src/shared/locale';
 
+const FOUNDATION_UNIT_ID_PATTERN = /^MLUX-C00(?:0[1-9]|1\d|2[0-3])$/;
+
 function memoryStorage(initialValues: Record<string, string> = {}): LocaleStorage {
   const values = new Map(Object.entries(initialValues));
   return {
@@ -238,7 +240,7 @@ describe('locale foundation', () => {
   it('keeps the independently enumerated DRAFT-11 allocation, resource review state and occurrences complete', () => {
     const runtime = createLocaleRuntime('en');
     const foundationMapping = MLUX_002_RUNTIME_MAPPING.filter(({ unitId }) =>
-      /^MLUX-C00\d{2}$/.test(unitId),
+      FOUNDATION_UNIT_ID_PATTERN.test(unitId),
     );
     const expectedIds = [
       'MLUX-C0001',
@@ -267,6 +269,11 @@ describe('locale foundation', () => {
     ];
 
     expect(foundationMapping.map((mapping) => mapping.unitId)).toEqual(expectedIds);
+    expect(
+      ['MLUX-C0000', 'MLUX-C0024', 'MLUX-C0099'].filter((unitId) =>
+        FOUNDATION_UNIT_ID_PATTERN.test(unitId),
+      ),
+    ).toEqual([]);
     expect(foundationMapping.flatMap((mapping) => mapping.occurrences)).toHaveLength(33);
     expect(
       foundationMapping

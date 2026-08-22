@@ -1349,6 +1349,25 @@ test('returns focus to the desktop language trigger when scrolling dismisses a f
   assertRuntimeClean();
 });
 
+test('dismisses the desktop language menu when Tab moves focus outside its options', async ({
+  page,
+}) => {
+  const assertRuntimeClean = monitorRuntime(page);
+  await page.setViewportSize({ width: 1280, height: 844 });
+  await page.goto('/');
+
+  const trigger = page.getByRole('button', { name: 'Change language' });
+  await trigger.click();
+  const uzbek = page.getByRole('button', { name: "O'zbek" });
+  await uzbek.focus();
+  await expect(uzbek).toBeFocused();
+  await page.keyboard.press('Tab');
+
+  await expect(uzbek).toHaveCount(0);
+  await expect(trigger).not.toBeFocused();
+  assertRuntimeClean();
+});
+
 test('uses native buttons for authenticated-mobile language selection and preserves dismissal', async ({
   page,
 }) => {

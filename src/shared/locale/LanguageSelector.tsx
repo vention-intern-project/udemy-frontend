@@ -45,12 +45,18 @@ export function LanguageSelector({
       setOpen(false);
       if (restoreTriggerFocus) triggerRef.current?.focus({ preventScroll: true });
     }
+    function dismissOnOutsideFocus(event: FocusEvent) {
+      if (ref.current?.contains(event.target as Node)) return;
+      setOpen(false);
+    }
     document.addEventListener('pointerdown', dismiss);
     document.addEventListener('keydown', dismiss);
+    document.addEventListener('focusin', dismissOnOutsideFocus);
     window.addEventListener('scroll', dismiss, { passive: true });
     return () => {
       document.removeEventListener('pointerdown', dismiss);
       document.removeEventListener('keydown', dismiss);
+      document.removeEventListener('focusin', dismissOnOutsideFocus);
       window.removeEventListener('scroll', dismiss);
     };
   }, [open]);
