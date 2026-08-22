@@ -397,7 +397,7 @@ export function LearningDetailPage() {
                   }
                   tone={workspace.feedback.tone}
                 >
-                  {workspace.feedback.message}
+                  {t(workspace.feedback.messageKey)}
                 </Notice>
               </div>
             ) : null}

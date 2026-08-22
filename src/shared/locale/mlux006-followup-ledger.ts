@@ -1074,6 +1074,88 @@ const records: readonly Mlux006FollowupRecord[] = [
       },
     ],
   },
+  {
+    unitId: 'MLUX-C0517',
+    namespace: 'catalog',
+    key: 'catalogDataUnavailable',
+    english: 'Catalog data is unavailable',
+    variables: [],
+    ru: 'Данные каталога недоступны',
+    uz: 'Katalog ma’lumotlari mavjud emas',
+    occurrences: [
+      {
+        id: 'O0742',
+        context: 'src/features/catalog-discovery/api.ts — Catalog invalid-response failure title',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0518',
+    namespace: 'catalog',
+    key: 'tryAgainShortly',
+    english: 'Please try again shortly.',
+    variables: [],
+    ru: 'Попробуйте ещё раз чуть позже.',
+    uz: 'Birozdan keyin qayta urinib ko‘ring.',
+    occurrences: [
+      {
+        id: 'O0743',
+        context: 'src/features/catalog-discovery/api.ts — Catalog invalid-response failure message',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0519',
+    namespace: 'catalog',
+    key: 'catalogLoadFailed',
+    english: 'We could not load courses',
+    variables: [],
+    ru: 'Не удалось загрузить курсы',
+    uz: 'Kurslarni yuklab bo‘lmadi',
+    occurrences: [
+      {
+        id: 'O0744',
+        context: 'src/features/catalog-discovery/api.ts — Catalog request-failure title',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0520',
+    namespace: 'learning',
+    key: 'lessonUpdateUnconfirmed',
+    english: 'We could not confirm the lesson update. Progress is being refreshed.',
+    variables: [],
+    ru: 'Не удалось подтвердить обновление урока. Прогресс обновляется.',
+    uz: 'Dars yangilanishini tasdiqlab bo‘lmadi. Jarayon yangilanmoqda.',
+    occurrences: [
+      {
+        id: 'O0745',
+        context:
+          'src/features/learning-progress/useLearningProgress.ts — Lesson mutation uncertain feedback',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0521',
+    namespace: 'learning',
+    key: 'lessonProgressUpdateFailed',
+    english: 'Lesson progress could not be updated. Try again.',
+    variables: [],
+    ru: 'Не удалось обновить прогресс урока. Попробуйте ещё раз.',
+    uz: 'Dars jarayonini yangilab bo‘lmadi. Qayta urinib ko‘ring.',
+    occurrences: [
+      {
+        id: 'O0746',
+        context:
+          'src/features/learning-progress/useLearningProgress.ts — Lesson mutation generic failure feedback',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
 ];
 
 export const MLUX_006_FOLLOWUP_TRANSLATIONS: readonly Mlux006FollowupTranslationEntry[] =
@@ -1120,7 +1202,12 @@ export type Mlux006FollowupSharedOccurrence = LocaleOccurrence & {
     | 'MLUX-C0469'
     | 'MLUX-C0470'
     | 'MLUX-C0471'
-    | 'MLUX-C0474';
+    | 'MLUX-C0474'
+    | 'MLUX-C0517'
+    | 'MLUX-C0518'
+    | 'MLUX-C0519'
+    | 'MLUX-C0520'
+    | 'MLUX-C0521';
   readonly ownerTask: 'MLUX-006-FOLLOWUP';
 };
 
@@ -1279,6 +1366,24 @@ const sharedOccurrenceSources = [
     id: 'O0741',
     unitId: 'MLUX-C0474',
     context: 'src/features/cart-workflow/cart-state.ts — Cart generic failure message',
+    classification: 'Visible UI copy',
+  },
+  {
+    id: 'O0747',
+    unitId: 'MLUX-C0470',
+    context: 'src/features/catalog-discovery/api.ts — Catalog offline failure title',
+    classification: 'Visible UI copy',
+  },
+  {
+    id: 'O0748',
+    unitId: 'MLUX-C0471',
+    context: 'src/features/catalog-discovery/api.ts — Catalog offline failure message',
+    classification: 'Visible UI copy',
+  },
+  {
+    id: 'O0749',
+    unitId: 'MLUX-C0474',
+    context: 'src/features/catalog-discovery/api.ts — Catalog request-failure message',
     classification: 'Visible UI copy',
   },
 ] as const satisfies readonly Omit<Mlux006FollowupSharedOccurrence, 'ownerTask'>[];

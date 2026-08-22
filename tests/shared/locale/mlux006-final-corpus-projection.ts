@@ -25195,6 +25195,158 @@ const MLUX006_DRAFT36_CORPUS_OCCURRENCES: readonly Mlux006FinalCorpusOccurrence[
     : `Merged with MLUX-${unitSuffix}`,
 }));
 
+const MLUX006_DRAFT37_UNITS: readonly Mlux006Draft35UnitSeed[] = [
+  [
+    'C0517',
+    'catalog',
+    'catalogDataUnavailable',
+    'Catalog invalid-response failure title',
+    'Catalog data is unavailable',
+    'Данные каталога недоступны',
+    'Katalog ma’lumotlari mavjud emas',
+    [],
+  ],
+  [
+    'C0518',
+    'catalog',
+    'tryAgainShortly',
+    'Catalog invalid-response failure message',
+    'Please try again shortly.',
+    'Попробуйте ещё раз чуть позже.',
+    'Birozdan keyin qayta urinib ko‘ring.',
+    [],
+  ],
+  [
+    'C0519',
+    'catalog',
+    'catalogLoadFailed',
+    'Catalog request-failure title',
+    'We could not load courses',
+    'Не удалось загрузить курсы',
+    'Kurslarni yuklab bo‘lmadi',
+    [],
+  ],
+  [
+    'C0520',
+    'learning',
+    'lessonUpdateUnconfirmed',
+    'Lesson mutation uncertain feedback',
+    'We could not confirm the lesson update. Progress is being refreshed.',
+    'Не удалось подтвердить обновление урока. Прогресс обновляется.',
+    'Dars yangilanishini tasdiqlab bo‘lmadi. Jarayon yangilanmoqda.',
+    [],
+  ],
+  [
+    'C0521',
+    'learning',
+    'lessonProgressUpdateFailed',
+    'Lesson mutation generic failure feedback',
+    'Lesson progress could not be updated. Try again.',
+    'Не удалось обновить прогресс урока. Попробуйте ещё раз.',
+    'Dars jarayonini yangilab bo‘lmadi. Qayta urinib ko‘ring.',
+    [],
+  ],
+];
+
+const MLUX006_DRAFT37_CORPUS_UNITS: readonly Mlux006FinalCorpusUnit[] = MLUX006_DRAFT37_UNITS.map(
+  ([suffix, namespace, key, routeState, english, russian, uzbek, variables]) => ({
+    unitId: `MLUX-${suffix}`,
+    namespace,
+    key,
+    runtimeEnglish: english,
+    variables,
+    plural: false,
+    sourceScreen: 'See Occurrences (1 verified source)',
+    routeState,
+    english,
+    russian: { value: russian, resourceStatus: 'Draft', reviewStatus: 'Pending' },
+    uzbek: { value: uzbek, resourceStatus: 'Draft', reviewStatus: 'Pending' },
+    ownerTasks: ['MLUX-006-FOLLOWUP'],
+    runtimeOwnerTasks: ['MLUX-006-FOLLOWUP'],
+    fallback: 'English source',
+    classification: 'Visible UI copy',
+    testTarget: 'MLUX-006-FOLLOWUP focused + browser matrix',
+    status: 'Draft',
+    notes:
+      'DRAFT-37 Catalog and Learning failure descriptor correction; draft translations await human review.',
+    occurrenceCount: 1,
+    dedupeDecision: 'Unique',
+  }),
+);
+
+const MLUX006_DRAFT37_CORPUS_OCCURRENCES: readonly Mlux006FinalCorpusOccurrence[] = [
+  [
+    '0742',
+    'C0517',
+    'src/features/catalog-discovery/api.ts',
+    'Catalog invalid-response failure title',
+    'Catalog data is unavailable',
+  ],
+  [
+    '0743',
+    'C0518',
+    'src/features/catalog-discovery/api.ts',
+    'Catalog invalid-response failure message',
+    'Please try again shortly.',
+  ],
+  [
+    '0744',
+    'C0519',
+    'src/features/catalog-discovery/api.ts',
+    'Catalog request-failure title',
+    'We could not load courses',
+  ],
+  [
+    '0745',
+    'C0520',
+    'src/features/learning-progress/useLearningProgress.ts',
+    'Lesson mutation uncertain feedback',
+    'We could not confirm the lesson update. Progress is being refreshed.',
+  ],
+  [
+    '0746',
+    'C0521',
+    'src/features/learning-progress/useLearningProgress.ts',
+    'Lesson mutation generic failure feedback',
+    'Lesson progress could not be updated. Try again.',
+  ],
+  [
+    '0747',
+    'C0470',
+    'src/features/catalog-discovery/api.ts',
+    'Catalog offline failure title',
+    'You appear to be offline',
+  ],
+  [
+    '0748',
+    'C0471',
+    'src/features/catalog-discovery/api.ts',
+    'Catalog offline failure message',
+    'Check your connection and try again.',
+  ],
+  [
+    '0749',
+    'C0474',
+    'src/features/catalog-discovery/api.ts',
+    'Catalog request-failure message',
+    'Please try again.',
+  ],
+].map(([suffix, unitSuffix, sourceScreen, routeState, english]) => ({
+  occurrenceId: `MLUX-O${suffix}`,
+  unitId: `MLUX-${unitSuffix}`,
+  sourceScreen,
+  routeState,
+  runtimeContext: `${sourceScreen} — ${routeState}`,
+  english,
+  classification: 'Visible UI copy',
+  ownerTask: 'MLUX-006-FOLLOWUP',
+  testTarget: 'MLUX-006-FOLLOWUP focused + browser matrix',
+  extractionKind: 'failure descriptor key',
+  dedupeMapping: unitSuffix.startsWith('C05')
+    ? 'Unique occurrence'
+    : `Merged with MLUX-${unitSuffix}`,
+}));
+
 const MLUX006_DRAFT35_AUTH_OCCURRENCE_OVERRIDES: ReadonlyMap<
   string,
   Pick<
@@ -25381,21 +25533,21 @@ const MLUX006_DRAFT33_OCCURRENCE_SOURCE_OVERRIDES: ReadonlyMap<
 
 export const MLUX006_FINAL_CORPUS_PROJECTION: Mlux006FinalCorpusProjection = {
   ...MLUX006_DRAFT27_CORPUS_PROJECTION,
-  version: 'MLUX-001-DRAFT-36',
-  sha256: 'B821A2000614257AA7A6CDF9CE3F4AB435A9C2A8CC716CFAC0B80CA83F002A2E',
-  byteLength: 118482,
+  version: 'MLUX-001-DRAFT-37',
+  sha256: 'C9E208FC5F1AEF55E709290C67270B79E1CBCE4831E7FBCB20555AB5CF8A73AE',
+  byteLength: 119608,
   summary: {
     ...MLUX006_DRAFT27_CORPUS_PROJECTION.summary,
-    translationUnits: 518,
-    sourceOccurrences: 738,
-    mergedDuplicateRows: 220,
-    russianDrafts: 518,
-    uzbekDrafts: 518,
+    translationUnits: 523,
+    sourceOccurrences: 746,
+    mergedDuplicateRows: 223,
+    russianDrafts: 523,
+    uzbekDrafts: 523,
   },
   workbookFrontMatter: {
     ...MLUX006_DRAFT27_CORPUS_PROJECTION.workbookFrontMatter,
     occurrencesSubtitle:
-      'All 738 source occurrences are deduplicated by semantic key and immutable English intent.',
+      'All 746 source occurrences are deduplicated by semantic key and immutable English intent.',
   },
   units: [
     ...MLUX006_DRAFT27_CORPUS_PROJECTION.units.map((unit) => {
@@ -25529,21 +25681,48 @@ export const MLUX006_FINAL_CORPUS_PROJECTION: Mlux006FinalCorpusProjection = {
       ) {
         return {
           ...unit,
-          sourceScreen: 'See Occurrences (2 verified sources)',
-          routeState: '2 contexts — see Occurrences',
+          sourceScreen: 'See Occurrences (3 verified sources)',
+          routeState: '3 contexts — see Occurrences',
           ownerTasks: ['MLUX-006-FOLLOWUP'],
-          occurrenceCount: 2,
+          occurrenceCount: 3,
           dedupeDecision: 'Merged equivalent occurrences',
         };
       }
       return override ? { ...unit, ...override } : unit;
     }),
-    ...MLUX006_DRAFT28_UNITS,
+    ...MLUX006_DRAFT28_UNITS.map((unit) =>
+      unit.unitId === 'MLUX-C0470' || unit.unitId === 'MLUX-C0471' || unit.unitId === 'MLUX-C0474'
+        ? {
+            ...unit,
+            sourceScreen: 'See Occurrences (3 verified sources)',
+            routeState: '3 contexts — see Occurrences',
+            ownerTasks: ['MLUX-006-FOLLOWUP'],
+            notes:
+              'Merged 3 equivalent occurrences; exact locations are on Occurrences; draft translations await human review.',
+            occurrenceCount: 3,
+            dedupeDecision: 'Merged equivalent occurrences',
+          }
+        : unit,
+    ),
     ...MLUX006_DRAFT29_CORPUS_UNITS,
     ...MLUX006_DRAFT30_CORPUS_UNITS,
-    ...MLUX006_DRAFT34_CORPUS_UNITS,
+    ...MLUX006_DRAFT34_CORPUS_UNITS.map((unit) =>
+      unit.unitId === 'MLUX-C0470' || unit.unitId === 'MLUX-C0471' || unit.unitId === 'MLUX-C0474'
+        ? {
+            ...unit,
+            sourceScreen: 'See Occurrences (3 verified sources)',
+            routeState: '3 contexts — see Occurrences',
+            ownerTasks: ['MLUX-006-FOLLOWUP'],
+            notes:
+              'Merged 3 equivalent occurrences; exact locations are on Occurrences; draft translations await human review.',
+            occurrenceCount: 3,
+            dedupeDecision: 'Merged equivalent occurrences',
+          }
+        : unit,
+    ),
     ...MLUX006_DRAFT35_CORPUS_UNITS,
     ...MLUX006_DRAFT36_CORPUS_UNITS,
+    ...MLUX006_DRAFT37_CORPUS_UNITS,
   ],
   occurrences: [
     ...MLUX006_DRAFT27_CORPUS_PROJECTION.occurrences,
@@ -25555,6 +25734,7 @@ export const MLUX006_FINAL_CORPUS_PROJECTION: Mlux006FinalCorpusProjection = {
     ...MLUX006_DRAFT34_SHARED_OCCURRENCES,
     ...MLUX006_DRAFT35_CORPUS_OCCURRENCES,
     ...MLUX006_DRAFT36_CORPUS_OCCURRENCES,
+    ...MLUX006_DRAFT37_CORPUS_OCCURRENCES,
   ].map((occurrence) => {
     const sourceOverride = MLUX006_DRAFT33_OCCURRENCE_SOURCE_OVERRIDES.get(occurrence.occurrenceId);
     const authOverride = MLUX006_DRAFT35_AUTH_OCCURRENCE_OVERRIDES.get(occurrence.occurrenceId);
@@ -25568,6 +25748,6 @@ export const MLUX006_FINAL_CORPUS_PROJECTION: Mlux006FinalCorpusProjection = {
   }),
   acceptance: MLUX006_DRAFT27_CORPUS_PROJECTION.acceptance.map((record) => ({
     ...record,
-    corpusVersion: 'MLUX-001-DRAFT-36',
+    corpusVersion: 'MLUX-001-DRAFT-37',
   })),
 };

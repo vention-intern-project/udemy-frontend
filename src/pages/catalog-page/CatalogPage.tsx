@@ -412,8 +412,12 @@ export function CatalogPage() {
                 </div>
               </div>
               {discovery.failure ? (
-                <Notice tone="error" title={discovery.failure.title} className={styles.notice}>
-                  <p>{discovery.failure.message}</p>
+                <Notice
+                  tone="error"
+                  title={t(discovery.failure.titleKey)}
+                  className={styles.notice}
+                >
+                  <p>{t(discovery.failure.messageKey)}</p>
                   <Button variant="secondary" onClick={discovery.retry}>
                     {t('routes:tryAgain', { defaultValue: 'Try again' })}
                   </Button>

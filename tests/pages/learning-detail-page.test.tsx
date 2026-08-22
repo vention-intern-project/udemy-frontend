@@ -22,7 +22,7 @@ import type { EnrollmentStatus } from '../../src/entities/enrollment';
 import * as learningProgress from '../../src/features/learning-progress';
 import type { LearningWorkspaceWorkflow } from '../../src/features/learning-progress';
 import { LearningDetailPage } from '../../src/pages/learning-detail-page';
-import { LocaleProvider, type Locale } from '../../src/shared/locale';
+import { LocaleProvider, useLocale, type Locale } from '../../src/shared/locale';
 import { ApiError, type ApiClient, type ApiRequestOptions } from '../../src/shared/api';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -127,6 +127,20 @@ function DetailHarnessControls({
   );
 }
 
+function DetailLocaleControls() {
+  const { setLocale } = useLocale();
+  return (
+    <>
+      <button type="button" onClick={() => setLocale('ru')}>
+        Switch test locale to Russian
+      </button>
+      <button type="button" onClick={() => setLocale('uz')}>
+        Switch test locale to Uzbek
+      </button>
+    </>
+  );
+}
+
 async function renderPage(request: ApiClient['request'], options: DetailHarnessOptions = {}) {
   const { queryClient } = await renderPageWithView(request, options);
   return queryClient;
@@ -143,6 +157,7 @@ async function renderPageWithView(
         <SessionProvider client={{ request }} tokenStore={options.store ?? tokenStore()}>
           <MemoryRouter initialEntries={[options.initialEntry ?? '/learning/enrollments/4']}>
             <DetailHarnessControls {...options} />
+            <DetailLocaleControls />
             <Routes>
               <Route path="/learning/enrollments/:enrollmentId" element={<LearningDetailPage />} />
             </Routes>
@@ -1990,6 +2005,118 @@ describe('LearningDetailPage', () => {
       });
     },
   );
+
+  it('renders a settled generic mutation failure in the current Russian locale without changing its rollback semantics', async () => {
+    const queryClient = createAppQueryClient();
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    let completionWrites = 0;
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/enrollments/4') return decode(options, activeEnrollment);
+      if (options.path === '/courses/7/progress')
+        return decode(options, {
+          course_id: 7,
+          completed_lessons: 0,
+          total_lessons: 1,
+          progress_percentage: 0,
+        });
+      if (options.path === '/courses/7/lessons') return decode(options, oneLessonOutline);
+      if (options.path.endsWith('/complete')) {
+        completionWrites += 1;
+        throw new ApiError({ kind: 'server', status: 500, message: 'private generic detail' });
+      }
+      throw new Error(`Unexpected request ${options.path}`);
+    };
+    await renderPage(request, { queryClient });
+    const user = userEvent.setup();
+    const markComplete = await screen.findByRole('button', { name: 'Complete lesson' });
+    await act(async () => {
+      await user.click(markComplete);
+    });
+    await screen.findByText('Lesson progress could not be updated. Try again.');
+    const completionAction = screen.getByRole('button', { name: 'Complete lesson' });
+    expect(completionAction).toBe(document.activeElement);
+    expect(screen.getByText('Not completed')).toBeTruthy();
+    expect(completionWrites).toBe(1);
+    expect(invalidate).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Switch test locale to Russian' }));
+    });
+
+    expect(
+      await screen.findByText('Не удалось обновить прогресс урока. Попробуйте ещё раз.'),
+    ).toBeTruthy();
+    expect(screen.queryByText('Lesson progress could not be updated. Try again.')).toBeNull();
+    expect(screen.queryByText('private generic detail')).toBeNull();
+    expect(screen.getByText('Не завершено')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Завершить урок' })).toBeTruthy();
+    expect(completionWrites).toBe(1);
+    expect(invalidate).not.toHaveBeenCalled();
+  });
+
+  it('renders an uncertain mutation failure in the current Russian locale after an Uzbek settlement', async () => {
+    const queryClient = createAppQueryClient();
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    let completionWrites = 0;
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/enrollments/4') return decode(options, activeEnrollment);
+      if (options.path === '/courses/7/progress')
+        return decode(options, {
+          course_id: 7,
+          completed_lessons: 0,
+          total_lessons: 1,
+          progress_percentage: 0,
+        });
+      if (options.path === '/courses/7/lessons') return decode(options, oneLessonOutline);
+      if (options.path.endsWith('/complete')) {
+        completionWrites += 1;
+        throw new ApiError({ kind: 'offline', status: null, message: 'private uncertain detail' });
+      }
+      throw new Error(`Unexpected request ${options.path}`);
+    };
+    await renderPage(request, { locale: 'uz', queryClient });
+    const user = userEvent.setup();
+    const markComplete = await screen.findByRole('button', { name: 'Darsni yakunlash' });
+    await act(async () => {
+      await user.click(markComplete);
+    });
+    await screen.findByText('Dars yangilanishini tasdiqlab bo‘lmadi. Jarayon yangilanmoqda.');
+    const completionAction = screen.getByRole('button', { name: 'Darsni yakunlash' });
+    expect(completionAction).toBe(document.activeElement);
+    expect(screen.getByText('Yakunlanmagan')).toBeTruthy();
+    expect(completionWrites).toBe(1);
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({
+        queryKey: ['private', expect.any(String), 'API-019', 'learning:course:7:progress'],
+        exact: true,
+      }),
+    );
+
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Switch test locale to Russian' }));
+    });
+
+    expect(
+      await screen.findByText('Не удалось подтвердить обновление урока. Прогресс обновляется.'),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText('We could not confirm the lesson update. Progress is being refreshed.'),
+    ).toBeNull();
+    expect(screen.queryByText('private uncertain detail')).toBeNull();
+    expect(screen.getByText('Не завершено')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Завершить урок' })).toBeTruthy();
+    expect(completionWrites).toBe(1);
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ['private', expect.any(String), 'API-022', 'learning:enrollment:4'],
+      exact: true,
+    });
+  });
 
   it('keeps an aborted mutation silent and restores its exact snapshot', async () => {
     const request: ApiClient['request'] = async <TResponse, TBody>(

@@ -15,11 +15,30 @@ export type LessonProgressFeedbackTone = 'info' | 'success' | 'error';
 
 export type LessonProgressFeedbackVisibility = 'visible' | 'exiting';
 
-export interface LessonProgressFeedback {
+export type LessonProgressFeedbackMessageKey =
+  | 'learning:lessonUpdateUnconfirmed'
+  | 'learning:lessonProgressUpdateFailed';
+
+interface LessonProgressFeedbackBase {
   readonly tone: LessonProgressFeedbackTone;
-  readonly message: string;
   readonly visibility: LessonProgressFeedbackVisibility;
 }
+
+export interface TransientLessonProgressFeedback extends LessonProgressFeedbackBase {
+  readonly tone: Extract<LessonProgressFeedbackTone, 'info' | 'success'>;
+  readonly message: string;
+  readonly messageKey?: never;
+}
+
+export interface PersistentLessonProgressFeedback extends LessonProgressFeedbackBase {
+  readonly tone: 'error';
+  readonly message?: never;
+  readonly messageKey: LessonProgressFeedbackMessageKey;
+}
+
+export type LessonProgressFeedback =
+  | PersistentLessonProgressFeedback
+  | TransientLessonProgressFeedback;
 
 export interface LearningFeedbackMotionPreferences {
   readonly reducedMotion: boolean;
