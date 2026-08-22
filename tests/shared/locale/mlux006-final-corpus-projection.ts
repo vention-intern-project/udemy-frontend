@@ -24632,23 +24632,461 @@ const MLUX006_DRAFT30_CORPUS_OCCURRENCES: readonly Mlux006FinalCorpusOccurrence[
     }),
   );
 
+const MLUX006_DRAFT33_ROLE_OCCURRENCES: readonly Mlux006FinalCorpusOccurrence[] = [
+  {
+    occurrenceId: 'MLUX-O0707',
+    unitId: 'MLUX-C0285',
+    sourceScreen: 'src/app/layouts/AccountMenu.tsx:214',
+    routeState: 'AppShell / authenticated account menu',
+    runtimeContext: 'src/app/layouts/AccountMenu.tsx:214 — AppShell / authenticated account menu',
+    english: 'Student',
+    classification: 'Visible UI copy',
+    ownerTask: 'MLUX-004',
+    testTarget: 'MLUX-004 focused test + MLUX-006 matrix',
+    extractionKind: 'translation key',
+    dedupeMapping: 'Mapped to one phrase across 2 equivalent occurrences',
+  },
+  {
+    occurrenceId: 'MLUX-O0708',
+    unitId: 'MLUX-C0164',
+    sourceScreen: 'src/app/layouts/AccountMenu.tsx:214',
+    routeState: 'AppShell / authenticated account menu',
+    runtimeContext: 'src/app/layouts/AccountMenu.tsx:214 — AppShell / authenticated account menu',
+    english: 'Instructor',
+    classification: 'Visible UI copy',
+    ownerTask: 'MLUX-004',
+    testTarget: 'MLUX-004 focused test + MLUX-006 matrix',
+    extractionKind: 'translation key',
+    dedupeMapping: 'Mapped to one phrase across 3 equivalent occurrences',
+  },
+  {
+    occurrenceId: 'MLUX-O0709',
+    unitId: 'MLUX-C0286',
+    sourceScreen: 'src/app/layouts/AccountMenu.tsx:214',
+    routeState: 'AppShell / authenticated account menu',
+    runtimeContext: 'src/app/layouts/AccountMenu.tsx:214 — AppShell / authenticated account menu',
+    english: 'Admin',
+    classification: 'Visible UI copy',
+    ownerTask: 'MLUX-004',
+    testTarget: 'MLUX-004 focused test + MLUX-006 matrix',
+    extractionKind: 'translation key',
+    dedupeMapping: 'Mapped to one phrase across 2 equivalent occurrences',
+  },
+];
+
+type Mlux006Draft34UnitSeed = readonly [string, string, string, string, string, string, string];
+
+const MLUX006_DRAFT34_UNITS: readonly Mlux006Draft34UnitSeed[] = [
+  [
+    'C0496',
+    'course',
+    'signIn',
+    'Course Detail / guest primary-action helper link',
+    'Sign in',
+    'Войти',
+    'Kiring',
+  ],
+  [
+    'C0497',
+    'course',
+    'signInToEnrollForFree',
+    'Course Detail / guest free-enrollment guidance',
+    'to enroll for free.',
+    ', чтобы записаться бесплатно.',
+    'bepul yozilish uchun.',
+  ],
+  [
+    'C0498',
+    'course',
+    'signInToAddCourseToCart',
+    'Course Detail / guest paid-enrollment guidance',
+    'to add this course to your cart.',
+    ', чтобы добавить этот курс в корзину.',
+    'bu kursni savatga qo‘shish uchun.',
+  ],
+  [
+    'C0499',
+    'course',
+    'enrollForFree',
+    'Course Detail / guest free disabled action',
+    'Enroll for free',
+    'Записаться бесплатно',
+    'Bepul yozilish',
+  ],
+  [
+    'C0500',
+    'course',
+    'unavailableForAccount',
+    'Course Detail / non-student disabled action',
+    'Not available for this account',
+    'Недоступно для этого аккаунта',
+    'Bu akkaunt uchun mavjud emas',
+  ],
+  [
+    'C0501',
+    'course',
+    'checkingAvailability',
+    'Course Detail / preflight loading disabled action',
+    'Checking availability',
+    'Проверяем доступность',
+    'Mavjudligi tekshirilmoqda',
+  ],
+  [
+    'C0502',
+    'course',
+    'alreadyEnrolled',
+    'Course Detail / already-enrolled disabled action',
+    'Already enrolled',
+    'Вы уже записаны',
+    'Siz allaqachon yozilgansiz',
+  ],
+  [
+    'C0503',
+    'course',
+    'alreadyInCart',
+    'Course Detail / already-in-cart disabled action',
+    'Already in cart',
+    'Уже в корзине',
+    'Savatda allaqachon bor',
+  ],
+] as const;
+
+const MLUX006_DRAFT34_CORPUS_UNITS: readonly Mlux006FinalCorpusUnit[] = MLUX006_DRAFT34_UNITS.map(
+  ([suffix, namespace, key, routeState, english, russian, uzbek]) => ({
+    unitId: `MLUX-${suffix}`,
+    namespace,
+    key,
+    runtimeEnglish: english,
+    variables: [],
+    plural: false,
+    sourceScreen:
+      suffix === 'C0496'
+        ? 'See Occurrences (2 verified sources)'
+        : 'See Occurrences (1 verified source)',
+    routeState: suffix === 'C0496' ? '2 contexts — see Occurrences' : routeState,
+    english,
+    russian: { value: russian, resourceStatus: 'Draft', reviewStatus: 'Pending' },
+    uzbek: { value: uzbek, resourceStatus: 'Draft', reviewStatus: 'Pending' },
+    ownerTasks: ['MLUX-006-FOLLOWUP'],
+    runtimeOwnerTasks: ['MLUX-006-FOLLOWUP'],
+    fallback: 'English source',
+    classification: 'Visible UI copy',
+    testTarget: 'MLUX-006-FOLLOWUP focused + browser matrix',
+    status: 'Draft',
+    notes: 'DRAFT-34 current-head review correction; draft translations await human review.',
+    occurrenceCount: suffix === 'C0496' ? 2 : 1,
+    dedupeDecision: suffix === 'C0496' ? 'Merged equivalent occurrences' : 'Unique',
+  }),
+);
+
+type Mlux006Draft34OccurrenceSeed = readonly [string, string, string, string, string];
+
+const MLUX006_DRAFT34_OCCURRENCES: readonly Mlux006Draft34OccurrenceSeed[] = [
+  [
+    '0710',
+    'C0496',
+    'src/features/course-detail/action-state.ts:161',
+    'Course Detail / guest free primary-action helper link',
+    'Sign in',
+  ],
+  [
+    '0711',
+    'C0497',
+    'src/features/course-detail/action-state.ts:162',
+    'Course Detail / guest free-enrollment guidance',
+    'to enroll for free.',
+  ],
+  [
+    '0712',
+    'C0498',
+    'src/features/course-detail/action-state.ts:171',
+    'Course Detail / guest paid-enrollment guidance',
+    'to add this course to your cart.',
+  ],
+  [
+    '0713',
+    'C0499',
+    'src/features/course-detail/action-state.ts:164',
+    'Course Detail / guest free disabled action',
+    'Enroll for free',
+  ],
+  [
+    '0714',
+    'C0500',
+    'src/features/course-detail/action-state.ts:178',
+    'Course Detail / non-student disabled action',
+    'Not available for this account',
+  ],
+  [
+    '0715',
+    'C0501',
+    'src/features/course-detail/action-state.ts:179',
+    'Course Detail / preflight loading disabled action',
+    'Checking availability',
+  ],
+  [
+    '0716',
+    'C0502',
+    'src/features/course-detail/action-state.ts:181',
+    'Course Detail / already-enrolled disabled action',
+    'Already enrolled',
+  ],
+  [
+    '0717',
+    'C0503',
+    'src/features/course-detail/action-state.ts:183',
+    'Course Detail / already-in-cart disabled action',
+    'Already in cart',
+  ],
+  [
+    '0723',
+    'C0496',
+    'src/features/course-detail/action-state.ts:170',
+    'Course Detail / guest paid primary-action helper link',
+    'Sign in',
+  ],
+];
+
+const MLUX006_DRAFT34_CORPUS_OCCURRENCES: readonly Mlux006FinalCorpusOccurrence[] =
+  MLUX006_DRAFT34_OCCURRENCES.map(([suffix, unitSuffix, sourceScreen, routeState, english]) => ({
+    occurrenceId: `MLUX-O${suffix}`,
+    unitId: `MLUX-${unitSuffix}`,
+    sourceScreen,
+    routeState,
+    runtimeContext: `${sourceScreen} — ${routeState}`,
+    english,
+    classification: 'Visible UI copy',
+    ownerTask: 'MLUX-006-FOLLOWUP',
+    testTarget: 'MLUX-006-FOLLOWUP focused + browser matrix',
+    extractionKind: 'translation key',
+    dedupeMapping: unitSuffix === 'C0496' ? 'Merged equivalent occurrences' : 'Unique occurrence',
+  }));
+
+const MLUX006_DRAFT34_SHARED_OCCURRENCES: readonly Mlux006FinalCorpusOccurrence[] = [
+  [
+    '0718',
+    'C0157',
+    'src/features/course-detail/action-state.ts:153',
+    'Course Detail / draft disabled action',
+    'Course is not published',
+  ],
+  [
+    '0719',
+    'C0163',
+    'src/features/course-detail/action-state.ts:155',
+    'Course Detail / invalid-price disabled action',
+    'Action unavailable',
+  ],
+  [
+    '0720',
+    'C0163',
+    'src/features/course-detail/action-state.ts:184',
+    'Course Detail / unavailable-preflight disabled action',
+    'Action unavailable',
+  ],
+  [
+    '0721',
+    'C0443',
+    'src/features/course-detail/action-state.ts:186',
+    'Course Detail / eligible free action',
+    'Enroll free',
+  ],
+  [
+    '0722',
+    'C0442',
+    'src/features/course-detail/action-state.ts:173',
+    'Course Detail / paid guest disabled action',
+    'Add to cart',
+  ],
+  [
+    '0724',
+    'C0442',
+    'src/features/course-detail/action-state.ts:187',
+    'Course Detail / eligible paid action',
+    'Add to cart',
+  ],
+].map(([suffix, unitSuffix, sourceScreen, routeState, english]) => ({
+  occurrenceId: `MLUX-O${suffix}`,
+  unitId: `MLUX-${unitSuffix}`,
+  sourceScreen,
+  routeState,
+  runtimeContext: `${sourceScreen} — ${routeState}`,
+  english,
+  classification: 'Visible UI copy',
+  ownerTask: 'MLUX-006-FOLLOWUP',
+  testTarget: 'MLUX-006-FOLLOWUP focused + browser matrix',
+  extractionKind: 'translation key',
+  dedupeMapping: `Merged with MLUX-${unitSuffix}`,
+}));
+
+interface Mlux006Draft33OccurrenceSourceOverride {
+  readonly sourceScreen: string;
+  readonly runtimeContext: string;
+}
+
+const MLUX006_DRAFT33_OCCURRENCE_SOURCE_OVERRIDES: ReadonlyMap<
+  string,
+  Mlux006Draft33OccurrenceSourceOverride
+> = new Map([
+  [
+    'MLUX-O0003',
+    {
+      sourceScreen: 'src/app/layouts/app-shell-navigation.ts:45',
+      runtimeContext:
+        'src/app/layouts/app-shell-navigation.ts:45 — AppShell / anonymous navigation declaration',
+    },
+  ],
+  [
+    'MLUX-O0004',
+    {
+      sourceScreen: 'src/app/layouts/app-shell-navigation.ts:52',
+      runtimeContext:
+        'src/app/layouts/app-shell-navigation.ts:52 — AppShell / anonymous navigation declaration',
+    },
+  ],
+  [
+    'MLUX-O0005',
+    {
+      sourceScreen: 'src/app/layouts/app-shell-navigation.ts:59',
+      runtimeContext:
+        'src/app/layouts/app-shell-navigation.ts:59 — AppShell / anonymous navigation declaration',
+    },
+  ],
+  [
+    'MLUX-O0006',
+    {
+      sourceScreen: 'src/app/layouts/app-shell-navigation.ts:70',
+      runtimeContext:
+        'src/app/layouts/app-shell-navigation.ts:70 — AppShell / student navigation declaration',
+    },
+  ],
+  [
+    'MLUX-O0007',
+    {
+      sourceScreen: 'src/app/layouts/app-shell-navigation.ts:77',
+      runtimeContext:
+        'src/app/layouts/app-shell-navigation.ts:77 — AppShell / student navigation declaration',
+    },
+  ],
+  [
+    'MLUX-O0008',
+    {
+      sourceScreen: 'src/app/layouts/app-shell-navigation.ts:87',
+      runtimeContext:
+        'src/app/layouts/app-shell-navigation.ts:87 — AppShell / instructor navigation declaration',
+    },
+  ],
+  [
+    'MLUX-O0521',
+    {
+      sourceScreen: 'src/app/layouts/AccountMenu.tsx:244',
+      runtimeContext: 'src/app/layouts/AccountMenu.tsx:244 — AppShell / authenticated account menu',
+    },
+  ],
+  [
+    'MLUX-O0522',
+    {
+      sourceScreen: 'src/app/layouts/AppShell.tsx:193',
+      runtimeContext: 'src/app/layouts/AppShell.tsx:193 — AppShell / student compact navigation',
+    },
+  ],
+  [
+    'MLUX-O0523',
+    {
+      sourceScreen: 'src/app/layouts/AppShell.tsx:237',
+      runtimeContext: 'src/app/layouts/AppShell.tsx:237 — AppShell / anonymous compact navigation',
+    },
+  ],
+  [
+    'MLUX-O0525',
+    {
+      sourceScreen: 'src/app/layouts/AppShell.tsx:608',
+      runtimeContext: 'src/app/layouts/AppShell.tsx:608 — AppShell / brand home link',
+    },
+  ],
+  [
+    'MLUX-O0526',
+    {
+      sourceScreen: 'src/app/layouts/AppShell.tsx:753',
+      runtimeContext:
+        'src/app/layouts/AppShell.tsx:753 — AppShell / instructor desktop header action',
+    },
+  ],
+  [
+    'MLUX-O0527',
+    {
+      sourceScreen: 'src/app/layouts/AppShell.tsx:875',
+      runtimeContext:
+        'src/app/layouts/AppShell.tsx:875 — AppShell / instructor compact navigation action',
+    },
+  ],
+  [
+    'MLUX-O0528',
+    {
+      sourceScreen: 'src/app/layouts/AppShell.tsx:286',
+      runtimeContext:
+        'src/app/layouts/AppShell.tsx:286 — AppShell / NavigationLinks desktop and compact consumer',
+    },
+  ],
+  [
+    'MLUX-O0529',
+    {
+      sourceScreen: 'src/app/layouts/AppShell.tsx:286',
+      runtimeContext:
+        'src/app/layouts/AppShell.tsx:286 — AppShell / NavigationLinks desktop and compact consumer',
+    },
+  ],
+  [
+    'MLUX-O0530',
+    {
+      sourceScreen: 'src/app/layouts/AppShell.tsx:286',
+      runtimeContext:
+        'src/app/layouts/AppShell.tsx:286 — AppShell / NavigationLinks desktop and compact consumer',
+    },
+  ],
+  [
+    'MLUX-O0531',
+    {
+      sourceScreen: 'src/app/layouts/AppShell.tsx:286',
+      runtimeContext:
+        'src/app/layouts/AppShell.tsx:286 — AppShell / NavigationLinks desktop and compact consumer',
+    },
+  ],
+  [
+    'MLUX-O0532',
+    {
+      sourceScreen: 'src/app/layouts/AppShell.tsx:286',
+      runtimeContext:
+        'src/app/layouts/AppShell.tsx:286 — AppShell / NavigationLinks desktop consumer',
+    },
+  ],
+  [
+    'MLUX-O0533',
+    {
+      sourceScreen: 'src/app/layouts/AppShell.tsx:864',
+      runtimeContext:
+        'src/app/layouts/AppShell.tsx:864 — AppShell / NavigationLinks instructor compact-menu consumer',
+    },
+  ],
+]);
+
 export const MLUX006_FINAL_CORPUS_PROJECTION: Mlux006FinalCorpusProjection = {
   ...MLUX006_DRAFT27_CORPUS_PROJECTION,
-  version: 'MLUX-001-DRAFT-32',
-  sha256: 'A1B98E857B8308E8B20E6AB7ABC86A2CCFDE3EFCC2A233EFB2E15E09F1C1E461',
-  byteLength: 113867,
+  version: 'MLUX-001-DRAFT-34',
+  sha256: '55FE729717A075BA58A3CE5556D9D806619E9F6F6B72BEAB010E1FF88BB77AE1',
+  byteLength: 115726,
   summary: {
     ...MLUX006_DRAFT27_CORPUS_PROJECTION.summary,
-    translationUnits: 497,
-    sourceOccurrences: 705,
-    mergedDuplicateRows: 208,
-    russianDrafts: 497,
-    uzbekDrafts: 497,
+    translationUnits: 505,
+    sourceOccurrences: 723,
+    mergedDuplicateRows: 218,
+    russianDrafts: 505,
+    uzbekDrafts: 505,
   },
   workbookFrontMatter: {
     ...MLUX006_DRAFT27_CORPUS_PROJECTION.workbookFrontMatter,
     occurrencesSubtitle:
-      'All 705 source occurrences are deduplicated by semantic key and immutable English intent.',
+      'All 723 source occurrences are deduplicated by semantic key and immutable English intent.',
   },
   units: [
     ...MLUX006_DRAFT27_CORPUS_PROJECTION.units.map((unit) => {
@@ -24670,8 +25108,66 @@ export const MLUX006_FINAL_CORPUS_PROJECTION: Mlux006FinalCorpusProjection = {
       if (unit.unitId === 'MLUX-C0157') {
         return {
           ...unit,
-          sourceScreen: 'See Occurrences (2 verified sources)',
+          sourceScreen: 'See Occurrences (3 verified sources)',
           ownerTasks: ['MLUX-004', 'MLUX-006-FOLLOWUP'],
+          notes:
+            'Merged 3 equivalent occurrences; exact locations are on Occurrences; draft translations await human review.',
+          occurrenceCount: 3,
+          dedupeDecision: 'Merged equivalent occurrences',
+        };
+      }
+      if (unit.unitId === 'MLUX-C0163') {
+        return {
+          ...unit,
+          sourceScreen: 'See Occurrences (3 verified sources)',
+          routeState: '3 contexts — see Occurrences',
+          ownerTasks: ['MLUX-004', 'MLUX-006-FOLLOWUP'],
+          notes:
+            'Merged 3 equivalent occurrences; exact locations are on Occurrences; draft translations await human review.',
+          occurrenceCount: 3,
+          dedupeDecision: 'Merged equivalent occurrences',
+        };
+      }
+      if (unit.unitId === 'MLUX-C0442') {
+        return {
+          ...unit,
+          sourceScreen: 'See Occurrences (3 verified sources)',
+          routeState: '3 contexts — see Occurrences',
+          ownerTasks: ['MLUX-004', 'MLUX-006-FOLLOWUP'],
+          notes:
+            'Merged 3 equivalent occurrences; exact locations are on Occurrences; draft translations await human review.',
+          occurrenceCount: 3,
+          dedupeDecision: 'Merged equivalent occurrences',
+        };
+      }
+      if (unit.unitId === 'MLUX-C0443') {
+        return {
+          ...unit,
+          sourceScreen: 'See Occurrences (2 verified sources)',
+          routeState: '2 contexts — see Occurrences',
+          ownerTasks: ['MLUX-004', 'MLUX-006-FOLLOWUP'],
+          notes:
+            'Merged 2 equivalent occurrences; exact locations are on Occurrences; draft translations await human review.',
+          occurrenceCount: 2,
+          dedupeDecision: 'Merged equivalent occurrences',
+        };
+      }
+      if (unit.unitId === 'MLUX-C0164') {
+        return {
+          ...unit,
+          sourceScreen: 'See Occurrences (3 verified sources)',
+          routeState: '3 contexts — see Occurrences',
+          notes:
+            'Merged 3 equivalent occurrences; exact locations are on Occurrences; draft translations await human review.',
+          occurrenceCount: 3,
+          dedupeDecision: 'Merged equivalent occurrences',
+        };
+      }
+      if (unit.unitId === 'MLUX-C0285' || unit.unitId === 'MLUX-C0286') {
+        return {
+          ...unit,
+          sourceScreen: 'See Occurrences (2 verified sources)',
+          routeState: '2 contexts — see Occurrences',
           notes:
             'Merged 2 equivalent occurrences; exact locations are on Occurrences; draft translations await human review.',
           occurrenceCount: 2,
@@ -24683,15 +25179,27 @@ export const MLUX006_FINAL_CORPUS_PROJECTION: Mlux006FinalCorpusProjection = {
     ...MLUX006_DRAFT28_UNITS,
     ...MLUX006_DRAFT29_CORPUS_UNITS,
     ...MLUX006_DRAFT30_CORPUS_UNITS,
+    ...MLUX006_DRAFT34_CORPUS_UNITS,
   ],
   occurrences: [
     ...MLUX006_DRAFT27_CORPUS_PROJECTION.occurrences,
     ...MLUX006_DRAFT28_OCCURRENCES,
     ...MLUX006_DRAFT29_CORPUS_OCCURRENCES,
     ...MLUX006_DRAFT30_CORPUS_OCCURRENCES,
-  ],
+    ...MLUX006_DRAFT33_ROLE_OCCURRENCES,
+    ...MLUX006_DRAFT34_CORPUS_OCCURRENCES,
+    ...MLUX006_DRAFT34_SHARED_OCCURRENCES,
+  ].map((occurrence) => {
+    const sourceOverride = MLUX006_DRAFT33_OCCURRENCE_SOURCE_OVERRIDES.get(occurrence.occurrenceId);
+    return sourceOverride
+      ? {
+          ...occurrence,
+          ...sourceOverride,
+        }
+      : occurrence;
+  }),
   acceptance: MLUX006_DRAFT27_CORPUS_PROJECTION.acceptance.map((record) => ({
     ...record,
-    corpusVersion: 'MLUX-001-DRAFT-32',
+    corpusVersion: 'MLUX-001-DRAFT-34',
   })),
 };

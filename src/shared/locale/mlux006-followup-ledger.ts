@@ -715,6 +715,148 @@ const records: readonly Mlux006FollowupRecord[] = [
       },
     ],
   },
+  {
+    unitId: 'MLUX-C0496',
+    namespace: 'course',
+    key: 'signIn',
+    english: 'Sign in',
+    variables: [],
+    ru: 'Войти',
+    uz: 'Kiring',
+    occurrences: [
+      {
+        id: 'O0710',
+        context:
+          'src/features/course-detail/action-state.ts:161 — Course Detail / guest free primary-action helper link',
+        classification: 'Visible UI copy',
+      },
+      {
+        id: 'O0723',
+        context:
+          'src/features/course-detail/action-state.ts:170 — Course Detail / guest paid primary-action helper link',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0497',
+    namespace: 'course',
+    key: 'signInToEnrollForFree',
+    english: 'to enroll for free.',
+    variables: [],
+    ru: ', чтобы записаться бесплатно.',
+    uz: 'bepul yozilish uchun.',
+    occurrences: [
+      {
+        id: 'O0711',
+        context:
+          'src/features/course-detail/action-state.ts:162 — Course Detail / guest free-enrollment guidance',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0498',
+    namespace: 'course',
+    key: 'signInToAddCourseToCart',
+    english: 'to add this course to your cart.',
+    variables: [],
+    ru: ', чтобы добавить этот курс в корзину.',
+    uz: 'bu kursni savatga qo‘shish uchun.',
+    occurrences: [
+      {
+        id: 'O0712',
+        context:
+          'src/features/course-detail/action-state.ts:171 — Course Detail / guest paid-enrollment guidance',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0499',
+    namespace: 'course',
+    key: 'enrollForFree',
+    english: 'Enroll for free',
+    variables: [],
+    ru: 'Записаться бесплатно',
+    uz: 'Bepul yozilish',
+    occurrences: [
+      {
+        id: 'O0713',
+        context:
+          'src/features/course-detail/action-state.ts:164 — Course Detail / guest free disabled action',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0500',
+    namespace: 'course',
+    key: 'unavailableForAccount',
+    english: 'Not available for this account',
+    variables: [],
+    ru: 'Недоступно для этого аккаунта',
+    uz: 'Bu akkaunt uchun mavjud emas',
+    occurrences: [
+      {
+        id: 'O0714',
+        context:
+          'src/features/course-detail/action-state.ts:178 — Course Detail / non-student disabled action',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0501',
+    namespace: 'course',
+    key: 'checkingAvailability',
+    english: 'Checking availability',
+    variables: [],
+    ru: 'Проверяем доступность',
+    uz: 'Mavjudligi tekshirilmoqda',
+    occurrences: [
+      {
+        id: 'O0715',
+        context:
+          'src/features/course-detail/action-state.ts:179 — Course Detail / preflight loading disabled action',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0502',
+    namespace: 'course',
+    key: 'alreadyEnrolled',
+    english: 'Already enrolled',
+    variables: [],
+    ru: 'Вы уже записаны',
+    uz: 'Siz allaqachon yozilgansiz',
+    occurrences: [
+      {
+        id: 'O0716',
+        context:
+          'src/features/course-detail/action-state.ts:181 — Course Detail / already-enrolled disabled action',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0503',
+    namespace: 'course',
+    key: 'alreadyInCart',
+    english: 'Already in cart',
+    variables: [],
+    ru: 'Уже в корзине',
+    uz: 'Savatda allaqachon bor',
+    occurrences: [
+      {
+        id: 'O0717',
+        context:
+          'src/features/course-detail/action-state.ts:183 — Course Detail / already-in-cart disabled action',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
 ];
 
 export const MLUX_006_FOLLOWUP_TRANSLATIONS: readonly Mlux006FollowupTranslationEntry[] =
@@ -753,7 +895,11 @@ export type Mlux006FollowupSharedOccurrence = LocaleOccurrence & {
     | 'MLUX-C0265'
     | 'MLUX-C0266'
     | 'MLUX-C0362'
-    | 'MLUX-C0363';
+    | 'MLUX-C0363'
+    | 'MLUX-C0157'
+    | 'MLUX-C0163'
+    | 'MLUX-C0442'
+    | 'MLUX-C0443';
   readonly ownerTask: 'MLUX-006-FOLLOWUP';
 };
 
@@ -861,6 +1007,48 @@ const sharedOccurrenceSources = [
     context:
       'src/features/auth-workflows/validation.ts:200 — Auth workflow / server validation fallback summary',
     classification: 'Visible UI copy + accessibility label',
+  },
+  {
+    id: 'O0718',
+    unitId: 'MLUX-C0157',
+    context:
+      'src/features/course-detail/action-state.ts:153 — Course Detail / draft disabled action',
+    classification: 'Visible UI copy',
+  },
+  {
+    id: 'O0719',
+    unitId: 'MLUX-C0163',
+    context:
+      'src/features/course-detail/action-state.ts:155 — Course Detail / invalid-price disabled action',
+    classification: 'Visible UI copy',
+  },
+  {
+    id: 'O0720',
+    unitId: 'MLUX-C0163',
+    context:
+      'src/features/course-detail/action-state.ts:184 — Course Detail / unavailable-preflight disabled action',
+    classification: 'Visible UI copy',
+  },
+  {
+    id: 'O0721',
+    unitId: 'MLUX-C0443',
+    context:
+      'src/features/course-detail/action-state.ts:186 — Course Detail / eligible free action',
+    classification: 'Visible UI copy',
+  },
+  {
+    id: 'O0722',
+    unitId: 'MLUX-C0442',
+    context:
+      'src/features/course-detail/action-state.ts:173 — Course Detail / paid guest disabled action',
+    classification: 'Visible UI copy',
+  },
+  {
+    id: 'O0724',
+    unitId: 'MLUX-C0442',
+    context:
+      'src/features/course-detail/action-state.ts:187 — Course Detail / eligible paid action',
+    classification: 'Visible UI copy',
   },
 ] as const satisfies readonly Omit<Mlux006FollowupSharedOccurrence, 'ownerTask'>[];
 

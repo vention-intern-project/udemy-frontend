@@ -8,19 +8,15 @@ import { APP_ROUTE_BY_ID } from '../router/route-registry';
 
 export type NavigationItemVariant = 'browse-link' | 'login-secondary' | 'signup-primary';
 export type NavigationItemDesktopGroup = 'auth-actions';
-
-export const NAVIGATION_LABEL_KEYS = [
-  'catalog',
-  'logIn',
-  'signUp',
-  'myLearning',
-  'instructorCourses',
-] as const;
-
-export type NavigationLabelKey = (typeof NAVIGATION_LABEL_KEYS)[number];
+export type NavigationItemLabelKey =
+  | 'navigation:catalog'
+  | 'navigation:logIn'
+  | 'navigation:signUp'
+  | 'navigation:myLearning'
+  | 'navigation:instructorCourses';
 
 export interface NavigationItem {
-  labelKey: NavigationLabelKey;
+  labelKey: NavigationItemLabelKey;
   to: string;
   end?: boolean;
   desktopGroup?: NavigationItemDesktopGroup;
@@ -46,21 +42,21 @@ export function navigationForSession(status: SessionState): NavigationItem[] {
   if (status.status !== 'authenticated') {
     return [
       {
-        labelKey: 'catalog',
+        labelKey: 'navigation:catalog',
         to: '/',
         end: true,
         primaryNavigationIndicator: true,
         variant: 'browse-link',
       },
       {
-        labelKey: 'logIn',
+        labelKey: 'navigation:logIn',
         to: '/login',
         end: true,
         desktopGroup: 'auth-actions',
         variant: 'login-secondary',
       },
       {
-        labelKey: 'signUp',
+        labelKey: 'navigation:signUp',
         to: '/signup',
         end: true,
         desktopGroup: 'auth-actions',
@@ -71,19 +67,24 @@ export function navigationForSession(status: SessionState): NavigationItem[] {
   if (status.user.role === 'student') {
     return [
       {
-        labelKey: 'catalog',
+        labelKey: 'navigation:catalog',
         to: '/',
         end: true,
         primaryNavigationIndicator: true,
         variant: 'browse-link',
       },
-      { labelKey: 'myLearning', to: '/learning', end: true, primaryNavigationIndicator: true },
+      {
+        labelKey: 'navigation:myLearning',
+        to: '/learning',
+        end: true,
+        primaryNavigationIndicator: true,
+      },
     ];
   }
   return status.user.role === 'instructor'
     ? [
         {
-          labelKey: 'instructorCourses',
+          labelKey: 'navigation:instructorCourses',
           to: '/instructor/courses',
           end: true,
           primaryNavigationIndicator: true,

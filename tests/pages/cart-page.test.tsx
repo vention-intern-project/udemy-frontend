@@ -1,5 +1,9 @@
 // @vitest-environment jsdom
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { I18nextProvider } from 'react-i18next';
@@ -309,6 +313,11 @@ beforeEach(async () => {
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
+const CART_PAGE_SOURCE = readFileSync(
+  pathToFileURL(resolve(process.cwd(), 'src/pages/cart-page/CartPage.tsx')),
+  'utf8',
+);
+
 async function interact(action: () => Promise<void>) {
   await act(async () => {
     await action();
@@ -347,6 +356,11 @@ async function removeCourseAndExpectFocus(courseId: number, expectedActionName: 
 }
 
 describe('CartPage', () => {
+  it('measures the summary jump from the structural Cart navigation seam, not localized copy', () => {
+    expect(CART_PAGE_SOURCE).toContain('querySelector<HTMLAnchorElement>(\'nav a[href="/cart"]\')');
+    expect(CART_PAGE_SOURCE).not.toContain('[aria-label="Student navigation"]');
+  });
+
   it.each([
     ['en', 1, '1 course'],
     ['en', 2, '2 courses'],

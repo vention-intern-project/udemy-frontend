@@ -7,10 +7,7 @@ import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CatalogPage } from '../../src/pages/catalog-page';
-import {
-  catalogActionLabelKey,
-  formatCatalogPrice,
-} from '../../src/pages/catalog-page/course-card-presentation';
+import { formatCatalogPrice } from '../../src/pages/catalog-page/course-card-presentation';
 import { SortControl } from '../../src/pages/catalog-page/SortControl';
 import { createAppQueryClient } from '../../src/app/query';
 import {
@@ -28,19 +25,6 @@ afterEach(() => {
 });
 
 describe('catalog locale-native price presentation', () => {
-  it('maps the authenticated free-enrollment label to the existing localized resource', () => {
-    expect(catalogActionLabelKey('enroll-free', 'Enroll free')).toBe('enrollFree');
-  });
-
-  it('maps every authenticated action state through a locale resource key', () => {
-    expect(catalogActionLabelKey('remove', 'Remove')).toBe('remove');
-    expect(catalogActionLabelKey('enrolled', 'Enrolled')).toBe('enrolled');
-    expect(catalogActionLabelKey('add-to-cart', 'Adding…')).toBe('adding');
-    expect(catalogActionLabelKey('remove', 'Removing…')).toBe('removing');
-    expect(catalogActionLabelKey('enroll-free', 'Enrolling…')).toBe('enrolling');
-    expect(catalogActionLabelKey('neutral', 'Try again')).toBe('tryAgain');
-  });
-
   it('uses the active locale when deriving a valid currency marker', () => {
     expect(formatCatalogPrice('9.99', 'USD', 'en-US')).toBe('$9.99');
     expect(formatCatalogPrice('9.99', 'USD', 'ru-RU')).not.toBe('$9.99');

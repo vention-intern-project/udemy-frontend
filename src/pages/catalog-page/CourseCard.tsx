@@ -28,11 +28,7 @@ import {
   useCourseCardDisclosureAvailability,
   type CourseCardTooltipPlacement,
 } from './course-card-disclosure';
-import {
-  catalogActionLabelKey,
-  courseActionVisual,
-  formatCatalogPrice,
-} from './course-card-presentation';
+import { courseActionVisual, formatCatalogPrice } from './course-card-presentation';
 import type { CatalogCourseActionState } from './useCatalogCourseActions';
 
 type CourseDisclosureCallback = (courseId: number) => void;
@@ -215,15 +211,7 @@ export function CourseCard({
         : undefined;
   const feedbackId = `catalog-course-${course.id}-action-feedback`;
   const actionVisual = courseActionVisual(action.presentation);
-  const actionLabelKey = catalogActionLabelKey(action.presentation, action.label);
-  const actionLabel =
-    action.kind === 'link' && action.presentation === 'enroll-free'
-      ? t('catalog:enrollForFree')
-      : actionLabelKey
-        ? actionLabelKey === 'tryAgain'
-          ? t('routes:tryAgain')
-          : t(`catalog:${actionLabelKey}`)
-        : action.label;
+  const actionLabel = t(action.labelKey);
   const ActionIcon =
     action.kind === 'link' ||
     (action.kind === 'button' &&

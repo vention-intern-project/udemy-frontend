@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import {
   ArrowLeft,
   Check,
@@ -25,20 +25,15 @@ interface AccountMenuProps {
 
 interface AccountRolePresentation {
   readonly Icon: LucideIcon;
+  readonly labelKey: AccountRoleTranslationKey;
 }
 
-type AccountRoleLabelKey = 'auth:student' | 'course:instructor' | 'auth:admin';
+type AccountRoleTranslationKey = 'auth:student' | 'course:instructor' | 'auth:admin';
 
 const ACCOUNT_ROLE_PRESENTATION: Record<UserRole, AccountRolePresentation> = {
-  student: { Icon: GraduationCap },
-  instructor: { Icon: UserRound },
-  admin: { Icon: ShieldCheck },
-};
-
-const ACCOUNT_ROLE_LABEL_KEY: Record<UserRole, AccountRoleLabelKey> = {
-  student: 'auth:student',
-  instructor: 'course:instructor',
-  admin: 'auth:admin',
+  student: { Icon: GraduationCap, labelKey: 'auth:student' },
+  instructor: { Icon: UserRound, labelKey: 'course:instructor' },
+  admin: { Icon: ShieldCheck, labelKey: 'auth:admin' },
 };
 
 export function AccountMenu({ user, showLanguage = false }: AccountMenuProps) {
@@ -52,22 +47,26 @@ export function AccountMenu({ user, showLanguage = false }: AccountMenuProps) {
   const accountMenuRef = useRef<HTMLDivElement>(null);
   const accountTriggerRef = useRef<HTMLButtonElement>(null);
   const accountDetailsRef = useRef<HTMLDivElement>(null);
+  const languageBackRef = useRef<HTMLButtonElement>(null);
+  const languageRowRef = useRef<HTMLButtonElement>(null);
+  const pendingLanguageFocusRef = useRef<'back' | 'language' | null>(null);
   const suppressNextAccountFocusOpenRef = useRef(false);
   const menuId = `account-menu-${useId()}`;
   const identity = `${user.name} ${user.surname}`;
   const initials =
     `${user.name.trim().charAt(0)}${user.surname.trim().charAt(0)}`.toLocaleUpperCase();
-  const RoleIcon = ACCOUNT_ROLE_PRESENTATION[user.role].Icon;
-  const roleLabel = t(ACCOUNT_ROLE_LABEL_KEY[user.role]);
+  const rolePresentation = ACCOUNT_ROLE_PRESENTATION[user.role];
+  const RoleIcon = rolePresentation.Icon;
+  const dismissAccountMenu = useCallback(() => {
+    setOpen(false);
+    setPinned(false);
+    setLanguageView(false);
+    pendingLanguageFocusRef.current = null;
+  }, []);
 
   useEffect(() => {
     if (!open) return;
 
-    const dismissAccountMenu = () => {
-      setOpen(false);
-      setPinned(false);
-      setLanguageView(false);
-    };
     const restoreAccountTriggerFocus = () => {
       suppressNextAccountFocusOpenRef.current = true;
       accountTriggerRef.current?.focus({ preventScroll: true });
@@ -99,7 +98,16 @@ export function AccountMenu({ user, showLanguage = false }: AccountMenuProps) {
       document.removeEventListener('keydown', closeOnEscape);
       window.removeEventListener('scroll', closeOnScroll);
     };
-  }, [open]);
+  }, [dismissAccountMenu, open]);
+
+  useEffect(() => {
+    const focusTarget = pendingLanguageFocusRef.current;
+    if (!open || focusTarget === null) return;
+
+    const target = focusTarget === 'back' ? languageBackRef.current : languageRowRef.current;
+    target?.focus({ preventScroll: true });
+    pendingLanguageFocusRef.current = null;
+  }, [languageView, open]);
 
   return (
     <div
@@ -115,15 +123,15 @@ export function AccountMenu({ user, showLanguage = false }: AccountMenuProps) {
         setOpen(true);
       }}
       onBlur={(event) => {
-        if (!pinned && !event.currentTarget.contains(event.relatedTarget)) setOpen(false);
+        if (!pinned && !event.currentTarget.contains(event.relatedTarget)) dismissAccountMenu();
       }}
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => {
-        if (!pinned) setOpen(false);
+        if (!pinned) dismissAccountMenu();
       }}
     >
       <button
-        aria-controls={menuId}
+        aria-controls={open ? menuId : undefined}
         aria-expanded={open}
         aria-label={t('a11y:accountMenu', { identity })}
         className={[styles.accountInitials, open ? styles.accountInitialsOpen : null]
@@ -134,8 +142,7 @@ export function AccountMenu({ user, showLanguage = false }: AccountMenuProps) {
         type="button"
         onClick={() => {
           if (pinned) {
-            setPinned(false);
-            setOpen(false);
+            dismissAccountMenu();
             return;
           }
           setPinned(true);
@@ -156,8 +163,12 @@ export function AccountMenu({ user, showLanguage = false }: AccountMenuProps) {
             <div className={styles.accountLanguageView} data-part="account-language-view">
               <button
                 className={styles.accountMenuLanguage}
+                ref={languageBackRef}
                 type="button"
-                onClick={() => setLanguageView(false)}
+                onClick={() => {
+                  pendingLanguageFocusRef.current = 'language';
+                  setLanguageView(false);
+                }}
               >
                 <ArrowLeft aria-hidden="true" size={16} />
                 <span>{t('common:back')}</span>
@@ -178,6 +189,7 @@ export function AccountMenu({ user, showLanguage = false }: AccountMenuProps) {
                     type="button"
                     onClick={() => {
                       setLocale(candidate);
+                      pendingLanguageFocusRef.current = 'language';
                       setLanguageView(false);
                     }}
                   >
@@ -199,15 +211,19 @@ export function AccountMenu({ user, showLanguage = false }: AccountMenuProps) {
                 </span>
                 <span className={styles.accountMenuRole}>
                   <RoleIcon data-part="account-menu-role-icon" aria-hidden="true" size={16} />
-                  <span>{roleLabel}</span>
+                  <span>{t(rolePresentation.labelKey)}</span>
                 </span>
               </div>
               <div className={styles.accountMenuDivider} role="separator" />
               {showLanguage ? (
                 <button
                   className={styles.accountMenuLanguage}
+                  ref={languageRowRef}
                   type="button"
-                  onClick={() => setLanguageView(true)}
+                  onClick={() => {
+                    pendingLanguageFocusRef.current = 'back';
+                    setLanguageView(true);
+                  }}
                 >
                   <span>{t('common:language')}</span>
                   <span className={styles.accountMenuLanguageValue}>

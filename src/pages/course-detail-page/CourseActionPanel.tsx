@@ -100,6 +100,7 @@ export function CourseActionPanel({
   const { i18n, t } = useTranslation();
   const actionState = actionButtonState(mutationState);
   const notice = actionNotice(t, isDraft, mutationState, preflight);
+  const guestGuidance = action?.kind === 'login' ? t(action.helper.guidanceKey) : null;
 
   return (
     <aside
@@ -127,12 +128,13 @@ export function CourseActionPanel({
         <div className={styles.guestAction}>
           <p className={styles.guestHelper}>
             <Link className={styles.actionLink} to={action.to}>
-              {action.helper.linkText}
-            </Link>{' '}
-            {action.helper.guidance}
+              {t(action.helper.linkTextKey)}
+            </Link>
+            {guestGuidance?.startsWith(',') ? null : ' '}
+            {guestGuidance}
           </p>
           <Button className={styles.guestUnavailableAction} fullWidth disabled>
-            {action.label}
+            {t(action.labelKey)}
           </Button>
         </div>
       ) : null}
@@ -144,14 +146,12 @@ export function CourseActionPanel({
           disabled={mutationState.status === 'pending'}
           onClick={() => onSubmitAction(action.kind)}
         >
-          {action.kind === 'enroll'
-            ? t('catalog:enrollFree', { defaultValue: action.label })
-            : t('catalog:addToCart', { defaultValue: action.label })}
+          {t(action.labelKey)}
         </Button>
       ) : null}
       {action?.kind === 'disabled' ? (
         <Button fullWidth disabled>
-          {action.label}
+          {t(action.labelKey)}
         </Button>
       ) : null}
     </aside>

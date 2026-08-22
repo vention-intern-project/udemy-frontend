@@ -14,7 +14,7 @@ import { AppRouter } from '../../src/app/router/AppRouter';
 import { SessionProvider, type AccessTokenStore } from '../../src/features/auth-session';
 import type { ApiClient, ApiRequestOptions } from '../../src/shared/api';
 import { ThemeProvider } from '../../src/shared/ui/theme';
-import { LocaleProvider } from '../../src/shared/locale';
+import { localeRuntime, LocaleProvider } from '../../src/shared/locale';
 
 const APP_SHELL_STYLES = readFileSync(
   pathToFileURL(resolve(process.cwd(), 'src/app/layouts/AppShell.module.css')),
@@ -28,9 +28,12 @@ const ACCOUNT_MENU_SOURCE = readFileSync(
   pathToFileURL(resolve(process.cwd(), 'src/app/layouts/AccountMenu.tsx')),
   'utf8',
 );
-const DESKTOP_APP_SHELL_STYLES = APP_SHELL_STYLES.slice(
-  APP_SHELL_STYLES.lastIndexOf('@media (min-width: 768px) {'),
-);
+const DESKTOP_MEDIA_QUERY_MARKER = '@media (min-width: 768px) {';
+const desktopMediaQueryIndex = APP_SHELL_STYLES.lastIndexOf(DESKTOP_MEDIA_QUERY_MARKER);
+if (desktopMediaQueryIndex < 0) {
+  throw new Error(`AppShell desktop media query marker is missing: ${DESKTOP_MEDIA_QUERY_MARKER}`);
+}
+const DESKTOP_APP_SHELL_STYLES = APP_SHELL_STYLES.slice(desktopMediaQueryIndex);
 
 afterEach(() => {
   cleanup();
@@ -39,8 +42,9 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.stubGlobal('scrollTo', vi.fn());
+  await localeRuntime.changeLanguage('en');
   localStorage.clear();
 });
 
@@ -360,16 +364,12 @@ describe('AppShell student cart query and presentation', () => {
     ).toBe(true);
   });
 
-  it.each([1, 9, 10, 99, 100])(
-    'presents known cart count %s with the required accessible value',
-    (itemCount) => {
-      const displayedCount = itemCount >= 100 ? '99+' : String(itemCount);
-      expect(presentCart(itemCount)).toEqual({
-        accessibleName: `Cart (${displayedCount})`,
-        badge: displayedCount,
-      });
-    },
-  );
+  it.each([1, 9, 10, 99, 100])('presents known cart count %s as a badge', (itemCount) => {
+    const displayedCount = itemCount >= 100 ? '99+' : String(itemCount);
+    expect(presentCart(itemCount)).toEqual({
+      badge: displayedCount,
+    });
+  });
 
   it('does not fetch API-002 or render assistant controls for anonymous, instructor, or admin sessions', async () => {
     const anonymousRequest = vi.fn(authenticatedClient('student').request);
@@ -620,12 +620,14 @@ describe('AppShell student cart query and presentation', () => {
       name: 'Account menu for student User',
     });
     expect(accountTrigger.getAttribute('title')).toBeNull();
+    expect(accountTrigger.getAttribute('aria-controls')).toBeNull();
 
     fireEvent.mouseEnter(accountTrigger);
     const accountDetails = screen.getByRole('group', {
       name: 'Account details for student User',
     });
     expect(accountDetails).toBeTruthy();
+    expect(accountTrigger.getAttribute('aria-controls')).toBe(accountDetails.id);
     expect(screen.getByText('student@example.test')).toBeTruthy();
     expect(screen.getByText('student User')).toBeTruthy();
     expect(screen.getByText('Student', { exact: true })).toBeTruthy();
@@ -639,6 +641,7 @@ describe('AppShell student cart query and presentation', () => {
 
     fireEvent.click(accountTrigger);
     expect(accountTrigger.getAttribute('aria-expanded')).toBe('false');
+    expect(accountTrigger.getAttribute('aria-controls')).toBeNull();
     expect(screen.queryByRole('group', { name: 'Account details for student User' })).toBeNull();
 
     fireEvent.click(accountTrigger);
@@ -647,6 +650,7 @@ describe('AppShell student cart query and presentation', () => {
 
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByRole('group', { name: 'Account details for student User' })).toBeNull();
+    expect(accountTrigger.getAttribute('aria-controls')).toBeNull();
     expect(document.activeElement).toBe(accountTrigger);
 
     fireEvent.click(accountTrigger);
@@ -657,6 +661,31 @@ describe('AppShell student cart query and presentation', () => {
     await waitFor(() => expect(screen.getByRole('link', { name: 'Log in' })).toBeTruthy());
     expect(screen.queryByRole('button', { name: /Account menu/ })).toBeNull();
   });
+
+  it.each([
+    { locale: 'en', role: 'student', label: 'Student' },
+    { locale: 'ru', role: 'instructor', label: 'Преподаватель' },
+    { locale: 'uz', role: 'admin', label: 'Administrator' },
+  ] as const)(
+    'renders the $role account role as $label in $locale and retains same-trigger reopening',
+    async ({ locale, role, label }) => {
+      localStorage.setItem('learnhub.locale', locale);
+      renderShell(authenticatedClient(role), `${role}-token`);
+
+      const accountTrigger = await screen.findByRole('button', {
+        name: /account menu|меню аккаунта|akkaunt menyusi/i,
+      });
+      fireEvent.click(accountTrigger);
+      expect(screen.getByText(label, { exact: true })).toBeTruthy();
+
+      fireEvent.click(accountTrigger);
+      expect(accountTrigger.getAttribute('aria-expanded')).toBe('false');
+
+      fireEvent.click(accountTrigger);
+      expect(accountTrigger.getAttribute('aria-expanded')).toBe('true');
+      expect(screen.getByText(label, { exact: true })).toBeTruthy();
+    },
+  );
 
   it('restores account focus when scroll removes its focused details without stealing outside focus', async () => {
     renderShell(authenticatedClient('student'), 'student-token');
@@ -713,6 +742,39 @@ describe('AppShell student cart query and presentation', () => {
     expect(request.mock.calls.map(([options]) => options.path)).toEqual(['/me', '/cart']);
   });
 
+  it.each([
+    ['Русский', 'Навигация студента'],
+    ["O'zbek", 'Talaba navigatsiyasi'],
+  ])(
+    'updates the student mobile navigation landmark after selecting %s',
+    async (localeOption, label) => {
+      stubCompactViewport();
+      renderShell(authenticatedClient('student'), 'student-token', '/learning');
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Account menu for student User' }));
+      fireEvent.click(screen.getByRole('button', { name: /^Language/ }));
+      fireEvent.click(screen.getByRole('button', { name: localeOption }));
+
+      expect(await screen.findByRole('navigation', { name: label })).toBeTruthy();
+    },
+  );
+
+  it.each([
+    ['Русский', 'Навигация гостя'],
+    ["O'zbek", 'Mehmon navigatsiyasi'],
+  ])(
+    'updates the anonymous mobile navigation landmark after selecting %s',
+    async (localeOption, label) => {
+      stubCompactViewport();
+      renderShell(authenticatedClient('student'), null);
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Change language' }));
+      fireEvent.click(screen.getByRole('button', { name: localeOption }));
+
+      expect(await screen.findByRole('navigation', { name: label })).toBeTruthy();
+    },
+  );
+
   it('changes the desktop language through the labelled selector without changing the route', async () => {
     const request = vi.fn(authenticatedClient('student').request);
     renderShell({ request: request as ApiClient['request'] }, 'student-token', '/learning');
@@ -732,6 +794,93 @@ describe('AppShell student cart query and presentation', () => {
 
     expect(localStorage.getItem('learnhub.locale')).toBe('ru');
     expect(screen.getByRole('button', { name: 'Изменить язык' })).toBeTruthy();
+  });
+
+  it.each([
+    {
+      localeOption: 'Русский',
+      role: 'anonymous' as const,
+      token: null,
+      path: '/',
+      labels: ['Каталог', 'Войти', 'Регистрация'],
+    },
+    {
+      localeOption: "O'zbek",
+      role: 'student' as const,
+      token: 'student-token',
+      path: '/learning',
+      labels: ['Katalog', 'Ta’limim'],
+    },
+    {
+      localeOption: 'Русский',
+      role: 'instructor' as const,
+      token: 'instructor-token',
+      path: '/instructor/courses',
+      labels: ['Курсы преподавателя'],
+    },
+  ])(
+    'updates $role desktop navigation after choosing $localeOption',
+    async ({ localeOption, role, token, path, labels }) => {
+      renderShell(authenticatedClient(role === 'anonymous' ? 'student' : role), token, path);
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Change language' }));
+      fireEvent.click(screen.getByRole('button', { name: localeOption }));
+
+      for (const label of labels) {
+        expect(await screen.findByRole('link', { name: label })).toBeTruthy();
+      }
+    },
+  );
+
+  it('restores a focused desktop locale option to its trigger when scroll dismisses the menu', async () => {
+    renderShell(authenticatedClient('student'), 'student-token', '/learning');
+
+    const trigger = await screen.findByRole('button', { name: 'Change language' });
+    fireEvent.click(trigger);
+    const russian = screen.getByRole('button', { name: 'Русский' });
+    act(() => russian.focus());
+    expect(document.activeElement).toBe(russian);
+
+    fireEvent.scroll(window);
+
+    expect(screen.queryByRole('button', { name: 'Русский' })).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it('does not steal unrelated focus when scroll dismisses the desktop locale menu', async () => {
+    renderShell(authenticatedClient('student'), 'student-token', '/learning');
+
+    const trigger = await screen.findByRole('button', { name: 'Change language' });
+    fireEvent.click(trigger);
+    const outsideTarget = document.createElement('button');
+    document.body.append(outsideTarget);
+    act(() => outsideTarget.focus());
+
+    fireEvent.scroll(window);
+
+    expect(screen.queryByRole('button', { name: 'Русский' })).toBeNull();
+    expect(document.activeElement).toBe(outsideTarget);
+    outsideTarget.remove();
+  });
+
+  it('closes the desktop locale menu when focus moves outside while preserving inside focus', async () => {
+    const removeEventListener = vi.spyOn(document, 'removeEventListener');
+    renderShell(authenticatedClient('student'), 'student-token', '/learning');
+
+    const trigger = await screen.findByRole('button', { name: 'Change language' });
+    fireEvent.click(trigger);
+    const russian = screen.getByRole('button', { name: 'Русский' });
+    act(() => russian.focus());
+    expect(screen.getByRole('button', { name: 'Русский' })).toBeTruthy();
+
+    const outsideTarget = document.createElement('button');
+    document.body.append(outsideTarget);
+    act(() => outsideTarget.focus());
+
+    expect(screen.queryByRole('button', { name: 'Русский' })).toBeNull();
+    expect(document.activeElement).toBe(outsideTarget);
+    expect(removeEventListener).toHaveBeenCalledWith('focusin', expect.any(Function));
+    outsideTarget.remove();
   });
 
   it.each(['{Enter}', '{Space}'])(
@@ -855,15 +1004,130 @@ describe('AppShell student cart query and presentation', () => {
       await user.click(accountMenu);
     });
     const language = screen.getByRole('button', { name: /Language/ });
+    act(() => language.focus());
+    expect(document.activeElement).toBe(language);
     await act(async () => {
       await user.click(language);
     });
     expect(screen.getByRole('button', { name: 'Русский' })).toBeTruthy();
     const back = screen.getByRole('button', { name: 'Back' });
+    expect(document.activeElement).toBe(back);
     await act(async () => {
       await user.click(back);
     });
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /Language/ }));
+
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: /Language/ }));
+    });
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Русский' }));
+    });
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /Язык/ }));
+  });
+
+  it('reopens a pinned mobile account menu at its default view after the trigger closes Language', async () => {
+    stubCompactViewport();
+    renderShell(authenticatedClient('student'), 'student-token');
+
+    const user = userEvent.setup();
+    const accountMenu = await screen.findByRole('button', {
+      name: 'Account menu for student User',
+    });
+    await act(async () => {
+      await user.click(accountMenu);
+    });
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: /Language/ }));
+    });
+    expect(screen.getByRole('button', { name: 'Back' })).toBeTruthy();
+
+    await act(async () => {
+      await user.click(accountMenu);
+    });
+    expect(screen.queryByRole('group', { name: 'Account details for student User' })).toBeNull();
+    expect(document.activeElement).toBe(accountMenu);
+
+    await act(async () => {
+      await user.click(accountMenu);
+    });
+    const accountDetails = screen.getByRole('group', {
+      name: 'Account details for student User',
+    });
     expect(screen.getByRole('button', { name: /Language/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Back' })).toBeNull();
+    expect(accountDetails.querySelector('[data-part="account-menu-profile"]')).toBeTruthy();
+  });
+
+  it('does not retain a deferred Language focus target after outside dismissal', async () => {
+    stubCompactViewport();
+    renderShell(authenticatedClient('student'), 'student-token');
+
+    const accountMenu = await screen.findByRole('button', {
+      name: 'Account menu for student User',
+    });
+    fireEvent.click(accountMenu);
+    fireEvent.click(screen.getByRole('button', { name: /Language/ }));
+    const back = screen.getByRole('button', { name: 'Back' });
+    const outsideTarget = document.createElement('button');
+    document.body.append(outsideTarget);
+
+    act(() => {
+      fireEvent.click(back);
+      fireEvent.pointerDown(outsideTarget);
+    });
+    expect(screen.queryByRole('group', { name: 'Account details for student User' })).toBeNull();
+
+    act(() => accountMenu.focus());
+    expect(document.activeElement).toBe(accountMenu);
+    expect(screen.getByRole('button', { name: /Language/ })).toBeTruthy();
+    outsideTarget.remove();
+  });
+
+  it('resets the unpinned mobile account menu to its profile view after Tab leaves Language', async () => {
+    stubCompactViewport();
+    renderShell(authenticatedClient('student'), 'student-token');
+
+    const accountMenu = await screen.findByRole('button', {
+      name: 'Account menu for student User',
+    });
+    const user = userEvent.setup();
+    act(() => accountMenu.focus());
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: /Language/ }));
+    });
+    const uzbek = screen.getByRole('button', { name: "O'zbek" });
+    act(() => uzbek.focus());
+    await act(async () => {
+      await user.keyboard('{Tab}');
+    });
+
+    expect(document.activeElement).not.toBe(accountMenu);
+    expect(screen.queryByRole('button', { name: 'Back' })).toBeNull();
+    act(() => accountMenu.focus());
+    expect(screen.getByRole('button', { name: /Language/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Log out' })).toBeTruthy();
+  });
+
+  it('resets the unpinned mobile account menu to its profile view after mouseleave', async () => {
+    stubCompactViewport();
+    renderShell(authenticatedClient('student'), 'student-token');
+
+    const accountMenu = await screen.findByRole('button', {
+      name: 'Account menu for student User',
+    });
+    const menuRoot = accountMenu.parentElement;
+    if (!menuRoot) throw new Error('Account menu root is unavailable.');
+    fireEvent.mouseEnter(menuRoot);
+    fireEvent.click(screen.getByRole('button', { name: /Language/ }));
+    expect(screen.getByRole('button', { name: 'Back' })).toBeTruthy();
+
+    fireEvent.mouseLeave(menuRoot);
+    fireEvent.mouseEnter(menuRoot);
+
+    expect(screen.queryByRole('button', { name: 'Back' })).toBeNull();
+    expect(screen.getByRole('button', { name: /Language/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Log out' })).toBeTruthy();
   });
 
   it('keeps authenticated instructor mobile language choices in the account popover alongside navigation', async () => {
@@ -888,15 +1152,21 @@ describe('AppShell student cart query and presentation', () => {
     await act(async () => {
       await user.click(accountMenu);
     });
+    await waitFor(() => expect(accountMenu.getAttribute('aria-expanded')).toBe('true'));
     const accountDetails = await screen.findByRole('group', {
       name: 'Account details for instructor User',
     });
-    expect(accountMenu.getAttribute('aria-expanded')).toBe('true');
+    expect(accountDetails).toBeTruthy();
     await act(async () => {
       await user.click(within(accountDetails).getByRole('button', { name: /Language/ }));
     });
+    const back = screen.getByRole('button', { name: 'Back' });
+    expect(document.activeElement).toBe(back);
     expect(screen.getByRole('button', { name: "O'zbek" })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Back' })).toBeTruthy();
+    await act(async () => {
+      await user.click(back);
+    });
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /Language/ }));
   });
 
   it.each([

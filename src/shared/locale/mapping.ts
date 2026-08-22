@@ -123,13 +123,13 @@ export const MLUX_002_RUNTIME_MAPPING: readonly LocaleMappingRecord[] = [
       {
         id: 'O0003',
         context:
-          'src/app/layouts/app-shell-navigation.ts:49 — AppShell / anonymous navigation declaration',
+          'src/app/layouts/app-shell-navigation.ts:45 — AppShell / anonymous navigation declaration',
         classification: 'Visible UI copy',
       },
       {
         id: 'O0006',
         context:
-          'src/app/layouts/app-shell-navigation.ts:74 — AppShell / student navigation declaration',
+          'src/app/layouts/app-shell-navigation.ts:70 — AppShell / student navigation declaration',
         classification: 'Visible UI copy',
       },
       { id: 'O0010', context: 'AppShell JSX' },
@@ -137,7 +137,7 @@ export const MLUX_002_RUNTIME_MAPPING: readonly LocaleMappingRecord[] = [
       {
         id: 'O0528',
         context:
-          'src/app/layouts/AppShell.tsx:287 — AppShell / NavigationLinks desktop and compact consumer',
+          'src/app/layouts/AppShell.tsx:286 — AppShell / NavigationLinks desktop and compact consumer',
         classification: 'Visible UI copy',
       },
     ],
@@ -152,14 +152,14 @@ export const MLUX_002_RUNTIME_MAPPING: readonly LocaleMappingRecord[] = [
       {
         id: 'O0004',
         context:
-          'src/app/layouts/app-shell-navigation.ts:56 — AppShell / anonymous navigation declaration',
+          'src/app/layouts/app-shell-navigation.ts:52 — AppShell / anonymous navigation declaration',
         classification: 'Visible UI copy',
       },
       { id: 'O0015', context: 'AppShell JSX' },
       {
         id: 'O0529',
         context:
-          'src/app/layouts/AppShell.tsx:287 — AppShell / NavigationLinks desktop and compact consumer',
+          'src/app/layouts/AppShell.tsx:286 — AppShell / NavigationLinks desktop and compact consumer',
         classification: 'Visible UI copy',
       },
     ],
@@ -174,14 +174,14 @@ export const MLUX_002_RUNTIME_MAPPING: readonly LocaleMappingRecord[] = [
       {
         id: 'O0005',
         context:
-          'src/app/layouts/app-shell-navigation.ts:63 — AppShell / anonymous navigation declaration',
+          'src/app/layouts/app-shell-navigation.ts:59 — AppShell / anonymous navigation declaration',
         classification: 'Visible UI copy',
       },
       { id: 'O0016', context: 'AppShell JSX' },
       {
         id: 'O0530',
         context:
-          'src/app/layouts/AppShell.tsx:287 — AppShell / NavigationLinks desktop and compact consumer',
+          'src/app/layouts/AppShell.tsx:286 — AppShell / NavigationLinks desktop and compact consumer',
         classification: 'Visible UI copy',
       },
     ],
@@ -196,14 +196,14 @@ export const MLUX_002_RUNTIME_MAPPING: readonly LocaleMappingRecord[] = [
       {
         id: 'O0007',
         context:
-          'src/app/layouts/app-shell-navigation.ts:80 — AppShell / student navigation declaration',
+          'src/app/layouts/app-shell-navigation.ts:77 — AppShell / student navigation declaration',
         classification: 'Visible UI copy',
       },
       { id: 'O0011', context: 'AppShell JSX' },
       {
         id: 'O0531',
         context:
-          'src/app/layouts/AppShell.tsx:287 — AppShell / NavigationLinks desktop and compact consumer',
+          'src/app/layouts/AppShell.tsx:286 — AppShell / NavigationLinks desktop and compact consumer',
         classification: 'Visible UI copy',
       },
     ],
@@ -218,18 +218,18 @@ export const MLUX_002_RUNTIME_MAPPING: readonly LocaleMappingRecord[] = [
       {
         id: 'O0008',
         context:
-          'src/app/layouts/app-shell-navigation.ts:86 — AppShell / instructor navigation declaration',
+          'src/app/layouts/app-shell-navigation.ts:87 — AppShell / instructor navigation declaration',
         classification: 'Visible UI copy',
       },
       {
         id: 'O0532',
-        context: 'src/app/layouts/AppShell.tsx:287 — AppShell / NavigationLinks desktop consumer',
+        context: 'src/app/layouts/AppShell.tsx:286 — AppShell / NavigationLinks desktop consumer',
         classification: 'Visible UI copy',
       },
       {
         id: 'O0533',
         context:
-          'src/app/layouts/AppShell.tsx:865 — AppShell / NavigationLinks instructor compact-menu consumer',
+          'src/app/layouts/AppShell.tsx:864 — AppShell / NavigationLinks instructor compact-menu consumer',
         classification: 'Visible UI copy',
       },
     ],
@@ -383,7 +383,7 @@ export const MLUX_002_RUNTIME_MAPPING: readonly LocaleMappingRecord[] = [
     [
       {
         id: 'O0521',
-        context: 'src/app/layouts/AccountMenu.tsx:219 — AppShell / authenticated account menu',
+        context: 'src/app/layouts/AccountMenu.tsx:244 — AppShell / authenticated account menu',
         classification: 'Visible UI copy',
       },
     ],
@@ -397,7 +397,7 @@ export const MLUX_002_RUNTIME_MAPPING: readonly LocaleMappingRecord[] = [
     [
       {
         id: 'O0522',
-        context: 'src/app/layouts/AppShell.tsx:194 — AppShell / student compact navigation',
+        context: 'src/app/layouts/AppShell.tsx:193 — AppShell / student compact navigation',
         classification: 'Accessibility only',
       },
     ],
@@ -411,7 +411,7 @@ export const MLUX_002_RUNTIME_MAPPING: readonly LocaleMappingRecord[] = [
     [
       {
         id: 'O0523',
-        context: 'src/app/layouts/AppShell.tsx:238 — AppShell / anonymous compact navigation',
+        context: 'src/app/layouts/AppShell.tsx:237 — AppShell / anonymous compact navigation',
         classification: 'Accessibility only',
       },
     ],
@@ -439,7 +439,7 @@ export const MLUX_002_RUNTIME_MAPPING: readonly LocaleMappingRecord[] = [
     [
       {
         id: 'O0525',
-        context: 'src/app/layouts/AppShell.tsx:609 — AppShell / brand home link',
+        context: 'src/app/layouts/AppShell.tsx:608 — AppShell / brand home link',
         classification: 'Accessibility only',
       },
     ],
@@ -450,14 +450,14 @@ export const MLUX_002_SHARED_OCCURRENCES: readonly Mlux002SharedOccurrence[] = [
   {
     id: 'O0526',
     unitId: 'MLUX-C0229',
-    context: 'src/app/layouts/AppShell.tsx:754 — AppShell / instructor desktop header action',
+    context: 'src/app/layouts/AppShell.tsx:753 — AppShell / instructor desktop header action',
     classification: 'Visible UI copy',
     ownerTask: 'MLUX-002',
   },
   {
     id: 'O0527',
     unitId: 'MLUX-C0229',
-    context: 'src/app/layouts/AppShell.tsx:876 — AppShell / instructor compact navigation action',
+    context: 'src/app/layouts/AppShell.tsx:875 — AppShell / instructor compact navigation action',
     classification: 'Visible UI copy',
     ownerTask: 'MLUX-002',
   },
@@ -504,6 +504,27 @@ export const MLUX_004_SHARED_OCCURRENCES: readonly Mlux004SharedOccurrence[] = [
     unitId: 'MLUX-C0008',
     context: 'src/widgets/course-chat/CourseChatLauncher.tsx:151 — DRAFT-20 residual context',
     classification: 'Accessibility only',
+    ownerTask: 'MLUX-004',
+  },
+  {
+    id: 'O0707',
+    unitId: 'MLUX-C0285',
+    context: 'src/app/layouts/AccountMenu.tsx:214 — AppShell / authenticated account menu',
+    classification: 'Visible UI copy',
+    ownerTask: 'MLUX-004',
+  },
+  {
+    id: 'O0708',
+    unitId: 'MLUX-C0164',
+    context: 'src/app/layouts/AccountMenu.tsx:214 — AppShell / authenticated account menu',
+    classification: 'Visible UI copy',
+    ownerTask: 'MLUX-004',
+  },
+  {
+    id: 'O0709',
+    unitId: 'MLUX-C0286',
+    context: 'src/app/layouts/AccountMenu.tsx:214 — AppShell / authenticated account menu',
+    classification: 'Visible UI copy',
     ownerTask: 'MLUX-004',
   },
 ];

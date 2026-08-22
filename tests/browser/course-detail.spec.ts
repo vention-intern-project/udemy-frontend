@@ -128,6 +128,10 @@ interface CourseResidualBrowserCopy {
   readonly lessonType: string;
   readonly draftCourse: string;
   readonly notFoundDescription: string;
+  readonly guestSignIn: string;
+  readonly guestGuidance: string;
+  readonly guestDisabledAction: string;
+  readonly draftDisabledAction: string;
 }
 
 const courseResidualBrowserCopy: Readonly<Record<'en' | 'ru' | 'uz', CourseResidualBrowserCopy>> = {
@@ -141,6 +145,10 @@ const courseResidualBrowserCopy: Readonly<Record<'en' | 'ru' | 'uz', CourseResid
     lessonType: 'Video',
     draftCourse: 'Draft course',
     notFoundDescription: 'This course does not exist or is no longer available.',
+    guestSignIn: 'Sign in',
+    guestGuidance: 'Sign in to add this course to your cart.',
+    guestDisabledAction: 'Add to cart',
+    draftDisabledAction: 'Course is not published',
   },
   ru: {
     loadingDetails: 'Загрузка сведений о курсе',
@@ -152,6 +160,10 @@ const courseResidualBrowserCopy: Readonly<Record<'en' | 'ru' | 'uz', CourseResid
     lessonType: 'Видео',
     draftCourse: 'Черновик курса',
     notFoundDescription: 'Курс не существует или больше недоступен.',
+    guestSignIn: 'Войти',
+    guestGuidance: 'Войти, чтобы добавить этот курс в корзину.',
+    guestDisabledAction: 'В корзину',
+    draftDisabledAction: 'Курс не опубликован',
   },
   uz: {
     loadingDetails: 'Kurs tafsilotlari yuklanmoqda',
@@ -163,6 +175,10 @@ const courseResidualBrowserCopy: Readonly<Record<'en' | 'ru' | 'uz', CourseResid
     lessonType: 'Video',
     draftCourse: 'Kurs qoralamasi',
     notFoundDescription: 'Bu kurs mavjud emas yoki endi ochiq emas.',
+    guestSignIn: 'Kiring',
+    guestGuidance: 'Kiring bu kursni savatga qo‘shish uchun.',
+    guestDisabledAction: 'Savatga qo‘shish',
+    draftDisabledAction: 'Kurs nashr qilinmagan',
   },
 };
 
@@ -1208,9 +1224,16 @@ for (const locale of ['en', 'ru', 'uz'] as const) {
 
     for (const width of [320, 390, 768, 1280] as const) {
       await page.setViewportSize({ width, height: 900 });
-      const signIn = page.getByRole('link', { name: 'Sign in' });
+      const signIn = page.locator('aside').getByRole('link', { name: copy.guestSignIn });
       await signIn.focus();
       await expect(signIn).toBeFocused();
+      await expect(signIn.locator('xpath=ancestor::p')).toHaveText(copy.guestGuidance);
+      await expect(
+        page.locator('aside').getByRole('button', { name: copy.guestDisabledAction }),
+      ).toBeDisabled();
+      if (locale !== 'en') {
+        await expect(page.locator('aside')).not.toContainText(/Sign in|Enroll for free/);
+      }
       await expectNoHorizontalOverflow(page);
     }
 
@@ -1231,6 +1254,10 @@ for (const locale of ['en', 'ru', 'uz'] as const) {
     await expect(page.getByText(copy.draftCourse, { exact: true })).toBeVisible();
     await expect(page.getByText(copy.emptyOutline, { exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { level: 1, name: detail.title })).toBeVisible();
+    await expect(page.getByRole('button', { name: copy.draftDisabledAction })).toBeDisabled();
+    if (locale !== 'en') {
+      await expect(page.locator('aside')).not.toContainText(/Course is not published/);
+    }
     await expectNoHorizontalOverflow(page);
 
     await page.goto('/courses/not-a-number');

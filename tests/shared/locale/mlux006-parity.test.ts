@@ -114,8 +114,70 @@ interface Mlux006InstructorLessonListOccurrenceAssociation {
   readonly translationKey: string;
 }
 
+interface Mlux006CourseActionDescriptorSource {
+  readonly kind: string;
+  readonly labelKey: string;
+  readonly line: number;
+  readonly guard: string | null;
+}
+
+interface Mlux006CourseActionOccurrenceAssociation {
+  readonly occurrenceId: string;
+  readonly unitId: string;
+  readonly kind: string;
+  readonly labelKey: string;
+  readonly guard: string;
+  readonly routeState: string;
+}
+
 const MLUX006_INSTRUCTOR_LESSON_LIST_SOURCE_PATH =
   'src/pages/instructor-course-editor-page/InstructorCourseEditorPage.tsx';
+
+const MLUX006_COURSE_ACTION_SOURCE_PATH = 'src/features/course-detail/action-state.ts';
+
+const MLUX006_COURSE_ACTION_OCCURRENCE_ASSOCIATIONS: readonly Mlux006CourseActionOccurrenceAssociation[] =
+  [
+    {
+      occurrenceId: 'MLUX-O0716',
+      unitId: 'MLUX-C0502',
+      kind: 'disabled',
+      labelKey: 'course:alreadyEnrolled',
+      guard: "preflight === 'already-enrolled'",
+      routeState: 'Course Detail / already-enrolled disabled action',
+    },
+    {
+      occurrenceId: 'MLUX-O0717',
+      unitId: 'MLUX-C0503',
+      kind: 'disabled',
+      labelKey: 'course:alreadyInCart',
+      guard: "preflight === 'already-in-cart'",
+      routeState: 'Course Detail / already-in-cart disabled action',
+    },
+    {
+      occurrenceId: 'MLUX-O0720',
+      unitId: 'MLUX-C0163',
+      kind: 'disabled',
+      labelKey: 'course:actionUnavailable',
+      guard: "preflight !== 'eligible'",
+      routeState: 'Course Detail / unavailable-preflight disabled action',
+    },
+    {
+      occurrenceId: 'MLUX-O0721',
+      unitId: 'MLUX-C0443',
+      kind: 'enroll',
+      labelKey: 'catalog:enrollFree',
+      guard: "price === 'free' === true",
+      routeState: 'Course Detail / eligible free action',
+    },
+    {
+      occurrenceId: 'MLUX-O0724',
+      unitId: 'MLUX-C0442',
+      kind: 'cart',
+      labelKey: 'catalog:addToCart',
+      guard: "price === 'free' === false",
+      routeState: 'Course Detail / eligible paid action',
+    },
+  ];
 
 const MLUX006_INSTRUCTOR_LESSON_LIST_OCCURRENCE_ASSOCIATIONS: readonly Mlux006InstructorLessonListOccurrenceAssociation[] =
   [
@@ -726,7 +788,7 @@ const MLUX006_HISTORICAL_X010_EXACT_RESIDUAL_FINGERPRINTS = new Set([
 ]);
 
 const MLUX006_CURRENT_EXACT_EXCLUSION_FINGERPRINTS = new Set([
-  'src/app/layouts/AppShell.tsx:612:jsx:LearnHub',
+  'src/app/layouts/AppShell.tsx:611:jsx:LearnHub',
   'src/app/router/PlaceholderPage.tsx:16:jsx:Use the navigation to continue exploring LearnHub.',
 ]);
 
@@ -911,6 +973,127 @@ function instructorLessonListAssociationViolations(
     }
     if (oracle.translationKeys[association.lessonType] !== association.translationKey) {
       violations.push(`wrong source key ${association.lessonType}`);
+    }
+  }
+  return violations;
+}
+
+function courseActionDescriptorSources(
+  source = readFileSync(
+    pathToFileURL(
+      join(fileURLToPath(new URL('../../../', import.meta.url)), MLUX006_COURSE_ACTION_SOURCE_PATH),
+    ),
+    'utf8',
+  ),
+): readonly Mlux006CourseActionDescriptorSource[] {
+  const sourceFile = ts.createSourceFile(
+    MLUX006_COURSE_ACTION_SOURCE_PATH,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  const primaryAction = sourceFile.statements.find(
+    (statement): statement is ts.FunctionDeclaration =>
+      ts.isFunctionDeclaration(statement) && statement.name?.text === 'coursePrimaryAction',
+  );
+  if (!primaryAction?.body) throw new Error('Missing coursePrimaryAction source owner');
+
+  const descriptors: Mlux006CourseActionDescriptorSource[] = [];
+  const stringProperty = (object: ts.ObjectLiteralExpression, name: string): string | null => {
+    const property = object.properties.find(
+      (candidate): candidate is ts.PropertyAssignment =>
+        ts.isPropertyAssignment(candidate) && candidate.name.getText(sourceFile) === name,
+    );
+    return property && ts.isStringLiteral(property.initializer) ? property.initializer.text : null;
+  };
+  const visitNode = (node: ts.Node, guard: string | null): void => {
+    if (ts.isIfStatement(node)) {
+      const condition = node.expression.getText(sourceFile);
+      visitNode(node.thenStatement, condition);
+      if (node.elseStatement) visitNode(node.elseStatement, `!(${condition})`);
+      return;
+    }
+    if (ts.isConditionalExpression(node)) {
+      const condition = node.condition.getText(sourceFile);
+      visitNode(node.whenTrue, `${condition} === true`);
+      visitNode(node.whenFalse, `${condition} === false`);
+      return;
+    }
+    if (ts.isObjectLiteralExpression(node)) {
+      const kind = stringProperty(node, 'kind');
+      const labelKey = stringProperty(node, 'labelKey');
+      if (kind && labelKey) {
+        descriptors.push({
+          kind,
+          labelKey,
+          line: sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1,
+          guard,
+        });
+      }
+    }
+    ts.forEachChild(node, (child) => visitNode(child, guard));
+  };
+  visitNode(primaryAction.body, null);
+  return descriptors;
+}
+
+function courseActionOccurrenceAssociationViolations(
+  descriptors: readonly Mlux006CourseActionDescriptorSource[],
+  projection: Mlux006FinalCorpusProjection = MLUX006_FINAL_CORPUS_PROJECTION,
+  runtimeMapping: readonly LocaleMappingRecord[] = MLUX_006_FOLLOWUP_RUNTIME_MAPPING,
+  sharedOccurrences: readonly (typeof MLUX_006_FOLLOWUP_SHARED_OCCURRENCES)[number][] = MLUX_006_FOLLOWUP_SHARED_OCCURRENCES,
+): string[] {
+  const violations: string[] = [];
+  for (const association of MLUX006_COURSE_ACTION_OCCURRENCE_ASSOCIATIONS) {
+    const sourceDescriptors = descriptors.filter(
+      (descriptor) =>
+        descriptor.kind === association.kind &&
+        descriptor.labelKey === association.labelKey &&
+        descriptor.guard === association.guard,
+    );
+    if (sourceDescriptors.length !== 1) {
+      violations.push(`wrong source descriptor count ${association.occurrenceId}`);
+      continue;
+    }
+    const sourceDescriptor = sourceDescriptors[0]!;
+    const sourceScreen = `${MLUX006_COURSE_ACTION_SOURCE_PATH}:${sourceDescriptor.line}`;
+    const runtimeContext = `${sourceScreen} — ${association.routeState}`;
+    const projectionOccurrences = projection.occurrences.filter(
+      ({ occurrenceId }) => occurrenceId === association.occurrenceId,
+    );
+    const ledgerOccurrences = [
+      ...runtimeMapping.flatMap((record) =>
+        record.occurrences
+          .filter(({ id }) => id === association.occurrenceId.replace('MLUX-', ''))
+          .map((occurrence) => ({ ...occurrence, unitId: record.unitId })),
+      ),
+      ...sharedOccurrences.filter(({ id }) => id === association.occurrenceId.replace('MLUX-', '')),
+    ];
+    if (projectionOccurrences.length !== 1) {
+      violations.push(`wrong projection association count ${association.occurrenceId}`);
+      continue;
+    }
+    if (ledgerOccurrences.length !== 1) {
+      violations.push(`wrong ledger association count ${association.occurrenceId}`);
+      continue;
+    }
+    const projectionOccurrence = projectionOccurrences[0]!;
+    const ledgerOccurrence = ledgerOccurrences[0]!;
+    if (projectionOccurrence.unitId !== association.unitId) {
+      violations.push(`wrong projection unit ${association.occurrenceId}`);
+    }
+    if (ledgerOccurrence.unitId !== association.unitId) {
+      violations.push(`wrong ledger unit ${association.occurrenceId}`);
+    }
+    if (projectionOccurrence.sourceScreen !== sourceScreen) {
+      violations.push(`wrong projection source seam ${association.occurrenceId}`);
+    }
+    if (projectionOccurrence.runtimeContext !== runtimeContext) {
+      violations.push(`wrong projection context ${association.occurrenceId}`);
+    }
+    if (ledgerOccurrence.context !== runtimeContext) {
+      violations.push(`wrong ledger context ${association.occurrenceId}`);
     }
   }
   return violations;
@@ -1104,6 +1287,29 @@ describe('MLUX-006 final corpus parity', () => {
     ]);
   });
 
+  it('derives every R54 Course Action ownership line and binds its ledger and projection occurrence', () => {
+    expect(courseActionOccurrenceAssociationViolations(courseActionDescriptorSources())).toEqual(
+      [],
+    );
+  });
+
+  it('rejects a moved Course Action descriptor even when copied projection metadata remains unchanged', () => {
+    const descriptors = courseActionDescriptorSources();
+    const movedDescriptors = descriptors.map((descriptor) =>
+      descriptor.labelKey === 'course:alreadyEnrolled' &&
+      descriptor.guard === "preflight === 'already-enrolled'"
+        ? { ...descriptor, line: descriptor.line + 1 }
+        : descriptor,
+    );
+
+    expect(courseActionOccurrenceAssociationViolations(movedDescriptors)).toContain(
+      'wrong projection source seam MLUX-O0716',
+    );
+    expect(courseActionOccurrenceAssociationViolations(movedDescriptors)).toContain(
+      'wrong ledger context MLUX-O0716',
+    );
+  });
+
   it('uses the deterministic in-app locale selector for FE014 browser locale matrices', () => {
     const browserSource = readFileSync(
       pathToFileURL(
@@ -1120,35 +1326,35 @@ describe('MLUX-006 final corpus parity', () => {
     expect(browserSource).toContain('selectFixtureLocale(page, locale)');
   });
 
-  it('matches the exact DRAFT-32 identity, allocation, statuses and deferred linguistic gate', () => {
+  it('matches the exact DRAFT-34 identity, allocation, statuses and deferred linguistic gate', () => {
     expect(MLUX006_FINAL_CORPUS_PROJECTION).toMatchObject({
-      version: 'MLUX-001-DRAFT-32',
-      sha256: 'A1B98E857B8308E8B20E6AB7ABC86A2CCFDE3EFCC2A233EFB2E15E09F1C1E461',
-      byteLength: 113867,
+      version: 'MLUX-001-DRAFT-34',
+      sha256: '55FE729717A075BA58A3CE5556D9D806619E9F6F6B72BEAB010E1FF88BB77AE1',
+      byteLength: 115726,
       summary: {
-        translationUnits: 497,
-        sourceOccurrences: 705,
-        mergedDuplicateRows: 208,
-        russianDrafts: 497,
-        uzbekDrafts: 497,
+        translationUnits: 505,
+        sourceOccurrences: 723,
+        mergedDuplicateRows: 218,
+        russianDrafts: 505,
+        uzbekDrafts: 505,
         draftStatus: 'Draft',
       },
     });
-    expect(MLUX006_FINAL_CORPUS_PROJECTION.units).toHaveLength(497);
-    expect(MLUX006_FINAL_CORPUS_PROJECTION.occurrences).toHaveLength(705);
+    expect(MLUX006_FINAL_CORPUS_PROJECTION.units).toHaveLength(505);
+    expect(MLUX006_FINAL_CORPUS_PROJECTION.occurrences).toHaveLength(723);
     expect(MLUX006_FINAL_CORPUS_PROJECTION.exclusions.map(({ id }) => id)).toEqual(
       Array.from({ length: 12 }, (_, index) => `MLUX-X${String(index + 1).padStart(3, '0')}`),
     );
     expect(MLUX006_FINAL_CORPUS_PROJECTION.acceptance).toEqual([
       expect.objectContaining({
-        corpusVersion: 'MLUX-001-DRAFT-32',
+        corpusVersion: 'MLUX-001-DRAFT-34',
         authority: 'Product owner',
         language: 'Russian',
         verdict: 'Pending',
         date: null,
       }),
       expect.objectContaining({
-        corpusVersion: 'MLUX-001-DRAFT-32',
+        corpusVersion: 'MLUX-001-DRAFT-34',
         authority: 'Selected native reviewer',
         language: 'Uzbek',
         verdict: 'Pending',
@@ -1285,10 +1491,10 @@ describe('MLUX-006 final corpus parity', () => {
       legacyClassificationContractViolations(occurrenceSources, wrongOwnerInheritance),
     ).toContain('wrong classification inheritance owner MLUX-O0001');
     expect(candidate.occurrences.every(({ classification }) => Boolean(classification))).toBe(true);
-    expect(candidate.units).toHaveLength(497);
-    expect(candidate.occurrences).toHaveLength(705);
+    expect(candidate.units).toHaveLength(505);
+    expect(candidate.occurrences).toHaveLength(723);
     expect(new Set(candidate.occurrences.map(({ occurrenceId }) => occurrenceId))).toHaveLength(
-      705,
+      723,
     );
     expect(collectParityViolations(MLUX006_FINAL_CORPUS_PROJECTION, candidate)).toEqual([]);
   });

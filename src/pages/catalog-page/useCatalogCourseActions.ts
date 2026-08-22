@@ -18,6 +18,7 @@ import {
   enrollmentQueryKey,
   requestEnrollments,
   type CourseActionCandidate,
+  type CourseActionTranslationKey,
   type CourseActionIdentity,
   type CourseMutationKind,
   type CourseMutationMessageKey,
@@ -27,6 +28,17 @@ import { cartQueryKey, removeCartItem, requestCart } from '@features/cart-workfl
 import type { SessionCacheEpoch } from '@shared/api';
 
 export type CatalogCourseActionKind = CourseMutationKind | 'remove';
+
+export type CatalogCourseActionLabelKey =
+  | CourseActionTranslationKey
+  | 'catalog:adding'
+  | 'catalog:enrolled'
+  | 'catalog:enrollForFree'
+  | 'catalog:enrolling'
+  | 'catalog:notPublished'
+  | 'catalog:removing'
+  | 'catalog:remove'
+  | 'routes:tryAgain';
 
 export interface CatalogCourseActionAttempt {
   identity: CourseActionIdentity;
@@ -50,7 +62,7 @@ export type CatalogCourseActionPresentation =
 
 export interface CatalogCourseActionState {
   kind: 'button' | 'link' | 'status';
-  label: string;
+  labelKey: CatalogCourseActionLabelKey;
   to: string | null;
   disabled: boolean;
   pending: boolean;
@@ -377,7 +389,7 @@ export function useCatalogCourseActions(courses: readonly CatalogCourse[]) {
         const recoveryPending = recovery === 'recovery-pending';
         return {
           kind: 'button',
-          label: 'Try again',
+          labelKey: 'routes:tryAgain',
           to: null,
           disabled: recoveryPending,
           pending: recoveryPending,
@@ -389,7 +401,10 @@ export function useCatalogCourseActions(courses: readonly CatalogCourse[]) {
       if (primaryAction.kind === 'login') {
         return {
           kind: 'link',
-          label: primaryAction.label,
+          labelKey:
+            primaryAction.labelKey === 'course:enrollForFree'
+              ? 'catalog:enrollForFree'
+              : primaryAction.labelKey,
           to: primaryAction.to,
           disabled: false,
           pending: false,
@@ -401,7 +416,11 @@ export function useCatalogCourseActions(courses: readonly CatalogCourse[]) {
       if (pending && (inCart || primaryAction.kind === 'cart' || primaryAction.kind === 'enroll')) {
         return {
           kind: 'button',
-          label: inCart ? 'Removing…' : primaryAction.kind === 'cart' ? 'Adding…' : 'Enrolling…',
+          labelKey: inCart
+            ? 'catalog:removing'
+            : primaryAction.kind === 'cart'
+              ? 'catalog:adding'
+              : 'catalog:enrolling',
           to: null,
           disabled: true,
           pending: true,
@@ -417,7 +436,7 @@ export function useCatalogCourseActions(courses: readonly CatalogCourse[]) {
       if (inCart) {
         return {
           kind: 'button',
-          label: 'Remove',
+          labelKey: 'catalog:remove',
           to: null,
           disabled: false,
           pending: false,
@@ -429,7 +448,7 @@ export function useCatalogCourseActions(courses: readonly CatalogCourse[]) {
       if (preflight === 'already-in-cart') {
         return {
           kind: 'button',
-          label: 'Remove',
+          labelKey: 'catalog:remove',
           to: null,
           disabled: true,
           pending: true,
@@ -441,7 +460,7 @@ export function useCatalogCourseActions(courses: readonly CatalogCourse[]) {
       if (preflight === 'already-enrolled') {
         return {
           kind: 'status',
-          label: 'Enrolled',
+          labelKey: 'catalog:enrolled',
           to: null,
           disabled: true,
           pending: false,
@@ -452,7 +471,10 @@ export function useCatalogCourseActions(courses: readonly CatalogCourse[]) {
       }
       return {
         kind: 'button',
-        label: primaryAction.label,
+        labelKey:
+          primaryAction.labelKey === 'course:courseIsNotPublished'
+            ? 'catalog:notPublished'
+            : primaryAction.labelKey,
         to: null,
         disabled: primaryAction.kind === 'disabled',
         pending: false,

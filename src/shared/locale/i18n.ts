@@ -11,7 +11,7 @@ export interface LocaleMissingKeyDiagnostic {
 }
 
 export interface LocaleRuntimeDiagnostics {
-  readonly missingKeys: readonly LocaleMissingKeyDiagnostic[];
+  readonly missingKeys: LocaleMissingKeyDiagnostic[];
 }
 
 function initializeLocaleRuntime(
@@ -22,7 +22,7 @@ function initializeLocaleRuntime(
   const runtime = i18next.createInstance();
   runtime.on('missingKey', (_languages, namespace, key) => {
     if (!diagnostics || !import.meta.env.DEV) return;
-    (diagnostics.missingKeys as LocaleMissingKeyDiagnostic[]).push({ namespace, key });
+    diagnostics.missingKeys.push({ namespace, key });
   });
   if (registerReactSingleton) runtime.use(initReactI18next);
   void runtime.init({
@@ -47,7 +47,7 @@ function initializeLocaleRuntime(
     interpolation: { escapeValue: false },
     returnEmptyString: false,
     returnNull: false,
-    saveMissing: true,
+    saveMissing: import.meta.env.DEV,
     parseMissingKeyHandler: () => 'Translation unavailable',
     initAsync: false,
   });

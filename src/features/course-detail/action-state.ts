@@ -16,23 +16,46 @@ export type CoursePreflightState =
   | 'already-in-cart'
   | 'unavailable';
 
+export type CourseActionTranslationKey =
+  | 'catalog:addToCart'
+  | 'catalog:enrollFree'
+  | 'course:actionUnavailable'
+  | 'course:alreadyEnrolled'
+  | 'course:alreadyInCart'
+  | 'course:checkingAvailability'
+  | 'course:courseIsNotPublished'
+  | 'course:enrollForFree'
+  | 'course:signIn'
+  | 'course:signInToAddCourseToCart'
+  | 'course:signInToEnrollForFree'
+  | 'course:unavailableForAccount';
+
 interface CourseLoginActionState {
   kind: 'login';
   helper: CourseLoginHelper;
-  label: 'Enroll for free' | 'Add to cart';
+  labelKey: 'catalog:addToCart' | 'course:enrollForFree';
   to: string;
 }
 
 interface CourseLoginHelper {
-  readonly linkText: 'Sign in';
-  readonly guidance: 'to enroll for free.' | 'to add this course to your cart.';
+  readonly linkTextKey: 'course:signIn';
+  readonly guidanceKey: 'course:signInToEnrollForFree' | 'course:signInToAddCourseToCart';
 }
 
 export type CoursePrimaryActionState =
   | CourseLoginActionState
-  | { kind: 'enroll'; label: 'Enroll free' }
-  | { kind: 'cart'; label: 'Add to cart' }
-  | { kind: 'disabled'; label: string };
+  | { kind: 'enroll'; labelKey: 'catalog:enrollFree' }
+  | { kind: 'cart'; labelKey: 'catalog:addToCart' }
+  | {
+      kind: 'disabled';
+      labelKey:
+        | 'course:actionUnavailable'
+        | 'course:alreadyEnrolled'
+        | 'course:alreadyInCart'
+        | 'course:checkingAvailability'
+        | 'course:courseIsNotPublished'
+        | 'course:unavailableForAccount';
+    };
 
 export interface CoursePrimaryActionInput {
   course: CourseActionCandidate;
@@ -126,33 +149,42 @@ export function coursePrimaryAction({
   session,
   preflight,
 }: CoursePrimaryActionInput): CoursePrimaryActionState {
-  if (course.publishedAt === null) return { kind: 'disabled', label: 'Course is not published' };
+  if (course.publishedAt === null)
+    return { kind: 'disabled', labelKey: 'course:courseIsNotPublished' };
   const price = priceKind(course.price);
-  if (price === 'invalid') return { kind: 'disabled', label: 'Action unavailable' };
+  if (price === 'invalid') return { kind: 'disabled', labelKey: 'course:actionUnavailable' };
   if (session.status !== 'authenticated') {
     return price === 'free'
       ? {
           kind: 'login',
-          helper: { linkText: 'Sign in', guidance: 'to enroll for free.' },
-          label: 'Enroll for free',
+          helper: {
+            linkTextKey: 'course:signIn',
+            guidanceKey: 'course:signInToEnrollForFree',
+          },
+          labelKey: 'course:enrollForFree',
           to: `/login?returnTo=${encodeURIComponent(`/courses/${course.id}`)}`,
         }
       : {
           kind: 'login',
-          helper: { linkText: 'Sign in', guidance: 'to add this course to your cart.' },
-          label: 'Add to cart',
+          helper: {
+            linkTextKey: 'course:signIn',
+            guidanceKey: 'course:signInToAddCourseToCart',
+          },
+          labelKey: 'catalog:addToCart',
           to: `/login?returnTo=${encodeURIComponent(`/courses/${course.id}`)}`,
         };
   }
   if (session.user.role !== 'student')
-    return { kind: 'disabled', label: 'Not available for this account' };
-  if (preflight === 'loading') return { kind: 'disabled', label: 'Checking availability' };
-  if (preflight === 'already-enrolled') return { kind: 'disabled', label: 'Already enrolled' };
-  if (preflight === 'already-in-cart') return { kind: 'disabled', label: 'Already in cart' };
-  if (preflight !== 'eligible') return { kind: 'disabled', label: 'Action unavailable' };
+    return { kind: 'disabled', labelKey: 'course:unavailableForAccount' };
+  if (preflight === 'loading') return { kind: 'disabled', labelKey: 'course:checkingAvailability' };
+  if (preflight === 'already-enrolled')
+    return { kind: 'disabled', labelKey: 'course:alreadyEnrolled' };
+  if (preflight === 'already-in-cart')
+    return { kind: 'disabled', labelKey: 'course:alreadyInCart' };
+  if (preflight !== 'eligible') return { kind: 'disabled', labelKey: 'course:actionUnavailable' };
   return price === 'free'
-    ? { kind: 'enroll', label: 'Enroll free' }
-    : { kind: 'cart', label: 'Add to cart' };
+    ? { kind: 'enroll', labelKey: 'catalog:enrollFree' }
+    : { kind: 'cart', labelKey: 'catalog:addToCart' };
 }
 
 export function courseMutationDisposition(error: unknown): CourseMutationDisposition {

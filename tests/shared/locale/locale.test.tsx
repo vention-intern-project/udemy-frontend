@@ -14,15 +14,19 @@ import {
   createBrowserLocaleStore,
   createLocaleRuntime,
   createLocaleLookup,
+  getBrowserLocales,
   localeRuntime,
   LocaleProvider,
+  LanguageSelector,
   LOCALE_OWNER_TASKS,
   MLUX_002_RUNTIME_MAPPING,
   MLUX_002_SHARED_OCCURRENCES,
   MLUX_003_RUNTIME_MAPPING,
+  MLUX_004_SHARED_OCCURRENCES,
   MLUX_004_RUNTIME_MAPPING,
   MLUX_005_RUNTIME_MAPPING,
   MLUX_005_SHARED_OCCURRENCES,
+  normalizeLocale,
   resolveLocale,
   useLocale,
   type LocaleMappingRecord,
@@ -72,21 +76,21 @@ const MLUX_002_SOURCE_BINDINGS: readonly ExpectedMlux002SourceBinding[] = [
   { occurrenceId: 'O0525', expectedSource: "aria-label={t('a11y:learnHubHome')}" },
   { occurrenceId: 'O0526', expectedSource: "{t('instructor:coursesCreateCourse')}" },
   { occurrenceId: 'O0527', expectedSource: "{t('instructor:coursesCreateCourse')}" },
-  { occurrenceId: 'O0528', expectedSource: '{t(`navigation:${item.labelKey}`)}' },
-  { occurrenceId: 'O0529', expectedSource: '{t(`navigation:${item.labelKey}`)}' },
-  { occurrenceId: 'O0530', expectedSource: '{t(`navigation:${item.labelKey}`)}' },
-  { occurrenceId: 'O0531', expectedSource: '{t(`navigation:${item.labelKey}`)}' },
-  { occurrenceId: 'O0532', expectedSource: '{t(`navigation:${item.labelKey}`)}' },
+  { occurrenceId: 'O0528', expectedSource: '{t(item.labelKey)}' },
+  { occurrenceId: 'O0529', expectedSource: '{t(item.labelKey)}' },
+  { occurrenceId: 'O0530', expectedSource: '{t(item.labelKey)}' },
+  { occurrenceId: 'O0531', expectedSource: '{t(item.labelKey)}' },
+  { occurrenceId: 'O0532', expectedSource: '{t(item.labelKey)}' },
   { occurrenceId: 'O0533', expectedSource: '<NavigationLinks' },
 ];
 
 const MLUX_002_NAVIGATION_DECLARATION_BINDINGS: readonly ExpectedNavigationDeclarationBinding[] = [
-  { occurrenceId: 'O0003', expectedSource: "labelKey: 'catalog'" },
-  { occurrenceId: 'O0004', expectedSource: "labelKey: 'logIn'" },
-  { occurrenceId: 'O0005', expectedSource: "labelKey: 'signUp'" },
-  { occurrenceId: 'O0006', expectedSource: "labelKey: 'catalog'" },
-  { occurrenceId: 'O0007', expectedSource: "labelKey: 'myLearning'" },
-  { occurrenceId: 'O0008', expectedSource: "labelKey: 'instructorCourses'" },
+  { occurrenceId: 'O0003', expectedSource: "labelKey: 'navigation:catalog'" },
+  { occurrenceId: 'O0004', expectedSource: "labelKey: 'navigation:logIn'" },
+  { occurrenceId: 'O0005', expectedSource: "labelKey: 'navigation:signUp'" },
+  { occurrenceId: 'O0006', expectedSource: "labelKey: 'navigation:catalog'" },
+  { occurrenceId: 'O0007', expectedSource: "labelKey: 'navigation:myLearning'" },
+  { occurrenceId: 'O0008', expectedSource: "labelKey: 'navigation:instructorCourses'" },
 ];
 
 const APP_SHELL_SOURCE_LINES = readFileSync(
@@ -998,6 +1002,7 @@ function mlux003ContractViolations(mapping: readonly LocaleMappingRecord[]): str
 
   return violations;
 }
+const FOUNDATION_UNIT_ID_PATTERN = /^MLUX-C00(?:0[1-9]|1\d|2[0-3])$/;
 
 function memoryStorage(initialValues: Record<string, string> = {}): LocaleStorage {
   const values = new Map(Object.entries(initialValues));
@@ -1019,6 +1024,28 @@ function LocaleProbe() {
       </button>
     </>
   );
+}
+
+const LANGUAGE_SELECTOR_CLASSES = {
+  className: 'language-selector-test',
+  menuClassName: 'language-menu-test',
+  optionClassName: 'language-option-test',
+  selectedOptionClassName: 'language-option-selected-test',
+};
+
+function withBrowserNavigator(value: unknown, assertion: () => void): void {
+  const originalDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value });
+
+  try {
+    assertion();
+  } finally {
+    if (originalDescriptor) {
+      Object.defineProperty(globalThis, 'navigator', originalDescriptor);
+    } else {
+      Reflect.deleteProperty(globalThis, 'navigator');
+    }
+  }
 }
 
 function ThrowingLocaleProbe(): ReactElement {
@@ -1317,6 +1344,59 @@ describe('locale foundation', () => {
     expect(mutationEquivalent).not.toEqual(MLUX_003_EXPECTED_MAPPING);
   });
 
+  it('references the rendered language menu only while the disclosure is open', async () => {
+    render(
+      <LocaleProvider store={createBrowserLocaleStore(memoryStorage())}>
+        <LanguageSelector {...LANGUAGE_SELECTOR_CLASSES} />
+      </LocaleProvider>,
+    );
+
+    const trigger = screen.getByRole('button', { name: 'Change language' });
+    expect(trigger.getAttribute('aria-controls')).toBeNull();
+
+    const user = userEvent.setup();
+    await act(async () => {
+      await user.click(trigger);
+    });
+    const menu = screen.getByLabelText('Language menu');
+    expect(trigger.getAttribute('aria-controls')).toBe(menu.id);
+
+    await act(async () => {
+      await user.click(trigger);
+    });
+    expect(trigger.getAttribute('aria-controls')).toBeNull();
+  });
+
+  it('collects browser language preferences only from available string-valued sources', () => {
+    withBrowserNavigator(undefined, () => {
+      expect(getBrowserLocales()).toEqual([]);
+    });
+    withBrowserNavigator({ language: 'ru-RU' }, () => {
+      expect(getBrowserLocales()).toEqual(['ru-RU']);
+    });
+    withBrowserNavigator({ languages: [], language: 'uz-UZ' }, () => {
+      expect(getBrowserLocales()).toEqual(['uz-UZ']);
+    });
+    withBrowserNavigator({ languages: ['uz-Cyrl-UZ', 'ru-RU'], language: 'en-US' }, () => {
+      expect(getBrowserLocales()).toEqual(['uz-Cyrl-UZ', 'ru-RU']);
+    });
+    withBrowserNavigator({ languages: [], language: undefined }, () => {
+      expect(getBrowserLocales()).toEqual([]);
+    });
+  });
+
+  it('normalizes locale tags independently from host-specific case rules', () => {
+    const localeLowerCase = vi
+      .spyOn(String.prototype, 'toLocaleLowerCase')
+      .mockImplementation(() => 'turkish-locale-result');
+
+    try {
+      expect(normalizeLocale('RU-ru')).toBe('ru');
+    } finally {
+      localeLowerCase.mockRestore();
+    }
+  });
+
   it('uses a supported saved preference before browser languages and persists the selected locale', async () => {
     const storage = memoryStorage({ 'learnhub.locale': 'ru-RU' });
     const store = createBrowserLocaleStore(storage);
@@ -1429,6 +1509,7 @@ describe('locale foundation', () => {
 
   it('runs only the approved locales with immutable English fallback and actionable missing-key output', () => {
     const diagnostics: LocaleRuntimeDiagnostics = { missingKeys: [] };
+    diagnostics.missingKeys.push({ namespace: 'test', key: 'direct-diagnostic-contract' });
     const runtime = createLocaleRuntime('ru', diagnostics);
 
     expect((runtime.options.supportedLngs || []).filter((locale) => locale !== 'cimode')).toEqual([
@@ -1440,10 +1521,176 @@ describe('locale foundation', () => {
     expect(runtime.t('common:language')).toBe('Язык');
     expect(runtime.t('common:not-a-real-key')).toBe('Translation unavailable');
     expect(diagnostics.missingKeys).toContainEqual({ namespace: 'common', key: 'not-a-real-key' });
+    expect(diagnostics.missingKeys).toContainEqual({
+      namespace: 'test',
+      key: 'direct-diagnostic-contract',
+    });
+  });
+
+  it('keeps the exported runtime stable when a provider initializes its own locale', async () => {
+    await localeRuntime.changeLanguage('en');
+
+    render(
+      <LocaleProvider initialLocale="ru">
+        <LocaleProbe />
+      </LocaleProvider>,
+    );
+
+    expect(screen.getByLabelText('active locale').textContent).toBe('ru');
+    expect(localeRuntime.language).toBe('en');
+    expect(document.documentElement.lang).toBe('ru');
+  });
+
+  it('provides the canonical MLUX-C0369 logout copy in every supported locale', () => {
+    const runtime = createLocaleRuntime('en');
+    const mapping = MLUX_002_RUNTIME_MAPPING.find(({ unitId }) => unitId === 'MLUX-C0369');
+
+    expect(mapping).toMatchObject({
+      namespace: 'auth',
+      key: 'logOut',
+      english: 'Log out',
+      occurrences: [
+        {
+          id: 'O0521',
+          context: 'src/app/layouts/AccountMenu.tsx:244 — AppShell / authenticated account menu',
+        },
+      ],
+    });
+    expect({
+      en: runtime.getResource('en', 'auth', 'logOut'),
+      ru: runtime.getResource('ru', 'auth', 'logOut'),
+      uz: runtime.getResource('uz', 'auth', 'logOut'),
+    }).toEqual({ en: 'Log out', ru: 'Выйти', uz: 'Chiqish' });
+  });
+
+  it('adopts canonical student and anonymous mobile-navigation landmarks in every locale', () => {
+    const runtime = createLocaleRuntime('en');
+
+    expect(
+      MLUX_002_RUNTIME_MAPPING.filter(
+        ({ unitId }) => unitId === 'MLUX-C0370' || unitId === 'MLUX-C0371',
+      ),
+    ).toMatchObject([
+      {
+        unitId: 'MLUX-C0370',
+        namespace: 'a11y',
+        key: 'studentNavigation',
+        english: 'Student navigation',
+        occurrences: [{ id: 'O0522' }],
+      },
+      {
+        unitId: 'MLUX-C0371',
+        namespace: 'a11y',
+        key: 'anonymousNavigation',
+        english: 'Anonymous navigation',
+        occurrences: [{ id: 'O0523' }],
+      },
+    ]);
+    expect({
+      en: [
+        runtime.getResource('en', 'a11y', 'studentNavigation'),
+        runtime.getResource('en', 'a11y', 'anonymousNavigation'),
+      ],
+      ru: [
+        runtime.getResource('ru', 'a11y', 'studentNavigation'),
+        runtime.getResource('ru', 'a11y', 'anonymousNavigation'),
+      ],
+      uz: [
+        runtime.getResource('uz', 'a11y', 'studentNavigation'),
+        runtime.getResource('uz', 'a11y', 'anonymousNavigation'),
+      ],
+    }).toEqual({
+      en: ['Student navigation', 'Anonymous navigation'],
+      ru: ['Навигация студента', 'Навигация гостя'],
+      uz: ['Talaba navigatsiyasi', 'Mehmon navigatsiyasi'],
+    });
+  });
+
+  it('provides the canonical account-role labels in every supported locale', () => {
+    const runtime = createLocaleRuntime('en');
+
+    expect(
+      MLUX_004_RUNTIME_MAPPING.filter(({ unitId }) =>
+        ['MLUX-C0285', 'MLUX-C0164', 'MLUX-C0286'].includes(unitId),
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          unitId: 'MLUX-C0285',
+          namespace: 'auth',
+          key: 'student',
+          english: 'Student',
+        }),
+        expect.objectContaining({
+          unitId: 'MLUX-C0164',
+          namespace: 'course',
+          key: 'instructor',
+          english: 'Instructor',
+        }),
+        expect.objectContaining({
+          unitId: 'MLUX-C0286',
+          namespace: 'auth',
+          key: 'admin',
+          english: 'Admin',
+        }),
+      ]),
+    );
+    expect(
+      MLUX_004_SHARED_OCCURRENCES.filter(({ id }) => ['O0707', 'O0708', 'O0709'].includes(id)),
+    ).toEqual([
+      {
+        id: 'O0707',
+        unitId: 'MLUX-C0285',
+        context: 'src/app/layouts/AccountMenu.tsx:214 — AppShell / authenticated account menu',
+        classification: 'Visible UI copy',
+        ownerTask: 'MLUX-004',
+      },
+      {
+        id: 'O0708',
+        unitId: 'MLUX-C0164',
+        context: 'src/app/layouts/AccountMenu.tsx:214 — AppShell / authenticated account menu',
+        classification: 'Visible UI copy',
+        ownerTask: 'MLUX-004',
+      },
+      {
+        id: 'O0709',
+        unitId: 'MLUX-C0286',
+        context: 'src/app/layouts/AccountMenu.tsx:214 — AppShell / authenticated account menu',
+        classification: 'Visible UI copy',
+        ownerTask: 'MLUX-004',
+      },
+    ]);
+    expect({
+      en: [
+        runtime.getResource('en', 'auth', 'student'),
+        runtime.getResource('en', 'course', 'instructor'),
+        runtime.getResource('en', 'auth', 'admin'),
+      ],
+      ru: [
+        runtime.getResource('ru', 'auth', 'student'),
+        runtime.getResource('ru', 'course', 'instructor'),
+        runtime.getResource('ru', 'auth', 'admin'),
+      ],
+      uz: [
+        runtime.getResource('uz', 'auth', 'student'),
+        runtime.getResource('uz', 'course', 'instructor'),
+        runtime.getResource('uz', 'auth', 'admin'),
+      ],
+    }).toEqual({
+      en: ['Student', 'Instructor', 'Admin'],
+      ru: ['Студент', 'Преподаватель', 'Администратор'],
+      uz: ['Talaba', 'O‘qituvchi', 'Administrator'],
+    });
   });
 
   it('keeps the independently enumerated DRAFT-18 MLUX-002 allocation, resources, review state and occurrences complete', () => {
     const runtime = createLocaleRuntime('en');
+    const foundationMapping = MLUX_002_RUNTIME_MAPPING.filter(({ unitId }) =>
+      FOUNDATION_UNIT_ID_PATTERN.test(unitId),
+    );
+    const foundationOccurrences = foundationMapping
+      .flatMap((mapping) => mapping.occurrences)
+      .filter(({ id }) => /^O00(?:0[1-9]|[12]\d|3[0-3])$/.test(id));
     const expectedIds = [
       'MLUX-C0001',
       'MLUX-C0002',
@@ -1477,6 +1724,16 @@ describe('locale foundation', () => {
 
     expect(MLUX_002_RUNTIME_MAPPING.map((mapping) => mapping.unitId)).toEqual(expectedIds);
     expect(MLUX_002_RUNTIME_MAPPING.flatMap((mapping) => mapping.occurrences)).toHaveLength(44);
+    expect(foundationMapping.map((mapping) => mapping.unitId)).toEqual(expectedIds.slice(0, 23));
+    expect(
+      ['MLUX-C0000', 'MLUX-C0024', 'MLUX-C0099'].filter((unitId) =>
+        FOUNDATION_UNIT_ID_PATTERN.test(unitId),
+      ),
+    ).toEqual([]);
+    expect(foundationOccurrences).toHaveLength(33);
+    expect(foundationOccurrences.map(({ id }) => id).sort()).toEqual(
+      Array.from({ length: 33 }, (_, index) => `O${String(index + 1).padStart(4, '0')}`),
+    );
     expect(
       MLUX_002_RUNTIME_MAPPING.flatMap((mapping) => mapping.occurrences)
         .map(({ id }) => id)
@@ -1499,7 +1756,7 @@ describe('locale foundation', () => {
       {
         id: 'O0526',
         unitId: 'MLUX-C0229',
-        context: 'src/app/layouts/AppShell.tsx:754 — AppShell / instructor desktop header action',
+        context: 'src/app/layouts/AppShell.tsx:753 — AppShell / instructor desktop header action',
         classification: 'Visible UI copy',
         ownerTask: 'MLUX-002',
       },
@@ -1507,7 +1764,7 @@ describe('locale foundation', () => {
         id: 'O0527',
         unitId: 'MLUX-C0229',
         context:
-          'src/app/layouts/AppShell.tsx:876 — AppShell / instructor compact navigation action',
+          'src/app/layouts/AppShell.tsx:875 — AppShell / instructor compact navigation action',
         classification: 'Visible UI copy',
         ownerTask: 'MLUX-002',
       },
@@ -1597,7 +1854,7 @@ describe('locale foundation', () => {
       expect(sourceLine).toContain(binding.expectedSource);
     }
 
-    expect(APP_SHELL_SOURCE_LINES[611]?.trim()).toBe(
+    expect(APP_SHELL_SOURCE_LINES[610]?.trim()).toBe(
       '<span className={styles.brandWordmark}>LearnHub</span>',
     );
   });

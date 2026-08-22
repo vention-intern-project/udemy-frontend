@@ -18,6 +18,7 @@ import { CourseActionPanel } from '../../src/pages/course-detail-page/CourseActi
 import {
   courseMutationDisposition,
   type CourseMutationDisposition,
+  type CoursePrimaryActionState,
 } from '../../src/features/course-detail';
 import { ApiError, type ApiClient, type ApiRequestOptions } from '../../src/shared/api';
 import { localeRuntime, type Locale } from '../../src/shared/locale';
@@ -52,6 +53,48 @@ const courseActionPanelCourse = {
   publishedAt: course.published_at,
   lessons: [],
 };
+
+interface LocalizedCourseActionScenario {
+  readonly locale: Locale;
+  readonly guestGuidance: string;
+  readonly guestLabel: string;
+  readonly disabled: readonly [CoursePrimaryActionState, string][];
+}
+
+const localizedCourseActionScenarios: readonly LocalizedCourseActionScenario[] = [
+  {
+    locale: 'ru',
+    guestGuidance: 'Войти, чтобы записаться бесплатно.',
+    guestLabel: 'Записаться бесплатно',
+    disabled: [
+      [{ kind: 'disabled', labelKey: 'course:courseIsNotPublished' }, 'Курс не опубликован'],
+      [{ kind: 'disabled', labelKey: 'course:actionUnavailable' }, 'Действие недоступно'],
+      [
+        { kind: 'disabled', labelKey: 'course:unavailableForAccount' },
+        'Недоступно для этого аккаунта',
+      ],
+      [{ kind: 'disabled', labelKey: 'course:checkingAvailability' }, 'Проверяем доступность'],
+      [{ kind: 'disabled', labelKey: 'course:alreadyEnrolled' }, 'Вы уже записаны'],
+      [{ kind: 'disabled', labelKey: 'course:alreadyInCart' }, 'Уже в корзине'],
+    ],
+  },
+  {
+    locale: 'uz',
+    guestGuidance: 'Kiring bepul yozilish uchun.',
+    guestLabel: 'Bepul yozilish',
+    disabled: [
+      [{ kind: 'disabled', labelKey: 'course:courseIsNotPublished' }, 'Kurs nashr qilinmagan'],
+      [{ kind: 'disabled', labelKey: 'course:actionUnavailable' }, 'Amal mavjud emas'],
+      [
+        { kind: 'disabled', labelKey: 'course:unavailableForAccount' },
+        'Bu akkaunt uchun mavjud emas',
+      ],
+      [{ kind: 'disabled', labelKey: 'course:checkingAvailability' }, 'Mavjudligi tekshirilmoqda'],
+      [{ kind: 'disabled', labelKey: 'course:alreadyEnrolled' }, 'Siz allaqachon yozilgansiz'],
+      [{ kind: 'disabled', labelKey: 'course:alreadyInCart' }, 'Savatda allaqachon bor'],
+    ],
+  },
+];
 
 const studentProfile = {
   email: 'student@example.test',
@@ -326,6 +369,53 @@ afterEach(() => {
 });
 
 describe('CourseDetailPage', () => {
+  it.each(localizedCourseActionScenarios)(
+    'renders every guest and disabled Course Action descriptor in $locale',
+    async ({ locale, guestGuidance, guestLabel, disabled }) => {
+      await localeRuntime.changeLanguage(locale);
+      const renderAction = (action: CoursePrimaryActionState) =>
+        render(
+          <I18nextProvider i18n={localeRuntime}>
+            <MemoryRouter>
+              <CourseActionPanel
+                action={action}
+                course={courseActionPanelCourse}
+                isDraft={false}
+                mutationState={{ status: 'idle' }}
+                onRetryPreflight={() => {}}
+                onSubmitAction={() => {}}
+                preflight="eligible"
+              />
+            </MemoryRouter>
+          </I18nextProvider>,
+        );
+
+      renderAction({
+        kind: 'login',
+        helper: {
+          linkTextKey: 'course:signIn',
+          guidanceKey: 'course:signInToEnrollForFree',
+        },
+        labelKey: 'course:enrollForFree',
+        to: '/login?returnTo=%2Fcourses%2F7',
+      });
+      const guestLink = screen.getByRole('link', { name: locale === 'ru' ? 'Войти' : 'Kiring' });
+      expect(guestLink.closest('p')?.textContent).toBe(guestGuidance);
+      expect((screen.getByRole('button', { name: guestLabel }) as HTMLButtonElement).disabled).toBe(
+        true,
+      );
+      cleanup();
+
+      disabled.forEach(([action, label]) => {
+        renderAction(action);
+        expect((screen.getByRole('button', { name: label }) as HTMLButtonElement).disabled).toBe(
+          true,
+        );
+        cleanup();
+      });
+    },
+  );
+
   it.each(courseActionRendererScenarios)(
     'renders the exact public message for $name without private mutation detail',
     ({ disposition, message }) => {
@@ -333,7 +423,7 @@ describe('CourseDetailPage', () => {
         <I18nextProvider i18n={localeRuntime}>
           <MemoryRouter>
             <CourseActionPanel
-              action={{ kind: 'enroll', label: 'Enroll free' }}
+              action={{ kind: 'enroll', labelKey: 'catalog:enrollFree' }}
               course={courseActionPanelCourse}
               isDraft={false}
               mutationState={{ status: 'error', disposition }}
@@ -355,7 +445,7 @@ describe('CourseDetailPage', () => {
       <I18nextProvider i18n={localeRuntime}>
         <MemoryRouter>
           <CourseActionPanel
-            action={{ kind: 'enroll', label: 'Enroll free' }}
+            action={{ kind: 'enroll', labelKey: 'catalog:enrollFree' }}
             course={courseActionPanelCourse}
             isDraft={false}
             mutationState={{ status: 'idle' }}
