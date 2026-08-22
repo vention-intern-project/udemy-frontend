@@ -134,6 +134,13 @@ interface CourseResidualBrowserCopy {
   readonly draftDisabledAction: string;
 }
 
+interface LocalizedCoursePriceFallbackScenario {
+  readonly localeButton: string;
+  readonly freeLabel: string;
+  readonly unavailableLabel: string;
+  readonly actionLabel: string;
+}
+
 const courseResidualBrowserCopy: Readonly<Record<'en' | 'ru' | 'uz', CourseResidualBrowserCopy>> = {
   en: {
     loadingDetails: 'Loading course details',
@@ -713,6 +720,67 @@ for (const scenario of [
 
     await action.click();
     expect(mutations).toBe(1);
+    diagnostics.assertClean();
+  });
+}
+
+for (const scenario of [
+  {
+    localeButton: 'English',
+    freeLabel: 'FREE',
+    unavailableLabel: 'Price unavailable',
+    actionLabel: 'Enroll free',
+  },
+  {
+    localeButton: 'Русский',
+    freeLabel: 'БЕСПЛАТНО',
+    unavailableLabel: 'Цена недоступна',
+    actionLabel: 'Записаться бесплатно',
+  },
+  {
+    localeButton: "O'zbek",
+    freeLabel: 'BEPUL',
+    unavailableLabel: 'Narx mavjud emas',
+    actionLabel: 'Bepul yozilish',
+  },
+] satisfies readonly LocalizedCoursePriceFallbackScenario[]) {
+  test(`renders localized free and unavailable Course Detail prices after selecting ${scenario.localeButton}`, async ({
+    page,
+  }) => {
+    const diagnostics = await installDiagnostics(page);
+    let price = '0.00';
+    await installStudentToken(page);
+    await page.route('**/me', (route) => json(route, studentProfile));
+    await page.route('**/courses/7**', (route) => {
+      if (isDocumentNavigation(route)) return route.fallback();
+      const path = new URL(route.request().url()).pathname;
+      return json(route, path.endsWith('/lessons') ? outline(null) : { ...detail, price });
+    });
+    await page.route('**/cart', (route) => json(route, emptyCart));
+    await page.route('**/enrollments/my**', (route) => json(route, emptyEnrollments));
+
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/courses/7');
+    if (scenario.localeButton !== 'English') {
+      await page.getByRole('button', { name: 'Change language' }).click();
+      await page.getByRole('button', { name: scenario.localeButton, exact: true }).click();
+    }
+    const priceData = page.locator('aside data');
+    await expect(priceData).toHaveText(scenario.freeLabel);
+    await expect(priceData).toHaveAttribute('value', '0.00');
+    const action = page.getByRole('button', { name: scenario.actionLabel });
+    await action.focus();
+    await expect(action).toBeFocused();
+
+    price = 'not-a-decimal';
+    await page.goto('/courses/7?fixture=localized-invalid-price');
+    await expect(priceData).toHaveText(scenario.unavailableLabel);
+    await expect(priceData).toHaveAttribute('value', 'not-a-decimal');
+    await expect(page.locator('body')).not.toContainText('USD not-a-decimal');
+    for (const width of [320, 390, 768, 1280] as const) {
+      await page.setViewportSize({ width, height: 900 });
+      await expectNoHorizontalOverflow(page);
+    }
     diagnostics.assertClean();
   });
 }

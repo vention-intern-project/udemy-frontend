@@ -112,6 +112,8 @@ export function CourseActionPanel({
           price: course.price,
           currency: course.currency,
           locale: i18n.language,
+          freeLabel: t('catalog:free'),
+          unavailableLabel: t('catalog:priceUnavailable'),
         })}
       </data>
       {notice ? (
