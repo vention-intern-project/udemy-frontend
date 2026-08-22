@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+
 import { expect, test } from '@playwright/test';
 
 import { APP_ROUTES } from '../../src/app/router/route-registry';
@@ -118,7 +120,11 @@ test('pins every registered route to one final locale-aware browser owner', () =
   expect(ROUTE_CLOSURE_MATRIX.map(({ id, path, access }) => ({ id, path, access }))).toEqual(
     APP_ROUTES.map(({ id, path, access }) => ({ id, path, access })),
   );
-  expect(ROUTE_CLOSURE_MATRIX.every(({ ownerConfig }) => ownerConfig.length > 0)).toBe(true);
+  expect(
+    ROUTE_CLOSURE_MATRIX.every(({ ownerConfig }) =>
+      existsSync(new URL(`./${ownerConfig}.playwright.config.ts`, import.meta.url)),
+    ),
+  ).toBe(true);
 });
 
 for (const scenario of LOCALE_SENTINELS) {

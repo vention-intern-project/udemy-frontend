@@ -303,6 +303,7 @@ test('keeps destructive confirmation modal while pending and announces one recov
   page,
 }) => {
   const runtime = monitorRuntime(page);
+  await page.clock.install();
   await page.goto('/');
 
   const invoker = page.getByRole('button', { name: 'Open destructive confirmation' });
@@ -332,9 +333,10 @@ test('keeps destructive confirmation modal while pending and announces one recov
   await page.keyboard.press('Escape');
   await expect(dialog).toBeVisible();
 
+  await page.clock.fastForward(700);
   const alert = dialog.getByRole('alert');
   await expect(alert).toHaveCount(1);
-  await expect(alert).toContainText('Demo failure: the item was not deleted.', { timeout: 3_000 });
+  await expect(alert).toContainText('Demo failure: the item was not deleted.');
   await expect(dialog).not.toHaveAttribute('aria-busy', 'true');
 
   const failedConfirm = dialog.locator('button[data-state="error"]');

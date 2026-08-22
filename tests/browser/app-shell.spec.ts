@@ -24,6 +24,12 @@ type ShellSurfaceViewportWidth = 320 | 390 | 768 | 1280 | 1440;
 type DesktopViewportWidth = 768 | 1280;
 type MobileViewportWidth = 320 | 390 | 767;
 
+function localeResourceString(resource: unknown, key: string): string {
+  const value = resource && typeof resource === 'object' ? Reflect.get(resource, key) : undefined;
+  if (typeof value !== 'string') throw new Error(`Missing localized resource ${key}.`);
+  return value;
+}
+
 interface RepresentativeTokenSnapshot {
   density: string | null;
   colorCanvas: string;
@@ -1676,16 +1682,15 @@ test('preserves the authenticated-instructor mobile language flow in the profile
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: 'Русский' })).toHaveCount(0);
   await expect(page.locator('[data-account-initials]')).toBeFocused();
-  const uzbekAccessibility = LOCALE_RESOURCES.uz.a11y as Record<string, string>;
-  const uzbekInstructor = LOCALE_RESOURCES.uz.instructor as Record<string, string>;
   const mobileNavigationTrigger = page.getByRole('button', {
-    name: uzbekAccessibility.openNavigation,
+    name: localeResourceString(LOCALE_RESOURCES.uz.a11y, 'openNavigation'),
   });
   await mobileNavigationTrigger.click();
   await expect(
-    page
-      .locator('#mobile-navigation')
-      .getByRole('button', { name: uzbekInstructor.coursesCreateCourse, exact: true }),
+    page.locator('#mobile-navigation').getByRole('button', {
+      name: localeResourceString(LOCALE_RESOURCES.uz.instructor, 'coursesCreateCourse'),
+      exact: true,
+    }),
   ).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(mobileNavigationTrigger).toBeFocused();

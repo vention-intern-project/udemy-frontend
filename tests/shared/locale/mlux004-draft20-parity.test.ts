@@ -6,8 +6,8 @@ import {
   MLUX_003_RUNTIME_MAPPING,
   MLUX_004_RUNTIME_MAPPING,
   MLUX_004_SHARED_OCCURRENCES,
-  MLUX_004_TRANSLATIONS,
   MLUX_005_RUNTIME_MAPPING,
+  type LocaleMappingRecord,
 } from '@shared/locale';
 
 import {
@@ -84,6 +84,15 @@ function currentCorpusUzbekValue(unitId: string): string {
 
 function normalizeTemplate(value: string): string {
   return value.replace(/\{\{([^{}]+)}}/g, '{$1}');
+}
+
+function runtimeLocalizedValue(
+  runtime: ReturnType<typeof createLocaleRuntime>,
+  locale: 'ru' | 'uz',
+  mapping: LocaleMappingRecord,
+): string {
+  const key = mapping.plural ? `${mapping.key}_one` : mapping.key;
+  return String(runtime.getResource(locale, mapping.namespace, key) ?? '');
 }
 
 function interpolateTemplate(value: string, count: number): string {
@@ -243,9 +252,6 @@ export function collectMlux004Draft20ParityViolations(
 }
 
 function mappingCandidate(): Draft20RuntimeCandidate {
-  const translationsByUnit = new Map(
-    MLUX_004_TRANSLATIONS.map((translation) => [translation.unitId, translation]),
-  );
   const allMappings = [
     ...MLUX_002_RUNTIME_MAPPING,
     ...MLUX_003_RUNTIME_MAPPING,
@@ -263,18 +269,13 @@ function mappingCandidate(): Draft20RuntimeCandidate {
   const mappings = [...mappingsByUnit.values()].map(([mapping]) => mapping!);
   return {
     units: mappings.map((mapping) => {
-      const translation = translationsByUnit.get(mapping.unitId);
       return {
         unitId: mapping.unitId,
         namespace: mapping.namespace,
         key: mapping.key,
         english: mapping.english,
-        russian:
-          translation?.ru ??
-          String(runtime.getResource('ru', mapping.namespace, mapping.key) ?? ''),
-        uzbek:
-          translation?.uz ??
-          String(runtime.getResource('uz', mapping.namespace, mapping.key) ?? ''),
+        russian: runtimeLocalizedValue(runtime, 'ru', mapping),
+        uzbek: runtimeLocalizedValue(runtime, 'uz', mapping),
         variables: mapping.variables,
         plural: mapping.plural,
         resourceStatus: mapping.resourceStatus,

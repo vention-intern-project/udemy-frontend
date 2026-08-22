@@ -416,6 +416,7 @@ async function expectEffectivePageScaleGeometry(page: Page, preview: Locator) {
     expect(scaleEvidence.visualWidth).toBeLessThan(scaleEvidence.layoutWidth);
     await expectStableLessonMediaGeometry(preview);
   } finally {
+    await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 });
     await cdp.detach();
   }
 }
@@ -604,17 +605,21 @@ test('renders the My learning empty state within its responsive geometry', async
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/learning');
   const cdp = await page.context().newCDPSession(page);
-  await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 2 });
-  const scaleGeometry = await page.evaluate(() => ({
-    scale: window.visualViewport?.scale ?? 1,
-    documentWidth: document.documentElement.scrollWidth,
-    bodyWidth: document.body.scrollWidth,
-    layoutWidth: document.documentElement.clientWidth,
-  }));
-  expect(scaleGeometry.scale).toBeCloseTo(2, 1);
-  expect(scaleGeometry.documentWidth).toBeLessThanOrEqual(scaleGeometry.layoutWidth);
-  expect(scaleGeometry.bodyWidth).toBeLessThanOrEqual(scaleGeometry.layoutWidth);
-  await cdp.detach();
+  try {
+    await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 2 });
+    const scaleGeometry = await page.evaluate(() => ({
+      scale: window.visualViewport?.scale ?? 1,
+      documentWidth: document.documentElement.scrollWidth,
+      bodyWidth: document.body.scrollWidth,
+      layoutWidth: document.documentElement.clientWidth,
+    }));
+    expect(scaleGeometry.scale).toBeCloseTo(2, 1);
+    expect(scaleGeometry.documentWidth).toBeLessThanOrEqual(scaleGeometry.layoutWidth);
+    expect(scaleGeometry.bodyWidth).toBeLessThanOrEqual(scaleGeometry.layoutWidth);
+  } finally {
+    await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 });
+    await cdp.detach();
+  }
   expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
   expect(diagnostics.httpFailures).toEqual([]);
 });
@@ -2225,23 +2230,26 @@ for (const locale of ['en', 'ru', 'uz'] as const) {
     }
 
     const cdp = await page.context().newCDPSession(page);
-    await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 2 });
-    const scaledGeometry = await page.evaluate(() => ({
-      scale: window.visualViewport?.scale ?? 1,
-      visualWidth: window.visualViewport?.width ?? window.innerWidth,
-      layoutWidth: document.documentElement.clientWidth,
-      documentWidth: document.documentElement.scrollWidth,
-      bodyWidth: document.body.scrollWidth,
-    }));
-    expect(scaledGeometry.scale).toBeCloseTo(2, 1);
-    expect(scaledGeometry.visualWidth * scaledGeometry.scale).toBeCloseTo(
-      scaledGeometry.layoutWidth,
-      0,
-    );
-    expect(scaledGeometry.documentWidth).toBeLessThanOrEqual(scaledGeometry.layoutWidth);
-    expect(scaledGeometry.bodyWidth).toBeLessThanOrEqual(scaledGeometry.layoutWidth);
-    await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 });
-    await cdp.detach();
+    try {
+      await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 2 });
+      const scaledGeometry = await page.evaluate(() => ({
+        scale: window.visualViewport?.scale ?? 1,
+        visualWidth: window.visualViewport?.width ?? window.innerWidth,
+        layoutWidth: document.documentElement.clientWidth,
+        documentWidth: document.documentElement.scrollWidth,
+        bodyWidth: document.body.scrollWidth,
+      }));
+      expect(scaledGeometry.scale).toBeCloseTo(2, 1);
+      expect(scaledGeometry.visualWidth * scaledGeometry.scale).toBeCloseTo(
+        scaledGeometry.layoutWidth,
+        0,
+      );
+      expect(scaledGeometry.documentWidth).toBeLessThanOrEqual(scaledGeometry.layoutWidth);
+      expect(scaledGeometry.bodyWidth).toBeLessThanOrEqual(scaledGeometry.layoutWidth);
+    } finally {
+      await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 });
+      await cdp.detach();
+    }
 
     expect(writeRequests).toEqual(['POST /payments/complete']);
     expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);

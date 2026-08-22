@@ -182,10 +182,11 @@ test('renders the instructor course collection in Russian and Uzbek without over
       `${course.title} kursi bo‘yicha amallar`,
     ],
   ] as const) {
-    await page.addInitScript((selectedLocale) => {
+    await page.goto('/instructor/courses', { waitUntil: 'domcontentloaded' });
+    await page.evaluate((selectedLocale: string) => {
       localStorage.setItem('learnhub.locale', selectedLocale);
     }, locale);
-    await page.goto('/instructor/courses', { waitUntil: 'domcontentloaded' });
+    await page.reload({ waitUntil: 'domcontentloaded' });
     await expect(page.getByText(course.title)).toBeVisible();
     await expect(page.getByRole('heading', { name: heading })).toBeVisible();
     await expect(page.getByText(lessonCount, { exact: true }).first()).toBeVisible();

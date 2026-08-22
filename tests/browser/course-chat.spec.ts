@@ -133,6 +133,62 @@ function captureRuntimeDiagnostics(page: Page): RuntimeDiagnostics {
   return diagnostics;
 }
 
+async function waitForRenderedAiChatAssets(page: Page) {
+  await page.locator('section[aria-labelledby="ai-chat-hero-title"]').evaluate(async (hero) => {
+    if (!(hero instanceof HTMLElement)) throw new Error('AI hero is unavailable.');
+    const heroImage = hero.querySelector<HTMLImageElement>('[data-part="ai-chat-hero-image"]');
+    const cssAssetSources = ['', '::before', '::after'].flatMap((pseudoElement) =>
+      Array.from(
+        getComputedStyle(hero, pseudoElement).backgroundImage.matchAll(/url\(["']?(.*?)["']?\)/g),
+        ([, url]) => url,
+      ),
+    );
+    const renderedImageSource =
+      heroImage && getComputedStyle(heroImage).display !== 'none'
+        ? heroImage.currentSrc
+        : undefined;
+    const assetUrls = Array.from(
+      new Set(
+        [...cssAssetSources, renderedImageSource]
+          .filter((source): source is string => Boolean(source))
+          .map((source) => new URL(source, window.location.href).href),
+      ),
+    );
+    if (assetUrls.length === 0) throw new Error('AI hero rendered assets are unavailable.');
+
+    await Promise.all(
+      assetUrls.map(async (assetUrl) => {
+        const url = new URL(assetUrl);
+        if (
+          url.origin !== window.location.origin ||
+          !url.pathname.startsWith('/src/pages/ai-chat-page/assets/')
+        )
+          throw new Error(`Unexpected AI hero asset: ${url.href}`);
+
+        const renderedImage =
+          renderedImageSource === url.href && heroImage instanceof HTMLImageElement
+            ? heroImage
+            : undefined;
+        const image = renderedImage ?? new Image();
+        if (!renderedImage) image.src = url.href;
+        if (!image.complete) {
+          await new Promise<void>((resolve, reject) => {
+            image.addEventListener('load', () => resolve(), { once: true });
+            image.addEventListener(
+              'error',
+              () => reject(new Error(`AI hero asset failed to load: ${url.pathname}`)),
+              { once: true },
+            );
+          });
+        }
+        if (image.naturalWidth === 0)
+          throw new Error(`AI hero asset failed to load: ${url.pathname}`);
+        await image.decode();
+      }),
+    );
+  });
+}
+
 async function installCourseChatFixture(
   page: Page,
   chatRequests: ChatRequestEvidence[],
@@ -543,12 +599,16 @@ test('keeps the workspace chat bounded at desktop and effective 200% scale with 
     await page.evaluate(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches),
   ).toBe(true);
   const cdp = await page.context().newCDPSession(page);
-  await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 2 });
-  const scale = await page.evaluate(() => window.visualViewport?.scale ?? 1);
-  expect(scale).toBeCloseTo(2, 1);
-  await expect(page.getByLabel('Message the course assistant')).toBeFocused();
-  await expectNoOverflow(page);
-  await cdp.detach();
+  try {
+    await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 2 });
+    const scale = await page.evaluate(() => window.visualViewport?.scale ?? 1);
+    expect(scale).toBeCloseTo(2, 1);
+    await expect(page.getByLabel('Message the course assistant')).toBeFocused();
+    await expectNoOverflow(page);
+  } finally {
+    await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 });
+    await cdp.detach();
+  }
   expect(chatRequests).toEqual([]);
   expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
   expect(diagnostics.httpFailures).toEqual([]);
@@ -1179,13 +1239,14 @@ test('keeps RU and Uzbek accumulated locale states, focus, zoom, reflow, and net
       'AI yordamchini ochish',
     ],
   ] as const) {
-    await page.addInitScript((selectedLocale: string) => {
-      localStorage.setItem('learnhub.locale', selectedLocale);
-    }, locale);
-
     for (const width of [320, 390, 768, 1280]) {
       await page.setViewportSize({ width, height: 900 });
       await page.goto('/ai-chat');
+      await waitForRenderedAiChatAssets(page);
+      await page.evaluate((selectedLocale: string) => {
+        localStorage.setItem('learnhub.locale', selectedLocale);
+      }, locale);
+      await page.reload();
       await expect(page.getByRole('region', { name: assistant })).toBeVisible();
       await expect(page.getByLabel(composer)).toBeVisible();
       if (width < 1000) {
@@ -1196,6 +1257,7 @@ test('keeps RU and Uzbek accumulated locale states, focus, zoom, reflow, and net
       } else {
         await expect(page.getByRole('heading', { name: suggestedActions })).toBeVisible();
       }
+      await waitForRenderedAiChatAssets(page);
       await expectNoOverflow(page);
     }
 
@@ -1250,6 +1312,7 @@ test('keeps RU and Uzbek accumulated locale states, focus, zoom, reflow, and net
   try {
     await page.setViewportSize({ width: 320, height: 900 });
     await page.goto('/ai-chat');
+    await waitForRenderedAiChatAssets(page);
     await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 2 });
     expect(await page.evaluate(() => window.visualViewport?.scale)).toBeCloseTo(2, 1);
     await expectNoOverflow(page);

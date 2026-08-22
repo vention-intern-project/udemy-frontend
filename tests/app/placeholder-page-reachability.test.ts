@@ -80,6 +80,7 @@ function registeredRouteIdsMissingConcretePage(
 
   const handledRouteIds = new Set<string>();
   const collectHandledRouteIds = (node: ts.Node): void => {
+    // pageForRoute is ordered: branches after its fallback cannot make a route concrete.
     if (node.getStart(sourceFile) >= fallbackOffset) return;
     if (ts.isIfStatement(node)) {
       const returnedPageTag = concretePageTagReturnedBy(node.thenStatement);
