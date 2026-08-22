@@ -1,4 +1,10 @@
-import { readBoolean, readNonNegativeInteger, readNullableString, readPositiveInteger, readRecord } from '@shared/api';
+import {
+  readBoolean,
+  readNonNegativeInteger,
+  readNullableString,
+  readPositiveInteger,
+  readRecord,
+} from '@shared/api';
 import type { CourseProgressDto, LessonProgressDto } from '@entities/enrollment';
 
 import type { CourseProgress, LessonCompletionState, LessonProgress } from './model';
@@ -21,11 +27,18 @@ export function decodeLessonProgressDto(value: unknown): LessonProgressDto {
 
 export function decodeCourseProgressDto(value: unknown): CourseProgressDto {
   const response = readRecord(value, 'course progress response');
-  const completedLessons = readNonNegativeInteger(response.completed_lessons, 'course progress completed lessons');
-  const totalLessons = readNonNegativeInteger(response.total_lessons, 'course progress total lessons');
+  const completedLessons = readNonNegativeInteger(
+    response.completed_lessons,
+    'course progress completed lessons',
+  );
+  const totalLessons = readNonNegativeInteger(
+    response.total_lessons,
+    'course progress total lessons',
+  );
   const progressPercentage = readPercentage(response.progress_percentage);
   if (completedLessons > totalLessons) throw new TypeError('Invalid course progress counts');
-  const expectedPercentage = totalLessons === 0 ? 0 : Math.round((completedLessons / totalLessons) * 10_000) / 100;
+  const expectedPercentage =
+    totalLessons === 0 ? 0 : Math.round((completedLessons / totalLessons) * 10_000) / 100;
   if (Math.abs(progressPercentage - expectedPercentage) > 0.001) {
     throw new TypeError('Invalid course progress percentage');
   }
@@ -50,7 +63,8 @@ export function mapCourseProgressDto(dto: CourseProgressDto): CourseProgress {
   };
 }
 
-export function lessonCompletionLabel(state: LessonCompletionState): string {
-  if (state.status === 'unknown') return 'Completion status unavailable';
-  return state.completed ? 'Completed' : 'Not completed';
+export type LessonCompletionLabelKey = 'completed' | 'notCompleted';
+
+export function lessonCompletionLabelKey(state: LessonCompletionState): LessonCompletionLabelKey {
+  return state.status === 'known' && state.completed ? 'completed' : 'notCompleted';
 }

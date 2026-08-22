@@ -4,7 +4,7 @@ import { Check, Undo2 } from 'lucide-react';
 
 import type { LessonOutline, LessonType } from '@entities/course';
 import type { CourseProgress, LessonCompletionState } from '@features/learning-progress';
-import { lessonCompletionLabel } from '@features/learning-progress';
+import { lessonCompletionLabelKey } from '@features/learning-progress';
 import { LessonMediaAccess } from '@features/media-access';
 import { Button, Notice, Skeleton, SkeletonGroup, VisuallyHidden } from '@shared/ui/primitives';
 
@@ -292,7 +292,9 @@ export function EnrollmentProgressPanel({
                 return (
                   <li key={lesson.id} className={styles.lesson}>
                     <div className={styles.lessonDetails}>
-                      <p className={completionClassName}>{lessonCompletionLabel(displayState)}</p>
+                      <p className={completionClassName}>
+                        {t(`learning:${lessonCompletionLabelKey(displayState)}`)}
+                      </p>
                       <h3>{lesson.title}</h3>
                       <p>
                         {lesson.description ??

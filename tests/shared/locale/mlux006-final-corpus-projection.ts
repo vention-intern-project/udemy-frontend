@@ -24193,23 +24193,218 @@ const MLUX006_DRAFT28_OCCURRENCES: readonly Mlux006FinalCorpusOccurrence[] = [
   dedupeMapping,
 }));
 
+type Mlux006Draft29UnitSeed = readonly [string, string, string, string, string, string, string];
+
+const MLUX006_DRAFT29_UNITS: readonly Mlux006Draft29UnitSeed[] = [
+  [
+    'C0478',
+    'catalog',
+    'remove',
+    'Catalog / course action remove',
+    'Remove',
+    'Удалить',
+    'Olib tashlash',
+  ],
+  [
+    'C0479',
+    'catalog',
+    'enrolled',
+    'Catalog / course action enrolled',
+    'Enrolled',
+    'Вы записаны',
+    'Yozilgansiz',
+  ],
+  [
+    'C0480',
+    'catalog',
+    'adding',
+    'Catalog / course action pending add',
+    'Adding…',
+    'Добавляем…',
+    'Qo‘shilmoqda…',
+  ],
+  [
+    'C0481',
+    'catalog',
+    'removing',
+    'Catalog / course action pending remove',
+    'Removing…',
+    'Удаляем…',
+    'Olib tashlanmoqda…',
+  ],
+  [
+    'C0482',
+    'catalog',
+    'enrolling',
+    'Catalog / course action pending enrollment',
+    'Enrolling…',
+    'Записываем…',
+    'Yozilmoqda…',
+  ],
+  [
+    'C0483',
+    'learning',
+    'completed',
+    'Learning / lesson completion state',
+    'Completed',
+    'Завершено',
+    'Yakunlandi',
+  ],
+  [
+    'C0484',
+    'learning',
+    'notCompleted',
+    'Learning / lesson completion state',
+    'Not completed',
+    'Не завершено',
+    'Yakunlanmagan',
+  ],
+] as const;
+
+const MLUX006_DRAFT29_CORPUS_UNITS: readonly Mlux006FinalCorpusUnit[] = MLUX006_DRAFT29_UNITS.map(
+  ([suffix, namespace, key, routeState, english, russian, uzbek]) => ({
+    unitId: `MLUX-${suffix}`,
+    namespace,
+    key,
+    runtimeEnglish: english,
+    variables: [],
+    plural: false,
+    sourceScreen: 'See Occurrences (1 verified source)',
+    routeState,
+    english,
+    russian: { value: russian, resourceStatus: 'Draft', reviewStatus: 'Pending' },
+    uzbek: { value: uzbek, resourceStatus: 'Draft', reviewStatus: 'Pending' },
+    ownerTasks: ['MLUX-006-FOLLOWUP'],
+    runtimeOwnerTasks: ['MLUX-006-FOLLOWUP'],
+    fallback: 'English source',
+    classification: 'Visible UI copy',
+    testTarget: 'MLUX-006-FOLLOWUP focused + browser matrix',
+    status: 'Draft',
+    notes: `DRAFT-29 ${namespace === 'catalog' ? 'Catalog action' : 'Learning completion'} state; draft translations await human review.`,
+    occurrenceCount: 1,
+    dedupeDecision: 'Unique',
+  }),
+);
+
+type Mlux006Draft29OccurrenceSeed = readonly [
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+];
+
+const MLUX006_DRAFT29_OCCURRENCES: readonly Mlux006Draft29OccurrenceSeed[] = [
+  [
+    '0686',
+    'C0478',
+    'src/pages/catalog-page/CourseCard.tsx',
+    'Catalog / course action remove',
+    'Remove',
+    'translation key',
+    'Unique occurrence',
+  ],
+  [
+    '0687',
+    'C0479',
+    'src/pages/catalog-page/CourseCard.tsx',
+    'Catalog / course action enrolled',
+    'Enrolled',
+    'translation key',
+    'Unique occurrence',
+  ],
+  [
+    '0688',
+    'C0480',
+    'src/pages/catalog-page/CourseCard.tsx',
+    'Catalog / course action pending add',
+    'Adding…',
+    'translation key',
+    'Unique occurrence',
+  ],
+  [
+    '0689',
+    'C0481',
+    'src/pages/catalog-page/CourseCard.tsx',
+    'Catalog / course action pending remove',
+    'Removing…',
+    'translation key',
+    'Unique occurrence',
+  ],
+  [
+    '0690',
+    'C0482',
+    'src/pages/catalog-page/CourseCard.tsx',
+    'Catalog / course action pending enrollment',
+    'Enrolling…',
+    'translation key',
+    'Unique occurrence',
+  ],
+  [
+    '0691',
+    'C0059',
+    'src/pages/catalog-page/CourseCard.tsx',
+    'Catalog / course action retry',
+    'Try again',
+    'translation key',
+    'Mapped to one phrase across 7 equivalent occurrences',
+  ],
+  [
+    '0692',
+    'C0483',
+    'src/widgets/enrollment-progress-panel/EnrollmentProgressPanel.tsx',
+    'Learning / lesson completion state',
+    'Completed',
+    'semantic key',
+    'Unique occurrence',
+  ],
+  [
+    '0693',
+    'C0484',
+    'src/widgets/enrollment-progress-panel/EnrollmentProgressPanel.tsx',
+    'Learning / lesson completion state',
+    'Not completed',
+    'semantic key',
+    'Unique occurrence',
+  ],
+] as const;
+
+const MLUX006_DRAFT29_CORPUS_OCCURRENCES: readonly Mlux006FinalCorpusOccurrence[] =
+  MLUX006_DRAFT29_OCCURRENCES.map(
+    ([suffix, unitSuffix, sourceScreen, routeState, english, extractionKind, dedupeMapping]) => ({
+      occurrenceId: `MLUX-O${suffix}`,
+      unitId: `MLUX-${unitSuffix}`,
+      sourceScreen,
+      routeState,
+      runtimeContext: `${sourceScreen} — ${routeState}`,
+      english,
+      classification: 'Visible UI copy',
+      ownerTask: 'MLUX-006-FOLLOWUP',
+      testTarget: 'MLUX-006-FOLLOWUP focused + browser matrix',
+      extractionKind,
+      dedupeMapping,
+    }),
+  );
+
 export const MLUX006_FINAL_CORPUS_PROJECTION: Mlux006FinalCorpusProjection = {
   ...MLUX006_DRAFT27_CORPUS_PROJECTION,
-  version: 'MLUX-001-DRAFT-28',
-  sha256: '869E02A40B55319DB9464E2FBAF6E7F5F39A21DAF5C9099761769E1DFB45C8F3',
-  byteLength: 110206,
+  version: 'MLUX-001-DRAFT-29',
+  sha256: 'FFC46F9AFF729D91693757849CF2726841BC0AAFAA94AEB7077F232B46895992',
+  byteLength: 111501,
   summary: {
     ...MLUX006_DRAFT27_CORPUS_PROJECTION.summary,
-    translationUnits: 480,
-    sourceOccurrences: 685,
-    mergedDuplicateRows: 205,
-    russianDrafts: 480,
-    uzbekDrafts: 480,
+    translationUnits: 487,
+    sourceOccurrences: 693,
+    mergedDuplicateRows: 206,
+    russianDrafts: 487,
+    uzbekDrafts: 487,
   },
   workbookFrontMatter: {
     ...MLUX006_DRAFT27_CORPUS_PROJECTION.workbookFrontMatter,
     occurrencesSubtitle:
-      'All 685 source occurrences are deduplicated by semantic key and immutable English intent.',
+      'All 693 source occurrences are deduplicated by semantic key and immutable English intent.',
   },
   units: [
     ...MLUX006_DRAFT27_CORPUS_PROJECTION.units.map((unit) => {
@@ -24217,13 +24412,29 @@ export const MLUX006_FINAL_CORPUS_PROJECTION: Mlux006FinalCorpusProjection = {
         MLUX006_DRAFT28_OCCURRENCE_OVERRIDES[
           unit.unitId as keyof typeof MLUX006_DRAFT28_OCCURRENCE_OVERRIDES
         ];
+      if (unit.unitId === 'MLUX-C0059') {
+        return {
+          ...unit,
+          sourceScreen: 'See Occurrences (7 verified sources)',
+          ownerTasks: ['MLUX-003', 'MLUX-004', 'MLUX-006-FOLLOWUP'],
+          notes:
+            'Merged 7 equivalent occurrences; exact locations are on Occurrences; draft translations await human review.',
+          occurrenceCount: 7,
+          dedupeDecision: 'Merged equivalent occurrences',
+        };
+      }
       return override ? { ...unit, ...override } : unit;
     }),
     ...MLUX006_DRAFT28_UNITS,
+    ...MLUX006_DRAFT29_CORPUS_UNITS,
   ],
-  occurrences: [...MLUX006_DRAFT27_CORPUS_PROJECTION.occurrences, ...MLUX006_DRAFT28_OCCURRENCES],
+  occurrences: [
+    ...MLUX006_DRAFT27_CORPUS_PROJECTION.occurrences,
+    ...MLUX006_DRAFT28_OCCURRENCES,
+    ...MLUX006_DRAFT29_CORPUS_OCCURRENCES,
+  ],
   acceptance: MLUX006_DRAFT27_CORPUS_PROJECTION.acceptance.map((record) => ({
     ...record,
-    corpusVersion: 'MLUX-001-DRAFT-28',
+    corpusVersion: 'MLUX-001-DRAFT-29',
   })),
 };

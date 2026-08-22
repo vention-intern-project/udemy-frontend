@@ -220,7 +220,9 @@ export function CourseCard({
     action.kind === 'link' && action.presentation === 'enroll-free'
       ? t('catalog:enrollForFree')
       : actionLabelKey
-        ? t(`catalog:${actionLabelKey}`)
+        ? actionLabelKey === 'tryAgain'
+          ? t('routes:tryAgain')
+          : t(`catalog:${actionLabelKey}`)
         : action.label;
   const ActionIcon =
     action.kind === 'link' ||

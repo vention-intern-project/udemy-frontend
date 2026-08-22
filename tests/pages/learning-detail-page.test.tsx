@@ -799,7 +799,7 @@ describe('LearningDetailPage', () => {
       throw new Error(`Unexpected request ${options.path}`);
     };
     await renderPage(request);
-    expect(await screen.findByText('Completion status unavailable')).toBeTruthy();
+    expect(await screen.findByText('Not completed', { exact: true })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Complete lesson' })).toBeTruthy();
     expect(screen.queryByText('/media/private.mp4')).toBeNull();
     expect(screen.queryByRole('link', { name: /download/i })).toBeNull();

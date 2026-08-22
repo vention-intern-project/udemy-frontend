@@ -1110,35 +1110,35 @@ describe('MLUX-006 final corpus parity', () => {
     expect(browserSource).toContain('selectFixtureLocale(page, locale)');
   });
 
-  it('matches the exact DRAFT-28 identity, allocation, statuses and deferred linguistic gate', () => {
+  it('matches the exact DRAFT-29 identity, allocation, statuses and deferred linguistic gate', () => {
     expect(MLUX006_FINAL_CORPUS_PROJECTION).toMatchObject({
-      version: 'MLUX-001-DRAFT-28',
-      sha256: '869E02A40B55319DB9464E2FBAF6E7F5F39A21DAF5C9099761769E1DFB45C8F3',
-      byteLength: 110206,
+      version: 'MLUX-001-DRAFT-29',
+      sha256: 'FFC46F9AFF729D91693757849CF2726841BC0AAFAA94AEB7077F232B46895992',
+      byteLength: 111501,
       summary: {
-        translationUnits: 480,
-        sourceOccurrences: 685,
-        mergedDuplicateRows: 205,
-        russianDrafts: 480,
-        uzbekDrafts: 480,
+        translationUnits: 487,
+        sourceOccurrences: 693,
+        mergedDuplicateRows: 206,
+        russianDrafts: 487,
+        uzbekDrafts: 487,
         draftStatus: 'Draft',
       },
     });
-    expect(MLUX006_FINAL_CORPUS_PROJECTION.units).toHaveLength(480);
-    expect(MLUX006_FINAL_CORPUS_PROJECTION.occurrences).toHaveLength(685);
+    expect(MLUX006_FINAL_CORPUS_PROJECTION.units).toHaveLength(487);
+    expect(MLUX006_FINAL_CORPUS_PROJECTION.occurrences).toHaveLength(693);
     expect(MLUX006_FINAL_CORPUS_PROJECTION.exclusions.map(({ id }) => id)).toEqual(
       Array.from({ length: 12 }, (_, index) => `MLUX-X${String(index + 1).padStart(3, '0')}`),
     );
     expect(MLUX006_FINAL_CORPUS_PROJECTION.acceptance).toEqual([
       expect.objectContaining({
-        corpusVersion: 'MLUX-001-DRAFT-28',
+        corpusVersion: 'MLUX-001-DRAFT-29',
         authority: 'Product owner',
         language: 'Russian',
         verdict: 'Pending',
         date: null,
       }),
       expect.objectContaining({
-        corpusVersion: 'MLUX-001-DRAFT-28',
+        corpusVersion: 'MLUX-001-DRAFT-29',
         authority: 'Selected native reviewer',
         language: 'Uzbek',
         verdict: 'Pending',
@@ -1149,16 +1149,16 @@ describe('MLUX-006 final corpus parity', () => {
     expect(occurrenceSubtitleViolations(MLUX006_FINAL_CORPUS_PROJECTION)).toEqual([]);
   });
 
-  it('rejects stale DRAFT-28 occurrence front matter even when the structural count is current', () => {
+  it('rejects stale DRAFT-29 occurrence front matter even when the structural count is current', () => {
     expect(
       occurrenceSubtitleViolations({
         ...MLUX006_FINAL_CORPUS_PROJECTION,
         workbookFrontMatter: {
           occurrencesSubtitle:
-            'All 669 source occurrences are deduplicated by semantic key and immutable English intent.',
+            'All 685 source occurrences are deduplicated by semantic key and immutable English intent.',
         },
       }),
-    ).toEqual(['wrong occurrences subtitle count 669']);
+    ).toEqual(['wrong occurrences subtitle count 685']);
   });
 
   it('binds X012 to one exact DRAFT-26 source seam and rejects every boundary drift', () => {
@@ -1256,10 +1256,10 @@ describe('MLUX-006 final corpus parity', () => {
       legacyClassificationContractViolations(occurrenceSources, wrongOwnerInheritance),
     ).toContain('wrong classification inheritance owner MLUX-O0001');
     expect(candidate.occurrences.every(({ classification }) => Boolean(classification))).toBe(true);
-    expect(candidate.units).toHaveLength(480);
-    expect(candidate.occurrences).toHaveLength(685);
+    expect(candidate.units).toHaveLength(487);
+    expect(candidate.occurrences).toHaveLength(693);
     expect(new Set(candidate.occurrences.map(({ occurrenceId }) => occurrenceId))).toHaveLength(
-      685,
+      693,
     );
     expect(collectParityViolations(MLUX006_FINAL_CORPUS_PROJECTION, candidate)).toEqual([]);
   });

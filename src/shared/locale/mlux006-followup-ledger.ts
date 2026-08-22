@@ -427,6 +427,121 @@ const records: readonly Mlux006FollowupRecord[] = [
       },
     ],
   },
+  {
+    unitId: 'MLUX-C0478',
+    namespace: 'catalog',
+    key: 'remove',
+    english: 'Remove',
+    variables: [],
+    ru: 'Удалить',
+    uz: 'Olib tashlash',
+    occurrences: [
+      {
+        id: 'O0686',
+        context: 'src/pages/catalog-page/CourseCard.tsx — Catalog / course action remove',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0479',
+    namespace: 'catalog',
+    key: 'enrolled',
+    english: 'Enrolled',
+    variables: [],
+    ru: 'Вы записаны',
+    uz: 'Yozilgansiz',
+    occurrences: [
+      {
+        id: 'O0687',
+        context: 'src/pages/catalog-page/CourseCard.tsx — Catalog / course action enrolled',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0480',
+    namespace: 'catalog',
+    key: 'adding',
+    english: 'Adding…',
+    variables: [],
+    ru: 'Добавляем…',
+    uz: 'Qo‘shilmoqda…',
+    occurrences: [
+      {
+        id: 'O0688',
+        context: 'src/pages/catalog-page/CourseCard.tsx — Catalog / course action pending add',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0481',
+    namespace: 'catalog',
+    key: 'removing',
+    english: 'Removing…',
+    variables: [],
+    ru: 'Удаляем…',
+    uz: 'Olib tashlanmoqda…',
+    occurrences: [
+      {
+        id: 'O0689',
+        context: 'src/pages/catalog-page/CourseCard.tsx — Catalog / course action pending remove',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0482',
+    namespace: 'catalog',
+    key: 'enrolling',
+    english: 'Enrolling…',
+    variables: [],
+    ru: 'Записываем…',
+    uz: 'Yozilmoqda…',
+    occurrences: [
+      {
+        id: 'O0690',
+        context:
+          'src/pages/catalog-page/CourseCard.tsx — Catalog / course action pending enrollment',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0483',
+    namespace: 'learning',
+    key: 'completed',
+    english: 'Completed',
+    variables: [],
+    ru: 'Завершено',
+    uz: 'Yakunlandi',
+    occurrences: [
+      {
+        id: 'O0692',
+        context:
+          'src/widgets/enrollment-progress-panel/EnrollmentProgressPanel.tsx — Learning / lesson completion state',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0484',
+    namespace: 'learning',
+    key: 'notCompleted',
+    english: 'Not completed',
+    variables: [],
+    ru: 'Не завершено',
+    uz: 'Yakunlanmagan',
+    occurrences: [
+      {
+        id: 'O0693',
+        context:
+          'src/widgets/enrollment-progress-panel/EnrollmentProgressPanel.tsx — Learning / lesson completion state',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
 ];
 
 export const MLUX_006_FOLLOWUP_TRANSLATIONS: readonly Mlux006FollowupTranslationEntry[] =
@@ -460,6 +575,7 @@ export type Mlux006FollowupSharedOccurrence = LocaleOccurrence & {
     | 'MLUX-C0203'
     | 'MLUX-C0204'
     | 'MLUX-C0205'
+    | 'MLUX-C0059'
     | 'MLUX-C0265'
     | 'MLUX-C0266'
     | 'MLUX-C0362'
@@ -468,6 +584,12 @@ export type Mlux006FollowupSharedOccurrence = LocaleOccurrence & {
 };
 
 const sharedOccurrenceSources = [
+  {
+    id: 'O0691',
+    unitId: 'MLUX-C0059',
+    context: 'src/pages/catalog-page/CourseCard.tsx — Catalog / course action retry',
+    classification: 'Visible UI copy',
+  },
   {
     id: 'O0670',
     unitId: 'MLUX-C0169',

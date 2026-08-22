@@ -30,7 +30,17 @@ export function courseActionVisual(
 export function catalogActionLabelKey(
   presentation: CatalogCourseActionPresentation,
   label: string,
-): 'addToCart' | 'enrollFree' | 'notPublished' | null {
+):
+  | 'addToCart'
+  | 'enrollFree'
+  | 'notPublished'
+  | 'remove'
+  | 'enrolled'
+  | 'adding'
+  | 'removing'
+  | 'enrolling'
+  | 'tryAgain'
+  | null {
   if (
     presentation === 'add-to-cart' &&
     (label === 'Log in to add to cart' || label === 'Add to cart')
@@ -41,6 +51,12 @@ export function catalogActionLabelKey(
     (label === 'Log in to enroll free' || label === 'Enroll free')
   )
     return 'enrollFree';
+  if (presentation === 'remove' && label === 'Remove') return 'remove';
+  if (presentation === 'enrolled' && label === 'Enrolled') return 'enrolled';
+  if (presentation === 'add-to-cart' && label === 'Adding…') return 'adding';
+  if (presentation === 'remove' && label === 'Removing…') return 'removing';
+  if (presentation === 'enroll-free' && label === 'Enrolling…') return 'enrolling';
+  if (presentation === 'neutral' && label === 'Try again') return 'tryAgain';
   return presentation === 'neutral' && label === 'Course is not published' ? 'notPublished' : null;
 }
 

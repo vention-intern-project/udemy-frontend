@@ -42,6 +42,7 @@ function renderPanel(
   locale: Locale,
   progress: CourseProgress | undefined,
   currentOutline = outline,
+  currentCompletionState: () => LessonCompletionState = completionState,
 ) {
   return render(
     <LocaleProvider initialLocale={locale}>
@@ -53,7 +54,7 @@ function renderPanel(
         outline={currentOutline}
         outlineError={null}
         outlineLoading={false}
-        completionState={completionState}
+        completionState={currentCompletionState}
         isPending={() => false}
         onSetCompletion={vi.fn()}
         onRetry={vi.fn()}
@@ -68,6 +69,16 @@ afterEach(async () => {
 });
 
 describe('EnrollmentProgressPanel DRAFT-21 lesson-count noun localization', () => {
+  it.each([
+    ['en', { status: 'known', completed: true }, 'Completed'],
+    ['ru', { status: 'known', completed: false }, 'Не завершено'],
+    ['uz', { status: 'unknown' }, 'Yakunlanmagan'],
+  ] as const)('localizes the visible lesson completion state in %s', (locale, state, expected) => {
+    renderPanel(locale, undefined, outlineWithLessonType('video'), () => state);
+
+    expect(screen.getByText(expected, { exact: true })).toBeTruthy();
+  });
+
   it.each([
     ['en', 'video', 'Video'],
     ['ru', 'video', 'Видео'],
