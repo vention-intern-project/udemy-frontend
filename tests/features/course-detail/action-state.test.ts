@@ -101,74 +101,113 @@ describe('course primary action matrix', () => {
 });
 
 describe('course mutation disposition matrix', () => {
+  it('returns locale-neutral message keys instead of rendered mutation copy', () => {
+    expect(
+      courseMutationDisposition(
+        new ApiError({ kind: 'offline', status: null, message: 'private' }),
+      ),
+    ).toMatchObject({ messageKey: 'actionFailedCheckConnection' });
+    expect(
+      courseMutationDisposition(
+        new ApiError({ kind: 'unauthorized', status: 401, message: 'private' }),
+      ),
+    ).toMatchObject({ messageKey: 'logInAgainToContinue' });
+    expect(
+      courseMutationDisposition(
+        new ApiError({ kind: 'bad_request', status: 400, message: 'Course is not published' }),
+      ),
+    ).toMatchObject({ messageKey: 'courseIsNotPublished', refresh: 'detail' });
+    expect(
+      courseMutationDisposition(
+        new ApiError({ kind: 'bad_request', status: 400, message: 'private' }),
+      ),
+    ).toMatchObject({ messageKey: 'actionCurrentlyUnavailable' });
+  });
+
   it.each([
     [
       new ApiError({ kind: 'offline', status: null, message: 'offline' }),
       'retryable',
       null,
       'none',
+      'actionFailedCheckConnection',
     ],
-    [new ApiError({ kind: 'server', status: 500, message: 'server' }), 'retryable', null, 'none'],
+    [
+      new ApiError({ kind: 'server', status: 500, message: 'server' }),
+      'retryable',
+      null,
+      'none',
+      'actionFailedCheckConnection',
+    ],
     [
       new ApiError({ kind: 'unauthorized', status: 401, message: 'auth' }),
       'terminal',
       'unavailable',
       'none',
+      'logInAgainToContinue',
     ],
     [
       new ApiError({ kind: 'forbidden', status: 403, message: 'forbidden' }),
       'terminal',
       'unavailable',
       'none',
+      'actionUnavailableForAccount',
     ],
     [
       new ApiError({ kind: 'not_found', status: 404, message: 'Course not found' }),
       'terminal',
       'unavailable',
       'detail',
+      'courseNoLongerAvailable',
     ],
     [
       new ApiError({ kind: 'bad_request', status: 400, message: 'Course is not published' }),
       'terminal',
       'unavailable',
       'detail',
+      'courseIsNotPublished',
     ],
     [
       new ApiError({ kind: 'validation', status: 422, message: 'Course is not published' }),
       'terminal',
       'unavailable',
       'none',
+      'actionCurrentlyUnavailable',
     ],
     [
       new ApiError({ kind: 'conflict', status: 409, message: 'Already enrolled in this course' }),
       'terminal',
       'already-enrolled',
       'enrollments',
+      'courseAlreadyInLearningList',
     ],
     [
       new ApiError({ kind: 'conflict', status: 409, message: 'Course already in cart' }),
       'terminal',
       'already-in-cart',
       'cart',
+      'courseAlreadyInCart',
     ],
     [
       new ApiError({ kind: 'conflict', status: 409, message: 'Unexpected conflict' }),
       'terminal',
       'unavailable',
       'preflight',
+      'courseStateChangedAvailabilityRefreshed',
     ],
     [
       new ApiError({ kind: 'validation', status: 422, message: 'validation' }),
       'terminal',
       'unavailable',
       'none',
+      'actionCurrentlyUnavailable',
     ],
-    [new Error('unexpected'), 'terminal', 'unavailable', 'none'],
+    [new Error('unexpected'), 'terminal', 'unavailable', 'none', 'actionCurrentlyUnavailable'],
   ] as const)(
     'maps accepted outcome %# to a named retryable or terminal disposition',
-    (error, kind, preflight, refresh) => {
+    (error, kind, preflight, refresh, messageKey) => {
       expect(courseMutationDisposition(error)).toEqual(
-        expect.objectContaining({ kind, preflight, refresh }),
+        expect.objectContaining({ kind, preflight, refresh, messageKey }),
       );
     },
   );

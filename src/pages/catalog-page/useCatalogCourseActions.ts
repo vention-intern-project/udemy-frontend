@@ -6,7 +6,7 @@ import type { CatalogCourse } from '@entities/course';
 import { useSession } from '@features/auth-session';
 import {
   courseActionRecoveryTransition,
-  courseActionReconciliationUncertaintyMessage,
+  courseActionReconciliationUncertaintyMessageKey,
   isCurrentCourseActionReconciliationAttempt,
   type CourseActionRecoveryState,
 } from '@features/course-action-reconciliation';
@@ -20,6 +20,7 @@ import {
   type CourseActionCandidate,
   type CourseActionIdentity,
   type CourseMutationKind,
+  type CourseMutationMessageKey,
   type CoursePreflightState,
 } from '@features/course-detail';
 import { cartQueryKey, removeCartItem, requestCart } from '@features/cart-workflow';
@@ -35,7 +36,7 @@ export interface CatalogCourseActionAttempt {
 }
 
 export interface CatalogCourseActionFeedback {
-  message: string;
+  messageKey: CourseMutationMessageKey;
   retryPreflight: boolean;
   tone: 'error';
 }
@@ -312,7 +313,7 @@ export function useCatalogCourseActions(courses: readonly CatalogCourse[]) {
           lockedIdentities.current.delete(attempt.identity);
         setFeedbackByIdentity((current) =>
           new Map(current).set(attempt.identity, {
-            message: courseActionReconciliationUncertaintyMessage,
+            messageKey: courseActionReconciliationUncertaintyMessageKey,
             retryPreflight: true,
             tone: 'error',
           }),
@@ -327,7 +328,7 @@ export function useCatalogCourseActions(courses: readonly CatalogCourse[]) {
       if (currentEpochRef.current !== attempt.epoch) return;
       setFeedbackByIdentity((current) =>
         new Map(current).set(attempt.identity, {
-          message: disposition.message,
+          messageKey: disposition.messageKey,
           retryPreflight: false,
           tone: 'error',
         }),

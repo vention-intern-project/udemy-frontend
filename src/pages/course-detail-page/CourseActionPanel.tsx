@@ -3,13 +3,13 @@ import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 
 import type { CourseDetail } from '@entities/course';
+import { courseActionReconciliationUncertaintyMessageKey } from '@features/course-action-reconciliation';
 import type {
   CourseMutationKind,
   CourseMutationViewState,
   CoursePreflightState,
   CoursePrimaryActionState,
 } from '@features/course-detail';
-import { courseActionReconciliationUncertaintyMessage } from '@features/course-action-reconciliation';
 import { formatLocaleCurrency } from '@shared/locale';
 import { Button, Notice, type AsyncState } from '@shared/ui/primitives';
 
@@ -55,7 +55,7 @@ function actionNotice(
     return {
       tone: 'error',
       title: t('course:actionFailed', { defaultValue: 'Action failed' }),
-      message: mutationState.disposition.message,
+      message: t(`course:${mutationState.disposition.messageKey}`),
       retryPreflight: false,
     };
   if (mutationState.status === 'success') {
@@ -81,7 +81,7 @@ function actionNotice(
     return {
       tone: 'error',
       title: t('course:actionUnavailable', { defaultValue: 'Action unavailable' }),
-      message: courseActionReconciliationUncertaintyMessage,
+      message: t(`course:${courseActionReconciliationUncertaintyMessageKey}`),
       retryPreflight: true,
     };
   }

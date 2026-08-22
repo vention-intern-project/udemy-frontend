@@ -19,7 +19,7 @@ import {
   type AccessTokenStore,
 } from '../../src/features/auth-session';
 import { ApiError, type ApiClient, type ApiRequestOptions } from '../../src/shared/api';
-import { LocaleProvider } from '../../src/shared/locale';
+import { LocaleProvider, useLocale } from '../../src/shared/locale';
 
 afterEach(() => {
   cleanup();
@@ -144,10 +144,25 @@ function CatalogSessionSwitchControl() {
   );
 }
 
+function CatalogLocaleSwitchControl() {
+  const { setLocale } = useLocale();
+  return (
+    <>
+      <button type="button" onClick={() => setLocale('ru')}>
+        Use Russian catalog locale
+      </button>
+      <button type="button" onClick={() => setLocale('uz')}>
+        Use Uzbek catalog locale
+      </button>
+    </>
+  );
+}
+
 interface CatalogRenderOptions {
   queryClient?: QueryClient;
   tokenStore?: AccessTokenStore;
   withSessionSwitchControl?: boolean;
+  withLocaleSwitchControl?: boolean;
   locale?: 'en' | 'ru' | 'uz';
 }
 
@@ -172,6 +187,7 @@ function renderCatalog(
             </main>
             <HistoryControls />
             {options.withSessionSwitchControl ? <CatalogSessionSwitchControl /> : null}
+            {options.withLocaleSwitchControl ? <CatalogLocaleSwitchControl /> : null}
           </MemoryRouter>
         </SessionProvider>
       </LocaleProvider>
@@ -1033,7 +1049,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
       return options.decode ? options.decode(value) : (value as TResponse);
     };
     const user = userEvent.setup();
-    renderCatalog(request, ['/'], 0, 'student-token');
+    renderCatalog(request, ['/'], 0, 'student-token', { withLocaleSwitchControl: true });
 
     const initialAction = await screen.findByRole('button', { name: 'Add to cart' });
     await act(async () => {
@@ -1045,10 +1061,23 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(mutationRequests).toBe(1);
 
     await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Use Russian catalog locale' }));
+    });
+    expect(
+      await screen.findByText('Не удалось проверить запись на курс или корзину.'),
+    ).toBeTruthy();
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Use Uzbek catalog locale' }));
+    });
+    expect(
+      await screen.findByText('Kursga yozilish yoki savatni tekshirib bo‘lmadi.'),
+    ).toBeTruthy();
+
+    await act(async () => {
       await user.click(retry);
     });
     await waitFor(() => expect(cartRequests).toBe(3));
-    await screen.findByRole('button', { name: 'Add to cart' });
+    await screen.findByRole('button', { name: 'Savatga qo‘shish' });
     expect(mutationRequests).toBe(1);
   });
 
@@ -2228,6 +2257,31 @@ describe('CatalogPage public URL and pagination behavior', () => {
         page_size: 20,
       }),
     );
+  });
+
+  it('re-resolves a retained price validation error after the locale changes', async () => {
+    const user = userEvent.setup();
+    const requests: ApiRequestOptions[] = [];
+    const request: ApiClient['request'] = async <TResponse,>(options: ApiRequestOptions) => {
+      requests.push(options);
+      return response() as TResponse;
+    };
+    renderCatalog(request, ['/'], 0, null, { withLocaleSwitchControl: true });
+
+    await screen.findByRole('link', { name: 'React' });
+    const minimum = screen.getByLabelText('Min price');
+    await act(async () => {
+      await user.type(minimum, '-1');
+      await user.keyboard('{Enter}');
+    });
+
+    expect(await screen.findByText('Enter a non-negative price.')).toBeTruthy();
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Use Russian catalog locale' }));
+    });
+    expect(await screen.findByText('Введите неотрицательное значение цены.')).toBeTruthy();
+    expect(minimum.getAttribute('aria-invalid')).toBe('true');
+    expect(requests).toHaveLength(1);
   });
 
   it('waits for price-range exit before applying a completed Min and Max draft once', async () => {

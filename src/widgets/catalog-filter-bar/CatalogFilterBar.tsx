@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, type FocusEvent } from 'react';
+import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 
 import {
   draftFromCatalogQuery,
   validateCatalogDraft,
   type CatalogFilterValidationErrors,
+  type CatalogFilterValidationErrorKey,
   type CatalogPriceField,
   type CatalogPriceRange,
   type CatalogPriceRangeDraft,
@@ -41,6 +43,13 @@ function hasInvertedPriceRange(draft: CatalogPriceRangeDraft): boolean {
   );
 }
 
+function validationErrorMessage(
+  t: TFunction,
+  error: CatalogFilterValidationErrorKey | undefined,
+): string | undefined {
+  return error ? t(`catalog:${error}`) : undefined;
+}
+
 export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
   const { t } = useTranslation();
   const [draft, setDraft] = useState<CatalogPriceRangeDraft>(() =>
@@ -72,11 +81,7 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
 
   const applyDraft = (draftToApply = draftRef.current) => {
     if (hasInvertedPriceRange(draftToApply)) {
-      setErrors({
-        max_price: t('catalog:maximumPriceMustBeAtLeast', {
-          defaultValue: 'Maximum price must be at least the minimum price.',
-        }),
-      });
+      setErrors({ max_price: 'maximumPriceMustBeAtLeast' });
       return;
     }
     const currentQuery = queryRef.current;
@@ -120,6 +125,8 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
   const applyOnEnter = () => {
     applyDraft();
   };
+  const minimumError = validationErrorMessage(t, errors.min_price);
+  const maximumError = validationErrorMessage(t, errors.max_price);
 
   return (
     <form
@@ -156,7 +163,7 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
           min="0"
           fieldClassName={styles.field}
           value={draft.min_price}
-          error={errors.min_price}
+          error={minimumError}
           onChange={(event) => update('min_price', event.target.value)}
           onBlur={applyOnBlur}
           onKeyDown={(event) => {
@@ -180,7 +187,7 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
           min="0"
           fieldClassName={styles.field}
           value={draft.max_price}
-          error={errors.max_price}
+          error={maximumError}
           onChange={(event) => update('max_price', event.target.value)}
           onBlur={applyOnBlur}
           onKeyDown={(event) => {

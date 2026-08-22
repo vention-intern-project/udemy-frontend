@@ -465,7 +465,7 @@ export function CourseCard({
             )}
             {action.feedback ? (
               <p id={feedbackId} className={styles.actionFeedback} aria-live="polite">
-                {action.feedback.message}
+                {t(`course:${action.feedback.messageKey}`)}
               </p>
             ) : null}
           </div>

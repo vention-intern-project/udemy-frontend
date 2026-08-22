@@ -1,4 +1,5 @@
 import type { SessionState } from '@features/auth-session';
+import type { CourseActionReconciliationMessageKey } from '@features/course-action-reconciliation';
 import { ApiError } from '@shared/api';
 
 export interface CourseActionCandidate {
@@ -41,11 +42,24 @@ export interface CoursePrimaryActionInput {
 
 export type CourseMutationRefresh = 'none' | 'detail' | 'cart' | 'enrollments' | 'preflight';
 
+export type CourseMutationMessageKey =
+  | 'actionFailedCheckConnection'
+  | 'actionUnavailable'
+  | 'actionCurrentlyUnavailable'
+  | 'courseIsNotPublished'
+  | 'logInAgainToContinue'
+  | 'actionUnavailableForAccount'
+  | 'courseNoLongerAvailable'
+  | 'courseAlreadyInLearningList'
+  | 'courseAlreadyInCart'
+  | 'courseStateChangedAvailabilityRefreshed'
+  | CourseActionReconciliationMessageKey;
+
 export interface CourseMutationDisposition {
   kind: 'retryable' | 'terminal';
   preflight: CoursePreflightState | null;
   refresh: CourseMutationRefresh;
-  message: string;
+  messageKey: CourseMutationMessageKey;
 }
 
 function retryableDisposition(): CourseMutationDisposition {
@@ -53,15 +67,15 @@ function retryableDisposition(): CourseMutationDisposition {
     kind: 'retryable',
     preflight: null,
     refresh: 'none',
-    message: 'The action failed. Check your connection and try again.',
+    messageKey: 'actionFailedCheckConnection',
   };
 }
 
 function unavailableDisposition(
-  message: string,
+  messageKey: CourseMutationMessageKey,
   refresh: CourseMutationRefresh = 'none',
 ): CourseMutationDisposition {
-  return { kind: 'terminal', preflight: 'unavailable', refresh, message };
+  return { kind: 'terminal', preflight: 'unavailable', refresh, messageKey };
 }
 
 function isRetryableApiError(error: unknown): boolean {
@@ -75,9 +89,9 @@ function isRetryableApiError(error: unknown): boolean {
 
 function badRequestDisposition(error: ApiError): CourseMutationDisposition {
   if (error.status === 400 && error.message === 'Course is not published') {
-    return unavailableDisposition('Course is not published', 'detail');
+    return unavailableDisposition('courseIsNotPublished', 'detail');
   }
-  return unavailableDisposition('This action is currently unavailable.');
+  return unavailableDisposition('actionCurrentlyUnavailable');
 }
 
 function conflictDisposition(error: ApiError): CourseMutationDisposition {
@@ -86,7 +100,7 @@ function conflictDisposition(error: ApiError): CourseMutationDisposition {
       kind: 'terminal',
       preflight: 'already-enrolled',
       refresh: 'enrollments',
-      message: 'The course is already in your learning list.',
+      messageKey: 'courseAlreadyInLearningList',
     };
   }
   if (error.message === 'Course already in cart') {
@@ -94,13 +108,10 @@ function conflictDisposition(error: ApiError): CourseMutationDisposition {
       kind: 'terminal',
       preflight: 'already-in-cart',
       refresh: 'cart',
-      message: 'The course is already in your cart.',
+      messageKey: 'courseAlreadyInCart',
     };
   }
-  return unavailableDisposition(
-    'The course state changed. Availability has been refreshed.',
-    'preflight',
-  );
+  return unavailableDisposition('courseStateChangedAvailabilityRefreshed', 'preflight');
 }
 
 type PriceKind = 'free' | 'paid' | 'invalid';
@@ -146,14 +157,11 @@ export function coursePrimaryAction({
 
 export function courseMutationDisposition(error: unknown): CourseMutationDisposition {
   if (isRetryableApiError(error)) return retryableDisposition();
-  if (!(error instanceof ApiError))
-    return unavailableDisposition('This action is currently unavailable.');
-  if (error.status === 401) return unavailableDisposition('Log in again to continue.');
-  if (error.status === 403)
-    return unavailableDisposition('This action is not available for your account.');
-  if (error.status === 404)
-    return unavailableDisposition('This course is no longer available.', 'detail');
+  if (!(error instanceof ApiError)) return unavailableDisposition('actionCurrentlyUnavailable');
+  if (error.status === 401) return unavailableDisposition('logInAgainToContinue');
+  if (error.status === 403) return unavailableDisposition('actionUnavailableForAccount');
+  if (error.status === 404) return unavailableDisposition('courseNoLongerAvailable', 'detail');
   if (error.status === 400) return badRequestDisposition(error);
   if (error.status === 409) return conflictDisposition(error);
-  return unavailableDisposition('This action is currently unavailable.');
+  return unavailableDisposition('actionCurrentlyUnavailable');
 }

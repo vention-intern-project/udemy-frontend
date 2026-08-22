@@ -2964,6 +2964,14 @@ test('keeps an inverted price range invalid, then submits a corrected value with
   await expect(page.getByText('Enter a non-negative price.')).toBeVisible();
   await expect(minimum).toHaveAttribute('aria-invalid', 'true');
   await expect(minimum).toHaveAttribute('aria-describedby', /-error/);
+  await page.getByRole('button', { name: 'Change language' }).click();
+  await page.getByRole('button', { name: 'Русский', exact: true }).click();
+  await expect(page.getByText('Введите неотрицательное значение цены.')).toBeVisible();
+  await page.getByRole('button', { name: 'Язык' }).click();
+  await page.getByRole('button', { name: "O'zbek", exact: true }).click();
+  await expect(page.getByText('Narx manfiy bo‘lmasligi kerak.')).toBeVisible();
+  await page.getByRole('button', { name: 'Til' }).click();
+  await page.getByRole('button', { name: 'English', exact: true }).press('Enter');
   await expect(page).toHaveURL('/');
   expect(requests).toHaveLength(requestCountBeforeInvalidSubmit);
 

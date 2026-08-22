@@ -24388,23 +24388,267 @@ const MLUX006_DRAFT29_CORPUS_OCCURRENCES: readonly Mlux006FinalCorpusOccurrence[
     }),
   );
 
+type Mlux006Draft30UnitSeed = readonly [string, string, string, string, string, string, string];
+
+const MLUX006_DRAFT30_UNITS: readonly Mlux006Draft30UnitSeed[] = [
+  [
+    'C0486',
+    'catalog',
+    'nonNegativePrice',
+    'Catalog / price validation',
+    'Enter a non-negative price.',
+    'Введите неотрицательное значение цены.',
+    'Narx manfiy bo‘lmasligi kerak.',
+  ],
+  [
+    'C0487',
+    'course',
+    'actionFailedCheckConnection',
+    'Course Detail / retryable mutation failure',
+    'The action failed. Check your connection and try again.',
+    'Не удалось выполнить действие. Проверьте подключение и повторите попытку.',
+    'Amalni bajarib bo‘lmadi. Ulanishni tekshirib, qayta urinib ko‘ring.',
+  ],
+  [
+    'C0488',
+    'course',
+    'logInAgainToContinue',
+    'Course Detail / unauthorized mutation failure',
+    'Log in again to continue.',
+    'Войдите снова, чтобы продолжить.',
+    'Davom etish uchun qayta kiring.',
+  ],
+  [
+    'C0489',
+    'course',
+    'actionUnavailableForAccount',
+    'Course Detail / forbidden mutation failure',
+    'This action is not available for your account.',
+    'Это действие недоступно для вашего аккаунта.',
+    'Bu amal akkauntingiz uchun mavjud emas.',
+  ],
+  [
+    'C0490',
+    'course',
+    'courseNoLongerAvailable',
+    'Course Detail / missing-course mutation failure',
+    'This course is no longer available.',
+    'Этот курс больше недоступен.',
+    'Bu kurs endi mavjud emas.',
+  ],
+  [
+    'C0491',
+    'course',
+    'courseAlreadyInLearningList',
+    'Course Detail / enrollment conflict',
+    'The course is already in your learning list.',
+    'Этот курс уже есть в вашем списке обучения.',
+    'Bu kurs allaqachon ta’lim ro‘yxatingizda.',
+  ],
+  [
+    'C0492',
+    'course',
+    'courseAlreadyInCart',
+    'Course Detail / cart conflict',
+    'The course is already in your cart.',
+    'Этот курс уже в вашей корзине.',
+    'Bu kurs allaqachon savatingizda.',
+  ],
+  [
+    'C0493',
+    'course',
+    'courseStateChangedAvailabilityRefreshed',
+    'Course Detail / stale conflict reconciliation',
+    'The course state changed. Availability has been refreshed.',
+    'Состояние курса изменилось. Доступность обновлена.',
+    'Kurs holati o‘zgardi. Mavjudlik yangilandi.',
+  ],
+  [
+    'C0494',
+    'course',
+    'courseActionReconciliationUncertainty',
+    'Catalog / action reconciliation uncertainty',
+    'We could not verify your enrollment or cart.',
+    'Не удалось проверить запись на курс или корзину.',
+    'Kursga yozilish yoki savatni tekshirib bo‘lmadi.',
+  ],
+  [
+    'C0495',
+    'course',
+    'actionCurrentlyUnavailable',
+    'Course Detail / generic mutation failure',
+    'This action is currently unavailable.',
+    'Это действие сейчас недоступно.',
+    'Bu amal hozir mavjud emas.',
+  ],
+] as const;
+
+const MLUX006_DRAFT30_CORPUS_UNITS: readonly Mlux006FinalCorpusUnit[] = MLUX006_DRAFT30_UNITS.map(
+  ([suffix, namespace, key, routeState, english, russian, uzbek]) => ({
+    unitId: `MLUX-${suffix}`,
+    namespace,
+    key,
+    runtimeEnglish: english,
+    variables: [],
+    plural: false,
+    sourceScreen:
+      suffix === 'C0494'
+        ? 'See Occurrences (2 verified sources)'
+        : 'See Occurrences (1 verified source)',
+    routeState,
+    english,
+    russian: { value: russian, resourceStatus: 'Draft', reviewStatus: 'Pending' },
+    uzbek: { value: uzbek, resourceStatus: 'Draft', reviewStatus: 'Pending' },
+    ownerTasks: ['MLUX-006-FOLLOWUP'],
+    runtimeOwnerTasks: ['MLUX-006-FOLLOWUP'],
+    fallback: 'English source',
+    classification: 'Visible UI copy + accessibility label',
+    testTarget: 'MLUX-006-FOLLOWUP focused + browser matrix',
+    status: 'Draft',
+    notes: 'DRAFT-31 current-head review correction; draft translations await human review.',
+    occurrenceCount: suffix === 'C0494' ? 2 : 1,
+    dedupeDecision: suffix === 'C0494' ? 'Merged equivalent occurrences' : 'Unique',
+  }),
+);
+
+type Mlux006Draft30OccurrenceSeed = readonly [string, string, string, string, string, string];
+
+const MLUX006_DRAFT30_OCCURRENCES: readonly Mlux006Draft30OccurrenceSeed[] = [
+  [
+    '0695',
+    'C0486',
+    'src/features/catalog-discovery/query.ts',
+    'Catalog / price validation',
+    'Enter a non-negative price.',
+    'semantic key',
+  ],
+  [
+    '0696',
+    'C0487',
+    'src/features/course-detail/action-state.ts',
+    'Course Detail / retryable mutation failure',
+    'The action failed. Check your connection and try again.',
+    'semantic key',
+  ],
+  [
+    '0697',
+    'C0495',
+    'src/features/course-detail/action-state.ts',
+    'Course Detail / generic mutation failure',
+    'This action is currently unavailable.',
+    'semantic key',
+  ],
+  [
+    '0698',
+    'C0488',
+    'src/features/course-detail/action-state.ts',
+    'Course Detail / unauthorized mutation failure',
+    'Log in again to continue.',
+    'semantic key',
+  ],
+  [
+    '0699',
+    'C0489',
+    'src/features/course-detail/action-state.ts',
+    'Course Detail / forbidden mutation failure',
+    'This action is not available for your account.',
+    'semantic key',
+  ],
+  [
+    '0700',
+    'C0490',
+    'src/features/course-detail/action-state.ts',
+    'Course Detail / missing-course mutation failure',
+    'This course is no longer available.',
+    'semantic key',
+  ],
+  [
+    '0701',
+    'C0491',
+    'src/features/course-detail/action-state.ts',
+    'Course Detail / enrollment conflict',
+    'The course is already in your learning list.',
+    'semantic key',
+  ],
+  [
+    '0702',
+    'C0492',
+    'src/features/course-detail/action-state.ts',
+    'Course Detail / cart conflict',
+    'The course is already in your cart.',
+    'semantic key',
+  ],
+  [
+    '0703',
+    'C0493',
+    'src/features/course-detail/action-state.ts',
+    'Course Detail / stale conflict reconciliation',
+    'The course state changed. Availability has been refreshed.',
+    'semantic key',
+  ],
+  [
+    '0704',
+    'C0494',
+    'src/pages/catalog-page/useCatalogCourseActions.ts',
+    'Catalog / action reconciliation uncertainty',
+    'We could not verify your enrollment or cart.',
+    'semantic key',
+  ],
+  [
+    '0705',
+    'C0494',
+    'src/pages/course-detail-page/CourseActionPanel.tsx',
+    'Course Detail / action reconciliation uncertainty',
+    'We could not verify your enrollment or cart.',
+    'semantic key',
+  ],
+  [
+    '0706',
+    'C0157',
+    'src/features/course-detail/action-state.ts',
+    'Course Detail / bad-request unpublished mutation failure',
+    'Course is not published',
+    'reused translation key',
+  ],
+] as const;
+
+const MLUX006_DRAFT30_CORPUS_OCCURRENCES: readonly Mlux006FinalCorpusOccurrence[] =
+  MLUX006_DRAFT30_OCCURRENCES.map(
+    ([suffix, unitSuffix, sourceScreen, routeState, english, extractionKind]) => ({
+      occurrenceId: `MLUX-O${suffix}`,
+      unitId: `MLUX-${unitSuffix}`,
+      sourceScreen,
+      routeState,
+      runtimeContext: `${sourceScreen} — ${routeState}`,
+      english,
+      classification: 'Visible UI copy + accessibility label',
+      ownerTask: 'MLUX-006-FOLLOWUP',
+      testTarget: 'MLUX-006-FOLLOWUP focused + browser matrix',
+      extractionKind,
+      dedupeMapping:
+        unitSuffix === 'C0157' || unitSuffix === 'C0494'
+          ? `Merged with MLUX-${unitSuffix}`
+          : 'Unique occurrence',
+    }),
+  );
+
 export const MLUX006_FINAL_CORPUS_PROJECTION: Mlux006FinalCorpusProjection = {
   ...MLUX006_DRAFT27_CORPUS_PROJECTION,
-  version: 'MLUX-001-DRAFT-29',
-  sha256: 'FFC46F9AFF729D91693757849CF2726841BC0AAFAA94AEB7077F232B46895992',
-  byteLength: 111501,
+  version: 'MLUX-001-DRAFT-32',
+  sha256: 'A1B98E857B8308E8B20E6AB7ABC86A2CCFDE3EFCC2A233EFB2E15E09F1C1E461',
+  byteLength: 113867,
   summary: {
     ...MLUX006_DRAFT27_CORPUS_PROJECTION.summary,
-    translationUnits: 487,
-    sourceOccurrences: 693,
-    mergedDuplicateRows: 206,
-    russianDrafts: 487,
-    uzbekDrafts: 487,
+    translationUnits: 497,
+    sourceOccurrences: 705,
+    mergedDuplicateRows: 208,
+    russianDrafts: 497,
+    uzbekDrafts: 497,
   },
   workbookFrontMatter: {
     ...MLUX006_DRAFT27_CORPUS_PROJECTION.workbookFrontMatter,
     occurrencesSubtitle:
-      'All 693 source occurrences are deduplicated by semantic key and immutable English intent.',
+      'All 705 source occurrences are deduplicated by semantic key and immutable English intent.',
   },
   units: [
     ...MLUX006_DRAFT27_CORPUS_PROJECTION.units.map((unit) => {
@@ -24423,18 +24667,31 @@ export const MLUX006_FINAL_CORPUS_PROJECTION: Mlux006FinalCorpusProjection = {
           dedupeDecision: 'Merged equivalent occurrences',
         };
       }
+      if (unit.unitId === 'MLUX-C0157') {
+        return {
+          ...unit,
+          sourceScreen: 'See Occurrences (2 verified sources)',
+          ownerTasks: ['MLUX-004', 'MLUX-006-FOLLOWUP'],
+          notes:
+            'Merged 2 equivalent occurrences; exact locations are on Occurrences; draft translations await human review.',
+          occurrenceCount: 2,
+          dedupeDecision: 'Merged equivalent occurrences',
+        };
+      }
       return override ? { ...unit, ...override } : unit;
     }),
     ...MLUX006_DRAFT28_UNITS,
     ...MLUX006_DRAFT29_CORPUS_UNITS,
+    ...MLUX006_DRAFT30_CORPUS_UNITS,
   ],
   occurrences: [
     ...MLUX006_DRAFT27_CORPUS_PROJECTION.occurrences,
     ...MLUX006_DRAFT28_OCCURRENCES,
     ...MLUX006_DRAFT29_CORPUS_OCCURRENCES,
+    ...MLUX006_DRAFT30_CORPUS_OCCURRENCES,
   ],
   acceptance: MLUX006_DRAFT27_CORPUS_PROJECTION.acceptance.map((record) => ({
     ...record,
-    corpusVersion: 'MLUX-001-DRAFT-29',
+    corpusVersion: 'MLUX-001-DRAFT-32',
   })),
 };

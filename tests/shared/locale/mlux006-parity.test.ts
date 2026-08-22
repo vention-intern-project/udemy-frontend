@@ -609,6 +609,16 @@ function projectionIntegrityViolations(projection: Mlux006FinalCorpusProjection)
       }
     }
   }
+  const derivedMergedDuplicateRows = projection.occurrences.length - projection.units.length;
+  if (projection.summary.translationUnits !== projection.units.length) {
+    violations.push('wrong summary translation unit count');
+  }
+  if (projection.summary.sourceOccurrences !== projection.occurrences.length) {
+    violations.push('wrong summary source occurrence count');
+  }
+  if (projection.summary.mergedDuplicateRows !== derivedMergedDuplicateRows) {
+    violations.push('wrong summary merged duplicate relation count');
+  }
   return violations;
 }
 
@@ -1110,35 +1120,35 @@ describe('MLUX-006 final corpus parity', () => {
     expect(browserSource).toContain('selectFixtureLocale(page, locale)');
   });
 
-  it('matches the exact DRAFT-29 identity, allocation, statuses and deferred linguistic gate', () => {
+  it('matches the exact DRAFT-32 identity, allocation, statuses and deferred linguistic gate', () => {
     expect(MLUX006_FINAL_CORPUS_PROJECTION).toMatchObject({
-      version: 'MLUX-001-DRAFT-29',
-      sha256: 'FFC46F9AFF729D91693757849CF2726841BC0AAFAA94AEB7077F232B46895992',
-      byteLength: 111501,
+      version: 'MLUX-001-DRAFT-32',
+      sha256: 'A1B98E857B8308E8B20E6AB7ABC86A2CCFDE3EFCC2A233EFB2E15E09F1C1E461',
+      byteLength: 113867,
       summary: {
-        translationUnits: 487,
-        sourceOccurrences: 693,
-        mergedDuplicateRows: 206,
-        russianDrafts: 487,
-        uzbekDrafts: 487,
+        translationUnits: 497,
+        sourceOccurrences: 705,
+        mergedDuplicateRows: 208,
+        russianDrafts: 497,
+        uzbekDrafts: 497,
         draftStatus: 'Draft',
       },
     });
-    expect(MLUX006_FINAL_CORPUS_PROJECTION.units).toHaveLength(487);
-    expect(MLUX006_FINAL_CORPUS_PROJECTION.occurrences).toHaveLength(693);
+    expect(MLUX006_FINAL_CORPUS_PROJECTION.units).toHaveLength(497);
+    expect(MLUX006_FINAL_CORPUS_PROJECTION.occurrences).toHaveLength(705);
     expect(MLUX006_FINAL_CORPUS_PROJECTION.exclusions.map(({ id }) => id)).toEqual(
       Array.from({ length: 12 }, (_, index) => `MLUX-X${String(index + 1).padStart(3, '0')}`),
     );
     expect(MLUX006_FINAL_CORPUS_PROJECTION.acceptance).toEqual([
       expect.objectContaining({
-        corpusVersion: 'MLUX-001-DRAFT-29',
+        corpusVersion: 'MLUX-001-DRAFT-32',
         authority: 'Product owner',
         language: 'Russian',
         verdict: 'Pending',
         date: null,
       }),
       expect.objectContaining({
-        corpusVersion: 'MLUX-001-DRAFT-29',
+        corpusVersion: 'MLUX-001-DRAFT-32',
         authority: 'Selected native reviewer',
         language: 'Uzbek',
         verdict: 'Pending',
@@ -1149,16 +1159,35 @@ describe('MLUX-006 final corpus parity', () => {
     expect(occurrenceSubtitleViolations(MLUX006_FINAL_CORPUS_PROJECTION)).toEqual([]);
   });
 
-  it('rejects stale DRAFT-29 occurrence front matter even when the structural count is current', () => {
+  it('rejects unit and merged-relation summary mutations derived from the occurrence graph', () => {
+    const firstUnit = MLUX006_FINAL_CORPUS_PROJECTION.units[0];
+    expect(
+      projectionIntegrityViolations({
+        ...MLUX006_FINAL_CORPUS_PROJECTION,
+        units: [
+          { ...firstUnit, occurrenceCount: firstUnit.occurrenceCount + 1 },
+          ...MLUX006_FINAL_CORPUS_PROJECTION.units.slice(1),
+        ],
+      }),
+    ).toContain(`wrong occurrence count ${firstUnit.unitId}`);
+    expect(
+      projectionIntegrityViolations({
+        ...MLUX006_FINAL_CORPUS_PROJECTION,
+        summary: { ...MLUX006_FINAL_CORPUS_PROJECTION.summary, mergedDuplicateRows: 207 },
+      }),
+    ).toContain('wrong summary merged duplicate relation count');
+  });
+
+  it('rejects stale DRAFT-31 occurrence front matter even when the structural count is current', () => {
     expect(
       occurrenceSubtitleViolations({
         ...MLUX006_FINAL_CORPUS_PROJECTION,
         workbookFrontMatter: {
           occurrencesSubtitle:
-            'All 685 source occurrences are deduplicated by semantic key and immutable English intent.',
+            'All 693 source occurrences are deduplicated by semantic key and immutable English intent.',
         },
       }),
-    ).toEqual(['wrong occurrences subtitle count 685']);
+    ).toEqual(['wrong occurrences subtitle count 693']);
   });
 
   it('binds X012 to one exact DRAFT-26 source seam and rejects every boundary drift', () => {
@@ -1256,10 +1285,10 @@ describe('MLUX-006 final corpus parity', () => {
       legacyClassificationContractViolations(occurrenceSources, wrongOwnerInheritance),
     ).toContain('wrong classification inheritance owner MLUX-O0001');
     expect(candidate.occurrences.every(({ classification }) => Boolean(classification))).toBe(true);
-    expect(candidate.units).toHaveLength(487);
-    expect(candidate.occurrences).toHaveLength(693);
+    expect(candidate.units).toHaveLength(497);
+    expect(candidate.occurrences).toHaveLength(705);
     expect(new Set(candidate.occurrences.map(({ occurrenceId }) => occurrenceId))).toHaveLength(
-      693,
+      705,
     );
     expect(collectParityViolations(MLUX006_FINAL_CORPUS_PROJECTION, candidate)).toEqual([]);
   });

@@ -542,6 +542,179 @@ const records: readonly Mlux006FollowupRecord[] = [
       },
     ],
   },
+  {
+    unitId: 'MLUX-C0486',
+    namespace: 'catalog',
+    key: 'nonNegativePrice',
+    english: 'Enter a non-negative price.',
+    variables: [],
+    ru: 'Введите неотрицательное значение цены.',
+    uz: 'Narx manfiy bo‘lmasligi kerak.',
+    occurrences: [
+      {
+        id: 'O0695',
+        context: 'src/features/catalog-discovery/query.ts — Catalog / price validation',
+        classification: 'Visible UI copy + accessibility label',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0487',
+    namespace: 'course',
+    key: 'actionFailedCheckConnection',
+    english: 'The action failed. Check your connection and try again.',
+    variables: [],
+    ru: 'Не удалось выполнить действие. Проверьте подключение и повторите попытку.',
+    uz: 'Amalni bajarib bo‘lmadi. Ulanishni tekshirib, qayta urinib ko‘ring.',
+    occurrences: [
+      {
+        id: 'O0696',
+        context:
+          'src/features/course-detail/action-state.ts — Course Detail / retryable mutation failure',
+        classification: 'Visible UI copy + accessibility label',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0488',
+    namespace: 'course',
+    key: 'logInAgainToContinue',
+    english: 'Log in again to continue.',
+    variables: [],
+    ru: 'Войдите снова, чтобы продолжить.',
+    uz: 'Davom etish uchun qayta kiring.',
+    occurrences: [
+      {
+        id: 'O0698',
+        context:
+          'src/features/course-detail/action-state.ts — Course Detail / unauthorized mutation failure',
+        classification: 'Visible UI copy + accessibility label',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0489',
+    namespace: 'course',
+    key: 'actionUnavailableForAccount',
+    english: 'This action is not available for your account.',
+    variables: [],
+    ru: 'Это действие недоступно для вашего аккаунта.',
+    uz: 'Bu amal akkauntingiz uchun mavjud emas.',
+    occurrences: [
+      {
+        id: 'O0699',
+        context:
+          'src/features/course-detail/action-state.ts — Course Detail / forbidden mutation failure',
+        classification: 'Visible UI copy + accessibility label',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0490',
+    namespace: 'course',
+    key: 'courseNoLongerAvailable',
+    english: 'This course is no longer available.',
+    variables: [],
+    ru: 'Этот курс больше недоступен.',
+    uz: 'Bu kurs endi mavjud emas.',
+    occurrences: [
+      {
+        id: 'O0700',
+        context:
+          'src/features/course-detail/action-state.ts — Course Detail / missing-course mutation failure',
+        classification: 'Visible UI copy + accessibility label',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0491',
+    namespace: 'course',
+    key: 'courseAlreadyInLearningList',
+    english: 'The course is already in your learning list.',
+    variables: [],
+    ru: 'Этот курс уже есть в вашем списке обучения.',
+    uz: 'Bu kurs allaqachon ta’lim ro‘yxatingizda.',
+    occurrences: [
+      {
+        id: 'O0701',
+        context: 'src/features/course-detail/action-state.ts — Course Detail / enrollment conflict',
+        classification: 'Visible UI copy + accessibility label',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0492',
+    namespace: 'course',
+    key: 'courseAlreadyInCart',
+    english: 'The course is already in your cart.',
+    variables: [],
+    ru: 'Этот курс уже в вашей корзине.',
+    uz: 'Bu kurs allaqachon savatingizda.',
+    occurrences: [
+      {
+        id: 'O0702',
+        context: 'src/features/course-detail/action-state.ts — Course Detail / cart conflict',
+        classification: 'Visible UI copy + accessibility label',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0493',
+    namespace: 'course',
+    key: 'courseStateChangedAvailabilityRefreshed',
+    english: 'The course state changed. Availability has been refreshed.',
+    variables: [],
+    ru: 'Состояние курса изменилось. Доступность обновлена.',
+    uz: 'Kurs holati o‘zgardi. Mavjudlik yangilandi.',
+    occurrences: [
+      {
+        id: 'O0703',
+        context:
+          'src/features/course-detail/action-state.ts — Course Detail / stale conflict reconciliation',
+        classification: 'Visible UI copy + accessibility label',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0494',
+    namespace: 'course',
+    key: 'courseActionReconciliationUncertainty',
+    english: 'We could not verify your enrollment or cart.',
+    variables: [],
+    ru: 'Не удалось проверить запись на курс или корзину.',
+    uz: 'Kursga yozilish yoki savatni tekshirib bo‘lmadi.',
+    occurrences: [
+      {
+        id: 'O0704',
+        context:
+          'src/pages/catalog-page/useCatalogCourseActions.ts — Catalog / action reconciliation uncertainty',
+        classification: 'Visible UI copy + accessibility label',
+      },
+      {
+        id: 'O0705',
+        context:
+          'src/pages/course-detail-page/CourseActionPanel.tsx — Course Detail / action reconciliation uncertainty',
+        classification: 'Visible UI copy + accessibility label',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0495',
+    namespace: 'course',
+    key: 'actionCurrentlyUnavailable',
+    english: 'This action is currently unavailable.',
+    variables: [],
+    ru: 'Это действие сейчас недоступно.',
+    uz: 'Bu amal hozir mavjud emas.',
+    occurrences: [
+      {
+        id: 'O0697',
+        context:
+          'src/features/course-detail/action-state.ts — Course Detail / generic mutation failure',
+        classification: 'Visible UI copy + accessibility label',
+      },
+    ],
+  },
 ];
 
 export const MLUX_006_FOLLOWUP_TRANSLATIONS: readonly Mlux006FollowupTranslationEntry[] =
@@ -576,6 +749,7 @@ export type Mlux006FollowupSharedOccurrence = LocaleOccurrence & {
     | 'MLUX-C0204'
     | 'MLUX-C0205'
     | 'MLUX-C0059'
+    | 'MLUX-C0157'
     | 'MLUX-C0265'
     | 'MLUX-C0266'
     | 'MLUX-C0362'
@@ -584,6 +758,13 @@ export type Mlux006FollowupSharedOccurrence = LocaleOccurrence & {
 };
 
 const sharedOccurrenceSources = [
+  {
+    id: 'O0706',
+    unitId: 'MLUX-C0157',
+    context:
+      'src/features/course-detail/action-state.ts — Course Detail / bad-request unpublished mutation failure',
+    classification: 'Visible UI copy + accessibility label',
+  },
   {
     id: 'O0691',
     unitId: 'MLUX-C0059',

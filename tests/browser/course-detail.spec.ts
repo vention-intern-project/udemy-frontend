@@ -1017,6 +1017,18 @@ test('keeps only offline/server mutation failure retryable', async ({ page }) =>
   await expect(
     page.getByText('The action failed. Check your connection and try again.'),
   ).toBeVisible();
+  await page.getByRole('button', { name: 'Change language' }).click();
+  await page.getByRole('button', { name: 'Русский', exact: true }).click();
+  await expect(
+    page.getByText('Не удалось выполнить действие. Проверьте подключение и повторите попытку.'),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Язык' }).click();
+  await page.getByRole('button', { name: "O'zbek", exact: true }).click();
+  await expect(
+    page.getByText('Amalni bajarib bo‘lmadi. Ulanishni tekshirib, qayta urinib ko‘ring.'),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Til' }).click();
+  await page.getByRole('button', { name: 'English', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Enroll free' })).toBeEnabled();
   await page.getByRole('button', { name: 'Enroll free' }).click();
   await expect(page.getByText('You are now enrolled in this course.')).toBeVisible();

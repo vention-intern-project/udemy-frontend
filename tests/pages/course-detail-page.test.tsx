@@ -14,6 +14,11 @@ import {
   type AccessTokenStore,
 } from '../../src/features/auth-session';
 import { CourseDetailPage } from '../../src/pages/course-detail-page';
+import { CourseActionPanel } from '../../src/pages/course-detail-page/CourseActionPanel';
+import {
+  courseMutationDisposition,
+  type CourseMutationDisposition,
+} from '../../src/features/course-detail';
 import { ApiError, type ApiClient, type ApiRequestOptions } from '../../src/shared/api';
 import { localeRuntime, type Locale } from '../../src/shared/locale';
 
@@ -33,6 +38,18 @@ const course = {
   created_at: '2026-07-01T00:00:00Z',
   updated_at: '2026-07-01T00:00:00Z',
   instructor: { id: 2, name: 'Ada', surname: 'Lovelace' },
+  lessons: [],
+};
+
+const courseActionPanelCourse = {
+  id: course.id,
+  instructorId: course.instructor.id,
+  instructorName: `${course.instructor.name} ${course.instructor.surname}`,
+  title: course.title,
+  description: course.description,
+  price: course.price,
+  currency: course.currency,
+  publishedAt: course.published_at,
   lessons: [],
 };
 
@@ -76,6 +93,78 @@ const cartItemMutation = {
   added_at: '2026-07-01T00:00:00Z',
   course: { id: 7, title: course.title, price: '19.99', currency: course.currency },
 };
+
+interface CourseActionRendererScenario {
+  readonly name: string;
+  readonly disposition: CourseMutationDisposition;
+  readonly message: string;
+}
+
+const courseActionRendererScenarios: readonly CourseActionRendererScenario[] = [
+  {
+    name: 'retryable failure',
+    disposition: courseMutationDisposition(
+      new ApiError({ kind: 'offline', status: null, message: 'private offline detail' }),
+    ),
+    message: 'The action failed. Check your connection and try again.',
+  },
+  {
+    name: 'generic failure',
+    disposition: courseMutationDisposition(
+      new ApiError({ kind: 'validation', status: 422, message: 'private validation detail' }),
+    ),
+    message: 'This action is currently unavailable.',
+  },
+  {
+    name: 'publication failure',
+    disposition: courseMutationDisposition(
+      new ApiError({ kind: 'bad_request', status: 400, message: 'Course is not published' }),
+    ),
+    message: 'Course is not published',
+  },
+  {
+    name: 'unauthorized failure',
+    disposition: courseMutationDisposition(
+      new ApiError({ kind: 'unauthorized', status: 401, message: 'private credentials detail' }),
+    ),
+    message: 'Log in again to continue.',
+  },
+  {
+    name: 'forbidden failure',
+    disposition: courseMutationDisposition(
+      new ApiError({ kind: 'forbidden', status: 403, message: 'private authorization detail' }),
+    ),
+    message: 'This action is not available for your account.',
+  },
+  {
+    name: 'not-found failure',
+    disposition: courseMutationDisposition(
+      new ApiError({ kind: 'not_found', status: 404, message: 'private missing detail' }),
+    ),
+    message: 'This course is no longer available.',
+  },
+  {
+    name: 'already-enrolled conflict',
+    disposition: courseMutationDisposition(
+      new ApiError({ kind: 'conflict', status: 409, message: 'Already enrolled in this course' }),
+    ),
+    message: 'The course is already in your learning list.',
+  },
+  {
+    name: 'already-in-cart conflict',
+    disposition: courseMutationDisposition(
+      new ApiError({ kind: 'conflict', status: 409, message: 'Course already in cart' }),
+    ),
+    message: 'The course is already in your cart.',
+  },
+  {
+    name: 'stale conflict',
+    disposition: courseMutationDisposition(
+      new ApiError({ kind: 'conflict', status: 409, message: 'private stale conflict detail' }),
+    ),
+    message: 'The course state changed. Availability has been refreshed.',
+  },
+];
 
 interface CourseResidualLocaleScenario {
   readonly locale: Locale;
@@ -237,6 +326,59 @@ afterEach(() => {
 });
 
 describe('CourseDetailPage', () => {
+  it.each(courseActionRendererScenarios)(
+    'renders the exact public message for $name without private mutation detail',
+    ({ disposition, message }) => {
+      render(
+        <I18nextProvider i18n={localeRuntime}>
+          <MemoryRouter>
+            <CourseActionPanel
+              action={{ kind: 'enroll', label: 'Enroll free' }}
+              course={courseActionPanelCourse}
+              isDraft={false}
+              mutationState={{ status: 'error', disposition }}
+              onRetryPreflight={() => {}}
+              onSubmitAction={() => {}}
+              preflight="eligible"
+            />
+          </MemoryRouter>
+        </I18nextProvider>,
+      );
+
+      expect(screen.getByText(message)).toBeTruthy();
+      expect(document.body.textContent).not.toContain('private');
+    },
+  );
+
+  it('keeps the shared reconciliation message locale-reactive while it remains visible', async () => {
+    render(
+      <I18nextProvider i18n={localeRuntime}>
+        <MemoryRouter>
+          <CourseActionPanel
+            action={{ kind: 'enroll', label: 'Enroll free' }}
+            course={courseActionPanelCourse}
+            isDraft={false}
+            mutationState={{ status: 'idle' }}
+            onRetryPreflight={() => {}}
+            onSubmitAction={() => {}}
+            preflight="unavailable"
+          />
+        </MemoryRouter>
+      </I18nextProvider>,
+    );
+
+    expect(screen.getByText('We could not verify your enrollment or cart.')).toBeTruthy();
+    await act(async () => {
+      await localeRuntime.changeLanguage('ru');
+    });
+    expect(screen.getByText('Не удалось проверить запись на курс или корзину.')).toBeTruthy();
+    await act(async () => {
+      await localeRuntime.changeLanguage('uz');
+    });
+    expect(screen.getByText('Kursga yozilish yoki savatni tekshirib bo‘lmadi.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Qayta urinish' })).toBeTruthy();
+  });
+
   it.each([
     {
       locale: 'ru' as const,
@@ -948,6 +1090,51 @@ describe('CourseDetailPage', () => {
       expect(mutationRequests).toBe(1);
     },
   );
+
+  it('re-resolves a retained mutation failure when the active locale changes', async () => {
+    let mutationRequests = 0;
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/me') return decode(options, studentProfile);
+      if (options.path === '/courses/7') return decode(options, course);
+      if (options.path === '/courses/7/lessons') return decode(options, outline(null));
+      if (options.path === '/cart') return decode(options, emptyCart);
+      if (options.path === '/enrollments/my') return decode(options, emptyEnrollments);
+      if (options.path === '/enrollments') {
+        mutationRequests += 1;
+        throw new ApiError({ kind: 'offline', status: null, message: 'private mutation detail' });
+      }
+      throw new Error(`Unexpected request ${options.path}`);
+    };
+    renderPage(request, 'token');
+
+    const enroll = await screen.findByRole('button', { name: 'Enroll free' });
+    await act(async () => {
+      await userEvent.setup().click(enroll);
+    });
+    expect(
+      await screen.findByText('The action failed. Check your connection and try again.'),
+    ).toBeTruthy();
+    await act(async () => {
+      await localeRuntime.changeLanguage('ru');
+    });
+    expect(
+      await screen.findByText(
+        'Не удалось выполнить действие. Проверьте подключение и повторите попытку.',
+      ),
+    ).toBeTruthy();
+    await act(async () => {
+      await localeRuntime.changeLanguage('uz');
+    });
+    expect(
+      await screen.findByText(
+        'Amalni bajarib bo‘lmadi. Ulanishni tekshirib, qayta urinib ko‘ring.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText('private mutation detail')).toBeNull();
+    expect(mutationRequests).toBe(1);
+  });
 
   it.each([
     [
