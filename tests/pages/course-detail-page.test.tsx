@@ -61,6 +61,12 @@ interface LocalizedCourseActionScenario {
   readonly disabled: readonly [CoursePrimaryActionState, string][];
 }
 
+interface LocalizedCourseActionPriceScenario {
+  readonly locale: Locale;
+  readonly freeLabel: string;
+  readonly unavailableLabel: string;
+}
+
 const localizedCourseActionScenarios: readonly LocalizedCourseActionScenario[] = [
   {
     locale: 'ru',
@@ -94,6 +100,12 @@ const localizedCourseActionScenarios: readonly LocalizedCourseActionScenario[] =
       [{ kind: 'disabled', labelKey: 'course:alreadyInCart' }, 'Savatda allaqachon bor'],
     ],
   },
+];
+
+const localizedCourseActionPriceScenarios: readonly LocalizedCourseActionPriceScenario[] = [
+  { locale: 'en', freeLabel: 'FREE', unavailableLabel: 'Price unavailable' },
+  { locale: 'ru', freeLabel: 'БЕСПЛАТНО', unavailableLabel: 'Цена недоступна' },
+  { locale: 'uz', freeLabel: 'BEPUL', unavailableLabel: 'Narx mavjud emas' },
 ];
 
 const studentProfile = {
@@ -416,6 +428,39 @@ describe('CourseDetailPage', () => {
     },
   );
 
+  it.each(localizedCourseActionPriceScenarios)(
+    'renders localized free and unavailable Course Action prices in $locale without exposing raw invalid data',
+    async ({ locale, freeLabel, unavailableLabel }) => {
+      await localeRuntime.changeLanguage(locale);
+      const renderAction = (price: string) =>
+        render(
+          <I18nextProvider i18n={localeRuntime}>
+            <MemoryRouter>
+              <CourseActionPanel
+                action={{ kind: 'enroll', labelKey: 'catalog:enrollFree' }}
+                course={{ ...courseActionPanelCourse, price }}
+                isDraft={false}
+                mutationState={{ status: 'idle' }}
+                onRetryPreflight={() => {}}
+                onSubmitAction={() => {}}
+                preflight="eligible"
+              />
+            </MemoryRouter>
+          </I18nextProvider>,
+        );
+
+      const freeView = renderAction('0.00');
+      expect(screen.getByText(freeLabel)).toBeTruthy();
+      expect(document.querySelector('data')?.getAttribute('value')).toBe('0.00');
+      freeView.unmount();
+
+      renderAction('not-a-decimal');
+      expect(screen.getByText(unavailableLabel)).toBeTruthy();
+      expect(document.body.textContent).not.toContain('USD not-a-decimal');
+      expect(document.querySelector('data')?.getAttribute('value')).toBe('not-a-decimal');
+    },
+  );
+
   it.each(courseActionRendererScenarios)(
     'renders the exact public message for $name without private mutation detail',
     ({ disposition, message }) => {
@@ -591,7 +636,8 @@ describe('CourseDetailPage', () => {
     ).toBeTruthy();
     expect(await screen.findByRole('heading', { level: 3, name: 'Welcome' })).toBeTruthy();
     expect(screen.getByText('Ada Lovelace')).toBeTruthy();
-    expect(document.querySelector('data')?.textContent).toBe('$0.00');
+    expect(document.querySelector('data')?.textContent).toBe('FREE');
+    expect(document.querySelector('data')?.getAttribute('value')).toBe('0.00');
     expect(screen.getByText('1', { selector: 'dd' })).toBeTruthy();
     const signIn = await screen.findByRole('link', { name: 'Sign in' });
     expect(signIn.getAttribute('href')).toBe('/login?returnTo=%2Fcourses%2F7');
