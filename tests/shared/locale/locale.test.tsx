@@ -10,6 +10,7 @@ import {
   createLocaleLookup,
   localeRuntime,
   LocaleProvider,
+  MLUX_006_FOLLOWUP_RUNTIME_MAPPING,
   MLUX_002_RUNTIME_MAPPING,
   resolveLocale,
   useLocale,
@@ -140,6 +141,55 @@ describe('locale foundation', () => {
       ru: runtime.getResource('ru', 'auth', 'logOut'),
       uz: runtime.getResource('uz', 'auth', 'logOut'),
     }).toEqual({ en: 'Log out', ru: 'Выйти', uz: 'Chiqish' });
+  });
+
+  it('provides the canonical account-role labels in every supported locale', () => {
+    const runtime = createLocaleRuntime('en');
+
+    expect(MLUX_006_FOLLOWUP_RUNTIME_MAPPING).toMatchObject([
+      {
+        unitId: 'MLUX-C0285',
+        namespace: 'auth',
+        key: 'student',
+        english: 'Student',
+        occurrences: [{ id: 'O0707' }],
+      },
+      {
+        unitId: 'MLUX-C0164',
+        namespace: 'course',
+        key: 'instructor',
+        english: 'Instructor',
+        occurrences: [{ id: 'O0708' }],
+      },
+      {
+        unitId: 'MLUX-C0286',
+        namespace: 'auth',
+        key: 'admin',
+        english: 'Admin',
+        occurrences: [{ id: 'O0709' }],
+      },
+    ]);
+    expect({
+      en: [
+        runtime.getResource('en', 'auth', 'student'),
+        runtime.getResource('en', 'course', 'instructor'),
+        runtime.getResource('en', 'auth', 'admin'),
+      ],
+      ru: [
+        runtime.getResource('ru', 'auth', 'student'),
+        runtime.getResource('ru', 'course', 'instructor'),
+        runtime.getResource('ru', 'auth', 'admin'),
+      ],
+      uz: [
+        runtime.getResource('uz', 'auth', 'student'),
+        runtime.getResource('uz', 'course', 'instructor'),
+        runtime.getResource('uz', 'auth', 'admin'),
+      ],
+    }).toEqual({
+      en: ['Student', 'Instructor', 'Admin'],
+      ru: ['Студент', 'Преподаватель', 'Администратор'],
+      uz: ['Talaba', 'O‘qituvchi', 'Administrator'],
+    });
   });
 
   it('keeps the independently enumerated DRAFT-11 allocation, resource review state and occurrences complete', () => {

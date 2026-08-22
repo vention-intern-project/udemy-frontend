@@ -25,12 +25,15 @@ interface AccountMenuProps {
 
 interface AccountRolePresentation {
   readonly Icon: LucideIcon;
+  readonly labelKey: AccountRoleTranslationKey;
 }
 
+type AccountRoleTranslationKey = 'auth:student' | 'course:instructor' | 'auth:admin';
+
 const ACCOUNT_ROLE_PRESENTATION: Record<UserRole, AccountRolePresentation> = {
-  student: { Icon: GraduationCap },
-  instructor: { Icon: UserRound },
-  admin: { Icon: ShieldCheck },
+  student: { Icon: GraduationCap, labelKey: 'auth:student' },
+  instructor: { Icon: UserRound, labelKey: 'course:instructor' },
+  admin: { Icon: ShieldCheck, labelKey: 'auth:admin' },
 };
 
 export function AccountMenu({ user, showLanguage = false }: AccountMenuProps) {
@@ -52,7 +55,8 @@ export function AccountMenu({ user, showLanguage = false }: AccountMenuProps) {
   const identity = `${user.name} ${user.surname}`;
   const initials =
     `${user.name.trim().charAt(0)}${user.surname.trim().charAt(0)}`.toLocaleUpperCase();
-  const RoleIcon = ACCOUNT_ROLE_PRESENTATION[user.role].Icon;
+  const rolePresentation = ACCOUNT_ROLE_PRESENTATION[user.role];
+  const RoleIcon = rolePresentation.Icon;
 
   useEffect(() => {
     if (!open) return;
@@ -139,6 +143,8 @@ export function AccountMenu({ user, showLanguage = false }: AccountMenuProps) {
           if (pinned) {
             setPinned(false);
             setOpen(false);
+            setLanguageView(false);
+            pendingLanguageFocusRef.current = null;
             return;
           }
           setPinned(true);
@@ -207,7 +213,7 @@ export function AccountMenu({ user, showLanguage = false }: AccountMenuProps) {
                 </span>
                 <span className={styles.accountMenuRole}>
                   <RoleIcon data-part="account-menu-role-icon" aria-hidden="true" size={16} />
-                  <span>{user.role}</span>
+                  <span>{t(rolePresentation.labelKey)}</span>
                 </span>
               </div>
               <div className={styles.accountMenuDivider} role="separator" />

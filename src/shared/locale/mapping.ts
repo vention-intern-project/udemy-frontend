@@ -1,4 +1,4 @@
-export type LocaleNamespace = 'common' | 'navigation' | 'auth' | 'a11y';
+export type LocaleNamespace = 'common' | 'navigation' | 'auth' | 'a11y' | 'course';
 
 export interface LocaleOccurrence {
   readonly id: string;
@@ -20,7 +20,7 @@ export interface LocaleMappingRecord {
   readonly resourceStatus: 'Draft';
   readonly russian: LocaleResourceReviewStatus;
   readonly uzbek: LocaleResourceReviewStatus;
-  readonly ownerTask: 'MLUX-002';
+  readonly ownerTask: 'MLUX-002' | 'MLUX-004';
   readonly occurrences: readonly LocaleOccurrence[];
 }
 
@@ -31,6 +31,7 @@ function record(
   english: string,
   variables: readonly string[],
   occurrences: readonly LocaleOccurrence[],
+  ownerTask: LocaleMappingRecord['ownerTask'] = 'MLUX-002',
 ): LocaleMappingRecord {
   return {
     unitId,
@@ -42,7 +43,7 @@ function record(
     resourceStatus: 'Draft',
     russian: { resource: 'Draft', review: 'Pending' },
     uzbek: { resource: 'Draft', review: 'Pending' },
-    ownerTask: 'MLUX-002',
+    ownerTask,
     occurrences,
   };
 }
@@ -270,5 +271,50 @@ export const MLUX_002_RUNTIME_MAPPING: readonly LocaleMappingRecord[] = [
         context: 'src/app/layouts/AccountMenu.tsx:219 — AppShell / authenticated account menu',
       },
     ],
+  ),
+];
+
+export const MLUX_006_FOLLOWUP_RUNTIME_MAPPING: readonly LocaleMappingRecord[] = [
+  record(
+    'MLUX-C0285',
+    'auth',
+    'student',
+    'Student',
+    [],
+    [
+      {
+        id: 'O0707',
+        context: 'src/app/layouts/AccountMenu.tsx:216 — AppShell / authenticated account menu',
+      },
+    ],
+    'MLUX-004',
+  ),
+  record(
+    'MLUX-C0164',
+    'course',
+    'instructor',
+    'Instructor',
+    [],
+    [
+      {
+        id: 'O0708',
+        context: 'src/app/layouts/AccountMenu.tsx:216 — AppShell / authenticated account menu',
+      },
+    ],
+    'MLUX-004',
+  ),
+  record(
+    'MLUX-C0286',
+    'auth',
+    'admin',
+    'Admin',
+    [],
+    [
+      {
+        id: 'O0709',
+        context: 'src/app/layouts/AccountMenu.tsx:216 — AppShell / authenticated account menu',
+      },
+    ],
+    'MLUX-004',
   ),
 ];

@@ -31,6 +31,11 @@ export const LOCALE_RESOURCES: Resource & Readonly<Record<Locale, Resource[Local
     },
     auth: {
       logOut: 'Log out',
+      student: 'Student',
+      admin: 'Admin',
+    },
+    course: {
+      instructor: 'Instructor',
     },
     a11y: {
       localeOption: '{{language}} language',
@@ -77,6 +82,11 @@ export const LOCALE_RESOURCES: Resource & Readonly<Record<Locale, Resource[Local
     },
     auth: {
       logOut: 'Выйти',
+      student: 'Студент',
+      admin: 'Администратор',
+    },
+    course: {
+      instructor: 'Преподаватель',
     },
     a11y: {
       localeOption: 'Язык {{language}}',
@@ -123,6 +133,11 @@ export const LOCALE_RESOURCES: Resource & Readonly<Record<Locale, Resource[Local
     },
     auth: {
       logOut: 'Chiqish',
+      student: 'Talaba',
+      admin: 'Administrator',
+    },
+    course: {
+      instructor: 'O‘qituvchi',
     },
     a11y: {
       localeOption: '{{language}} tili',

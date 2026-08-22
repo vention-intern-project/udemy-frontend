@@ -10,7 +10,15 @@ export default async function startAppShellServer() {
     appType: 'spa',
     optimizeDeps: {
       noDiscovery: true,
-      include: ['react', 'react-dom/client', 'react-i18next', 'i18next'],
+      include: [
+        'react',
+        'react-dom/client',
+        'react-i18next',
+        'i18next',
+        'react-router-dom',
+        '@tanstack/react-query',
+        'lucide-react',
+      ],
     },
     server: {
       host: '127.0.0.1',

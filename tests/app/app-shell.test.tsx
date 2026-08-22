@@ -405,7 +405,7 @@ describe('AppShell student cart query and presentation', () => {
     expect(accountDetails).toBeTruthy();
     expect(screen.getByText('student@example.test')).toBeTruthy();
     expect(screen.getByText('student User')).toBeTruthy();
-    expect(screen.getByText('student', { exact: true })).toBeTruthy();
+    expect(screen.getByText('Student', { exact: true })).toBeTruthy();
     expect(
       accountDetails.querySelector('[data-part="account-menu-profile"]')?.textContent,
     ).toContain('student User');
@@ -434,6 +434,31 @@ describe('AppShell student cart query and presentation', () => {
     await waitFor(() => expect(screen.getByRole('link', { name: 'Log in' })).toBeTruthy());
     expect(screen.queryByRole('button', { name: /Account menu/ })).toBeNull();
   });
+
+  it.each([
+    { locale: 'en', role: 'student', label: 'Student' },
+    { locale: 'ru', role: 'instructor', label: 'Преподаватель' },
+    { locale: 'uz', role: 'admin', label: 'Administrator' },
+  ] as const)(
+    'renders the $role account role as $label in $locale and retains same-trigger reopening',
+    async ({ locale, role, label }) => {
+      localStorage.setItem('learnhub.locale', locale);
+      renderShell(authenticatedClient(role), `${role}-token`);
+
+      const accountTrigger = await screen.findByRole('button', {
+        name: /account menu|меню аккаунта|akkaunt menyusi/i,
+      });
+      fireEvent.click(accountTrigger);
+      expect(screen.getByText(label, { exact: true })).toBeTruthy();
+
+      fireEvent.click(accountTrigger);
+      expect(accountTrigger.getAttribute('aria-expanded')).toBe('false');
+
+      fireEvent.click(accountTrigger);
+      expect(accountTrigger.getAttribute('aria-expanded')).toBe('true');
+      expect(screen.getByText(label, { exact: true })).toBeTruthy();
+    },
+  );
 
   it('restores account focus when scroll removes its focused details without stealing outside focus', async () => {
     renderShell(authenticatedClient('student'), 'student-token');
@@ -601,6 +626,39 @@ describe('AppShell student cart query and presentation', () => {
       await user.click(screen.getByRole('button', { name: 'Русский' }));
     });
     expect(document.activeElement).toBe(screen.getByRole('button', { name: /Язык/ }));
+  });
+
+  it('reopens a pinned mobile account menu at its default view after the trigger closes Language', async () => {
+    stubCompactViewport();
+    renderShell(authenticatedClient('student'), 'student-token');
+
+    const user = userEvent.setup();
+    const accountMenu = await screen.findByRole('button', {
+      name: 'Account menu for student User',
+    });
+    await act(async () => {
+      await user.click(accountMenu);
+    });
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: /Language/ }));
+    });
+    expect(screen.getByRole('button', { name: 'Back' })).toBeTruthy();
+
+    await act(async () => {
+      await user.click(accountMenu);
+    });
+    expect(screen.queryByRole('group', { name: 'Account details for student User' })).toBeNull();
+    expect(document.activeElement).toBe(accountMenu);
+
+    await act(async () => {
+      await user.click(accountMenu);
+    });
+    const accountDetails = screen.getByRole('group', {
+      name: 'Account details for student User',
+    });
+    expect(screen.getByRole('button', { name: /Language/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Back' })).toBeNull();
+    expect(accountDetails.querySelector('[data-part="account-menu-profile"]')).toBeTruthy();
   });
 
   it('keeps authenticated instructor mobile language choices in the account popover alongside navigation', async () => {
