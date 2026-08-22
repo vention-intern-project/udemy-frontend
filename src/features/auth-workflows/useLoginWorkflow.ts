@@ -16,6 +16,7 @@ import {
   mapAuthFailure,
   validateLogin,
   type AuthFieldErrors,
+  type AuthMessage,
 } from './validation';
 
 const FIELD_ORDER = ['email', 'password'] as const;
@@ -30,7 +31,7 @@ export interface LoginWorkflow {
   readonly fieldErrors: AuthFieldErrors;
   readonly isPending: boolean;
   readonly password: string;
-  readonly summary: string | null;
+  readonly summary: AuthMessage | null;
   readonly summaryRef: RefObject<HTMLDivElement>;
   setEmail(value: string): void;
   setPassword(value: string): void;
@@ -42,7 +43,7 @@ export function useLoginWorkflow(ownerKey: string): LoginWorkflow {
   const [email, setEmailValue] = useState('');
   const [password, setPasswordValue] = useState('');
   const [fieldErrors, setFieldErrors] = useState<AuthFieldErrors>({});
-  const [summary, setSummary] = useState<string | null>(null);
+  const [summary, setSummary] = useState<AuthMessage | null>(null);
   const { ref: summaryRef, requestFocus: requestSummaryFocus } = useAuthErrorFocus(
     summary,
     fieldErrors,
@@ -81,7 +82,7 @@ export function useLoginWorkflow(ownerKey: string): LoginWorkflow {
     const validation = compactFieldErrors(validateLogin(input));
     if (Object.keys(validation).length > 0) {
       setFieldErrors(validation);
-      setSummary('Review the highlighted fields and submit again.');
+      setSummary({ kind: 'review-highlighted-fields' });
       requestSummaryFocus();
       attempts.finish(attempt);
       return;

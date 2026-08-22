@@ -2,6 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import { ChevronLeft } from 'lucide-react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 
 import { requestCourseEnrollments } from '@features/instructor-courses';
 import type { EnrollmentStatusDto } from '@entities/enrollment';
@@ -25,40 +27,43 @@ function positiveSafeInteger(value: string | null | undefined): number | null {
 function pageFrom(value: string | null): number {
   return positiveSafeInteger(value) ?? 1;
 }
-function failure(error: unknown): string {
+function failure(error: unknown, t: TFunction): string {
   if (error instanceof ApiError && error.status === 403)
-    return 'You do not have permission to view these enrollments.';
-  if (error instanceof ApiError && error.status === 404) return 'This course was not found.';
-  return 'We could not load course enrollments. Try again.';
+    return t('instructor:courseEnrollmentsYouDoNotHavePermissionToViewTheseEnrollments');
+  if (error instanceof ApiError && error.status === 404)
+    return t('instructor:courseEnrollmentsThisCourseWasNotFound');
+  return t('instructor:courseEnrollmentsWeCouldNotLoadCourseEnrollmentsTryAgain');
 }
 
 function InstructorCoursesReturnLink() {
+  const { t } = useTranslation();
   return (
-    <nav className={styles.breadcrumb} aria-label="Breadcrumb">
+    <nav className={styles.breadcrumb} aria-label={t('a11y:breadcrumb')}>
       <ContextualNavigationLink className={styles.breadcrumbLink} to="/instructor/courses">
         <ChevronLeft size={20} aria-hidden="true" />
-        <span>Instructor courses</span>
+        <span>{t('navigation:instructorCourses')}</span>
       </ContextualNavigationLink>
       <span className={styles.breadcrumbCurrent} aria-hidden="true">
         /
       </span>
       <span className={styles.breadcrumbCurrent} aria-current="page">
-        Course enrollments
+        {t('routes:courseEnrollmentsTitle')}
       </span>
     </nav>
   );
 }
-function enrollmentStatusLabel(status: EnrollmentStatusDto): string {
+function enrollmentStatusLabel(status: EnrollmentStatusDto, t: TFunction): string {
   switch (status) {
     case 'active':
-      return 'Active';
+      return t('learning:active');
     case 'cancelled':
-      return 'Cancelled';
+      return t('learning:cancelled');
     case 'pending_payment':
-      return 'Payment pending';
+      return t('learning:paymentPending');
   }
 }
 export function InstructorCourseEnrollmentsPage() {
+  const { t } = useTranslation();
   const { courseId } = useParams();
   const [params, setParams] = useSearchParams();
   const session = useSession();
@@ -77,8 +82,8 @@ export function InstructorCourseEnrollmentsPage() {
     return (
       <article className={styles.page}>
         <InstructorCoursesReturnLink />
-        <h1>Course enrollments</h1>
-        <Notice tone="error">This course was not found.</Notice>
+        <h1>{t('routes:courseEnrollmentsTitle')}</h1>
+        <Notice tone="error">{t('instructor:courseEnrollmentsThisCourseWasNotFound')}</Notice>
       </article>
     );
   if (roster.isPending)
@@ -86,9 +91,9 @@ export function InstructorCourseEnrollmentsPage() {
       <article className={styles.page}>
         <InstructorCoursesReturnLink />
         <h1 ref={heading} tabIndex={-1}>
-          Course enrollments
+          {t('routes:courseEnrollmentsTitle')}
         </h1>
-        <SkeletonGroup label="Loading course enrollments">
+        <SkeletonGroup label={t('instructor:courseEnrollmentsLoadingCourseEnrollments')}>
           <Skeleton width="100%" height="120px" shape="rect" />
         </SkeletonGroup>
       </article>
@@ -98,10 +103,10 @@ export function InstructorCourseEnrollmentsPage() {
       <article className={styles.page}>
         <InstructorCoursesReturnLink />
         <h1 ref={heading} tabIndex={-1}>
-          Course enrollments
+          {t('routes:courseEnrollmentsTitle')}
         </h1>
         <Notice tone="error">
-          <p>{failure(roster.error)}</p>
+          <p>{failure(roster.error, t)}</p>
           <Button
             type="button"
             variant="secondary"
@@ -109,7 +114,7 @@ export function InstructorCourseEnrollmentsPage() {
               void roster.refetch();
             }}
           >
-            Try again
+            {t('routes:tryAgain')}
           </Button>
         </Notice>
       </article>
@@ -120,21 +125,19 @@ export function InstructorCourseEnrollmentsPage() {
       <InstructorCoursesReturnLink />
       <header>
         <h1 ref={heading} tabIndex={-1}>
-          Course enrollments
+          {t('routes:courseEnrollmentsTitle')}
         </h1>
-        <p>
-          {result.total} enrollment{result.total === 1 ? '' : 's'}
-        </p>
+        <p>{t('instructor:courseEnrollmentsCount', { count: result.total })}</p>
       </header>
       {result.items.length === 0 ? (
-        <Notice tone="info">No enrollments yet.</Notice>
+        <Notice tone="info">{t('instructor:courseEnrollmentsNoEnrollmentsYet')}</Notice>
       ) : (
         <ul className={styles.list}>
           {result.items.map((entry) => (
             <li key={entry.id}>
               <strong>{`${entry.student.name} ${entry.student.surname}`}</strong>
               <span>{entry.student.email}</span>
-              <span>{enrollmentStatusLabel(entry.status)}</span>
+              <span>{enrollmentStatusLabel(entry.status, t)}</span>
             </li>
           ))}
         </ul>
@@ -146,7 +149,7 @@ export function InstructorCourseEnrollmentsPage() {
           hasNext={result.hasNext}
           hasPrevious={result.hasPrevious}
           onPageChange={(next) => setParams(next === 1 ? {} : { page: String(next) })}
-          label="Course enrollments pagination"
+          label={t('instructor:courseEnrollmentsCourseEnrollmentsPagination')}
         />
       ) : null}
     </article>

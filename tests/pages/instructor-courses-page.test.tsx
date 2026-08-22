@@ -12,6 +12,7 @@ import {
   type AccessTokenStore,
 } from '../../src/features/auth-session';
 import { InstructorCoursesPage } from '../../src/pages/instructor-courses-page';
+import { LocaleProvider, type Locale } from '../../src/shared/locale';
 import {
   ApiError,
   createApiClient,
@@ -67,17 +68,20 @@ async function renderPage(
   store: AccessTokenStore = tokenStore,
   includeSessionReplacementControl = false,
   initialEntry = '/',
+  locale: Locale = 'en',
 ) {
   await act(async () => {
     render(
       <QueryClientProvider client={createAppQueryClient()}>
-        <SessionProvider client={client} tokenStore={store}>
-          <MemoryRouter initialEntries={[initialEntry]}>
-            {includeSessionReplacementControl ? <SessionReplacementControl /> : null}
-            <LocationDisplay />
-            <InstructorCoursesPage />
-          </MemoryRouter>
-        </SessionProvider>
+        <LocaleProvider initialLocale={locale}>
+          <SessionProvider client={client} tokenStore={store}>
+            <MemoryRouter initialEntries={[initialEntry]}>
+              {includeSessionReplacementControl ? <SessionReplacementControl /> : null}
+              <LocationDisplay />
+              <InstructorCoursesPage />
+            </MemoryRouter>
+          </SessionProvider>
+        </LocaleProvider>
       </QueryClientProvider>,
     );
   });
@@ -106,6 +110,134 @@ function decode<TResponse, TBody>(
 }
 
 describe('InstructorCoursesPage', () => {
+  it.each([
+    ['ru', 'Ваши курсы', 'Навигация по страницам ваших курсов'],
+    ['uz', 'Kurslaringiz', 'Kurslaringiz sahifalari'],
+  ] as const)(
+    'localizes the collection semantic unit in %s',
+    async (locale, collectionLabel, paginationLabel) => {
+      const firstPage = {
+        ...courseList,
+        items: Array.from({ length: 20 }, (_, index) => ({
+          ...courseList.items[0],
+          id: index + 1,
+          title: `Instructor course ${index + 1}`,
+        })),
+        total: 21,
+        pages: 2,
+        has_next: true,
+      };
+      const request: ApiClient['request'] = async (options) => {
+        if (options.path === '/me') return decode(options, instructor);
+        return decode(options, firstPage);
+      };
+      await renderPage({ request }, tokenStore, false, '/', locale);
+      expect(await screen.findByRole('heading', { level: 2, name: collectionLabel })).toBeTruthy();
+      expect(screen.getByRole('list', { name: collectionLabel })).toBeTruthy();
+      expect(screen.getByRole('navigation', { name: paginationLabel })).toBeTruthy();
+    },
+  );
+
+  it.each([
+    ['en', 1, '1 lesson'],
+    ['en', 2, '2 lessons'],
+    ['ru', 1, '1 урок'],
+    ['ru', 2, '2 урока'],
+    ['ru', 5, '5 уроков'],
+    ['uz', 1, '1 dars'],
+    ['uz', 2, '2 dars'],
+  ] as const)('localizes the lesson count in %s for %i', async (locale, lessonCount, expected) => {
+    const request: ApiClient['request'] = async (options) => {
+      if (options.path === '/me') return decode(options, instructor);
+      return decode(options, {
+        ...courseList,
+        items: [
+          {
+            ...courseList.items[0],
+            lessons: Array.from({ length: lessonCount }, (_, index) => ({
+              id: index + 1,
+              title: `Lesson ${index + 1}`,
+            })),
+          },
+        ],
+      });
+    };
+
+    await renderPage({ request }, tokenStore, false, '/', locale);
+    expect(await screen.findByText(expected)).toBeTruthy();
+  });
+
+  it.each([
+    [
+      'en',
+      'Edit course',
+      'Course enrollments',
+      'New course actions',
+      'Verified collection course actions',
+      'Course created',
+    ],
+    [
+      'ru',
+      'Редактировать курс',
+      'Записи на курс',
+      'Действия с новым курсом',
+      'Действия с курсом «Verified collection course»',
+      'Курс создан',
+    ],
+    [
+      'uz',
+      'Kursni tahrirlash',
+      'Kursga yozilishlar',
+      'Yangi kurs bo‘yicha amallar',
+      'Verified collection course kursi bo‘yicha amallar',
+      'Kurs yaratildi',
+    ],
+  ] as const)(
+    'localizes existing and newly created course actions in %s',
+    async (
+      locale,
+      editLabel,
+      enrollmentsLabel,
+      newCourseActionsLabel,
+      existingCourseActionsLabel,
+      createdTitle,
+    ) => {
+      const request: ApiClient['request'] = async (options) => {
+        if (options.path === '/me') return decode(options, instructor);
+        if (options.path === '/courses/my') return decode(options, courseList);
+        return decode(options, {
+          id: 7,
+          instructor_id: 3,
+          title: 'Localized course',
+          description: null,
+          price: '0.00',
+          currency: 'USD',
+          published_at: null,
+          created_at: '2026-07-30T00:00:00Z',
+          updated_at: '2026-07-30T00:00:00Z',
+        });
+      };
+
+      await renderPage({ request }, tokenStore, false, '/', locale);
+      const existingActions = await screen.findByRole('navigation', {
+        name: existingCourseActionsLabel,
+      });
+      expect(within(existingActions).getByRole('link', { name: editLabel })).toBeTruthy();
+      expect(within(existingActions).getByRole('link', { name: enrollmentsLabel })).toBeTruthy();
+
+      const title = screen.getByRole('textbox');
+      await act(async () => {
+        await userEvent.setup().type(title, 'Localized course');
+        fireEvent.submit(title.closest('form') as HTMLFormElement);
+      });
+
+      expect(await screen.findByText(createdTitle)).toBeTruthy();
+      const createdActions = screen.getByRole('navigation', { name: newCourseActionsLabel });
+      expect(within(createdActions).getByRole('link', { name: editLabel })).toBeTruthy();
+      expect(within(createdActions).getByRole('link', { name: enrollmentsLabel })).toBeTruthy();
+    },
+  );
+
   it('submits a verified 255-character title', async () => {
     const createRequests: ApiRequestOptions[] = [];
     const collectionRequests: ApiRequestOptions[] = [];

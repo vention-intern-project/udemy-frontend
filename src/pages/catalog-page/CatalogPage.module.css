@@ -173,6 +173,17 @@
   }
 }
 
+/* Preserve the compact one-row toolbar while allowing the longest locale label to fit. */
+@container (min-width: 34rem) and (max-width: 43.999rem) {
+  .sortField {
+    gap: var(--spacing-1);
+  }
+
+  .sortLabel {
+    font-size: 12px;
+  }
+}
+
 .sortLabel {
   flex: none;
   color: var(--text-muted);
@@ -254,7 +265,7 @@
   }
 
   /* Keep the compact 128px Min/Max controls usable without shrinking either field. */
-  .toolbarControls form[aria-label='Course filters'] fieldset {
+  .toolbarControls [data-part='catalog-filter-form'] fieldset {
     grid-template-columns: repeat(2, minmax(8rem, 1fr));
   }
 
@@ -271,8 +282,22 @@
 }
 
 @media (max-width: 239px) {
-  .toolbarControls form[aria-label='Course filters'] fieldset {
+  .toolbarControls [data-part='catalog-filter-form'] fieldset {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (min-width: 544px) and (max-width: 767px) {
+  .toolbarControls [data-part='catalog-filter-form'] fieldset {
+    grid-template-columns: repeat(2, minmax(7.5rem, 1fr));
+  }
+
+  .sortField {
+    gap: 0;
+  }
+
+  .page:lang(ru) .sortField [data-part='catalog-sort-control'] {
+    inline-size: 8.25rem;
   }
 }
 
@@ -308,6 +333,16 @@
 }
 
 @media (min-width: 768px) and (max-width: 895px) {
+  .resultsHeading,
+  .toolbarControls {
+    flex-wrap: wrap;
+  }
+
+  .toolbarControls {
+    flex: 1 1 100%;
+    margin-inline-start: 0;
+  }
+
   .hero h1 {
     font-size: 36px;
   }

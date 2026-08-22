@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 
-import { StrictMode, useRef, useState } from 'react';
+import { StrictMode, useRef, useState, type PropsWithChildren, type ReactNode } from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { focusElement, getTabbableElements } from '../../../src/shared/accessibility';
+import { LocaleProvider } from '../../../src/shared/locale';
 import { DestructiveConfirmation, Dialog } from '../../../src/shared/ui/primitives';
 
 afterEach(() => {
@@ -14,6 +15,14 @@ afterEach(() => {
   document.querySelector('[data-dialog-portal-root]')?.remove();
   document.documentElement.removeAttribute('data-density');
 });
+
+function LocaleTestProvider({ children }: PropsWithChildren) {
+  return <LocaleProvider initialLocale="en">{children}</LocaleProvider>;
+}
+
+function renderWithLocale(ui: ReactNode) {
+  return render(ui, { wrapper: LocaleTestProvider });
+}
 
 function DialogHarness({ busy = false }: { busy?: boolean }) {
   const [open, setOpen] = useState(false);
@@ -174,7 +183,7 @@ function EscapeOwnershipHarness({
 describe('Dialog', () => {
   it('links its accessible name and description, traps focus, closes on Escape, and restores focus', async () => {
     const user = userEvent.setup();
-    render(<DialogHarness />);
+    renderWithLocale(<DialogHarness />);
 
     const trigger = screen.getByRole('button', { name: 'Open editor' });
     await act(async () => user.click(trigger));
@@ -202,7 +211,7 @@ describe('Dialog', () => {
 
   it('does not close while a modal action is busy', async () => {
     const user = userEvent.setup();
-    render(<DialogHarness busy />);
+    renderWithLocale(<DialogHarness busy />);
     await act(async () => user.click(screen.getByRole('button', { name: 'Open editor' })));
     await user.keyboard('{Escape}');
     expect(screen.getByRole('dialog').getAttribute('aria-busy')).toBe('true');
@@ -211,7 +220,9 @@ describe('Dialog', () => {
   it('contains interaction in the topmost dialog while preserving busy and close ownership', async () => {
     const user = userEvent.setup();
     const onEscapeBubble = vi.fn();
-    const { rerender } = render(<EscapeOwnershipHarness busy onEscapeBubble={onEscapeBubble} />);
+    const { rerender } = renderWithLocale(
+      <EscapeOwnershipHarness busy onEscapeBubble={onEscapeBubble} />,
+    );
 
     const underlyingDialog = document.querySelector<HTMLElement>(
       '[role="dialog"][aria-hidden="true"]',
@@ -239,7 +250,7 @@ describe('Dialog', () => {
 
   it('uses computed tabbability for entry and wrapping and falls back to the dialog', async () => {
     const user = userEvent.setup();
-    const { rerender } = render(<TabbabilityHarness />);
+    const { rerender } = renderWithLocale(<TabbabilityHarness />);
 
     const radio = screen.getByRole('radio', { name: 'Checked radio target' });
     const available = screen.getByRole('button', { name: 'Available target' });
@@ -289,7 +300,7 @@ describe('Dialog', () => {
     outside.textContent = 'Outside action';
     preInert.setAttribute('inert', 'preserved');
     document.body.append(preInert, outside);
-    const rendered = render(<ProgrammaticInitialFocusHarness />);
+    const rendered = renderWithLocale(<ProgrammaticInitialFocusHarness />);
 
     const dialog = screen.getByRole('dialog', { name: 'Programmatic initial focus' });
     const programmaticTarget = screen.getByRole('button', { name: 'Programmatic target' });
@@ -310,7 +321,7 @@ describe('Dialog', () => {
 
   it('keeps modal registration and environment restoration safe in StrictMode', () => {
     document.body.style.overflow = 'clip';
-    const rendered = render(
+    const rendered = renderWithLocale(
       <StrictMode>
         <Dialog open title="Strict modal" onClose={() => undefined} showCloseButton={false}>
           <button type="button">Strict action</button>
@@ -328,7 +339,7 @@ describe('Dialog', () => {
   it('keeps scroll lock and focus ownership correct across multiple dialogs', async () => {
     const user = userEvent.setup();
     document.body.style.overflow = 'clip';
-    render(<MultipleDialogsHarness />);
+    renderWithLocale(<MultipleDialogsHarness />);
 
     const firstInvoker = screen.getByRole('button', { name: 'Open first dialog' });
     await act(async () => {
@@ -369,7 +380,7 @@ describe('DestructiveConfirmation', () => {
   ])(
     'announces the $expectedLabel pending label and disables the destructive confirmation',
     ({ pendingLabel, expectedLabel }) => {
-      render(
+      renderWithLocale(
         <DestructiveConfirmation
           open
           title="Delete this lesson?"
@@ -392,7 +403,7 @@ describe('DestructiveConfirmation', () => {
   it('uses explicit destructive action semantics and assertive failure feedback', async () => {
     const user = userEvent.setup();
     const onConfirm = vi.fn();
-    render(
+    renderWithLocale(
       <DestructiveConfirmation
         open
         title="Delete this lesson?"

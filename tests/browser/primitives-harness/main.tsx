@@ -14,6 +14,7 @@ import {
   SkeletonGroup,
   Textarea,
 } from '../../../src/shared/ui/primitives';
+import { LocaleProvider } from '../../../src/shared/locale';
 
 import './styles.css';
 
@@ -180,6 +181,8 @@ if (!root) throw new Error('Harness root element is missing.');
 
 createRoot(root).render(
   <StrictMode>
-    <PrimitivesHarness />
+    <LocaleProvider initialLocale="en">
+      <PrimitivesHarness />
+    </LocaleProvider>
   </StrictMode>,
 );

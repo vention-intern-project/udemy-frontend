@@ -11,6 +11,7 @@ import { AppRouter } from '../../src/app/router/AppRouter';
 import { SessionProvider, type AccessTokenStore } from '../../src/features/auth-session';
 import { LearningListPage } from '../../src/pages/learning-list-page';
 import { ApiError, type ApiClient, type ApiRequestOptions } from '../../src/shared/api';
+import { LocaleProvider, type Locale } from '../../src/shared/locale';
 import { ThemeProvider } from '../../src/shared/ui/theme';
 
 const student = {
@@ -109,17 +110,23 @@ function LocationProbe() {
   );
 }
 
-async function renderPage(request: ApiClient['request'], initialEntry = '/learning?page=2') {
+async function renderPage(
+  request: ApiClient['request'],
+  initialEntry = '/learning?page=2',
+  locale: Locale = 'en',
+) {
   const queryClient = createAppQueryClient();
   await act(async () => {
     render(
       <QueryClientProvider client={queryClient}>
-        <SessionProvider client={{ request }} tokenStore={tokenStore()}>
-          <MemoryRouter initialEntries={[initialEntry]}>
-            <LocationProbe />
-            <LearningListPage />
-          </MemoryRouter>
-        </SessionProvider>
+        <LocaleProvider initialLocale={locale}>
+          <SessionProvider client={{ request }} tokenStore={tokenStore()}>
+            <MemoryRouter initialEntries={[initialEntry]}>
+              <LocationProbe />
+              <LearningListPage />
+            </MemoryRouter>
+          </SessionProvider>
+        </LocaleProvider>
       </QueryClientProvider>,
     );
   });
@@ -130,19 +137,62 @@ async function renderApp(request: ApiClient['request']) {
   await act(async () => {
     render(
       <QueryClientProvider client={createAppQueryClient()}>
-        <SessionProvider client={{ request }} tokenStore={tokenStore()}>
-          <ThemeProvider initialDensityMode="workspace">
-            <MemoryRouter initialEntries={['/learning']}>
-              <AppRouter />
-            </MemoryRouter>
-          </ThemeProvider>
-        </SessionProvider>
+        <LocaleProvider initialLocale="en">
+          <SessionProvider client={{ request }} tokenStore={tokenStore()}>
+            <ThemeProvider initialDensityMode="workspace">
+              <MemoryRouter initialEntries={['/learning']}>
+                <AppRouter />
+              </MemoryRouter>
+            </ThemeProvider>
+          </SessionProvider>
+        </LocaleProvider>
       </QueryClientProvider>,
     );
   });
 }
 
 describe('LearningListPage', () => {
+  it.each([
+    [
+      'ru',
+      'Каталог',
+      'Моё обучение',
+      'Активно',
+      'Навигация по страницам обучения',
+      'Записей на курсы: 22 · Страница 2 из 2',
+      'Хлебные крошки',
+    ],
+    [
+      'uz',
+      'Katalog',
+      'Ta’limim',
+      'Faol',
+      'Ta’limga yozilishlar sahifalari',
+      'Kurslarga yozilishlar: 22 · 2-sahifa, jami 2 ta',
+      'Yo‘l ko‘rsatkich',
+    ],
+  ] as const)(
+    'uses exact %s visible and accessible MLUX-004 resources for the populated learning state',
+    async (locale, catalog, myLearning, active, paginationLabel, summary, breadcrumbLabel) => {
+      const request: ApiClient['request'] = async <TResponse, TBody>(
+        options: ApiRequestOptions<TBody, TResponse>,
+      ) => {
+        if (options.path === '/me') return decode(options, student);
+        if (options.path === '/enrollments/my') return decode(options, enrollments);
+        throw new Error(`Unexpected request ${options.path}`);
+      };
+
+      await renderPage(request, '/learning?page=2', locale);
+
+      expect(await screen.findByRole('link', { name: catalog })).toBeTruthy();
+      expect(screen.getByRole('heading', { name: myLearning })).toBeTruthy();
+      expect(screen.getByText(active)).toBeTruthy();
+      expect(screen.getByText(summary)).toBeTruthy();
+      expect(screen.getByRole('navigation', { name: paginationLabel })).toBeTruthy();
+      expect(screen.getByRole('navigation', { name: breadcrumbLabel })).toBeTruthy();
+    },
+  );
+
   it('keeps the heading and loading announcement distinct from resolved empty and summary content', async () => {
     let resolveEnrollments: (() => void) | undefined;
     const enrollmentResponse = new Promise<void>((resolve) => {
@@ -338,6 +388,27 @@ describe('LearningListPage', () => {
     const heading = screen.getByRole('heading', { name: 'My learning' });
     await waitFor(() => expect(document.activeElement).toBe(heading));
     expect(screen.queryByText('private')).toBeNull();
+  });
+
+  it('resolves a settled learning-list failure in the current locale without exposing server detail', async () => {
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/enrollments/my')
+        throw new ApiError({
+          kind: 'invalid_response',
+          status: 200,
+          message: 'private decoder detail',
+        });
+      throw new Error(`Unexpected request ${options.path}`);
+    };
+
+    await renderPage(request, '/learning', 'uz');
+
+    expect(await screen.findByText('Ta’lim ma’lumotlari mavjud emas')).toBeTruthy();
+    expect(screen.getByText('Server noto‘g‘ri javob qaytardi. Qayta urinib ko‘ring.')).toBeTruthy();
+    expect(screen.queryByText('private decoder detail')).toBeNull();
   });
 
   it('does not move focus when a failed list retry is followed by another failed refresh', async () => {

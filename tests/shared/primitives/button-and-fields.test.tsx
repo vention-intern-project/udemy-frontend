@@ -1,24 +1,28 @@
 // @vitest-environment jsdom
 
+import type { PropsWithChildren, ReactNode } from 'react';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import {
-  Button,
-  Input,
-  Select,
-  Textarea,
-  VisuallyHidden,
-} from '../../../src/shared/ui/primitives';
+import { Button, Input, Select, Textarea, VisuallyHidden } from '../../../src/shared/ui/primitives';
+import { LocaleProvider } from '../../../src/shared/locale';
 
 afterEach(cleanup);
+
+function LocaleTestProvider({ children }: PropsWithChildren) {
+  return <LocaleProvider initialLocale="en">{children}</LocaleProvider>;
+}
+
+function renderWithLocale(ui: ReactNode) {
+  return render(ui, { wrapper: LocaleTestProvider });
+}
 
 describe('Button', () => {
   it('keeps native keyboard activation', async () => {
     const user = userEvent.setup();
     const onClick = vi.fn();
-    render(<Button onClick={onClick}>Save course</Button>);
+    renderWithLocale(<Button onClick={onClick}>Save course</Button>);
 
     const button = screen.getByRole('button', { name: 'Save course' });
     button.focus();
@@ -32,7 +36,7 @@ describe('Button', () => {
   it('exposes and announces loading state while preventing duplicate activation', async () => {
     const user = userEvent.setup();
     const onClick = vi.fn();
-    render(
+    renderWithLocale(
       <Button state="loading" statusMessage="Saving course" onClick={onClick}>
         Save
       </Button>,
@@ -51,7 +55,14 @@ describe('Button', () => {
   it('retains explicit busy state without disabling an ordinary button', async () => {
     const user = userEvent.setup();
     const onClick = vi.fn();
-    render(<><Button aria-busy onClick={onClick}>Load media</Button><Button aria-busy={false}>Idle media</Button></>);
+    renderWithLocale(
+      <>
+        <Button aria-busy onClick={onClick}>
+          Load media
+        </Button>
+        <Button aria-busy={false}>Idle media</Button>
+      </>,
+    );
 
     const button = screen.getByRole('button', { name: 'Load media' }) as HTMLButtonElement;
     button.focus();
@@ -59,16 +70,22 @@ describe('Button', () => {
 
     expect(button.disabled).toBe(false);
     expect(button.getAttribute('aria-busy')).toBe('true');
-    expect(screen.getByRole('button', { name: 'Idle media' }).getAttribute('aria-busy')).toBe('false');
+    expect(screen.getByRole('button', { name: 'Idle media' }).getAttribute('aria-busy')).toBe(
+      'false',
+    );
     expect(document.activeElement).toBe(button);
     expect(onClick).toHaveBeenCalledTimes(1);
   });
 
   it('distinguishes success and error without relying on color and keeps status accessible', () => {
-    render(
+    renderWithLocale(
       <>
-        <Button state="success" statusMessage="Changes saved">Save</Button>
-        <Button state="error" statusMessage="Save failed">Retry</Button>
+        <Button state="success" statusMessage="Changes saved">
+          Save
+        </Button>
+        <Button state="error" statusMessage="Save failed">
+          Retry
+        </Button>
       </>,
     );
 
@@ -79,7 +96,9 @@ describe('Button', () => {
 
     expect(success.querySelector('[data-state-indicator="success"]')?.textContent).toBe('✓');
     expect(error.querySelector('[data-state-indicator="error"]')?.textContent).toBe('!');
-    expect(success.querySelector('[data-state-indicator]')?.getAttribute('aria-hidden')).toBe('true');
+    expect(success.querySelector('[data-state-indicator]')?.getAttribute('aria-hidden')).toBe(
+      'true',
+    );
     expect(error.querySelector('[data-state-indicator]')?.getAttribute('aria-hidden')).toBe('true');
     expect(successStatus?.textContent).toBe('Changes saved');
     expect(errorStatus?.textContent).toBe('Save failed');
@@ -88,13 +107,8 @@ describe('Button', () => {
 
 describe('form primitives', () => {
   it('links Input label, help and error text programmatically', () => {
-    render(
-      <Input
-        label="Email"
-        required
-        helpText="Use your work email"
-        error="Email is invalid"
-      />,
+    renderWithLocale(
+      <Input label="Email" required helpText="Use your work email" error="Email is invalid" />,
     );
 
     const input = screen.getByRole('textbox', { name: 'Email' });
@@ -105,12 +119,11 @@ describe('form primitives', () => {
     expect(descriptions).toContain('Use your work email');
     expect(descriptions).toContain('Email is invalid');
     expect(input.getAttribute('data-part')).toBe('control');
-    expect(input.closest('[data-part="field"]')?.querySelector('[data-part="label"]'))
-      .toBeTruthy();
+    expect(input.closest('[data-part="field"]')?.querySelector('[data-part="label"]')).toBeTruthy();
   });
 
   it('provides visible labels for Select and Textarea', () => {
-    render(
+    renderWithLocale(
       <>
         <Select label="Sort courses" defaultValue="new">
           <option value="new">Newest</option>
@@ -126,7 +139,7 @@ describe('form primitives', () => {
   });
 
   it('preserves caller aria-invalid values unless an error forces invalid state', () => {
-    render(
+    renderWithLocale(
       <>
         <Input label="Input caller state" aria-invalid="grammar" />
         <Select label="Select caller state" aria-invalid="spelling">
@@ -141,24 +154,30 @@ describe('form primitives', () => {
       </>,
     );
 
-    expect(screen.getByRole('textbox', { name: 'Input caller state' }).getAttribute('aria-invalid'))
-      .toBe('grammar');
-    expect(screen.getByRole('combobox', { name: 'Select caller state' }).getAttribute('aria-invalid'))
-      .toBe('spelling');
-    expect(screen.getByRole('textbox', { name: 'Textarea caller state' }).getAttribute('aria-invalid'))
-      .toBe('false');
-    expect(screen.getByRole('textbox', { name: 'Input error state' }).getAttribute('aria-invalid'))
-      .toBe('true');
-    expect(screen.getByRole('combobox', { name: 'Select error state' }).getAttribute('aria-invalid'))
-      .toBe('true');
-    expect(screen.getByRole('textbox', { name: 'Textarea error state' }).getAttribute('aria-invalid'))
-      .toBe('true');
+    expect(
+      screen.getByRole('textbox', { name: 'Input caller state' }).getAttribute('aria-invalid'),
+    ).toBe('grammar');
+    expect(
+      screen.getByRole('combobox', { name: 'Select caller state' }).getAttribute('aria-invalid'),
+    ).toBe('spelling');
+    expect(
+      screen.getByRole('textbox', { name: 'Textarea caller state' }).getAttribute('aria-invalid'),
+    ).toBe('false');
+    expect(
+      screen.getByRole('textbox', { name: 'Input error state' }).getAttribute('aria-invalid'),
+    ).toBe('true');
+    expect(
+      screen.getByRole('combobox', { name: 'Select error state' }).getAttribute('aria-invalid'),
+    ).toBe('true');
+    expect(
+      screen.getByRole('textbox', { name: 'Textarea error state' }).getAttribute('aria-invalid'),
+    ).toBe('true');
   });
 });
 
 describe('VisuallyHidden', () => {
   it('preserves the requested semantic element', () => {
-    render(
+    renderWithLocale(
       <fieldset>
         <VisuallyHidden as="legend">Price range</VisuallyHidden>
       </fieldset>,

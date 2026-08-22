@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { ChevronLeft } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 
 import type { LessonType } from '@entities/course';
 import {
@@ -12,6 +14,10 @@ import {
   requestInstructorEditorCourse,
   updateInstructorCourse,
   mapInstructorEditorFormFailure,
+  resolveInstructorEditorFormFailure,
+  resolveInstructorEditorFailureMessage,
+  type InstructorEditorFieldErrors,
+  type InstructorEditorFormFailure,
   type InstructorEditorCourse,
   type InstructorEditorLesson,
 } from '@features/instructor-course-editor';
@@ -44,21 +50,40 @@ interface LessonFormState {
   isPublished: boolean;
 }
 
-type CourseFieldErrors = Readonly<Record<string, string>>;
-type LessonFieldErrors = Readonly<Record<string, string>>;
+type LessonTypeLabelKey =
+  | 'instructor:courseEditorVideo'
+  | 'instructor:courseEditorText'
+  | 'instructor:courseEditorPdf';
 
+const LESSON_TYPE_LABEL_KEY: Readonly<Record<LessonType, LessonTypeLabelKey>> = {
+  video: 'instructor:courseEditorVideo',
+  text: 'instructor:courseEditorText',
+  pdf: 'instructor:courseEditorPdf',
+};
+
+function interpolateInstructorTemplate(
+  t: TFunction,
+  key: string,
+  variable: 'courseTitle' | 'lessonTitle',
+  value: string,
+): string {
+  return t(key).replace(`{${variable}}`, () => value);
+}
+
+/* The validation owner supplies the shared field-error contract.
+ */
 const COURSE_ERROR_FIELDS = {
-  title: { field: 'title', label: 'Course title' },
-  description: { field: 'description', label: 'Description' },
-  price: { field: 'price', label: 'Price' },
-  currency: { field: 'currency', label: 'Currency' },
+  title: { field: 'title', labelKey: 'courseEditorCourseTitle' },
+  description: { field: 'description', labelKey: 'courseEditorDescription' },
+  price: { field: 'price', labelKey: 'courseEditorPrice' },
+  currency: { field: 'currency', labelKey: 'courseEditorCurrency' },
 };
 
 const LESSON_ERROR_FIELDS = {
-  title: { field: 'title', label: 'Lesson title' },
-  lesson_type: { field: 'lessonType', label: 'Lesson type' },
-  description: { field: 'description', label: 'Description' },
-  is_published: { field: 'isPublished', label: 'Publish this lesson' },
+  title: { field: 'title', labelKey: 'courseEditorLessonTitle' },
+  lesson_type: { field: 'lessonType', labelKey: 'courseEditorLessonType' },
+  description: { field: 'description', labelKey: 'courseEditorDescription' },
+  is_published: { field: 'isPublished', labelKey: 'courseEditorPublishThisLesson' },
 };
 
 function positiveInteger(value: string | undefined): number | null {
@@ -84,38 +109,40 @@ const INITIAL_LESSON_FORM: LessonFormState = {
 };
 
 function InstructorCourseEditorHeader() {
+  const { t } = useTranslation();
   return (
     <>
-      <nav className={styles.breadcrumb} aria-label="Breadcrumb">
+      <nav className={styles.breadcrumb} aria-label={t('a11y:breadcrumb')}>
         <ContextualNavigationLink className={styles.breadcrumbLink} to="/instructor/courses">
           <ChevronLeft size={20} aria-hidden="true" />
-          <span>Instructor courses</span>
+          <span>{t('navigation:instructorCourses')}</span>
         </ContextualNavigationLink>
         <span className={styles.breadcrumbCurrent} aria-hidden="true">
           /
         </span>
         <span className={styles.breadcrumbCurrent} aria-current="page">
-          Edit course
+          {t('routes:editCourseTitle')}
         </span>
       </nav>
       <header className={styles.header}>
-        <h1>Edit course</h1>
+        <h1>{t('routes:editCourseTitle')}</h1>
       </header>
     </>
   );
 }
 
 export function InstructorCourseEditorPage() {
+  const { t } = useTranslation();
   const courseId = positiveInteger(useParams().courseId);
   const session = useSession();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [courseForm, setCourseForm] = useState<CourseFormState | null>(null);
   const [lessonForm, setLessonForm] = useState<LessonFormState>(INITIAL_LESSON_FORM);
-  const [courseError, setCourseError] = useState<string | null>(null);
-  const [lessonError, setLessonError] = useState<string | null>(null);
-  const [courseFieldErrors, setCourseFieldErrors] = useState<CourseFieldErrors>({});
-  const [lessonFieldErrors, setLessonFieldErrors] = useState<LessonFieldErrors>({});
+  const [courseError, setCourseError] = useState<InstructorEditorFormFailure | null>(null);
+  const [lessonError, setLessonError] = useState<InstructorEditorFormFailure | null>(null);
+  const [courseFieldErrors, setCourseFieldErrors] = useState<InstructorEditorFieldErrors>({});
+  const [lessonFieldErrors, setLessonFieldErrors] = useState<InstructorEditorFieldErrors>({});
   const [deleteTarget, setDeleteTarget] = useState<InstructorEditorLesson | 'course' | null>(null);
   const initializedCourseIdRef = useRef<number | null>(null);
   const courseTitleRef = useRef<HTMLInputElement>(null);
@@ -168,14 +195,15 @@ export function InstructorCourseEditorPage() {
       const failure = mapInstructorEditorFormFailure(
         error,
         {
-          action: 'save this course',
-          unauthorized: 'Sign in again before continuing.',
-          forbidden: 'You do not have permission to change this course.',
-          notFound: 'This course is no longer available.',
+          actionKey: 'courseEditorSaveThisCourse',
+          unauthorizedKey: 'courseEditorSignInAgainBeforeContinuing',
+          forbiddenKey: 'courseEditorYouDoNotHavePermissionToChangeThisCourse',
+          notFoundKey: 'courseEditorThisCourseIsNoLongerAvailable',
+          badRequestKey: null,
         },
         COURSE_ERROR_FIELDS,
       );
-      setCourseError(failure.summary);
+      setCourseError(failure);
       setCourseFieldErrors(failure.fields);
     },
   });
@@ -194,14 +222,15 @@ export function InstructorCourseEditorPage() {
       const failure = mapInstructorEditorFormFailure(
         error,
         {
-          action: 'create this lesson',
-          unauthorized: 'Sign in again before continuing.',
-          forbidden: 'You do not have permission to change this course.',
-          notFound: 'This course is no longer available.',
+          actionKey: 'courseEditorCreateThisLesson',
+          unauthorizedKey: 'courseEditorSignInAgainBeforeContinuing',
+          forbiddenKey: 'courseEditorYouDoNotHavePermissionToChangeThisCourse',
+          notFoundKey: 'courseEditorThisCourseIsNoLongerAvailable',
+          badRequestKey: null,
         },
         LESSON_ERROR_FIELDS,
       );
-      setLessonError(failure.summary);
+      setLessonError(failure);
       setLessonFieldErrors(failure.fields);
     },
   });
@@ -246,8 +275,8 @@ export function InstructorCourseEditorPage() {
     return (
       <article className={styles.page}>
         <InstructorCourseEditorHeader />
-        <Notice tone="error" title="Course not found">
-          This course address is not valid.
+        <Notice tone="error" title={t('course:courseNotFound')}>
+          {t('instructor:courseEditorCourseAddressInvalid')}
         </Notice>
       </article>
     );
@@ -256,7 +285,7 @@ export function InstructorCourseEditorPage() {
     return (
       <article className={styles.page}>
         <InstructorCourseEditorHeader />
-        <SkeletonGroup label="Loading course editor">
+        <SkeletonGroup label={t('instructor:courseEditorLoadingCourseEditor')}>
           <Skeleton width="100%" height="320px" shape="rect" />
         </SkeletonGroup>
       </article>
@@ -266,23 +295,25 @@ export function InstructorCourseEditorPage() {
     return (
       <article className={styles.page}>
         <InstructorCourseEditorHeader />
-        <Notice tone="error" title="Course editor unavailable">
+        <Notice tone="error" title={t('instructor:courseEditorCourseEditorUnavailable')}>
           <p>
-            {
+            {resolveInstructorEditorFailureMessage(
               mapInstructorEditorFormFailure(
                 course.error,
                 {
-                  action: 'load this course',
-                  unauthorized: 'Sign in again before continuing.',
-                  forbidden: 'You do not have permission to change this course.',
-                  notFound: 'This course is no longer available.',
+                  actionKey: 'courseEditorLoadThisCourse',
+                  unauthorizedKey: 'courseEditorSignInAgainBeforeContinuing',
+                  forbiddenKey: 'courseEditorYouDoNotHavePermissionToChangeThisCourse',
+                  notFoundKey: 'courseEditorThisCourseIsNoLongerAvailable',
+                  badRequestKey: null,
                 },
                 COURSE_ERROR_FIELDS,
-              ).summary
-            }
+              ).summary,
+              t,
+            )}
           </p>
           <Button variant="secondary" onClick={() => void course.refetch()}>
-            Try again
+            {t('routes:tryAgain')}
           </Button>
         </Notice>
       </article>
@@ -293,8 +324,11 @@ export function InstructorCourseEditorPage() {
     event.preventDefault();
     if (updateCourse.isPending) return;
     if (courseForm.title.trim() === '') {
-      setCourseError('Enter a course title.');
-      setCourseFieldErrors({ title: 'Enter a course title.' });
+      setCourseError({
+        fields: { title: { kind: 'resource', key: 'courseEditorEnterACourseTitle' } },
+        summary: { kind: 'resource', key: 'courseEditorEnterACourseTitle' },
+      });
+      setCourseFieldErrors({ title: { kind: 'resource', key: 'courseEditorEnterACourseTitle' } });
       courseTitleRef.current?.focus();
       return;
     }
@@ -306,8 +340,11 @@ export function InstructorCourseEditorPage() {
     event.preventDefault();
     if (createLesson.isPending) return;
     if (lessonForm.title.trim() === '') {
-      setLessonError('Enter a lesson title.');
-      setLessonFieldErrors({ title: 'Enter a lesson title.' });
+      setLessonError({
+        fields: { title: { kind: 'resource', key: 'courseEditorEnterALessonTitle' } },
+        summary: { kind: 'resource', key: 'courseEditorEnterALessonTitle' },
+      });
+      setLessonFieldErrors({ title: { kind: 'resource', key: 'courseEditorEnterALessonTitle' } });
       lessonTitleRef.current?.focus();
       return;
     }
@@ -315,8 +352,26 @@ export function InstructorCourseEditorPage() {
     setLessonFieldErrors({});
     createLesson.mutate();
   };
-  const courseFailure = courseError;
-  const lessonFailure = lessonError;
+  const courseFailure = courseError ? resolveInstructorEditorFormFailure(courseError, t) : null;
+  const lessonFailure = lessonError ? resolveInstructorEditorFormFailure(lessonError, t) : null;
+  const resolvedCourseFieldErrors = courseFailure
+    ? courseFailure.fields
+    : Object.fromEntries(
+        Object.entries(courseFieldErrors).map(([field, message]) => [
+          field,
+          resolveInstructorEditorFormFailure({ fields: { [field]: message }, summary: message }, t)
+            .summary,
+        ]),
+      );
+  const resolvedLessonFieldErrors = lessonFailure
+    ? lessonFailure.fields
+    : Object.fromEntries(
+        Object.entries(lessonFieldErrors).map(([field, message]) => [
+          field,
+          resolveInstructorEditorFormFailure({ fields: { [field]: message }, summary: message }, t)
+            .summary,
+        ]),
+      );
   const deletingCourse = deleteTarget === 'course';
 
   return (
@@ -326,65 +381,65 @@ export function InstructorCourseEditorPage() {
     >
       <InstructorCourseEditorHeader />
       <section className={styles.panel} aria-labelledby="course-details-heading">
-        <h2 id="course-details-heading">Course details</h2>
+        <h2 id="course-details-heading">{t('routes:courseDetailsTitle')}</h2>
         <form className={styles.form} onSubmit={submitCourse}>
           <Input
             ref={courseTitleRef}
-            label="Course title"
+            label={t('instructor:courseEditorCourseTitle')}
             name="title"
             maxLength={255}
             required
             value={courseForm.title}
-            error={courseFieldErrors.title}
+            error={resolvedCourseFieldErrors.title}
             disabled={updateCourse.isPending}
             onChange={(event) => setCourseForm({ ...courseForm, title: event.target.value })}
           />
           <Textarea
             ref={courseDescriptionRef}
-            label="Description"
+            label={t('instructor:courseEditorDescription')}
             name="description"
             value={courseForm.description}
-            error={courseFieldErrors.description}
+            error={resolvedCourseFieldErrors.description}
             disabled={updateCourse.isPending}
             onChange={(event) => setCourseForm({ ...courseForm, description: event.target.value })}
           />
           <div className={styles.fieldRow}>
             <Input
               ref={coursePriceRef}
-              label="Price"
+              label={t('instructor:courseEditorPrice')}
               name="price"
               type="number"
               min="0"
               step="0.01"
               value={courseForm.price}
-              error={courseFieldErrors.price}
+              error={resolvedCourseFieldErrors.price}
               disabled={updateCourse.isPending}
               onChange={(event) => setCourseForm({ ...courseForm, price: event.target.value })}
             />
             <Input
               ref={courseCurrencyRef}
-              label="Currency"
+              label={t('instructor:courseEditorCurrency')}
               name="currency"
               minLength={3}
               maxLength={3}
               value={courseForm.currency}
-              error={courseFieldErrors.currency}
+              error={resolvedCourseFieldErrors.currency}
               disabled={updateCourse.isPending}
               onChange={(event) => setCourseForm({ ...courseForm, currency: event.target.value })}
             />
           </div>
           {courseFailure && Object.keys(courseFieldErrors).length === 0 ? (
             <div ref={courseErrorRef} tabIndex={-1} role="alert">
-              <Notice tone="error">{courseFailure}</Notice>
+              <Notice tone="error">{courseFailure.summary}</Notice>
             </div>
           ) : null}
           <div className={styles.actions}>
             <Button
               type="submit"
               state={updateCourse.isPending ? 'loading' : 'idle'}
-              loadingLabel="Saving course"
+              loadingLabel={t('instructor:courseEditorSavingCourse')}
             >
-              Save course
+              {t('instructor:courseEditorSaveCourse')}
             </Button>
             <Button
               type="button"
@@ -395,15 +450,15 @@ export function InstructorCourseEditorPage() {
                 setDeleteTarget('course');
               }}
             >
-              Delete course
+              {t('instructor:courseEditorDeleteCourse')}
             </Button>
           </div>
         </form>
       </section>
       <section className={styles.panel} aria-labelledby="lessons-heading">
-        <h2 id="lessons-heading">Lessons</h2>
+        <h2 id="lessons-heading">{t('instructor:courseEditorLessons')}</h2>
         {course.data.lessons.length === 0 ? (
-          <Notice tone="info">This course has no lessons yet.</Notice>
+          <Notice tone="info">{t('instructor:courseEditorThisCourseHasNoLessonsYet')}</Notice>
         ) : (
           <ul className={styles.lessonList}>
             {course.data.lessons.map((lesson) => (
@@ -411,12 +466,15 @@ export function InstructorCourseEditorPage() {
                 <div>
                   <h3>{lesson.title}</h3>
                   <p>
-                    {lesson.lessonType} · {lesson.isPublished ? 'Published' : 'Not published'}
+                    {t(LESSON_TYPE_LABEL_KEY[lesson.lessonType])} ·{' '}
+                    {lesson.isPublished
+                      ? t('course:published')
+                      : t('instructor:courseEditorNotPublished')}
                   </p>
                 </div>
                 <div className={styles.actions}>
                   <Link className={styles.backLink} to={`/instructor/lessons/${lesson.id}/edit`}>
-                    Edit lesson
+                    {t('routes:editLessonTitle')}
                   </Link>
                   <Button
                     type="button"
@@ -427,7 +485,7 @@ export function InstructorCourseEditorPage() {
                       setDeleteTarget(lesson);
                     }}
                   >
-                    Delete lesson
+                    {t('instructor:courseEditorDeleteLesson')}
                   </Button>
                 </div>
               </li>
@@ -436,38 +494,38 @@ export function InstructorCourseEditorPage() {
         )}
       </section>
       <section className={styles.panel} aria-labelledby="create-lesson-heading">
-        <h2 id="create-lesson-heading">Create lesson</h2>
+        <h2 id="create-lesson-heading">{t('instructor:courseEditorCreateLesson')}</h2>
         <form className={styles.form} onSubmit={submitLesson}>
           <Input
             ref={lessonTitleRef}
-            label="Lesson title"
+            label={t('instructor:courseEditorLessonTitle')}
             name="lesson-title"
             maxLength={255}
             required
             value={lessonForm.title}
-            error={lessonFieldErrors.title}
+            error={resolvedLessonFieldErrors.title}
             onChange={(event) => setLessonForm({ ...lessonForm, title: event.target.value })}
           />
           <Select
             ref={lessonTypeRef}
-            label="Lesson type"
+            label={t('instructor:courseEditorLessonType')}
             name="lesson-type"
             value={lessonForm.lessonType}
-            error={lessonFieldErrors.lessonType}
+            error={resolvedLessonFieldErrors.lessonType}
             onChange={(event) =>
               setLessonForm({ ...lessonForm, lessonType: event.target.value as LessonType })
             }
           >
-            <option value="video">Video</option>
-            <option value="text">Text</option>
+            <option value="video">{t('instructor:courseEditorVideo')}</option>
+            <option value="text">{t('instructor:courseEditorText')}</option>
             <option value="pdf">PDF</option>
           </Select>
           <Textarea
             ref={lessonDescriptionRef}
-            label="Description"
+            label={t('instructor:courseEditorDescription')}
             name="lesson-description"
             value={lessonForm.description}
-            error={lessonFieldErrors.description}
+            error={resolvedLessonFieldErrors.description}
             onChange={(event) => setLessonForm({ ...lessonForm, description: event.target.value })}
           />
           <label className={styles.checkbox}>
@@ -484,50 +542,76 @@ export function InstructorCourseEditorPage() {
                 setLessonForm({ ...lessonForm, isPublished: event.target.checked })
               }
             />{' '}
-            Publish this lesson
+            {t('instructor:courseEditorPublishThisLesson')}
           </label>
           {lessonFieldErrors.isPublished ? (
             <span id="create-lesson-is-published-error" className={styles.fieldError} role="alert">
-              {lessonFieldErrors.isPublished}
+              {resolvedLessonFieldErrors.isPublished}
             </span>
           ) : null}
           {lessonFailure && Object.keys(lessonFieldErrors).length === 0 ? (
             <div ref={lessonErrorRef} tabIndex={-1} role="alert">
-              <Notice tone="error">{lessonFailure}</Notice>
+              <Notice tone="error">{lessonFailure.summary}</Notice>
             </div>
           ) : null}
           <Button
             type="submit"
             state={createLesson.isPending ? 'loading' : 'idle'}
-            loadingLabel="Creating lesson"
+            loadingLabel={t('instructor:courseEditorCreatingLesson')}
           >
-            Create lesson
+            {t('instructor:courseEditorCreateLesson')}
           </Button>
         </form>
       </section>
       <DestructiveConfirmation
         open={deleteTarget !== null}
-        title={deletingCourse ? 'Delete this course?' : 'Delete this lesson?'}
+        title={
+          deletingCourse
+            ? t('instructor:courseEditorDeleteThisCourse')
+            : t('instructor:courseEditorDeleteThisLesson')
+        }
         description={
           deletingCourse
-            ? `Delete ${course.data.title}. This action is permanent.`
-            : `Delete ${(deleteTarget as InstructorEditorLesson | null)?.title ?? 'this lesson'}. This action is permanent.`
+            ? interpolateInstructorTemplate(
+                t,
+                'instructor:courseEditorDeleteCoursePermanent',
+                'courseTitle',
+                course.data.title,
+              )
+            : interpolateInstructorTemplate(
+                t,
+                'instructor:courseEditorDeleteLessonPermanent',
+                'lessonTitle',
+                (deleteTarget as InstructorEditorLesson | null)?.title ?? 'this lesson',
+              )
         }
-        confirmLabel={deletingCourse ? 'Delete course' : 'Delete lesson'}
+        confirmLabel={
+          deletingCourse
+            ? t('instructor:courseEditorDeleteCourse')
+            : t('instructor:courseEditorDeleteLesson')
+        }
         confirming={remove.isPending}
-        pendingLabel={deletingCourse ? 'Deleting course...' : 'Deleting lesson...'}
+        pendingLabel={
+          deletingCourse
+            ? t('instructor:courseEditorDeletingCourse')
+            : t('instructor:courseEditorDeletingLesson')
+        }
         error={
           remove.isError
-            ? mapInstructorEditorFormFailure(
-                remove.error,
-                {
-                  action: 'delete this item',
-                  unauthorized: 'Sign in again before continuing.',
-                  forbidden: 'You do not have permission to change this course.',
-                  notFound: 'This course or lesson is no longer available.',
-                },
-                COURSE_ERROR_FIELDS,
-              ).summary
+            ? resolveInstructorEditorFailureMessage(
+                mapInstructorEditorFormFailure(
+                  remove.error,
+                  {
+                    actionKey: 'courseEditorDeleteThisItem',
+                    unauthorizedKey: 'courseEditorSignInAgainBeforeContinuing',
+                    forbiddenKey: 'courseEditorYouDoNotHavePermissionToChangeThisCourse',
+                    notFoundKey: 'courseEditorThisCourseOrLessonIsNoLongerAvailable',
+                    badRequestKey: null,
+                  },
+                  COURSE_ERROR_FIELDS,
+                ).summary,
+                t,
+              )
             : undefined
         }
         onCancel={() => {

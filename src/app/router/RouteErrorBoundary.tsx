@@ -1,5 +1,6 @@
 import { Component, useEffect, useState, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 
 import { useSession } from '@features/auth-session';
 
@@ -68,22 +69,26 @@ export function RouteErrorBoundary({ children }: RouteErrorBoundaryProps) {
   return <RenderErrorBoundary resetKey={resetKey}>{children}</RenderErrorBoundary>;
 }
 
-function resolveApplicationTitle(state: ApplicationTitleState): string {
+function resolveApplicationTitle(
+  state: ApplicationTitleState,
+  t: (key: string, values?: Record<string, string>) => string,
+): string {
   switch (state.kind) {
     case 'render-error':
-      return 'Something went wrong | LearnHub';
+      return t('routes:renderErrorDocumentTitle');
     case 'bootstrapping':
-      return 'Preparing your workspace | LearnHub';
+      return t('routes:bootstrapDocumentTitle');
     case 'session-error':
-      return 'Session check failed | LearnHub';
+      return t('routes:sessionErrorDocumentTitle');
     case 'registered-route':
-      return `${state.routeTitle} | LearnHub`;
+      return t('routes:pageDocumentTitle', { pageTitle: state.routeTitle });
     case 'not-found':
-      return 'Page not found | LearnHub';
+      return t('routes:notFoundDocumentTitle');
   }
 }
 
 export function ApplicationTitleBoundary({ children }: ApplicationTitleBoundaryProps) {
+  const { t } = useTranslation();
   const { state: sessionState } = useSession();
   const location = useLocation();
   const [hasRenderError, setHasRenderError] = useState(false);
@@ -96,9 +101,9 @@ export function ApplicationTitleBoundary({ children }: ApplicationTitleBoundaryP
           (!route || (route.access !== 'public' && route.access !== 'guest'))
         ? { kind: 'session-error' }
         : route
-          ? { kind: 'registered-route', routeTitle: route.title }
+          ? { kind: 'registered-route', routeTitle: t(route.titleKey) }
           : { kind: 'not-found' };
-  const title = resolveApplicationTitle(titleState);
+  const title = resolveApplicationTitle(titleState, t);
   const resetKey = `${location.pathname}${location.search}${location.hash}`;
 
   useEffect(() => {

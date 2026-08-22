@@ -1,5 +1,6 @@
 import { MoreVertical, Square, Trash2, X } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
 import { useCourseChat, type CourseAssistantContext } from '@features/course-chat';
@@ -25,6 +26,7 @@ export function CourseChatLauncherInteraction({
   onClose,
   onExpand,
 }: CourseChatLauncherInteractionProps) {
+  const { t } = useTranslation();
   const chat = useCourseChat(assistant.context);
   const navigate = useNavigate();
   const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
@@ -67,16 +69,20 @@ export function CourseChatLauncherInteraction({
       ref={widgetRef}
       id={widgetId}
       className={styles.widget}
-      aria-label="Course assistant chat"
+      aria-label={t('ai:courseAssistantChat', { defaultValue: 'Course assistant chat' })}
       hidden={!open}
     >
       <header className={styles.header}>
-        <strong className={styles.headerTitle}>Course assistant</strong>
+        <strong className={styles.headerTitle}>
+          {t('ai:courseAssistant0319', { defaultValue: 'Course assistant' })}
+        </strong>
         <div className={styles.headerActions}>
           <span className={styles.headerControl}>
             <Button
               variant="ghost"
-              aria-label="Expand course assistant"
+              aria-label={t('ai:expandCourseAssistant', {
+                defaultValue: 'Expand course assistant',
+              })}
               onClick={() => {
                 onExpand();
                 navigate(
@@ -90,7 +96,7 @@ export function CourseChatLauncherInteraction({
               <Square className={styles.expandIcon} aria-hidden="true" />
             </Button>
             <span className={styles.headerTooltip} role="tooltip">
-              Expand chat
+              {t('ai:expandChat')}
             </span>
           </span>
           <span
@@ -111,7 +117,7 @@ export function CourseChatLauncherInteraction({
             <Button
               variant="ghost"
               id={actionTriggerId}
-              aria-label="Conversation actions"
+              aria-label={t('ai:conversationActions', { defaultValue: 'Conversation actions' })}
               aria-controls={isActionMenuOpen ? actionMenuId : undefined}
               aria-expanded={isActionMenuOpen}
               onClick={() => {
@@ -128,14 +134,14 @@ export function CourseChatLauncherInteraction({
             </Button>
             {!isActionMenuOpen ? (
               <span className={styles.headerTooltip} role="tooltip">
-                Conversation actions
+                {t('ai:conversationActions', { defaultValue: 'Conversation actions' })}
               </span>
             ) : null}
             {isActionMenuOpen ? (
               <span
                 className={styles.actionMenuList}
                 id={actionMenuId}
-                aria-label="Conversation actions"
+                aria-label={t('ai:conversationActions', { defaultValue: 'Conversation actions' })}
                 data-part="mini-chat-action-menu"
                 onKeyDown={(event) => {
                   if (event.key !== 'Escape') return;
@@ -151,7 +157,7 @@ export function CourseChatLauncherInteraction({
                     setIsClearConfirmationOpen(true);
                   }}
                 >
-                  <span>Clear chat</span>
+                  <span>{t('ai:clearChat', { defaultValue: 'Clear chat' })}</span>
                   <Trash2 aria-hidden="true" />
                 </button>
               </span>
@@ -160,7 +166,7 @@ export function CourseChatLauncherInteraction({
           <span className={styles.headerControl}>
             <Button
               variant="ghost"
-              aria-label="Close course assistant"
+              aria-label={t('ai:closeCourseAssistant', { defaultValue: 'Close course assistant' })}
               onClick={() => {
                 setIsActionMenuOpen(false);
                 onClose();
@@ -169,7 +175,7 @@ export function CourseChatLauncherInteraction({
               <X aria-hidden="true" />
             </Button>
             <span className={styles.headerTooltip} role="tooltip">
-              Close chat
+              {t('ai:closeChat')}
             </span>
           </span>
         </div>
@@ -177,9 +183,11 @@ export function CourseChatLauncherInteraction({
       <CourseChatContent chat={chat} context={assistant.context} compact focusOnOpen={open} />
       <DestructiveConfirmation
         open={isClearConfirmationOpen}
-        title="Clear this conversation?"
-        description="This action cannot be undone."
-        confirmLabel="Clear conversation"
+        title={t('ai:clearThisConversation', { defaultValue: 'Clear this conversation?' })}
+        description={t('ai:thisActionCannotBeUndone', {
+          defaultValue: 'This action cannot be undone.',
+        })}
+        confirmLabel={t('ai:clearConversation', { defaultValue: 'Clear conversation' })}
         onConfirm={() => {
           chat.reset();
           setIsClearConfirmationOpen(false);

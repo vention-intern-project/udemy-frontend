@@ -29,6 +29,7 @@ import type {
   LessonCompletionState,
   LessonProgressAttempt,
   LessonProgressFeedback,
+  PersistentLessonProgressFeedback,
 } from './model';
 import {
   learningCourseProgressQueryKey,
@@ -114,7 +115,7 @@ export function useLearningWorkspace(
   }, []);
 
   const setPersistentFeedback = useCallback(
-    (nextFeedback: LessonProgressFeedback | null) => {
+    (nextFeedback: PersistentLessonProgressFeedback | null) => {
       clearFeedbackTimers();
       replaceFeedback(nextFeedback);
     },
@@ -303,7 +304,7 @@ export function useLearningWorkspace(
           }
           setPersistentFeedback({
             tone: 'error',
-            message: 'We could not confirm the lesson update. Progress is being refreshed.',
+            messageKey: 'learning:lessonUpdateUnconfirmed',
             visibility: 'visible',
           });
         }
@@ -322,7 +323,7 @@ export function useLearningWorkspace(
       if (isCurrentScope) {
         setPersistentFeedback({
           tone: 'error',
-          message: 'Lesson progress could not be updated. Try again.',
+          messageKey: 'learning:lessonProgressUpdateFailed',
           visibility: 'visible',
         });
       }

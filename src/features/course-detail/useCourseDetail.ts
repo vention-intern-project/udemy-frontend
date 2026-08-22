@@ -23,10 +23,22 @@ import {
 } from './api';
 
 export interface CourseDetailFailure {
-  title: string;
-  message: string;
-  notFound: boolean;
+  readonly titleKey: CourseDetailFailureTitleKey;
+  readonly messageKey: CourseDetailFailureMessageKey;
+  readonly notFound: boolean;
 }
+
+export type CourseDetailFailureTitleKey =
+  | 'common:youAppearOffline'
+  | 'course:courseDataUnavailable'
+  | 'course:courseLoadFailed'
+  | 'course:courseNotFound';
+
+export type CourseDetailFailureMessageKey =
+  | 'common:checkConnectionAndTryAgain'
+  | 'common:pleaseTryAgain'
+  | 'common:serverReturnedAnInvalidResponseTryAgain'
+  | 'course:thisCourseDoesNotExistOr';
 
 export type CourseMutationKind = 'enroll' | 'cart';
 
@@ -101,23 +113,27 @@ export function enrollmentQueryKey(subject: SessionCacheEpoch) {
 export function courseDetailFailure(error: unknown): CourseDetailFailure {
   if (error instanceof ApiError && error.status === 404)
     return {
-      title: 'Course not found',
-      message: 'This course does not exist or is no longer available.',
+      titleKey: 'course:courseNotFound',
+      messageKey: 'course:thisCourseDoesNotExistOr',
       notFound: true,
     };
   if (error instanceof ApiError && error.kind === 'invalid_response')
     return {
-      title: 'Course data is unavailable',
-      message: 'The server returned an invalid response. Try again.',
+      titleKey: 'course:courseDataUnavailable',
+      messageKey: 'common:serverReturnedAnInvalidResponseTryAgain',
       notFound: false,
     };
   if (error instanceof ApiError && error.kind === 'offline')
     return {
-      title: 'You appear to be offline',
-      message: 'Check your connection and try again.',
+      titleKey: 'common:youAppearOffline',
+      messageKey: 'common:checkConnectionAndTryAgain',
       notFound: false,
     };
-  return { title: 'We could not load this course', message: 'Please try again.', notFound: false };
+  return {
+    titleKey: 'course:courseLoadFailed',
+    messageKey: 'common:pleaseTryAgain',
+    notFound: false,
+  };
 }
 
 export function useCourseDetail(courseId: number | null) {
@@ -147,7 +163,9 @@ export function useCourseDetail(courseId: number | null) {
     queryFn: ({ signal }) => requestLessonOutline(session, courseId as number, signal),
     enabled: courseId !== null && detail.isSuccess,
   });
-  const preflightEnabled = Boolean(student && detail.data && detail.data.publishedAt !== null);
+  const preflightEnabled = Boolean(
+    student && subject && detail.data && detail.data.publishedAt !== null,
+  );
   const cart = useQuery({
     queryKey: subject ? cartQueryKey(subject) : ['disabled', 'course-detail-cart'],
     queryFn: ({ signal }) => requestCart(session, signal),
@@ -161,6 +179,10 @@ export function useCourseDetail(courseId: number | null) {
 
   const queryPreflight = useMemo<CoursePreflightState>(() => {
     if (!student) return 'not-required';
+    // An authenticated state becomes actionable only after its cache epoch is
+    // available. Until then submitAction cannot construct its identity, so
+    // exposing an eligible action would present a no-op control.
+    if (!subject) return 'loading';
     if (!preflightEnabled) return 'not-required';
     if (cart.isPending || enrollments.isPending) return 'loading';
     if (cart.isError || enrollments.isError) return 'unavailable';
@@ -178,6 +200,7 @@ export function useCourseDetail(courseId: number | null) {
     enrollments.isPending,
     preflightEnabled,
     student,
+    subject,
   ]);
   const preflightIsConverging =
     cart.isPending || cart.isFetching || enrollments.isPending || enrollments.isFetching;
