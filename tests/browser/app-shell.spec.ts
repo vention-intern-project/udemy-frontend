@@ -52,8 +52,8 @@ interface HeaderSlotBox {
 
 interface StudentHeaderGeometry {
   account: HeaderSlotBox;
-  accountCartGap: number;
   cart: HeaderSlotBox;
+  cartAccountGap: number;
   catalog: HeaderSlotBox;
   clientWidth: number;
   hasVerticalScrollbar: boolean;
@@ -87,11 +87,20 @@ const INSTRUCTOR_COURSE_COLLECTION_STRICT_MODE_ABORT: RequestFailureIdentity = {
   errorText: 'net::ERR_ABORTED',
 };
 
-const INSTRUCTOR_EDITOR_COURSE_STRICT_MODE_ABORT: RequestFailureIdentity = {
+const CATALOG_HERO_BACKGROUND_OPTIONAL_ABORT: RequestFailureIdentity = {
   method: 'GET',
-  path: '/courses/42',
+  path: '/src/pages/catalog-page/assets/catalog-hero-ui025.png',
   errorText: 'net::ERR_ABORTED',
 };
+
+const INSTRUCTOR_DESKTOP_BACKGROUND_OPTIONAL_ABORT: RequestFailureIdentity = {
+  method: 'GET',
+  path: '/src/pages/instructor-courses-page/assets/instructor-courses-background-desktop-uifd020.png',
+  errorText: 'net::ERR_ABORTED',
+};
+
+const LEARNING_EMPTY_STATE_IMAGE_PATH =
+  '/src/pages/learning-list-page/assets/my-learning-empty-state-ui022.png';
 
 async function readRepresentativeTokenSnapshot(page: Page): Promise<RepresentativeTokenSnapshot> {
   return page.evaluate(() => {
@@ -133,6 +142,38 @@ async function resolveBrowserColor(page: Page, value: string) {
   }, value);
 }
 
+interface RgbaColor {
+  red: number;
+  green: number;
+  blue: number;
+  alpha: number;
+}
+
+interface MobileControlChrome {
+  searchBackground: string;
+  searchBorderTop: string;
+  searchBorderBottom: string;
+  searchShadow: string;
+  navigationBackground: string;
+  navigationBorderTop: string;
+  navigationShadow: string;
+  expectedShadow: string;
+}
+
+async function sampleBrowserColor(page: Page, value: string): Promise<RgbaColor> {
+  return page.evaluate((color) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 1;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) throw new Error('Browser color sampler is unavailable');
+    context.fillStyle = color;
+    context.fillRect(0, 0, 1, 1);
+    const [red, green, blue, alpha] = context.getImageData(0, 0, 1, 1).data;
+    return { red, green, blue, alpha };
+  }, value);
+}
+
 async function resolveBrowserFontFamily(page: Page, value: string) {
   return page.evaluate((fontFamily) => {
     const probe = document.createElement('span');
@@ -142,6 +183,144 @@ async function resolveBrowserFontFamily(page: Page, value: string) {
     probe.remove();
     return resolved;
   }, value);
+}
+
+async function waitForInstructorCoursesBackgroundAssets(page: Page) {
+  await page
+    .getByRole('heading', { level: 1, name: 'Instructor courses' })
+    .evaluate(async (heading) => {
+      const coursePage = heading.parentElement;
+      if (!(coursePage instanceof HTMLElement))
+        throw new Error('Instructor courses page container is unavailable');
+
+      const style = getComputedStyle(coursePage);
+      const variant = style.getPropertyValue('--instructor-courses-background-variant').trim();
+      const expectedAssetCounts: Record<string, number> = {
+        desktop: 1,
+        tablet: 1,
+        mobile: 2,
+      };
+      const expectedAssetCount = expectedAssetCounts[variant];
+      if (!expectedAssetCount)
+        throw new Error(
+          `Unexpected Instructor courses background variant: ${variant || 'missing'}`,
+        );
+
+      const assetUrls = [
+        ...new Set(
+          Array.from(style.backgroundImage.matchAll(/url\((['"]?)(.*?)\1\)/g), (match) => {
+            const assetUrl = match[2];
+            if (!assetUrl) throw new Error('Instructor courses background URL is unavailable');
+            const resolvedUrl = new URL(assetUrl, window.location.href);
+            if (resolvedUrl.origin !== window.location.origin)
+              throw new Error(
+                `Instructor courses background has a non-local origin: ${resolvedUrl.origin}`,
+              );
+            return resolvedUrl.href;
+          }),
+        ),
+      ];
+      if (assetUrls.length !== expectedAssetCount)
+        throw new Error(
+          `Expected ${expectedAssetCount} ${variant} Instructor courses background asset(s), received ${assetUrls.length}`,
+        );
+
+      await Promise.all(
+        assetUrls.map(
+          (assetUrl) =>
+            new Promise<void>((resolve, reject) => {
+              const image = new Image();
+              const complete = () => {
+                if (image.naturalWidth === 0) {
+                  reject(new Error(`Instructor courses background failed: ${assetUrl}`));
+                  return;
+                }
+                image.decode().then(resolve, () => {
+                  reject(new Error(`Instructor courses background could not decode: ${assetUrl}`));
+                });
+              };
+              image.addEventListener('load', complete, { once: true });
+              image.addEventListener(
+                'error',
+                () => reject(new Error(`Instructor courses background failed: ${assetUrl}`)),
+                { once: true },
+              );
+              image.src = assetUrl;
+              if (image.complete) complete();
+            }),
+        ),
+      );
+    });
+}
+
+async function waitForCatalogMobileHeroBackground(page: Page) {
+  await page.evaluate(async () => {
+    const hero = document.querySelector('[data-part="catalog-hero"]');
+    if (!(hero instanceof HTMLElement)) throw new Error('Catalog hero is unavailable');
+
+    const backgroundImage = getComputedStyle(hero, '::before').backgroundImage;
+    const assetUrls = [
+      ...new Set(
+        Array.from(backgroundImage.matchAll(/url\((['"]?)(.*?)\1\)/g), (match) => {
+          const assetUrl = match[2];
+          if (!assetUrl) throw new Error('Catalog mobile hero background URL is unavailable');
+          const resolvedUrl = new URL(assetUrl, window.location.href);
+          if (resolvedUrl.origin !== window.location.origin)
+            throw new Error(
+              `Catalog mobile hero background has a non-local origin: ${resolvedUrl.origin}`,
+            );
+          return resolvedUrl.href;
+        }),
+      ),
+    ];
+    if (assetUrls.length !== 1)
+      throw new Error(
+        `Expected one Catalog mobile hero background asset, received ${assetUrls.length}`,
+      );
+
+    const [assetUrl] = assetUrls;
+    if (
+      new URL(assetUrl).pathname !==
+      '/src/pages/catalog-page/assets/catalog-hero-mobile-stars-lines-uifd001.png'
+    )
+      throw new Error(`Unexpected Catalog mobile hero background asset: ${assetUrl}`);
+
+    const heroBackground = new Image();
+    heroBackground.src = assetUrl;
+    await heroBackground.decode();
+    if (heroBackground.naturalWidth === 0) throw new Error('Catalog mobile hero background failed');
+  });
+}
+
+async function waitForLearningEmptyStateIllustration(page: Page) {
+  await page
+    .locator('[aria-labelledby="learning-empty-heading"] img')
+    .evaluate(async (image, expectedPath) => {
+      if (!(image instanceof HTMLImageElement))
+        throw new Error('Learning empty-state illustration is unavailable');
+
+      const assetUrl = new URL(image.currentSrc || image.src, window.location.href);
+      if (assetUrl.origin !== window.location.origin)
+        throw new Error(
+          `Learning empty-state illustration has a non-local origin: ${assetUrl.origin}`,
+        );
+      if (assetUrl.pathname !== expectedPath)
+        throw new Error(`Unexpected Learning empty-state illustration: ${assetUrl.href}`);
+
+      if (!image.complete) {
+        await new Promise<void>((resolve, reject) => {
+          image.addEventListener('load', () => resolve(), { once: true });
+          image.addEventListener(
+            'error',
+            () => reject(new Error(`Learning empty-state illustration failed: ${assetUrl.href}`)),
+            { once: true },
+          );
+        });
+      }
+      if (image.naturalWidth === 0)
+        throw new Error(`Learning empty-state illustration failed: ${assetUrl.href}`);
+      await image.decode();
+    }, LEARNING_EMPTY_STATE_IMAGE_PATH);
 }
 
 function monitorRuntime(
@@ -227,14 +406,26 @@ async function mockAuthenticatedSession(page: Page, role: BackendRole) {
 }
 
 interface InstructorPopupFixture {
-  waitForEditorCourseFulfillment(): Promise<void>;
+  waitForSourceCollectionRequest(): Promise<void>;
+  releaseSourceCollection(): void;
 }
 
 async function mockInstructorPopupPages(
   context: BrowserContext,
   page: Page,
 ): Promise<InstructorPopupFixture> {
-  let resolveEditorCourseFulfillment: (() => void) | null = null;
+  let resolveSourceCollectionRequest: (() => void) | null = null;
+  let sourceCollectionRelease: Promise<void> | null = null;
+  let resolveSourceCollectionRelease: (() => void) | null = null;
+  const emptyInstructorCourseCollection = JSON.stringify({
+    items: [],
+    page: 1,
+    page_size: 20,
+    total: 0,
+    pages: 0,
+    has_next: false,
+    has_previous: false,
+  });
   await context.route('**/me', async (route) =>
     route.fulfill({
       status: 200,
@@ -254,15 +445,7 @@ async function mockInstructorPopupPages(
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({
-        items: [],
-        page: 1,
-        page_size: 20,
-        total: 0,
-        pages: 0,
-        has_next: false,
-        has_previous: false,
-      }),
+      body: emptyInstructorCourseCollection,
     }),
   );
   await context.route('**/courses/42', async (route) =>
@@ -300,43 +483,54 @@ async function mockInstructorPopupPages(
         lessons: [],
       }),
     });
-    resolveEditorCourseFulfillment?.();
-    resolveEditorCourseFulfillment = null;
   });
-  await page.route(/\/courses\/my\?page=1&page_size=20$/, async (route) => route.abort('aborted'));
+  await page.route(/\/courses\/my\?page=1&page_size=20$/, async (route) => {
+    if (route.request().frame().page() !== page) {
+      await route.fallback();
+      return;
+    }
+    resolveSourceCollectionRequest?.();
+    resolveSourceCollectionRequest = null;
+    if (sourceCollectionRelease === null)
+      throw new Error('Source collection request arrived before its release barrier was armed');
+    await sourceCollectionRelease;
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: emptyInstructorCourseCollection,
+    });
+  });
   return {
-    waitForEditorCourseFulfillment() {
-      if (resolveEditorCourseFulfillment !== null)
-        throw new Error('Editor course fulfillment is already being observed');
-      return new Promise<void>((resolve) => {
-        resolveEditorCourseFulfillment = resolve;
+    waitForSourceCollectionRequest() {
+      if (resolveSourceCollectionRequest !== null)
+        throw new Error('Source collection request is already being observed');
+      if (sourceCollectionRelease !== null)
+        throw new Error('Source collection release barrier is already armed');
+      sourceCollectionRelease = new Promise<void>((resolve) => {
+        resolveSourceCollectionRelease = resolve;
       });
+      return new Promise<void>((resolve) => {
+        resolveSourceCollectionRequest = resolve;
+      });
+    },
+    releaseSourceCollection() {
+      if (resolveSourceCollectionRelease === null)
+        throw new Error('Source collection request is not pending release');
+      resolveSourceCollectionRelease();
+      resolveSourceCollectionRelease = null;
     },
   };
 }
 
-function monitorPopupRuntime(context: BrowserContext) {
-  const assertions: Array<() => void> = [];
-  context.on('page', (popup) =>
-    assertions.push(
-      monitorRuntime(
-        popup,
-        [],
-        [],
-        [
-          INSTRUCTOR_EDITOR_COURSE_STRICT_MODE_ABORT,
-          INSTRUCTOR_COURSE_COLLECTION_STRICT_MODE_ABORT,
-        ],
-      ),
-    ),
-  );
-  return () => {
-    expect(assertions, 'opened pages monitored for runtime diagnostics').toHaveLength(2);
-    assertions.forEach((assertRuntimeClean) => assertRuntimeClean());
-  };
+interface StudentWorkspaceFixture {
+  waitForEnrollmentFulfillment(): Promise<void>;
 }
 
-async function mockStudentWorkspaceData(page: Page, cartItemCount = 0) {
+async function mockStudentWorkspaceData(
+  page: Page,
+  cartItemCount = 0,
+): Promise<StudentWorkspaceFixture> {
+  let resolveEnrollmentFulfillment: (() => void) | null = null;
   await page.route('**/cart', async (route) =>
     route.fulfill({
       status: 200,
@@ -361,20 +555,34 @@ async function mockStudentWorkspaceData(page: Page, cartItemCount = 0) {
     }),
   );
   await page.route('**/enrollments/my**', async (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        items: [],
-        page: 1,
-        page_size: 20,
-        total: 0,
-        pages: 0,
-        has_next: false,
-        has_previous: false,
+    route
+      .fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          items: [],
+          page: 1,
+          page_size: 20,
+          total: 0,
+          pages: 0,
+          has_next: false,
+          has_previous: false,
+        }),
+      })
+      .then(() => {
+        resolveEnrollmentFulfillment?.();
+        resolveEnrollmentFulfillment = null;
       }),
-    }),
   );
+  return {
+    waitForEnrollmentFulfillment() {
+      if (resolveEnrollmentFulfillment !== null)
+        throw new Error('Student enrollment fulfillment is already being observed');
+      return new Promise<void>((resolve) => {
+        resolveEnrollmentFulfillment = resolve;
+      });
+    },
+  };
 }
 
 interface InstructorCourseCollectionFixture {
@@ -974,7 +1182,7 @@ async function readStudentHeaderGeometry(page: Page): Promise<StudentHeaderGeome
       search: read('input[name="search_query"]'),
       cart,
       account,
-      accountCartGap: cart.x - (account.x + account.width),
+      cartAccountGap: account.x - (cart.x + cart.width),
       learning: read('a[href="/learning"]'),
       clientWidth: root.clientWidth,
       innerWidth: window.innerWidth,
@@ -1088,11 +1296,240 @@ test('redirects an anonymous protected route with its internal returnTo', async 
   assertRuntimeClean();
 });
 
+test('persists desktop and anonymous-mobile locale selections on the current route', async ({
+  page,
+}) => {
+  const assertRuntimeClean = monitorRuntime(page);
+  await page.setViewportSize({ width: 1280, height: 844 });
+  await page.goto('/');
+
+  const desktopTrigger = page.getByRole('button', { name: 'Change language' });
+  await desktopTrigger.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('button', { name: 'Русский' })).toBeVisible();
+  await page.getByRole('button', { name: 'Русский' }).click();
+  expect(await page.evaluate(() => localStorage.getItem('learnhub.locale'))).toBe('ru');
+  await expect(page.getByRole('button', { name: 'Изменить язык' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Каталог' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Войти' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Регистрация' })).toBeVisible();
+  await page.reload();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole('button', { name: 'Изменить язык' })).toBeVisible();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileTrigger = page.getByRole('button', { name: 'Изменить язык' });
+  await mobileTrigger.click();
+  const uzbek = page.getByRole('button', { name: "O'zbek" });
+  await expect(uzbek).toHaveAttribute('aria-pressed', 'false');
+  await uzbek.click();
+  expect(await page.evaluate(() => localStorage.getItem('learnhub.locale'))).toBe('uz');
+  await expect(page.getByRole('button', { name: 'Tilni o‘zgartirish' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Mehmon navigatsiyasi' })).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  assertRuntimeClean();
+});
+
+test('returns focus to the desktop language trigger when scrolling dismisses a focused option', async ({
+  page,
+}) => {
+  const assertRuntimeClean = monitorRuntime(page);
+  await page.setViewportSize({ width: 1280, height: 844 });
+  await page.goto('/');
+
+  const trigger = page.getByRole('button', { name: 'Change language' });
+  await trigger.click();
+  const russian = page.getByRole('button', { name: 'Русский' });
+  await russian.focus();
+  await expect(russian).toBeFocused();
+  await page.evaluate(() => window.scrollTo(0, 200));
+
+  await expect(russian).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  assertRuntimeClean();
+});
+
+test('dismisses the desktop language menu when Tab moves focus outside its options', async ({
+  page,
+}) => {
+  const assertRuntimeClean = monitorRuntime(page);
+  await page.setViewportSize({ width: 1280, height: 844 });
+  await page.goto('/');
+
+  const trigger = page.getByRole('button', { name: 'Change language' });
+  await trigger.click();
+  const uzbek = page.getByRole('button', { name: "O'zbek" });
+  await uzbek.focus();
+  await expect(uzbek).toBeFocused();
+  await page.keyboard.press('Tab');
+
+  await expect(uzbek).toHaveCount(0);
+  await expect(trigger).not.toBeFocused();
+  assertRuntimeClean();
+});
+
+test('uses native buttons for authenticated-mobile language selection and preserves dismissal', async ({
+  page,
+}) => {
+  const assertRuntimeClean = monitorRuntime(
+    page,
+    [],
+    [CART_STRICT_MODE_ABORT, ENROLLMENTS_STRICT_MODE_ABORT],
+  );
+  await mockAuthenticatedSession(page, 'student');
+  const studentWorkspaceFixture = await mockStudentWorkspaceData(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await Promise.all([
+    studentWorkspaceFixture.waitForEnrollmentFulfillment(),
+    page.goto('/learning', { waitUntil: 'domcontentloaded' }),
+  ]);
+
+  const account = page.getByRole('button', { name: 'Account menu for Sam User' });
+  await account.click();
+  const accountDetails = page.getByRole('group', { name: 'Account details for Sam User' });
+  await expect(accountDetails.getByText('Student', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Language' }).click();
+  await expect(page.getByRole('button', { name: 'Back' })).toBeFocused();
+  await page.getByRole('button', { name: 'Back' }).click();
+  const language = page.getByRole('button', { name: 'Language' });
+  await expect(language).toBeFocused();
+  await language.click();
+  await expect(page.getByRole('button', { name: 'Back' })).toBeFocused();
+  await account.click();
+  await expect(page.getByRole('group', { name: 'Account details for Sam User' })).toHaveCount(0);
+  await expect(account).toBeFocused();
+  await account.click();
+  await expect(accountDetails).toBeVisible();
+  await expect(accountDetails.locator('[data-part="account-menu-profile"]')).toBeVisible();
+  await expect(language).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Back' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Русский' })).toHaveCount(0);
+  await language.click();
+  await expect(page.getByRole('button', { name: 'Back' })).toBeFocused();
+  const russian = page.getByRole('button', { name: 'Русский' });
+  await expect(russian).toHaveAttribute('aria-pressed', 'false');
+  await russian.click();
+  await expect(page.getByRole('navigation', { name: 'Навигация студента' })).toBeVisible();
+  await expect(
+    page.locator('[data-part="account-menu-profile"]').getByText('Студент', { exact: true }),
+  ).toBeVisible();
+  const localizedLanguage = page.getByRole('button', { name: /Язык/ });
+  await expect(localizedLanguage).toBeVisible();
+  await expect(localizedLanguage).toBeFocused();
+  await localizedLanguage.click();
+  const uzbek = page.getByRole('button', { name: "O'zbek" });
+  await expect(uzbek).toHaveAttribute('aria-pressed', 'false');
+  await uzbek.click();
+  await expect(page.getByRole('navigation', { name: 'Talaba navigatsiyasi' })).toBeVisible();
+  await expect(
+    page.locator('[data-part="account-menu-profile"]').getByText('Talaba', { exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('button', { name: 'Русский' })).toHaveCount(0);
+  await expect(page.locator('[data-account-initials]')).toBeFocused();
+  await expectNoHorizontalOverflow(page);
+  assertRuntimeClean();
+});
+
+test('resets an unpinned mobile account menu after focus and hover leave its Language view', async ({
+  page,
+}) => {
+  const assertRuntimeClean = monitorRuntime(
+    page,
+    [],
+    [CART_STRICT_MODE_ABORT, ENROLLMENTS_STRICT_MODE_ABORT],
+  );
+  await mockAuthenticatedSession(page, 'student');
+  const studentWorkspaceFixture = await mockStudentWorkspaceData(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await Promise.all([
+    studentWorkspaceFixture.waitForEnrollmentFulfillment(),
+    page.goto('/learning'),
+  ]);
+
+  const account = page.getByRole('button', { name: 'Account menu for Sam User' });
+  const accountDetails = page.getByRole('group', { name: 'Account details for Sam User' });
+  await account.focus();
+  await expect(accountDetails).toBeVisible();
+  await page.getByRole('button', { name: 'Language' }).click();
+  const uzbek = page.getByRole('button', { name: "O'zbek" });
+  await uzbek.focus();
+  await page.keyboard.press('Tab');
+  await expect(accountDetails).toHaveCount(0);
+
+  await account.focus();
+  await expect(accountDetails.locator('[data-part="account-menu-profile"]')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Language' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Log out' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Language' }).click();
+  await expect(page.getByRole('button', { name: 'Back' })).toBeVisible();
+  await page.locator('main').hover({ position: { x: 1, y: 1 } });
+  await expect(accountDetails).toHaveCount(0);
+  await account.hover();
+  await expect(accountDetails.locator('[data-part="account-menu-profile"]')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Log out' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Back' })).toHaveCount(0);
+  assertRuntimeClean();
+});
+
+test('preserves the authenticated-instructor mobile language flow in the profile popover', async ({
+  page,
+}) => {
+  const assertRuntimeClean = monitorRuntime(
+    page,
+    [],
+    [INSTRUCTOR_COURSE_COLLECTION_STRICT_MODE_ABORT],
+  );
+  await mockAuthenticatedSession(page, 'instructor');
+  const collectionFixture = await mockInstructorCourseCollection(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await Promise.all([collectionFixture.waitForFulfillment(), page.goto('/instructor/courses')]);
+
+  const profile = page.getByRole('button', { name: 'Account menu for Indira User' });
+  await profile.click();
+  const accountDetails = page.getByRole('group', { name: 'Account details for Indira User' });
+  await expect(accountDetails).toBeVisible();
+  await expect(accountDetails.getByText('Instructor', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Language' }).click();
+  await expect(page.getByRole('button', { name: 'Back' })).toBeFocused();
+  const english = page.getByRole('button', { name: 'English' });
+  const russian = page.getByRole('button', { name: 'Русский' });
+  await expect(english).toHaveAttribute('aria-pressed', 'true');
+  await expect(russian).toHaveAttribute('aria-pressed', 'false');
+  await russian.click();
+
+  const localizedLanguage = page.getByRole('button', { name: 'Язык' });
+  await expect(
+    page.locator('[data-part="account-menu-profile"]').getByText('Преподаватель', { exact: true }),
+  ).toBeVisible();
+  await expect(localizedLanguage).toBeVisible();
+  await expect(localizedLanguage).toBeFocused();
+  await localizedLanguage.click();
+  await expect(russian).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Назад' }).click();
+  await expect(localizedLanguage).toBeVisible();
+  await expect(localizedLanguage).toBeFocused();
+  await localizedLanguage.click();
+  const uzbek = page.getByRole('button', { name: "O'zbek" });
+  await expect(uzbek).toHaveAttribute('aria-pressed', 'false');
+  await uzbek.click();
+  await expect(
+    page.locator('[data-part="account-menu-profile"]').getByText('O‘qituvchi', { exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('button', { name: 'Русский' })).toHaveCount(0);
+  await expect(page.locator('[data-account-initials]')).toBeFocused();
+  await expectNoHorizontalOverflow(page);
+  assertRuntimeClean();
+});
+
 test('replaces attempted Instructor Catalog history with Instructor courses', async ({ page }) => {
   const assertRuntimeClean = monitorRuntime(
     page,
     [],
     [{ ...INSTRUCTOR_COURSE_COLLECTION_STRICT_MODE_ABORT, occurrences: 4 }],
+    [INSTRUCTOR_DESKTOP_BACKGROUND_OPTIONAL_ABORT],
   );
   const publicCatalogRequests: string[] = [];
   page.on('request', (request) => {
@@ -1220,7 +1657,9 @@ test('preserves same-path query scroll and navigates a hash target in Chromium',
   const assertRuntimeClean = monitorRuntime(page);
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/');
-  await expect(page.getByRole('heading', { level: 2, name: '1 course' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { level: 2, name: 'Found 1 course', exact: true }),
+  ).toBeVisible();
 
   await page.evaluate(() => window.scrollTo(0, 180));
   const sortTrigger = page.getByRole('button', { name: 'Sort by: Oldest' });
@@ -1264,7 +1703,7 @@ test('keeps anonymous mobile navigation in visual and keyboard order', async ({ 
 test('keeps header and footer surfaces at the physical viewport edges without symmetric gutters', async ({
   page,
 }) => {
-  const assertRuntimeClean = monitorRuntime(page);
+  const assertRuntimeClean = monitorRuntime(page, [], [], [CATALOG_HERO_BACKGROUND_OPTIONAL_ABORT]);
   for (const width of [320, 390, 768, 1280, 1440] as const) {
     await expectShellSurfacesAtViewportEdges(page, width);
   }
@@ -1311,7 +1750,7 @@ test('keeps the accepted shared-header marks and quiet desktop Bot interaction s
   await expect(learning).toHaveAttribute('aria-current', 'page');
   await catalog.hover();
   await expect(catalog).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-  await expect(catalog).toHaveCSS('color', 'rgb(55, 65, 81)');
+  await expect(catalog).toHaveCSS('color', 'rgb(91, 63, 214)');
   await learning.focus();
   await expect(learning).toHaveCSS('outline-width', '2px');
 
@@ -1340,10 +1779,13 @@ test('keeps the accepted shared-header marks and quiet desktop Bot interaction s
     );
     const cartLink = document.querySelector<HTMLAnchorElement>('a[aria-label^="Cart"]');
     const profileButton = document.querySelector<HTMLElement>('[data-account-initials]');
+    const languageButton = document.querySelector<HTMLButtonElement>(
+      'button[aria-label="Change language"]',
+    );
     const activeLink = document.querySelector<HTMLAnchorElement>(
       'nav[aria-label="Primary navigation"] a[aria-current="page"]',
     );
-    if (!assistantLink || !cartLink || !profileButton || !activeLink) {
+    if (!assistantLink || !cartLink || !profileButton || !languageButton || !activeLink) {
       throw new Error('Shared-header visual targets are unavailable.');
     }
     const assistantIcon = assistantLink.querySelector('svg');
@@ -1356,6 +1798,7 @@ test('keeps the accepted shared-header marks and quiet desktop Bot interaction s
       assistant: rect(assistantLink),
       profile: rect(profileButton),
       cart: rect(cartLink),
+      language: rect(languageButton),
       assistantIcon: {
         ariaHidden: assistantIcon.getAttribute('aria-hidden'),
         focusable: assistantIcon.getAttribute('focusable'),
@@ -1380,8 +1823,10 @@ test('keeps the accepted shared-header marks and quiet desktop Bot interaction s
   expect(geometry.assistant.width).toBe(44);
   expect(geometry.profile.width).toBe(44);
   expect(geometry.cart.width).toBe(44);
+  expect(geometry.language.height).toBeGreaterThanOrEqual(44);
   expect(geometry.assistant.right).toBeLessThanOrEqual(geometry.profile.x + 0.5);
-  expect(geometry.profile.right).toBeLessThanOrEqual(geometry.cart.x + 0.5);
+  expect(geometry.profile.right).toBeLessThanOrEqual(geometry.language.x + 0.5);
+  expect(geometry.cart.right).toBeLessThanOrEqual(geometry.profile.x + 0.5);
   expect(geometry.assistantIcon).toEqual({
     ariaHidden: 'true',
     focusable: 'false',
@@ -1493,6 +1938,7 @@ test('keeps the accepted instructor navigation and initials marker at desktop wi
     page,
     [],
     [{ ...INSTRUCTOR_COURSE_COLLECTION_STRICT_MODE_ABORT, occurrences: 2 }],
+    [INSTRUCTOR_DESKTOP_BACKGROUND_OPTIONAL_ABORT],
   );
   await mockAuthenticatedSession(page, 'instructor');
   const collectionFixture = await mockInstructorCourseCollection(page);
@@ -1531,7 +1977,7 @@ test('shows authenticated account details on hover and clears the session throug
   await expect(accountDetails.locator('[data-part="account-menu-profile"]')).toBeVisible();
   await expect(accountDetails.getByText('student@example.com')).toBeVisible();
   await expect(accountDetails.getByText('Sam User')).toBeVisible();
-  const role = accountDetails.getByText('student', { exact: true });
+  const role = accountDetails.getByText('Student', { exact: true });
   await expect(role).toBeVisible();
   await expect(role).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await expect(role).toHaveCSS(
@@ -1619,7 +2065,7 @@ test('restores the account trigger when viewport scroll removes its focused deta
   await expect(account).toBeFocused();
 
   await page.keyboard.press('Tab');
-  await expect(page.getByRole('link', { name: 'Cart (0)' })).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Change language' })).toBeFocused();
 });
 
 test('keeps anonymous Cart-to-Login actions in their stable desktop end group', async ({
@@ -1788,14 +2234,14 @@ test('applies the accepted desktop header affordances without changing navigatio
   await expect(catalog).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await expect(learning).toHaveAttribute('aria-current', 'page');
 
-  await expect(page.getByRole('tooltip', { name: 'AI assistant' })).toHaveCount(0);
+  await expect(page.getByRole('tooltip', { name: 'AI chat' })).toHaveCount(0);
   await assistant.hover();
   await page.waitForTimeout(300);
-  await expect(page.getByRole('tooltip', { name: 'AI assistant' })).toHaveCount(0, {
+  await expect(page.getByRole('tooltip', { name: 'AI chat' })).toHaveCount(0, {
     timeout: 100,
   });
   await page.waitForTimeout(250);
-  const tooltip = page.getByRole('tooltip', { name: 'AI assistant' });
+  const tooltip = page.getByRole('tooltip', { name: 'AI chat' });
   await expect(tooltip).toBeVisible();
   expect(await assistant.getAttribute('aria-describedby')).toBe(await tooltip.getAttribute('id'));
   const tooltipGeometry = await tooltip.evaluate((node) => {
@@ -1855,7 +2301,9 @@ test('applies the accepted desktop header affordances without changing navigatio
   assertRuntimeClean();
 });
 
-test('keeps Search contained before the Profile-to-Cart desktop group', async ({ page }) => {
+test('keeps Search contained before the accepted Cart-to-Profile desktop group', async ({
+  page,
+}) => {
   const assertRuntimeClean = monitorRuntime(
     page,
     [],
@@ -1871,20 +2319,21 @@ test('keeps Search contained before the Profile-to-Cart desktop group', async ({
     await page.setViewportSize({ width, height: 720 });
     await page.goto('/learning');
     await expect(page.getByRole('heading', { level: 1, name: 'My learning' })).toBeVisible();
+    await waitForLearningEmptyStateIllustration(page);
 
     const geometry = await readStudentHeaderGeometry(page);
     const learningRight = geometry.learning.x + geometry.learning.width;
     const searchRight = geometry.search.x + geometry.search.width;
     expect(geometry.standardGap).toBeGreaterThan(0);
     expect(geometry.search.x).toBeGreaterThanOrEqual(learningRight + geometry.standardGap - 0.5);
-    expect(geometry.account.x).toBeGreaterThanOrEqual(searchRight + geometry.standardGap - 0.5);
-    expect(geometry.cart.x).toBeGreaterThanOrEqual(
-      geometry.account.x + geometry.account.width + geometry.standardGap - 1,
+    expect(geometry.cart.x).toBeGreaterThanOrEqual(searchRight + geometry.standardGap - 0.5);
+    expect(geometry.account.x).toBeGreaterThanOrEqual(
+      geometry.cart.x + geometry.cart.width + geometry.standardGap - 1,
     );
     expect(geometry.search.width).toBeLessThanOrEqual(544);
     expect(geometry.cart.height).toBeGreaterThanOrEqual(44);
     expect(geometry.account.height).toBeGreaterThanOrEqual(44);
-    expect(geometry.accountCartGap).toBeCloseTo(15, 1);
+    expect(geometry.cartAccountGap).toBeCloseTo(15, 1);
     expect(geometry.learningWhiteSpace).toBe('nowrap');
     expect(geometry.overflowFree).toBe(true);
   }
@@ -1920,10 +2369,14 @@ test('preserves student header geometry when Catalog alone requires a document s
       }),
     }),
   );
+  const gotoCatalog = async () => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByRole('heading', { level: 2, name: 'Found 1 course' })).toBeVisible();
+  };
 
   for (const width of [1090, 1100, 1110, 1280] as const) {
     await page.setViewportSize({ width, height: 900 });
-    await page.goto('/');
+    await gotoCatalog();
     await page.evaluate(() => {
       const spacer = document.createElement('div');
       spacer.id = 'scrollbar-geometry-spacer';
@@ -1937,6 +2390,7 @@ test('preserves student header geometry when Catalog alone requires a document s
     await page.evaluate(() => document.querySelector('#scrollbar-geometry-spacer')?.remove());
     await page.goto('/learning');
     await expect(page.getByRole('heading', { level: 1, name: 'My learning' })).toBeVisible();
+    await waitForLearningEmptyStateIllustration(page);
     const shortLearning = await readStudentHeaderGeometry(page);
     expect(shortLearning.hasVerticalScrollbar).toBe(false);
 
@@ -1948,7 +2402,7 @@ test('preserves student header geometry when Catalog alone requires a document s
     expect(shortLearning.learningWhiteSpace).toBe('nowrap');
     expect(shortLearning.overflowFree).toBe(true);
 
-    await page.goto('/');
+    await gotoCatalog();
     await expect(page.getByRole('link', { name: 'Catalog', exact: true })).toBeVisible();
     await page.evaluate(() => {
       const spacer = document.createElement('div');
@@ -1962,7 +2416,8 @@ test('preserves student header geometry when Catalog alone requires a document s
   }
 
   await page.setViewportSize({ width: 390, height: 720 });
-  await page.goto('/');
+  await gotoCatalog();
+  await waitForCatalogMobileHeroBackground(page);
   await expectNoHorizontalOverflow(page);
   assertRuntimeClean();
 });
@@ -2010,7 +2465,7 @@ test('composes the student mobile shell with a scroll-away identity row and rout
     const cart = studentNavigation.getByRole('link', { name: 'Cart (0)', exact: true });
     await expect(profile).toBeVisible();
     await expect(studentNavigation).toBeVisible();
-    const controlChrome = await page.evaluate(() => {
+    const controlChrome = await page.evaluate<MobileControlChrome>(() => {
       const search = document.querySelector<HTMLElement>('form[role="search"]');
       const navigation = document.querySelector<HTMLElement>('[aria-label="Student navigation"]');
       if (!search || !navigation) {
@@ -2034,13 +2489,35 @@ test('composes the student mobile shell with a scroll-away identity row and rout
         expectedShadow: expectedShadowValue,
       };
     });
-    expect(controlChrome).toEqual({
-      searchBackground: 'rgb(255, 255, 255)',
-      searchBorderTop: 'rgba(0, 0, 0, 0)',
-      searchBorderBottom: 'rgba(0, 0, 0, 0)',
+    const [
+      searchBackground,
+      searchBorderTop,
+      searchBorderBottom,
+      navigationBackground,
+      navigationBorderTop,
+    ] = await Promise.all([
+      sampleBrowserColor(page, controlChrome.searchBackground),
+      sampleBrowserColor(page, controlChrome.searchBorderTop),
+      sampleBrowserColor(page, controlChrome.searchBorderBottom),
+      sampleBrowserColor(page, controlChrome.navigationBackground),
+      sampleBrowserColor(page, controlChrome.navigationBorderTop),
+    ]);
+    expect({
+      searchBackground,
+      searchBorderTop,
+      searchBorderBottom,
+      searchShadow: controlChrome.searchShadow,
+      navigationBackground,
+      navigationBorderTop,
+      navigationShadow: controlChrome.navigationShadow,
+      expectedShadow: controlChrome.expectedShadow,
+    }).toEqual({
+      searchBackground: { red: 255, green: 255, blue: 255, alpha: 255 },
+      searchBorderTop: { red: 0, green: 0, blue: 0, alpha: 0 },
+      searchBorderBottom: { red: 0, green: 0, blue: 0, alpha: 0 },
       searchShadow: 'none',
-      navigationBackground: 'rgb(238, 240, 244)',
-      navigationBorderTop: 'rgb(209, 213, 219)',
+      navigationBackground: { red: 238, green: 240, blue: 244, alpha: 255 },
+      navigationBorderTop: { red: 209, green: 213, blue: 219, alpha: 255 },
       navigationShadow: controlChrome.expectedShadow,
       expectedShadow: controlChrome.expectedShadow,
     });
@@ -2149,6 +2626,19 @@ test('composes the student mobile shell with a scroll-away identity row and rout
     await aiChat.focus();
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL('/ai-chat');
+    await page.locator('[data-part="ai-chat-hero-image"]').evaluate(async (image) => {
+      if (!(image instanceof HTMLImageElement))
+        throw new Error('AI chat hero image is unavailable');
+      if (!image.complete) {
+        await new Promise<void>((resolve, reject) => {
+          image.addEventListener('load', () => resolve(), { once: true });
+          image.addEventListener('error', () => reject(new Error('AI chat hero image failed')), {
+            once: true,
+          });
+        });
+      }
+      if (image.naturalWidth === 0) throw new Error('AI chat hero image failed');
+    });
 
     expect(chatRequestUrls).toEqual([]);
   }
@@ -2286,20 +2776,35 @@ test('keeps public desktop auth actions at the header end after a recoverable se
     const signup = Array.from(header.querySelectorAll<HTMLAnchorElement>('a')).find(
       (link) => link.textContent?.trim() === 'Sign up',
     );
-    if (!(inner instanceof HTMLElement) || !accountNavigation || !signup)
+    const language = header.querySelector<HTMLButtonElement>(
+      'button[aria-label="Change language"]',
+    );
+    if (!(inner instanceof HTMLElement) || !accountNavigation || !signup || !language)
       throw new Error('Public header geometry targets are unavailable.');
     const innerRect = inner.getBoundingClientRect();
     const accountRect = accountNavigation.getBoundingClientRect();
+    const loginRect = Array.from(header.querySelectorAll<HTMLAnchorElement>('a'))
+      .find((link) => link.textContent?.trim() === 'Log in')
+      ?.getBoundingClientRect();
     const signupRect = signup.getBoundingClientRect();
+    const languageRect = language.getBoundingClientRect();
+    if (!loginRect) throw new Error('Public header Log in geometry target is unavailable.');
     return {
       accountLeft: accountRect.left,
       innerCenter: innerRect.left + innerRect.width / 2,
       innerRight: innerRect.right,
+      loginRight: loginRect.right,
       signupRight: signupRect.right,
+      languageLeft: languageRect.left,
+      languageRight: languageRect.right,
+      languageHeight: languageRect.height,
     };
   });
   expect(headerGeometry.accountLeft).toBeGreaterThan(headerGeometry.innerCenter);
-  expect(headerGeometry.innerRight - headerGeometry.signupRight).toBeLessThanOrEqual(24.5);
+  expect(headerGeometry.loginRight).toBeLessThanOrEqual(headerGeometry.signupRight);
+  expect(headerGeometry.signupRight).toBeLessThanOrEqual(headerGeometry.languageLeft);
+  expect(headerGeometry.innerRight - headerGeometry.languageRight).toBeLessThanOrEqual(24.5);
+  expect(headerGeometry.languageHeight).toBeGreaterThanOrEqual(44);
   await expectNoHorizontalOverflow(page);
   assertRuntimeClean();
 });
@@ -2471,6 +2976,9 @@ test('supports keyboard-operated mobile navigation and focus restoration', async
   const profile = page.getByRole('button', { name: 'Account menu for Indira User' });
   await expectInstructorHomeBrand(page);
   await expect(profile).toBeVisible();
+  await profile.click();
+  await expect(page.getByRole('button', { name: /Language/ })).toBeVisible();
+  await profile.click();
   const menu = page.getByRole('button', { name: 'Open navigation' });
   await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toBeHidden();
   await expectMenuAtHeaderContentEdge(page);
@@ -2519,23 +3027,12 @@ test('preserves the source mobile menu and focus for modified and new-tab activa
   page,
   context,
 }) => {
-  const assertRuntimeClean = monitorRuntime(
-    page,
-    [],
-    [
-      INSTRUCTOR_EDITOR_COURSE_STRICT_MODE_ABORT,
-      { ...INSTRUCTOR_COURSE_COLLECTION_STRICT_MODE_ABORT, occurrences: 2 },
-    ],
-  );
-  const assertPopupRuntimeClean = monitorPopupRuntime(context);
   const popupFixture = await mockInstructorPopupPages(context, page);
   await mockAuthenticatedSession(page, 'instructor');
   await page.setViewportSize({ width: 390, height: 844 });
-  await Promise.all([
-    popupFixture.waitForEditorCourseFulfillment(),
-    page.goto('/instructor/courses/42/edit'),
-  ]);
-  await expect(page.getByRole('heading', { level: 1, name: 'Edit course' })).toBeVisible();
+  await page.goto('/instructor/courses/42/edit');
+  await expect(page.getByRole('heading', { level: 2, name: 'Course details' })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Course title' })).toHaveValue('Editor course');
   const originalUrl = page.url();
   const menu = page.getByRole('button', { name: 'Open navigation' });
 
@@ -2555,13 +3052,20 @@ test('preserves the source mobile menu and focus for modified and new-tab activa
   const controlPopupPromise = context.waitForEvent('page');
   await control.link.click({ modifiers: ['Control'] });
   const controlPopup = await controlPopupPromise;
+  const assertControlPopupRuntimeClean = monitorRuntime(
+    controlPopup,
+    [],
+    [INSTRUCTOR_COURSE_COLLECTION_STRICT_MODE_ABORT],
+  );
   await controlPopup.waitForURL(/\/instructor\/courses(?:[?#]|$)/);
   await expect(controlPopup.getByRole('heading', { level: 2, name: 'Your courses' })).toBeFocused();
+  await expect(controlPopup.getByText('You have not created any courses yet.')).toBeVisible();
   expect(new URL(controlPopup.url()).pathname).toBe('/instructor/courses');
   expect(page.url()).toBe(originalUrl);
   await expect(control.navigation).toBeVisible();
   await expect(control.link).toBeFocused();
   await controlPopup.close();
+  assertControlPopupRuntimeClean();
 
   const meta = await openAndFocusInstructorCourses();
   const metaDefaultAllowed = await meta.link.evaluate((element) => {
@@ -2589,23 +3093,34 @@ test('preserves the source mobile menu and focus for modified and new-tab activa
   const middlePopupPromise = context.waitForEvent('page');
   await middle.link.click({ button: 'middle' });
   const middlePopup = await middlePopupPromise;
+  const assertMiddlePopupRuntimeClean = monitorRuntime(
+    middlePopup,
+    [],
+    [INSTRUCTOR_COURSE_COLLECTION_STRICT_MODE_ABORT],
+  );
   await middlePopup.waitForURL(/\/instructor\/courses(?:[?#]|$)/);
   await expect(middlePopup.getByRole('heading', { level: 2, name: 'Your courses' })).toBeFocused();
+  await expect(middlePopup.getByText('You have not created any courses yet.')).toBeVisible();
   expect(new URL(middlePopup.url()).pathname).toBe('/instructor/courses');
   expect(page.url()).toBe(originalUrl);
   await expect(middle.navigation).toBeVisible();
   await expect(middle.link).toBeFocused();
   await middlePopup.close();
+  assertMiddlePopupRuntimeClean();
 
   const ordinary = await openAndFocusInstructorCourses();
+  const sourceCollectionRequest = popupFixture.waitForSourceCollectionRequest();
   await ordinary.link.click();
+  await sourceCollectionRequest;
   await expect(page).toHaveURL(/\/instructor\/courses$/);
   await expect(page.getByRole('navigation', { name: 'Mobile navigation' })).toHaveCount(0);
   await expect(page.locator('#main-content')).toBeFocused();
+  popupFixture.releaseSourceCollection();
+  await expect(page.getByText('You have not created any courses yet.')).toBeVisible();
+  const assertRuntimeClean = monitorRuntime(page);
   await expect(page).toHaveTitle('Instructor courses | LearnHub');
   await expectNoHorizontalOverflow(page);
   assertRuntimeClean();
-  assertPopupRuntimeClean();
 });
 
 test('renders the not-found route at mobile width without overflow', async ({ page }) => {
@@ -2813,16 +3328,21 @@ test('keeps instructor course-management content readable without student destin
 
   for (const width of [320, 768, 1023, 1024] as const) {
     await page.setViewportSize({ width, height: 844 });
+    if (new URL(page.url()).pathname === '/instructor/courses')
+      await waitForInstructorCoursesBackgroundAssets(page);
     await page.goto('/instructor/courses');
     await expect(
       page.getByRole('heading', { level: 1, name: 'Instructor courses', includeHidden: true }),
     ).toHaveCount(1);
     await expect(page.locator('[data-part="instructor-courses-hero"]')).toHaveCount(0);
     await expectNoHorizontalOverflow(page);
+    await waitForInstructorCoursesBackgroundAssets(page);
   }
 
   await page.setViewportSize({ width: 1024, height: 844 });
+  await waitForInstructorCoursesBackgroundAssets(page);
   await page.goto('/instructor/courses?source=header#creation');
+  await waitForInstructorCoursesBackgroundAssets(page);
   const primaryNavigation = page.getByRole('navigation', { name: 'Primary navigation' });
   const instructorCourses = primaryNavigation.getByRole('link', { name: 'Instructor courses' });
   const headerCreate = page
@@ -2865,6 +3385,8 @@ test('keeps instructor course-management content readable without student destin
 
   for (const width of [320, 390, 768, 1280] as const) {
     await page.setViewportSize({ width, height: 844 });
+    if (new URL(page.url()).pathname === '/instructor/courses')
+      await waitForInstructorCoursesBackgroundAssets(page);
     await page.goto('/instructor/courses/7/enrollments');
     await expect(page.getByRole('heading', { level: 1, name: 'Course enrollments' })).toBeVisible();
     const breadcrumb = page.getByRole('navigation', { name: 'Breadcrumb' });
@@ -2894,21 +3416,33 @@ test('keeps instructor course-management content readable without student destin
 
   await page.setViewportSize({ width: 320, height: 844 });
   await page.goto('/instructor/courses/7/enrollments');
-  const rosterReturnLink = page
-    .getByRole('navigation', { name: 'Breadcrumb' })
-    .getByRole('link', { name: 'Instructor courses' });
+  const rosterHeading = page.getByRole('heading', { level: 1, name: 'Course enrollments' });
+  const rosterBreadcrumb = page.getByRole('navigation', { name: 'Breadcrumb' });
+  const rosterReturnLink = rosterBreadcrumb.getByRole('link', { name: 'Instructor courses' });
+  await expect(rosterHeading).toBeVisible();
+  await expect(rosterBreadcrumb).toBeVisible();
+  await expect(rosterReturnLink).toBeVisible();
+  await expect(page.getByText(longName)).toBeVisible();
   await rosterReturnLink.focus();
   await expect(rosterReturnLink).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL('/instructor/courses');
-  await expect(
-    page.getByRole('heading', { level: 1, name: 'Instructor courses', includeHidden: true }),
-  ).toHaveCount(1);
+  const instructorCoursesHeading = page.getByRole('heading', {
+    level: 1,
+    name: 'Instructor courses',
+    includeHidden: true,
+  });
+  await expect(instructorCoursesHeading).toBeVisible();
+  await waitForInstructorCoursesBackgroundAssets(page);
 
   await page.setViewportSize({ width: 320, height: 844 });
+  await waitForInstructorCoursesBackgroundAssets(page);
   await page.goto('/instructor/courses');
-  const create = page.getByRole('button', { name: 'Create course', exact: true });
+  const create = page
+    .getByRole('region', { name: 'Create course' })
+    .getByRole('button', { name: 'Create course', exact: true });
   await expect(create).toBeVisible();
+  await waitForInstructorCoursesBackgroundAssets(page);
   await page.getByRole('textbox', { name: 'Course title' }).fill('An instructor course');
   await create.click();
   const courseActions = page.getByRole('navigation', { name: 'New course actions' });
@@ -2928,6 +3462,7 @@ test('keeps instructor course-management content readable without student destin
   await expectNoHorizontalOverflow(page);
 
   await page.setViewportSize({ width: 1280, height: 844 });
+  await waitForInstructorCoursesBackgroundAssets(page);
   await page.goto('/instructor/courses/7/enrollments');
   await page.evaluate(() => {
     document.documentElement.style.zoom = '2';

@@ -7,6 +7,7 @@
 
   display: grid;
   min-height: 100vh;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto 1fr auto;
 }
 
@@ -379,6 +380,98 @@
   font-size: var(--type-body-sm-size);
 }
 
+.languageSelector {
+  position: relative;
+  display: inline-grid;
+  order: 3;
+  flex: 0 0 auto;
+}
+
+.languageSelector > button {
+  display: inline-flex;
+  min-width: 44px;
+  min-height: 44px;
+  gap: var(--spacing-1);
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--spacing-2);
+  border: 0;
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  background: transparent;
+  font: inherit;
+  font-size: var(--type-caption-size);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+}
+
+.languageSelector > button:focus-visible,
+.languageOption:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.languageSelector > button:hover,
+.languageSelector > button:focus-visible {
+  background: var(--state-control-highlight);
+}
+
+.languageSelector [data-language-selector-chevron] {
+  transition: transform 120ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.languageSelector > button[aria-expanded='true'] [data-language-selector-chevron] {
+  transform: rotate(180deg);
+}
+
+.languageMenu {
+  position: absolute;
+  z-index: var(--z-dropdown);
+  top: calc(100% + var(--spacing-2));
+  right: 0;
+  display: grid;
+  min-width: 10rem;
+  gap: var(--spacing-1);
+  padding: var(--spacing-2);
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-2);
+}
+
+.languageOption {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--spacing-3);
+  border: 0;
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.languageOption:hover {
+  background: var(--state-control-highlight);
+}
+
+.languageOptionSelected {
+  background: var(--state-selected);
+  font-weight: var(--font-weight-semibold);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .languageSelector [data-language-selector-chevron] {
+    transition: none;
+  }
+
+  .languageSelector > button[aria-expanded='true'] [data-language-selector-chevron] {
+    transform: none;
+  }
+}
+
 .headerCartAccountGroup {
   display: contents;
 }
@@ -531,6 +624,49 @@
 .accountMenuLogout:focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring);
   outline-offset: var(--focus-ring-offset);
+}
+
+.accountLanguageView {
+  display: grid;
+  gap: var(--spacing-2);
+}
+
+.accountLanguageTitle {
+  padding: 0 var(--spacing-3);
+  color: var(--text-primary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.accountMenuLanguage {
+  display: flex;
+  width: 100%;
+  min-height: var(--control-height-md);
+  gap: var(--spacing-2);
+  align-items: center;
+  padding: 0 var(--spacing-3);
+  border: 0;
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.accountMenuLanguage:hover {
+  background: var(--state-control-highlight);
+}
+
+.accountMenuLanguageSelected {
+  background: var(--state-selected);
+  font-weight: var(--font-weight-semibold);
+}
+
+.accountMenuLanguageValue {
+  margin-left: auto;
+  color: var(--text-secondary);
+  font-size: var(--type-caption-size);
+  font-weight: var(--font-weight-semibold);
 }
 
 .menuButton {
@@ -903,7 +1039,7 @@
 
   .headerInner {
     display: grid;
-    grid-template-columns: max-content minmax(0, 1fr) max-content;
+    grid-template-columns: minmax(0, max-content) minmax(0, 1fr) minmax(0, max-content);
     justify-content: normal;
     flex-wrap: nowrap;
     column-gap: var(--spacing-4);
@@ -1040,11 +1176,11 @@
   }
 
   .headerCartAccountGroup .account {
-    order: 1;
+    order: 2;
   }
 
   .headerCartAccountGroup .cartLink {
-    order: 2;
+    order: 1;
   }
 
   .menuButton,

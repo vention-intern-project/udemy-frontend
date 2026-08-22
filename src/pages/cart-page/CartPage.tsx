@@ -100,7 +100,9 @@ function cartReturnTarget(state: unknown): CartReturnTarget {
 }
 
 function getSummaryJumpState(summaryHeading: HTMLElement): SummaryJumpState {
-  const navigation = document.querySelector<HTMLElement>('[aria-label="Student navigation"]');
+  const navigation = document
+    .querySelector<HTMLAnchorElement>('nav a[href="/cart"]')
+    ?.closest<HTMLElement>('nav');
   const visibleViewportBottom = navigation?.getBoundingClientRect().top ?? window.innerHeight;
   const summaryBounds = summaryHeading.getBoundingClientRect();
 

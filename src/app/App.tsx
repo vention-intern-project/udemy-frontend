@@ -2,6 +2,7 @@ import { BrowserRouter } from 'react-router-dom';
 
 import { SessionProvider } from '../features/auth-session';
 import { CourseChatSessionProvider } from '../features/course-chat';
+import { LocaleProvider } from '../shared/locale';
 import { ThemeProvider } from '../shared/ui/theme';
 import { ApplicationTitleBoundary, AppRouter, densityForPath } from './router';
 import { AppQueryProvider, SessionPrivateCacheLifecycle } from './query';
@@ -13,16 +14,18 @@ export function App() {
   return (
     <AppQueryProvider>
       <ThemeProvider initialDensityMode={initialDensityMode}>
-        <SessionProvider apiBaseUrl={import.meta.env.VITE_API_BASE_URL ?? ''}>
-          <CourseChatSessionProvider>
-            <SessionPrivateCacheLifecycle />
-            <BrowserRouter>
-              <ApplicationTitleBoundary>
-                <AppRouter />
-              </ApplicationTitleBoundary>
-            </BrowserRouter>
-          </CourseChatSessionProvider>
-        </SessionProvider>
+        <LocaleProvider>
+          <SessionProvider apiBaseUrl={import.meta.env.VITE_API_BASE_URL ?? ''}>
+            <CourseChatSessionProvider>
+              <SessionPrivateCacheLifecycle />
+              <BrowserRouter>
+                <ApplicationTitleBoundary>
+                  <AppRouter />
+                </ApplicationTitleBoundary>
+              </BrowserRouter>
+            </CourseChatSessionProvider>
+          </SessionProvider>
+        </LocaleProvider>
       </ThemeProvider>
     </AppQueryProvider>
   );

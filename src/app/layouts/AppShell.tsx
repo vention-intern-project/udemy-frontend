@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useId } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { Bot, GraduationCap, LibraryBig, LogIn, ShoppingCart, UserPlus } from 'lucide-react';
 import {
   Link,
@@ -22,6 +23,7 @@ import {
 } from '@features/catalog-discovery';
 import { Input, VisuallyHidden } from '@shared/ui/primitives';
 import { useDensityMode } from '@shared/ui/theme';
+import { LanguageSelector } from '@shared/locale';
 import { CourseChatLauncher } from '@widgets/course-chat';
 import learnHubBookMark from './assets/learnhub-book-ui018.png';
 import { AccountMenu } from './AccountMenu';
@@ -44,7 +46,6 @@ const STUDENT_MOBILE_QUERY = '(max-width: 767px)';
 const INSTRUCTOR_COURSE_TITLE_ID = 'instructor-course-title';
 
 interface CartPresentation {
-  accessibleName: string;
   badge: string | null;
 }
 
@@ -54,9 +55,9 @@ interface ScrollPosition {
 }
 
 export function presentCart(itemCount: number | undefined): CartPresentation {
-  if (itemCount === undefined) return { accessibleName: 'Cart', badge: null };
+  if (itemCount === undefined) return { badge: null };
   const badge = itemCount >= 100 ? '99+' : String(itemCount);
-  return { accessibleName: `Cart (${badge})`, badge };
+  return { badge };
 }
 
 interface NavigationLinksProps {
@@ -78,9 +79,12 @@ interface CartNavigationLinkProps {
 function CartNavigationLink({ itemCount }: CartNavigationLinkProps) {
   const presentation = presentCart(itemCount);
   const location = useLocation();
+  const { t } = useTranslation();
   return (
     <NavLink
-      aria-label={presentation.accessibleName}
+      aria-label={
+        presentation.badge ? t('a11y:cart', { cartCount: presentation.badge }) : t('common:cart')
+      }
       className={({ isActive }) =>
         [styles.cartLink, isActive ? styles.cartLinkActive : null].filter(Boolean).join(' ')
       }
@@ -102,6 +106,7 @@ function AiAssistantNavigationLink() {
   const [isTooltipVisible, setIsTooltipVisible] = useState(false);
   const [isTooltipFocused, setIsTooltipFocused] = useState(false);
   const [isTooltipEscapeDismissed, setIsTooltipEscapeDismissed] = useState(false);
+  const { t } = useTranslation();
 
   function clearTooltipTimer() {
     if (tooltipTimerRef.current !== null) {
@@ -147,7 +152,7 @@ function AiAssistantNavigationLink() {
 
   return (
     <NavLink
-      aria-label="Open AI assistant"
+      aria-label={t('a11y:openAiAssistant')}
       aria-describedby={isTooltipVisible ? tooltipId : undefined}
       className={({ isActive }) =>
         [styles.aiAssistantLink, isActive ? styles.aiAssistantLinkActive : null]
@@ -171,7 +176,7 @@ function AiAssistantNavigationLink() {
       <Bot aria-hidden="true" focusable="false" size={28} strokeWidth={1.75} />
       {isTooltipVisible ? (
         <span id={tooltipId} className={styles.aiAssistantTooltip} role="tooltip">
-          AI assistant
+          {t('common:aiChat')}
         </span>
       ) : null}
     </NavLink>
@@ -183,15 +188,16 @@ function StudentMobileNavigation({ itemCount }: CartNavigationLinkProps) {
   const assistantTarget = assistantNavigationTarget(location);
   const cartState = cartNavigationState(location);
   const cartPresentation = presentCart(itemCount);
+  const { t } = useTranslation();
   return (
-    <nav className={styles.studentMobileNavigation} aria-label="Student navigation">
+    <nav className={styles.studentMobileNavigation} aria-label={t('a11y:studentNavigation')}>
       <NavLink className={styles.studentMobileNavigationLink} end to="/">
         <LibraryBig aria-hidden="true" focusable="false" size={20} />
-        <span>Catalog</span>
+        <span>{t('navigation:catalog')}</span>
       </NavLink>
       <NavLink className={styles.studentMobileNavigationLink} end to="/learning">
         <GraduationCap aria-hidden="true" focusable="false" size={20} />
-        <span>My learning</span>
+        <span>{t('navigation:myLearning')}</span>
       </NavLink>
       <NavLink
         className={styles.studentMobileNavigationLink}
@@ -200,10 +206,14 @@ function StudentMobileNavigation({ itemCount }: CartNavigationLinkProps) {
         to={assistantTarget.to}
       >
         <Bot aria-hidden="true" focusable="false" size={20} />
-        <span>AI chat</span>
+        <span>{t('common:aiChat')}</span>
       </NavLink>
       <NavLink
-        aria-label={cartPresentation.accessibleName}
+        aria-label={
+          cartPresentation.badge
+            ? t('a11y:cart', { cartCount: cartPresentation.badge })
+            : t('common:cart')
+        }
         className={styles.studentMobileNavigationLink}
         end
         state={cartState}
@@ -215,26 +225,27 @@ function StudentMobileNavigation({ itemCount }: CartNavigationLinkProps) {
             <span className={styles.studentMobileCartBadge}>{cartPresentation.badge}</span>
           ) : null}
         </span>
-        <span>Cart</span>
+        <span>{t('common:cart')}</span>
       </NavLink>
     </nav>
   );
 }
 
 function AnonymousMobileNavigation() {
+  const { t } = useTranslation();
   return (
-    <nav className={styles.anonymousMobileNavigation} aria-label="Anonymous navigation">
+    <nav className={styles.anonymousMobileNavigation} aria-label={t('a11y:anonymousNavigation')}>
       <NavLink className={styles.anonymousMobileNavigationLink} end to="/">
         <LibraryBig aria-hidden="true" focusable="false" size={20} />
-        <span>Catalog</span>
+        <span>{t('navigation:catalog')}</span>
       </NavLink>
       <NavLink className={styles.anonymousMobileNavigationLink} end to="/login">
         <LogIn aria-hidden="true" focusable="false" size={20} />
-        <span>Log in</span>
+        <span>{t('navigation:logIn')}</span>
       </NavLink>
       <NavLink className={styles.anonymousMobileNavigationLink} end to="/signup">
         <UserPlus aria-hidden="true" focusable="false" size={20} />
-        <span>Sign up</span>
+        <span>{t('navigation:signUp')}</span>
       </NavLink>
     </nav>
   );
@@ -245,6 +256,7 @@ function NavigationLinks({
   onNavigate,
   showPrimaryNavigationIndicator = false,
 }: NavigationLinksProps) {
+  const { t } = useTranslation();
   return (
     <ul className={styles.navList}>
       {items.map((item) => (
@@ -271,7 +283,7 @@ function NavigationLinks({
             }}
             to={item.to}
           >
-            {item.label}
+            {t(item.labelKey)}
           </NavLink>
         </li>
       ))}
@@ -280,6 +292,7 @@ function NavigationLinks({
 }
 
 export function AppShell() {
+  const { t } = useTranslation();
   const session = useSession();
   const { cacheEpoch, state } = session;
   const cartSubject =
@@ -347,6 +360,7 @@ export function AppShell() {
   const routeDensityMode = densityForPath(location.pathname);
   const isStudentMobile =
     isStudentMobileViewport && state.status === 'authenticated' && state.user.role === 'student';
+  const isAuthenticatedMobile = isStudentMobileViewport && state.status === 'authenticated';
   const isAnonymousMobile = isStudentMobileViewport && isAnonymous;
   const showHeaderCart = hasCartNavigation && !(isAnonymous && isStudentMobileViewport);
 
@@ -599,7 +613,7 @@ export function AppShell() {
                     ? [styles.navDesktop, styles.navDesktopSplit].join(' ')
                     : styles.navDesktop
                 }
-                aria-label="Primary navigation"
+                aria-label={t('a11y:primaryNavigation')}
               >
                 <NavigationLinks
                   items={
@@ -621,7 +635,7 @@ export function AppShell() {
             <form
               className={styles.catalogSearch}
               role="search"
-              aria-label="Course catalog search"
+              aria-label={t('a11y:courseCatalogSearch')}
               onSubmit={(event) => {
                 event.preventDefault();
                 submitCatalogSearch(activeCatalogSearchTerm);
@@ -630,13 +644,13 @@ export function AppShell() {
               <div ref={catalogSearchWrapperRef} className={styles.catalogSearchField}>
                 <Input
                   ref={catalogSearchRef}
-                  label={<VisuallyHidden>Search courses</VisuallyHidden>}
+                  label={<VisuallyHidden>{t('a11y:searchCourses')}</VisuallyHidden>}
                   fieldClassName={styles.catalogSearchPrimitiveField}
                   className={styles.catalogSearchInput}
                   name="search_query"
                   type="search"
                   value={catalogSearchDraft}
-                  placeholder="Search courses, topics, or instructors"
+                  placeholder={t('common:searchCoursesPlaceholder')}
                   autoComplete="off"
                   role="combobox"
                   aria-autocomplete="list"
@@ -703,7 +717,7 @@ export function AppShell() {
                     className={styles.catalogSearchListbox}
                     id={catalogSearchListboxId}
                     role="listbox"
-                    aria-label="Recent searches"
+                    aria-label={t('a11y:recentSearches')}
                   >
                     {catalogSearchMatches.map((term, index) => (
                       <div
@@ -735,11 +749,12 @@ export function AppShell() {
                 Create course
               </button>
             ) : null}
-            {isStudentMobile ? <AccountMenu user={state.user} /> : null}
+            {isStudentMobile ? <AccountMenu user={state.user} showLanguage /> : null}
             {isStudentMobile ? null : state.status === 'authenticated' &&
               state.user.role === 'student' ? (
               <div className={styles.headerCartAccountGroup}>
                 <AiAssistantNavigationLink />
+                <CartNavigationLink itemCount={cart.data?.itemCount} />
                 <div className={styles.account}>
                   <AccountMenu user={state.user} />
                   {!isAnonymousMobile ? (
@@ -757,14 +772,13 @@ export function AppShell() {
                         }
                       }}
                     >
-                      <span aria-hidden="true">Menu</span>
+                      <span aria-hidden="true">{t('common:menu')}</span>
                       <VisuallyHidden>
-                        {mobileOpen ? 'Close navigation' : 'Open navigation'}
+                        {mobileOpen ? t('a11y:closeNavigation') : t('a11y:openNavigation')}
                       </VisuallyHidden>
                     </button>
                   ) : null}
                 </div>
-                <CartNavigationLink itemCount={cart.data?.itemCount} />
               </div>
             ) : (
               <>
@@ -772,7 +786,7 @@ export function AppShell() {
                 {isAnonymous ? (
                   <nav
                     className={[styles.navDesktop, styles.navCatalogAccount].join(' ')}
-                    aria-label="Account navigation"
+                    aria-label={t('a11y:accountNavigation')}
                   >
                     <NavigationLinks items={catalogDesktopAccountNavigation} />
                   </nav>
@@ -786,7 +800,9 @@ export function AppShell() {
                       : [styles.account, styles.accountAnonymous].join(' ')
                   }
                 >
-                  {state.status === 'authenticated' ? <AccountMenu user={state.user} /> : null}
+                  {state.status === 'authenticated' ? (
+                    <AccountMenu user={state.user} showLanguage={isAuthenticatedMobile} />
+                  ) : null}
                   {!isAnonymousMobile ? (
                     <button
                       ref={menuButtonRef}
@@ -802,22 +818,36 @@ export function AppShell() {
                         }
                       }}
                     >
-                      <span aria-hidden="true">Menu</span>
+                      <span aria-hidden="true">{t('common:menu')}</span>
                       <VisuallyHidden>
-                        {mobileOpen ? 'Close navigation' : 'Open navigation'}
+                        {mobileOpen ? t('a11y:closeNavigation') : t('a11y:openNavigation')}
                       </VisuallyHidden>
                     </button>
                   ) : null}
                 </div>
               </>
             )}
+            {!isAuthenticatedMobile ? (
+              <LanguageSelector
+                className={[
+                  styles.languageSelector,
+                  isAnonymousMobile ? styles.languageSelectorMobile : null,
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                menuClassName={styles.languageMenu}
+                optionClassName={styles.languageOption}
+                selectedOptionClassName={styles.languageOptionSelected}
+                mobile={isAnonymousMobile}
+              />
+            ) : null}
           </div>
         </div>
         {mobileOpen && !isAnonymousMobile ? (
           <nav
             id="mobile-navigation"
             className={styles.navMobile}
-            aria-label="Mobile navigation"
+            aria-label={t('a11y:mobileNavigation')}
             onKeyDown={(event) => {
               if (event.key === 'Escape') {
                 event.preventDefault();
@@ -866,8 +896,8 @@ export function AppShell() {
         <Outlet />
       </main>
       <footer className={styles.footer}>
-        <span>(c) 2026 LearnHub</span>
-        <span>Accessible learning, built for every role.</span>
+        <span>{t('common:footerCopyright')}</span>
+        <span>{t('common:footerTagline')}</span>
       </footer>
       {hasGlobalAssistant && globalAssistant !== null ? (
         !isStudentMobile ? (
