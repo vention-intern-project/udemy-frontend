@@ -396,12 +396,14 @@ describe('AppShell student cart query and presentation', () => {
       name: 'Account menu for student User',
     });
     expect(accountTrigger.getAttribute('title')).toBeNull();
+    expect(accountTrigger.getAttribute('aria-controls')).toBeNull();
 
     fireEvent.mouseEnter(accountTrigger);
     const accountDetails = screen.getByRole('group', {
       name: 'Account details for student User',
     });
     expect(accountDetails).toBeTruthy();
+    expect(accountTrigger.getAttribute('aria-controls')).toBe(accountDetails.id);
     expect(screen.getByText('student@example.test')).toBeTruthy();
     expect(screen.getByText('student User')).toBeTruthy();
     expect(screen.getByText('Student', { exact: true })).toBeTruthy();
@@ -415,6 +417,7 @@ describe('AppShell student cart query and presentation', () => {
 
     fireEvent.click(accountTrigger);
     expect(accountTrigger.getAttribute('aria-expanded')).toBe('false');
+    expect(accountTrigger.getAttribute('aria-controls')).toBeNull();
     expect(screen.queryByRole('group', { name: 'Account details for student User' })).toBeNull();
 
     fireEvent.click(accountTrigger);
@@ -423,6 +426,7 @@ describe('AppShell student cart query and presentation', () => {
 
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByRole('group', { name: 'Account details for student User' })).toBeNull();
+    expect(accountTrigger.getAttribute('aria-controls')).toBeNull();
     expect(document.activeElement).toBe(accountTrigger);
 
     fireEvent.click(accountTrigger);

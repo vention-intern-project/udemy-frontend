@@ -131,7 +131,7 @@ export function AccountMenu({ user, showLanguage = false }: AccountMenuProps) {
       }}
     >
       <button
-        aria-controls={menuId}
+        aria-controls={open ? menuId : undefined}
         aria-expanded={open}
         aria-label={t('a11y:accountMenu', { identity })}
         className={[styles.accountInitials, open ? styles.accountInitialsOpen : null]

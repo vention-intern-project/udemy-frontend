@@ -71,7 +71,7 @@ export function LanguageSelector({
     <div className={className} ref={ref}>
       <button
         ref={triggerRef}
-        aria-controls={menuId}
+        aria-controls={open ? menuId : undefined}
         aria-expanded={open}
         aria-label={t('navigation:changeLanguage')}
         type="button"

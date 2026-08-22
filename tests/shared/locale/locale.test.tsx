@@ -11,6 +11,7 @@ import {
   getBrowserLocales,
   localeRuntime,
   LocaleProvider,
+  LanguageSelector,
   MLUX_006_FOLLOWUP_RUNTIME_MAPPING,
   MLUX_002_RUNTIME_MAPPING,
   normalizeLocale,
@@ -44,6 +45,13 @@ function LocaleProbe() {
   );
 }
 
+const LANGUAGE_SELECTOR_CLASSES = {
+  className: 'language-selector-test',
+  menuClassName: 'language-menu-test',
+  optionClassName: 'language-option-test',
+  selectedOptionClassName: 'language-option-selected-test',
+};
+
 function withBrowserNavigator(value: unknown, assertion: () => void): void {
   const originalDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
   Object.defineProperty(globalThis, 'navigator', { configurable: true, value });
@@ -60,6 +68,29 @@ function withBrowserNavigator(value: unknown, assertion: () => void): void {
 }
 
 describe('locale foundation', () => {
+  it('references the rendered language menu only while the disclosure is open', async () => {
+    render(
+      <LocaleProvider store={createBrowserLocaleStore(memoryStorage())}>
+        <LanguageSelector {...LANGUAGE_SELECTOR_CLASSES} />
+      </LocaleProvider>,
+    );
+
+    const trigger = screen.getByRole('button', { name: 'Change language' });
+    expect(trigger.getAttribute('aria-controls')).toBeNull();
+
+    const user = userEvent.setup();
+    await act(async () => {
+      await user.click(trigger);
+    });
+    const menu = screen.getByLabelText('Language menu');
+    expect(trigger.getAttribute('aria-controls')).toBe(menu.id);
+
+    await act(async () => {
+      await user.click(trigger);
+    });
+    expect(trigger.getAttribute('aria-controls')).toBeNull();
+  });
+
   it('collects browser language preferences only from available string-valued sources', () => {
     withBrowserNavigator(undefined, () => {
       expect(getBrowserLocales()).toEqual([]);
