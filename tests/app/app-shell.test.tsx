@@ -781,6 +781,52 @@ describe('AppShell student cart query and presentation', () => {
     expect(accountDetails.querySelector('[data-part="account-menu-profile"]')).toBeTruthy();
   });
 
+  it('resets the unpinned mobile account menu to its profile view after Tab leaves Language', async () => {
+    stubCompactViewport();
+    renderShell(authenticatedClient('student'), 'student-token');
+
+    const accountMenu = await screen.findByRole('button', {
+      name: 'Account menu for student User',
+    });
+    const user = userEvent.setup();
+    act(() => accountMenu.focus());
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: /Language/ }));
+    });
+    const uzbek = screen.getByRole('button', { name: "O'zbek" });
+    act(() => uzbek.focus());
+    await act(async () => {
+      await user.keyboard('{Tab}');
+    });
+
+    expect(document.activeElement).not.toBe(accountMenu);
+    expect(screen.queryByRole('button', { name: 'Back' })).toBeNull();
+    act(() => accountMenu.focus());
+    expect(screen.getByRole('button', { name: /Language/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Log out' })).toBeTruthy();
+  });
+
+  it('resets the unpinned mobile account menu to its profile view after mouseleave', async () => {
+    stubCompactViewport();
+    renderShell(authenticatedClient('student'), 'student-token');
+
+    const accountMenu = await screen.findByRole('button', {
+      name: 'Account menu for student User',
+    });
+    const menuRoot = accountMenu.parentElement;
+    if (!menuRoot) throw new Error('Account menu root is unavailable.');
+    fireEvent.mouseEnter(menuRoot);
+    fireEvent.click(screen.getByRole('button', { name: /Language/ }));
+    expect(screen.getByRole('button', { name: 'Back' })).toBeTruthy();
+
+    fireEvent.mouseLeave(menuRoot);
+    fireEvent.mouseEnter(menuRoot);
+
+    expect(screen.queryByRole('button', { name: 'Back' })).toBeNull();
+    expect(screen.getByRole('button', { name: /Language/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Log out' })).toBeTruthy();
+  });
+
   it('keeps authenticated instructor mobile language choices in the account popover alongside navigation', async () => {
     stubCompactViewport();
     renderShell(authenticatedClient('instructor'), 'instructor-token', '/instructor/courses');

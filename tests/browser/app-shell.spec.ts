@@ -1431,6 +1431,48 @@ test('uses native buttons for authenticated-mobile language selection and preser
   assertRuntimeClean();
 });
 
+test('resets an unpinned mobile account menu after focus and hover leave its Language view', async ({
+  page,
+}) => {
+  const assertRuntimeClean = monitorRuntime(
+    page,
+    [],
+    [CART_STRICT_MODE_ABORT, ENROLLMENTS_STRICT_MODE_ABORT],
+  );
+  await mockAuthenticatedSession(page, 'student');
+  const studentWorkspaceFixture = await mockStudentWorkspaceData(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await Promise.all([
+    studentWorkspaceFixture.waitForEnrollmentFulfillment(),
+    page.goto('/learning'),
+  ]);
+
+  const account = page.getByRole('button', { name: 'Account menu for Sam User' });
+  const accountDetails = page.getByRole('group', { name: 'Account details for Sam User' });
+  await account.focus();
+  await expect(accountDetails).toBeVisible();
+  await page.getByRole('button', { name: 'Language' }).click();
+  const uzbek = page.getByRole('button', { name: "O'zbek" });
+  await uzbek.focus();
+  await page.keyboard.press('Tab');
+  await expect(accountDetails).toHaveCount(0);
+
+  await account.focus();
+  await expect(accountDetails.locator('[data-part="account-menu-profile"]')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Language' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Log out' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Language' }).click();
+  await expect(page.getByRole('button', { name: 'Back' })).toBeVisible();
+  await page.locator('main').hover({ position: { x: 1, y: 1 } });
+  await expect(accountDetails).toHaveCount(0);
+  await account.hover();
+  await expect(accountDetails.locator('[data-part="account-menu-profile"]')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Log out' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Back' })).toHaveCount(0);
+  assertRuntimeClean();
+});
+
 test('preserves the authenticated-instructor mobile language flow in the profile popover', async ({
   page,
 }) => {

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import {
   ArrowLeft,
   Check,
@@ -57,15 +57,15 @@ export function AccountMenu({ user, showLanguage = false }: AccountMenuProps) {
     `${user.name.trim().charAt(0)}${user.surname.trim().charAt(0)}`.toLocaleUpperCase();
   const rolePresentation = ACCOUNT_ROLE_PRESENTATION[user.role];
   const RoleIcon = rolePresentation.Icon;
+  const dismissAccountMenu = useCallback(() => {
+    setOpen(false);
+    setPinned(false);
+    setLanguageView(false);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
 
-    const dismissAccountMenu = () => {
-      setOpen(false);
-      setPinned(false);
-      setLanguageView(false);
-    };
     const restoreAccountTriggerFocus = () => {
       suppressNextAccountFocusOpenRef.current = true;
       accountTriggerRef.current?.focus({ preventScroll: true });
@@ -97,7 +97,7 @@ export function AccountMenu({ user, showLanguage = false }: AccountMenuProps) {
       document.removeEventListener('keydown', closeOnEscape);
       window.removeEventListener('scroll', closeOnScroll);
     };
-  }, [open]);
+  }, [dismissAccountMenu, open]);
 
   useEffect(() => {
     const focusTarget = pendingLanguageFocusRef.current;
@@ -122,11 +122,11 @@ export function AccountMenu({ user, showLanguage = false }: AccountMenuProps) {
         setOpen(true);
       }}
       onBlur={(event) => {
-        if (!pinned && !event.currentTarget.contains(event.relatedTarget)) setOpen(false);
+        if (!pinned && !event.currentTarget.contains(event.relatedTarget)) dismissAccountMenu();
       }}
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => {
-        if (!pinned) setOpen(false);
+        if (!pinned) dismissAccountMenu();
       }}
     >
       <button
@@ -141,9 +141,7 @@ export function AccountMenu({ user, showLanguage = false }: AccountMenuProps) {
         type="button"
         onClick={() => {
           if (pinned) {
-            setPinned(false);
-            setOpen(false);
-            setLanguageView(false);
+            dismissAccountMenu();
             pendingLanguageFocusRef.current = null;
             return;
           }
