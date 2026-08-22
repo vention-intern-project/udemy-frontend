@@ -8,9 +8,15 @@ import { APP_ROUTE_BY_ID } from '../router/route-registry';
 
 export type NavigationItemVariant = 'browse-link' | 'login-secondary' | 'signup-primary';
 export type NavigationItemDesktopGroup = 'auth-actions';
+export type NavigationItemLabelKey =
+  | 'navigation:catalog'
+  | 'navigation:logIn'
+  | 'navigation:signUp'
+  | 'navigation:myLearning'
+  | 'navigation:instructorCourses';
 
 export interface NavigationItem {
-  label: string;
+  labelKey: NavigationItemLabelKey;
   to: string;
   end?: boolean;
   desktopGroup?: NavigationItemDesktopGroup;
@@ -36,21 +42,21 @@ export function navigationForSession(status: SessionState): NavigationItem[] {
   if (status.status !== 'authenticated') {
     return [
       {
-        label: 'Catalog',
+        labelKey: 'navigation:catalog',
         to: '/',
         end: true,
         primaryNavigationIndicator: true,
         variant: 'browse-link',
       },
       {
-        label: 'Log in',
+        labelKey: 'navigation:logIn',
         to: '/login',
         end: true,
         desktopGroup: 'auth-actions',
         variant: 'login-secondary',
       },
       {
-        label: 'Sign up',
+        labelKey: 'navigation:signUp',
         to: '/signup',
         end: true,
         desktopGroup: 'auth-actions',
@@ -61,19 +67,24 @@ export function navigationForSession(status: SessionState): NavigationItem[] {
   if (status.user.role === 'student') {
     return [
       {
-        label: 'Catalog',
+        labelKey: 'navigation:catalog',
         to: '/',
         end: true,
         primaryNavigationIndicator: true,
         variant: 'browse-link',
       },
-      { label: 'My learning', to: '/learning', end: true, primaryNavigationIndicator: true },
+      {
+        labelKey: 'navigation:myLearning',
+        to: '/learning',
+        end: true,
+        primaryNavigationIndicator: true,
+      },
     ];
   }
   return status.user.role === 'instructor'
     ? [
         {
-          label: 'Instructor courses',
+          labelKey: 'navigation:instructorCourses',
           to: '/instructor/courses',
           end: true,
           primaryNavigationIndicator: true,

@@ -39,8 +39,11 @@ export function LanguageSelector({
     function dismiss(event: Event) {
       if (event.type === 'keydown' && (event as KeyboardEvent).key !== 'Escape') return;
       if (event.type === 'pointerdown' && ref.current?.contains(event.target as Node)) return;
+      const activeElement = document.activeElement;
+      const restoreTriggerFocus =
+        activeElement instanceof HTMLElement && ref.current?.contains(activeElement);
       setOpen(false);
-      if (event.type === 'keydown') triggerRef.current?.focus({ preventScroll: true });
+      if (restoreTriggerFocus) triggerRef.current?.focus({ preventScroll: true });
     }
     document.addEventListener('pointerdown', dismiss);
     document.addEventListener('keydown', dismiss);

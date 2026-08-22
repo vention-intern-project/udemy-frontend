@@ -143,6 +143,49 @@ describe('locale foundation', () => {
     }).toEqual({ en: 'Log out', ru: 'Выйти', uz: 'Chiqish' });
   });
 
+  it('adopts canonical student and anonymous mobile-navigation landmarks in every locale', () => {
+    const runtime = createLocaleRuntime('en');
+
+    expect(
+      MLUX_002_RUNTIME_MAPPING.filter(
+        ({ unitId }) => unitId === 'MLUX-C0370' || unitId === 'MLUX-C0371',
+      ),
+    ).toMatchObject([
+      {
+        unitId: 'MLUX-C0370',
+        namespace: 'a11y',
+        key: 'studentNavigation',
+        english: 'Student navigation',
+        occurrences: [{ id: 'O0522' }],
+      },
+      {
+        unitId: 'MLUX-C0371',
+        namespace: 'a11y',
+        key: 'anonymousNavigation',
+        english: 'Anonymous navigation',
+        occurrences: [{ id: 'O0523' }],
+      },
+    ]);
+    expect({
+      en: [
+        runtime.getResource('en', 'a11y', 'studentNavigation'),
+        runtime.getResource('en', 'a11y', 'anonymousNavigation'),
+      ],
+      ru: [
+        runtime.getResource('ru', 'a11y', 'studentNavigation'),
+        runtime.getResource('ru', 'a11y', 'anonymousNavigation'),
+      ],
+      uz: [
+        runtime.getResource('uz', 'a11y', 'studentNavigation'),
+        runtime.getResource('uz', 'a11y', 'anonymousNavigation'),
+      ],
+    }).toEqual({
+      en: ['Student navigation', 'Anonymous navigation'],
+      ru: ['Навигация студента', 'Навигация гостя'],
+      uz: ['Talaba navigatsiyasi', 'Mehmon navigatsiyasi'],
+    });
+  });
+
   it('provides the canonical account-role labels in every supported locale', () => {
     const runtime = createLocaleRuntime('en');
 
@@ -194,8 +237,8 @@ describe('locale foundation', () => {
 
   it('keeps the independently enumerated DRAFT-11 allocation, resource review state and occurrences complete', () => {
     const runtime = createLocaleRuntime('en');
-    const foundationMapping = MLUX_002_RUNTIME_MAPPING.filter(
-      ({ unitId }) => unitId !== 'MLUX-C0369',
+    const foundationMapping = MLUX_002_RUNTIME_MAPPING.filter(({ unitId }) =>
+      /^MLUX-C00\d{2}$/.test(unitId),
     );
     const expectedIds = [
       'MLUX-C0001',

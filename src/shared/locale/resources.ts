@@ -52,6 +52,8 @@ export const LOCALE_RESOURCES: Resource & Readonly<Record<Locale, Resource[Local
       closeNavigation: 'Close navigation',
       openNavigation: 'Open navigation',
       mobileNavigation: 'Mobile navigation',
+      studentNavigation: 'Student navigation',
+      anonymousNavigation: 'Anonymous navigation',
     },
   },
   ru: {
@@ -103,6 +105,8 @@ export const LOCALE_RESOURCES: Resource & Readonly<Record<Locale, Resource[Local
       closeNavigation: 'Закрыть навигацию',
       openNavigation: 'Открыть навигацию',
       mobileNavigation: 'Мобильная навигация',
+      studentNavigation: 'Навигация студента',
+      anonymousNavigation: 'Навигация гостя',
     },
   },
   uz: {
@@ -154,6 +158,8 @@ export const LOCALE_RESOURCES: Resource & Readonly<Record<Locale, Resource[Local
       closeNavigation: 'Navigatsiyani yopish',
       openNavigation: 'Navigatsiyani ochish',
       mobileNavigation: 'Mobil navigatsiya',
+      studentNavigation: 'Talaba navigatsiyasi',
+      anonymousNavigation: 'Mehmon navigatsiyasi',
     },
   },
 };

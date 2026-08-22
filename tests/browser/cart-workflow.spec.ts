@@ -373,6 +373,39 @@ test.describe('FE-009 cart workflow QA harness', () => {
     expect(consoleErrors).toEqual([]);
   });
 
+  for (const [locale, localeOption] of [
+    ['en', null],
+    ['ru', 'Русский'],
+    ['uz', "O'zbek"],
+  ] as const) {
+    test(`contains the long Cart surface at effective 200% in ${locale}`, async ({ page }) => {
+      await installStudent(page);
+      const consoleErrors: string[] = [];
+      page.on('console', (message) => {
+        if (message.type() === 'error') consoleErrors.push(message.text());
+      });
+      await page.route('**/me', (route) => json(route, student));
+      await routeCartApi(page, async (route, request) => {
+        if (request.method === 'GET' && request.pathname === '/cart')
+          return json(route, longCart());
+        throw new Error(`Unexpected cart request ${request.method} ${request.pathname}`);
+      });
+
+      await page.setViewportSize({ width: 1280, height: 700 });
+      await page.goto('/cart');
+      if (localeOption) {
+        await page.getByRole('button', { name: 'Change language' }).click();
+        await page.getByRole('button', { name: localeOption, exact: true }).click();
+      }
+      await page.evaluate(() => {
+        document.documentElement.style.zoom = '200%';
+      });
+
+      await expectNoHorizontalOverflow(page);
+      expect(consoleErrors).toEqual([]);
+    });
+  }
+
   test('uses authenticated fixtures for exact cart mutation, cache count, focus/status, reduced motion, and five-width diagnostics', async ({
     page,
   }, testInfo) => {

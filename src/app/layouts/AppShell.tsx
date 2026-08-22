@@ -191,7 +191,7 @@ function StudentMobileNavigation({ itemCount }: CartNavigationLinkProps) {
   const cartPresentation = presentCart(itemCount);
   const { t } = useTranslation();
   return (
-    <nav className={styles.studentMobileNavigation} aria-label="Student navigation">
+    <nav className={styles.studentMobileNavigation} aria-label={t('a11y:studentNavigation')}>
       <NavLink className={styles.studentMobileNavigationLink} end to="/">
         <LibraryBig aria-hidden="true" focusable="false" size={20} />
         <span>{t('navigation:catalog')}</span>
@@ -235,7 +235,7 @@ function StudentMobileNavigation({ itemCount }: CartNavigationLinkProps) {
 function AnonymousMobileNavigation() {
   const { t } = useTranslation();
   return (
-    <nav className={styles.anonymousMobileNavigation} aria-label="Anonymous navigation">
+    <nav className={styles.anonymousMobileNavigation} aria-label={t('a11y:anonymousNavigation')}>
       <NavLink className={styles.anonymousMobileNavigationLink} end to="/">
         <LibraryBig aria-hidden="true" focusable="false" size={20} />
         <span>{t('navigation:catalog')}</span>
@@ -257,6 +257,7 @@ function NavigationLinks({
   onNavigate,
   showPrimaryNavigationIndicator = false,
 }: NavigationLinksProps) {
+  const { t } = useTranslation();
   return (
     <ul className={styles.navList}>
       {items.map((item) => (
@@ -283,7 +284,7 @@ function NavigationLinks({
             }}
             to={item.to}
           >
-            {item.label}
+            {t(item.labelKey)}
           </NavLink>
         </li>
       ))}

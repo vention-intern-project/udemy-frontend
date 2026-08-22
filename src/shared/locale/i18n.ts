@@ -35,7 +35,7 @@ function initializeLocaleRuntime(
     interpolation: { escapeValue: false },
     returnEmptyString: false,
     returnNull: false,
-    saveMissing: true,
+    saveMissing: import.meta.env.DEV,
     parseMissingKeyHandler: () => 'Translation unavailable',
     initAsync: false,
   });

@@ -272,6 +272,32 @@ export const MLUX_002_RUNTIME_MAPPING: readonly LocaleMappingRecord[] = [
       },
     ],
   ),
+  record(
+    'MLUX-C0370',
+    'a11y',
+    'studentNavigation',
+    'Student navigation',
+    [],
+    [
+      {
+        id: 'O0522',
+        context: 'src/app/layouts/AppShell.tsx:194 — AppShell / student compact navigation',
+      },
+    ],
+  ),
+  record(
+    'MLUX-C0371',
+    'a11y',
+    'anonymousNavigation',
+    'Anonymous navigation',
+    [],
+    [
+      {
+        id: 'O0523',
+        context: 'src/app/layouts/AppShell.tsx:238 — AppShell / anonymous compact navigation',
+      },
+    ],
+  ),
 ];
 
 export const MLUX_006_FOLLOWUP_RUNTIME_MAPPING: readonly LocaleMappingRecord[] = [

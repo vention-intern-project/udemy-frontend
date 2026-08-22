@@ -1310,6 +1310,9 @@ test('persists desktop and anonymous-mobile locale selections on the current rou
   await page.getByRole('button', { name: 'Русский' }).click();
   expect(await page.evaluate(() => localStorage.getItem('learnhub.locale'))).toBe('ru');
   await expect(page.getByRole('button', { name: 'Изменить язык' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Каталог' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Войти' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Регистрация' })).toBeVisible();
   await page.reload();
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole('button', { name: 'Изменить язык' })).toBeVisible();
@@ -1322,7 +1325,27 @@ test('persists desktop and anonymous-mobile locale selections on the current rou
   await uzbek.click();
   expect(await page.evaluate(() => localStorage.getItem('learnhub.locale'))).toBe('uz');
   await expect(page.getByRole('button', { name: 'Tilni o‘zgartirish' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Mehmon navigatsiyasi' })).toBeVisible();
   await expectNoHorizontalOverflow(page);
+  assertRuntimeClean();
+});
+
+test('returns focus to the desktop language trigger when scrolling dismisses a focused option', async ({
+  page,
+}) => {
+  const assertRuntimeClean = monitorRuntime(page);
+  await page.setViewportSize({ width: 1280, height: 844 });
+  await page.goto('/');
+
+  const trigger = page.getByRole('button', { name: 'Change language' });
+  await trigger.click();
+  const russian = page.getByRole('button', { name: 'Русский' });
+  await russian.focus();
+  await expect(russian).toBeFocused();
+  await page.evaluate(() => window.scrollTo(0, 200));
+
+  await expect(russian).toHaveCount(0);
+  await expect(trigger).toBeFocused();
   assertRuntimeClean();
 });
 
@@ -1367,6 +1390,7 @@ test('uses native buttons for authenticated-mobile language selection and preser
   const russian = page.getByRole('button', { name: 'Русский' });
   await expect(russian).toHaveAttribute('aria-pressed', 'false');
   await russian.click();
+  await expect(page.getByRole('navigation', { name: 'Навигация студента' })).toBeVisible();
   await expect(
     page.locator('[data-part="account-menu-profile"]').getByText('Студент', { exact: true }),
   ).toBeVisible();
@@ -1377,6 +1401,7 @@ test('uses native buttons for authenticated-mobile language selection and preser
   const uzbek = page.getByRole('button', { name: "O'zbek" });
   await expect(uzbek).toHaveAttribute('aria-pressed', 'false');
   await uzbek.click();
+  await expect(page.getByRole('navigation', { name: 'Talaba navigatsiyasi' })).toBeVisible();
   await expect(
     page.locator('[data-part="account-menu-profile"]').getByText('Talaba', { exact: true }),
   ).toBeVisible();
