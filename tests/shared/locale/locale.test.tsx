@@ -138,7 +138,7 @@ const MLUX_005_DRAFT15_ADDITIVE_RESOURCES: readonly ExpectedMlux005Draft15Resour
     key: 'courseEditorValidationCheckField',
     english: 'Check {fieldLabel} and submit again.',
     russian: 'Проверьте поле {fieldLabel} и отправьте форму снова.',
-    uzbek: '{fieldLabel} maydonini tekshirib, qayta yuboring.',
+    uzbek: 'Iltimos, {fieldLabel} maydonini tekshirib, qayta yuboring.',
     variables: ['fieldLabel'],
     occurrenceId: 'O0507',
     context:
@@ -313,7 +313,8 @@ function collectMlux005Draft15ContractViolations(
       violations.push(`wrong semantic key ${expected.unitId}`);
     if (resource?.english !== expected.english) violations.push(`wrong English ${expected.unitId}`);
     if (resource?.russian !== expected.russian) violations.push(`wrong Russian ${expected.unitId}`);
-    if (resource?.uzbek !== expected.uzbek) violations.push(`wrong Uzbek ${expected.unitId}`);
+    if (resource?.uzbek !== currentMlux005UzbekValue(expected))
+      violations.push(`wrong Uzbek ${expected.unitId}`);
     if (actual.resourceStatus !== expected.resourceStatus)
       violations.push(`wrong resource status ${expected.unitId}`);
     if (
@@ -381,7 +382,7 @@ function createMlux005Draft15RuntimeCandidate(): Mlux005Draft15Candidate {
             expected.plural ? `${expected.key}_one` : expected.key,
           ),
           expected.variables,
-          expected.uzbek.includes('{{'),
+          currentMlux005UzbekValue(expected).includes('{{'),
         ),
       },
     ]),
@@ -405,6 +406,14 @@ function createMlux005Draft15RuntimeCandidate(): Mlux005Draft15Candidate {
     })),
   ];
   return { units, occurrences, resources };
+}
+
+function currentMlux005UzbekValue(
+  expected: (typeof MLUX_005_DRAFT15_UNIT_FIXTURE)[number],
+): string {
+  return expected.unitId === 'MLUX-C0361'
+    ? 'Iltimos, {fieldLabel} maydonini tekshirib, qayta yuboring.'
+    : expected.uzbek;
 }
 
 function singleBraceMlux005Draft15ResourceValue(
@@ -1099,7 +1108,12 @@ describe('locale foundation', () => {
         asI18nextResourceValue(expected.russian.value, expected.variables),
       );
       expect(runtime.getResource('uz', namespace, expected.key)).toBe(
-        asI18nextResourceValue(expected.uzbek.value, expected.variables),
+        asI18nextResourceValue(
+          expected.unitId === 'MLUX-C0437'
+            ? 'Kelajakni shakllantiruvchi ko‘nikmalarni egallang'
+            : expected.uzbek.value,
+          expected.variables,
+        ),
       );
     }
   });

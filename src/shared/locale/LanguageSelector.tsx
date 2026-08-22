@@ -128,8 +128,13 @@ export function LanguageSelector({
   }, [open]);
 
   function openFromKeyboard(event: ReactKeyboardEvent<HTMLButtonElement>) {
-    if (open || (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Space')) return;
+    if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Space') return;
     event.preventDefault();
+    cancelHoverClose();
+    if (open) {
+      openModeRef.current = 'persistent';
+      return;
+    }
     openModeRef.current = 'persistent';
     setOpen(true);
   }

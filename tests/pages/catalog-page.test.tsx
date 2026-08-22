@@ -249,7 +249,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(
       await screen.findByRole('heading', {
         level: 1,
-        name: 'Kelajakni shakllantirayotgan ko‘nikmalarni egallang Kelajak',
+        name: 'Kelajakni shakllantiruvchi ko‘nikmalarni egallang',
       }),
     ).toBeTruthy();
     expect(screen.getByRole('heading', { level: 2, name: 'Topildi 1 ta kurs' })).toBeTruthy();
@@ -1960,6 +1960,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
     );
 
     const filters = screen.getByRole('form', { name: 'Course filters' });
+    expect(filters.getAttribute('data-part')).toBe('catalog-filter-form');
     expect(filters.querySelector('input[name="search_query"], select')).toBeNull();
     expect(filters.querySelector('h2')).toBeNull();
     const priceRange = screen.getByRole('group', { name: 'Price range' });

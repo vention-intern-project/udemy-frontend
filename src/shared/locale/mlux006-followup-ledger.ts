@@ -857,6 +857,62 @@ const records: readonly Mlux006FollowupRecord[] = [
       },
     ],
   },
+  {
+    unitId: 'MLUX-C0504',
+    namespace: 'auth',
+    key: 'validationReviewHighlightedFields',
+    english: 'Review the highlighted fields and submit again.',
+    variables: [],
+    ru: 'Проверьте выделенные поля и отправьте форму снова.',
+    uz: 'Belgilangan maydonlarni tekshirib, qayta yuboring.',
+    occurrences: [
+      {
+        id: 'O0665',
+        context:
+          'src/features/auth-workflows/validation.ts:243 — Auth workflow / known validation summary',
+        classification: 'Visible UI copy + accessibility label',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0505',
+    namespace: 'auth',
+    key: 'validationCouldNotProcessForm',
+    english: 'We could not process this form. Check your details and try again.',
+    variables: [],
+    ru: 'Не удалось обработать форму. Проверьте данные и повторите попытку.',
+    uz: 'Shaklni qayta ishlab bo‘lmadi. Ma’lumotlarni tekshirib, qayta urinib ko‘ring.',
+    occurrences: [
+      {
+        id: 'O0666',
+        context:
+          'src/features/auth-workflows/validation.ts:245 — Auth workflow / unknown validation summary',
+        classification: 'Visible UI copy + accessibility label',
+      },
+    ],
+  },
+  {
+    unitId: 'MLUX-C0506',
+    namespace: 'learning',
+    key: 'lessonAvailability',
+    english: '{{availableLessonCount}} available now · {{comingSoonLessons}} coming soon',
+    variables: ['availableLessonCount', 'comingSoonLessons'],
+    placeholdersByLocale: {
+      en: ['availableLessonCount', 'comingSoonLessons'],
+      ru: ['availableLessonCount', 'comingSoonLessons'],
+      uz: ['availableLessonCount', 'comingSoonLessons'],
+    },
+    ru: 'Сейчас доступно: {{availableLessonCount}} · скоро будет доступно: {{comingSoonLessons}}',
+    uz: 'Hozir {{availableLessonCount}} ta dars mavjud · {{comingSoonLessons}} tez orada mavjud',
+    occurrences: [
+      {
+        id: 'O0727',
+        context:
+          'src/widgets/enrollment-progress-panel/EnrollmentProgressPanel.tsx — Learning / available and coming-soon lesson summary',
+        classification: 'Visible UI copy',
+      },
+    ],
+  },
 ];
 
 export const MLUX_006_FOLLOWUP_TRANSLATIONS: readonly Mlux006FollowupTranslationEntry[] =
@@ -993,20 +1049,6 @@ const sharedOccurrenceSources = [
     context:
       'src/pages/instructor-course-editor-page/InstructorCourseEditorPage.tsx:469 — Page: instructor-course-editor-page / lesson list type',
     classification: 'Visible UI copy',
-  },
-  {
-    id: 'O0665',
-    unitId: 'MLUX-C0362',
-    context:
-      'src/features/auth-workflows/validation.ts:199 — Auth workflow / server validation summary',
-    classification: 'Visible UI copy + accessibility label',
-  },
-  {
-    id: 'O0666',
-    unitId: 'MLUX-C0363',
-    context:
-      'src/features/auth-workflows/validation.ts:200 — Auth workflow / server validation fallback summary',
-    classification: 'Visible UI copy + accessibility label',
   },
   {
     id: 'O0718',

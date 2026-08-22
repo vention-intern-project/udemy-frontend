@@ -5742,7 +5742,7 @@ const MLUX_004_WORKBOOK_UNITS: readonly Mlux004WorkbookUnit[] = [
     translations: {
       en: 'Master the Skills Shaping the',
       ru: 'Освойте навыки, которые формируют',
-      uz: 'Kelajakni shakllantirayotgan ko‘nikmalarni egallang',
+      uz: 'Kelajakni shakllantiruvchi ko‘nikmalarni egallang',
     },
   },
   {

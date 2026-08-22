@@ -20,7 +20,7 @@ import { SortControl } from './SortControl';
 import { useCatalogCourseActions } from './useCatalogCourseActions';
 
 type CourseDisclosureId = number;
-type RefreshAnnouncement = string | null;
+type RefreshAnnouncementKey = 'updatingCourseResults' | 'courseResultsUpdated';
 
 type DisclosureDismissOptions = {
   returnFocus?: boolean;
@@ -101,7 +101,9 @@ export function CatalogPage() {
     useState<CourseDisclosureId | null>(null);
   const activeDisclosureCourseIdRef = useRef<CourseDisclosureId | null>(null);
   const refreshWasPendingRef = useRef(false);
-  const [refreshAnnouncement, setRefreshAnnouncement] = useState<RefreshAnnouncement>(null);
+  const [refreshAnnouncement, setRefreshAnnouncement] = useState<RefreshAnnouncementKey | null>(
+    null,
+  );
   const [lastKnownResultTotal, setLastKnownResultTotal] = useState<CatalogResultTotal | null>(null);
   const [lastKnownPagination, setLastKnownPagination] = useState<CatalogPaginationSnapshot | null>(
     null,
@@ -271,6 +273,7 @@ export function CatalogPage() {
     localizedResultCount && resultCountText && localizedResultCount.startsWith(resultCountText)
       ? localizedResultCount.slice(resultCountText.length)
       : localizedResultCount;
+  const showHeroFuture = i18n.resolvedLanguage !== 'uz';
 
   useLayoutEffect(() => {
     if (!currentResults) return;
@@ -289,19 +292,17 @@ export function CatalogPage() {
   useEffect(() => {
     if (isRefreshing) {
       refreshWasPendingRef.current = true;
-      setRefreshAnnouncement(
-        t('catalog:updatingCourseResults', { defaultValue: 'Updating course results…' }),
-      );
+      setRefreshAnnouncement('updatingCourseResults');
       return;
     }
     if (!refreshWasPendingRef.current) return;
     refreshWasPendingRef.current = false;
     setRefreshAnnouncement(
       discovery.status === 'populated' || discovery.status === 'empty'
-        ? t('catalog:courseResultsUpdated', { defaultValue: 'Course results updated.' })
+        ? 'courseResultsUpdated'
         : null,
     );
-  }, [discovery.status, isRefreshing, t]);
+  }, [discovery.status, isRefreshing]);
 
   return (
     <section
@@ -330,8 +331,13 @@ export function CatalogPage() {
       <div className={styles.hero} data-part="catalog-hero">
         <div className={styles.heroContent}>
           <h1 id="catalog-page-title">
-            {t('catalog:masterTheSkillsShapingThe')}{' '}
-            <span className={styles.headingBreak}>{t('catalog:future')}</span>
+            {t('catalog:masterTheSkillsShapingThe')}
+            {showHeroFuture ? (
+              <>
+                {' '}
+                <span className={styles.headingBreak}>{t('catalog:future')}</span>
+              </>
+            ) : null}
           </h1>
           <p>
             {t('catalog:browseCoursesCraftedByIndustry', {
@@ -360,7 +366,14 @@ export function CatalogPage() {
                   data-part="catalog-refresh-status"
                   role="status"
                 >
-                  {refreshAnnouncement}
+                  {refreshAnnouncement
+                    ? t(`catalog:${refreshAnnouncement}`, {
+                        defaultValue:
+                          refreshAnnouncement === 'updatingCourseResults'
+                            ? 'Updating course results…'
+                            : 'Course results updated.',
+                      })
+                    : null}
                 </VisuallyHidden>
                 <h2 id="catalog-results-title">
                   {isChangedCriteriaLoading ? (

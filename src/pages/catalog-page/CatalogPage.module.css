@@ -265,7 +265,7 @@
   }
 
   /* Keep the compact 128px Min/Max controls usable without shrinking either field. */
-  .toolbarControls form[aria-label='Course filters'] fieldset {
+  .toolbarControls [data-part='catalog-filter-form'] fieldset {
     grid-template-columns: repeat(2, minmax(8rem, 1fr));
   }
 
@@ -282,13 +282,13 @@
 }
 
 @media (max-width: 239px) {
-  .toolbarControls form[aria-label='Course filters'] fieldset {
+  .toolbarControls [data-part='catalog-filter-form'] fieldset {
     grid-template-columns: minmax(0, 1fr);
   }
 }
 
 @media (min-width: 544px) and (max-width: 767px) {
-  .toolbarControls form[aria-label='Course filters'] fieldset {
+  .toolbarControls [data-part='catalog-filter-form'] fieldset {
     grid-template-columns: repeat(2, minmax(7.5rem, 1fr));
   }
 

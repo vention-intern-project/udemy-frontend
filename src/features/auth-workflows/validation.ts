@@ -240,9 +240,9 @@ export function resolveAuthMessage(message: AuthMessage | null, t: TFunction): s
     case 'review-highlighted-field':
       return t('auth:validationReviewHighlightedField');
     case 'review-highlighted-fields':
-      return t('instructor:courseEditorValidationReviewHighlightedFields');
+      return t('auth:validationReviewHighlightedFields');
     case 'could-not-process-form':
-      return t('instructor:courseEditorValidationCouldNotProcessForm');
+      return t('auth:validationCouldNotProcessForm');
     case 'offline':
       return t('auth:failureOffline');
     case 'request-failure':

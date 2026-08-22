@@ -131,6 +131,7 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
   return (
     <form
       className={styles.root}
+      data-part="catalog-filter-form"
       aria-label={t('catalog:courseFilters', { defaultValue: 'Course filters' })}
       noValidate
       onSubmit={(event) => {
