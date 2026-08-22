@@ -2434,9 +2434,10 @@ describe('CatalogPage public URL and pagination behavior', () => {
       requestCount += 1;
       return response({ page: 2, pages: 3, has_next: false, has_previous: false }) as TResponse;
     };
-    renderCatalog(request, ['/']);
+    renderCatalog(request, ['/'], 0, null, { locale: 'ru' });
 
-    expect(await screen.findByText('Catalog data is unavailable')).toBeTruthy();
+    expect(await screen.findByText('Данные каталога недоступны')).toBeTruthy();
+    expect(screen.getByText('Попробуйте ещё раз чуть позже.')).toBeTruthy();
     expect(screen.queryByRole('link', { name: 'React' })).toBeNull();
     expect(screen.queryByRole('button', { name: /Go to (previous|next|page)/ })).toBeNull();
     expect(requestCount).toBe(1);

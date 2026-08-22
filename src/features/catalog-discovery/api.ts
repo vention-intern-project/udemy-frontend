@@ -6,11 +6,19 @@ import { serializeCatalogQuery, toCourseListQuery, type CatalogQuery } from './q
 
 export type CatalogRequester = ApiClient['request'];
 export type CatalogFailureKind = 'offline' | 'invalid_response' | 'request';
+export type CatalogFailureTitleKey =
+  | 'common:youAppearOffline'
+  | 'catalog:catalogDataUnavailable'
+  | 'catalog:catalogLoadFailed';
+export type CatalogFailureMessageKey =
+  | 'common:checkConnectionAndTryAgain'
+  | 'catalog:tryAgainShortly'
+  | 'common:pleaseTryAgain';
 
 export interface CatalogFailure {
   kind: CatalogFailureKind;
-  title: string;
-  message: string;
+  titleKey: CatalogFailureTitleKey;
+  messageKey: CatalogFailureMessageKey;
 }
 
 export async function requestCatalog(
@@ -41,18 +49,22 @@ export function catalogFailure(error: unknown): CatalogFailure {
   if (error instanceof ApiError && error.kind === 'offline') {
     return {
       kind: 'offline',
-      title: 'You appear to be offline',
-      message: 'Check your connection and try again.',
+      titleKey: 'common:youAppearOffline',
+      messageKey: 'common:checkConnectionAndTryAgain',
     };
   }
   if (error instanceof ApiError && error.kind === 'invalid_response') {
     return {
       kind: 'invalid_response',
-      title: 'Catalog data is unavailable',
-      message: 'Please try again shortly.',
+      titleKey: 'catalog:catalogDataUnavailable',
+      messageKey: 'catalog:tryAgainShortly',
     };
   }
-  return { kind: 'request', title: 'We could not load courses', message: 'Please try again.' };
+  return {
+    kind: 'request',
+    titleKey: 'catalog:catalogLoadFailed',
+    messageKey: 'common:pleaseTryAgain',
+  };
 }
 
 export function catalogQueryKey(query: CatalogQuery): string {
