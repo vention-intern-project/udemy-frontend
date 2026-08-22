@@ -724,8 +724,7 @@ test('settles deferred course and upload failures in the locale selected while p
   await expect
     .poll(() => state.requests.filter((request) => request.method() === 'PATCH'))
     .toHaveLength(1);
-  await page.getByRole('button', { name: 'Change language' }).click();
-  await page.getByRole('button', { name: 'Русский' }).click();
+  await selectFixtureLocale(page, 'ru');
   await expect(page.getByRole('button', { name: 'Изменить язык' })).toBeVisible();
   courseGate.resolve();
   await expect(page.getByLabel('Название курса')).toBeFocused();
@@ -750,8 +749,7 @@ test('settles deferred course and upload failures in the locale selected while p
   await page.getByRole('button', { name: 'Загрузить файл' }).click();
   await expect(page.locator('button[data-state="loading"]')).toBeDisabled();
   await expect.poll(() => api032RequestCount(state.requests)).toBe(1);
-  await page.getByRole('button', { name: 'Изменить язык' }).click();
-  await page.getByRole('button', { name: "O'zbek" }).click();
+  await selectFixtureLocale(page, 'uz');
   await expect(page.getByRole('button', { name: 'Tilni o‘zgartirish' })).toBeVisible();
   uploadGate.resolve();
   await expect(page.locator('input[name="file"]')).toBeFocused();
