@@ -2355,7 +2355,6 @@ test('preserves student header geometry when Catalog alone requires a document s
   }
 
   await page.setViewportSize({ width: 390, height: 720 });
-  await waitForCatalogMobileHeroBackground(page);
   await gotoCatalog();
   await waitForCatalogMobileHeroBackground(page);
   await expectNoHorizontalOverflow(page);
