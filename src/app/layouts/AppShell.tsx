@@ -46,7 +46,6 @@ const STUDENT_MOBILE_QUERY = '(max-width: 767px)';
 const INSTRUCTOR_COURSE_TITLE_ID = 'instructor-course-title';
 
 interface CartPresentation {
-  accessibleName: string;
   badge: string | null;
 }
 
@@ -56,9 +55,9 @@ interface ScrollPosition {
 }
 
 export function presentCart(itemCount: number | undefined): CartPresentation {
-  if (itemCount === undefined) return { accessibleName: 'Cart', badge: null };
+  if (itemCount === undefined) return { badge: null };
   const badge = itemCount >= 100 ? '99+' : String(itemCount);
-  return { accessibleName: `Cart (${badge})`, badge };
+  return { badge };
 }
 
 interface NavigationLinksProps {

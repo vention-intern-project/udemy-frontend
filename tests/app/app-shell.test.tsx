@@ -20,9 +20,12 @@ const APP_SHELL_STYLES = readFileSync(
   pathToFileURL(resolve(process.cwd(), 'src/app/layouts/AppShell.module.css')),
   'utf8',
 );
-const DESKTOP_APP_SHELL_STYLES = APP_SHELL_STYLES.slice(
-  APP_SHELL_STYLES.lastIndexOf('@media (min-width: 768px) {'),
-);
+const DESKTOP_MEDIA_QUERY_MARKER = '@media (min-width: 768px) {';
+const desktopMediaQueryIndex = APP_SHELL_STYLES.lastIndexOf(DESKTOP_MEDIA_QUERY_MARKER);
+if (desktopMediaQueryIndex < 0) {
+  throw new Error(`AppShell desktop media query marker is missing: ${DESKTOP_MEDIA_QUERY_MARKER}`);
+}
+const DESKTOP_APP_SHELL_STYLES = APP_SHELL_STYLES.slice(desktopMediaQueryIndex);
 
 afterEach(() => {
   cleanup();
@@ -203,16 +206,12 @@ describe('AppShell student cart query and presentation', () => {
     ).toBe(true);
   });
 
-  it.each([1, 9, 10, 99, 100])(
-    'presents known cart count %s with the required accessible value',
-    (itemCount) => {
-      const displayedCount = itemCount >= 100 ? '99+' : String(itemCount);
-      expect(presentCart(itemCount)).toEqual({
-        accessibleName: `Cart (${displayedCount})`,
-        badge: displayedCount,
-      });
-    },
-  );
+  it.each([1, 9, 10, 99, 100])('presents known cart count %s as a badge', (itemCount) => {
+    const displayedCount = itemCount >= 100 ? '99+' : String(itemCount);
+    expect(presentCart(itemCount)).toEqual({
+      badge: displayedCount,
+    });
+  });
 
   it('does not fetch API-002 or render assistant controls for anonymous, instructor, or admin sessions', async () => {
     const anonymousRequest = vi.fn(authenticatedClient('student').request);

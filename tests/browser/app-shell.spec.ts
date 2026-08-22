@@ -3052,6 +3052,11 @@ test('preserves the source mobile menu and focus for modified and new-tab activa
   const controlPopupPromise = context.waitForEvent('page');
   await control.link.click({ modifiers: ['Control'] });
   const controlPopup = await controlPopupPromise;
+  const assertControlPopupRuntimeClean = monitorRuntime(
+    controlPopup,
+    [],
+    [INSTRUCTOR_COURSE_COLLECTION_STRICT_MODE_ABORT],
+  );
   await controlPopup.waitForURL(/\/instructor\/courses(?:[?#]|$)/);
   await expect(controlPopup.getByRole('heading', { level: 2, name: 'Your courses' })).toBeFocused();
   await expect(controlPopup.getByText('You have not created any courses yet.')).toBeVisible();
@@ -3059,7 +3064,6 @@ test('preserves the source mobile menu and focus for modified and new-tab activa
   expect(page.url()).toBe(originalUrl);
   await expect(control.navigation).toBeVisible();
   await expect(control.link).toBeFocused();
-  const assertControlPopupRuntimeClean = monitorRuntime(controlPopup);
   await controlPopup.close();
   assertControlPopupRuntimeClean();
 
@@ -3089,6 +3093,11 @@ test('preserves the source mobile menu and focus for modified and new-tab activa
   const middlePopupPromise = context.waitForEvent('page');
   await middle.link.click({ button: 'middle' });
   const middlePopup = await middlePopupPromise;
+  const assertMiddlePopupRuntimeClean = monitorRuntime(
+    middlePopup,
+    [],
+    [INSTRUCTOR_COURSE_COLLECTION_STRICT_MODE_ABORT],
+  );
   await middlePopup.waitForURL(/\/instructor\/courses(?:[?#]|$)/);
   await expect(middlePopup.getByRole('heading', { level: 2, name: 'Your courses' })).toBeFocused();
   await expect(middlePopup.getByText('You have not created any courses yet.')).toBeVisible();
@@ -3096,7 +3105,6 @@ test('preserves the source mobile menu and focus for modified and new-tab activa
   expect(page.url()).toBe(originalUrl);
   await expect(middle.navigation).toBeVisible();
   await expect(middle.link).toBeFocused();
-  const assertMiddlePopupRuntimeClean = monitorRuntime(middlePopup);
   await middlePopup.close();
   assertMiddlePopupRuntimeClean();
 
