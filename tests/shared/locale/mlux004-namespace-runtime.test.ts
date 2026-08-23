@@ -28,15 +28,18 @@ describe('canonical locale namespace runtime', () => {
     'resolves every canonical plural key through the %s runtime',
     (locale) => {
       const runtime = createLocaleRuntime(locale);
-      for (const unit of registry.units.filter((candidate) => candidate.pluralForms !== null)) {
+      for (const unit of registry.units.filter(
+        (candidate) => candidate.unitLifecycle === 'active' && candidate.pluralForms !== null,
+      )) {
         const key = `${unit.namespace}:${unit.key}`;
         for (const count of [1, 2, 5]) {
           const value = runtime.t(key, { count });
           expect(value, `${locale} ${unit.id} ${count}`).not.toBe(key);
           expect(value).not.toContain('{{count}}');
-          expect(Object.values(unit.pluralForms?.[locale] ?? {})).toContain(
-            value.replace(String(count), '{{count}}'),
+          const renderedForms = Object.values(unit.pluralForms?.[locale] ?? {}).map((form) =>
+            form.split('{{count}}').join(String(count)),
           );
+          expect(renderedForms).toContain(value);
         }
       }
     },

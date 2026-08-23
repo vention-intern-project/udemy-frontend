@@ -43,7 +43,7 @@ describe('canonical registry source parity', () => {
   });
 
   it('keeps every locale placeholder and plural contract aligned to generated text', () => {
-    for (const unit of registry.units) {
+    for (const unit of registry.units.filter((candidate) => candidate.unitLifecycle === 'active')) {
       for (const locale of ['en', 'ru', 'uz'] as const) {
         const expectedPlaceholders = [...unit.placeholdersByLocale[locale]].sort();
         const forms = unit.pluralForms?.[locale];

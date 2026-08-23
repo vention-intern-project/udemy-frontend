@@ -28,7 +28,7 @@ describe('locale runtime backed by generated canonical resources', () => {
     expect(store.get()).toBe('ru');
     const runtime = createLocaleRuntime('ru');
     expect(runtime.t('common:language')).toBe('Язык');
-    expect(runtime.t('common:unknownGeneratedKey')).not.toBe('common:unknownGeneratedKey');
+    expect(runtime.t('common:unknownGeneratedKey')).toBe('Translation unavailable');
   });
 
   it('offers a typed lookup from the generated resource owner', () => {

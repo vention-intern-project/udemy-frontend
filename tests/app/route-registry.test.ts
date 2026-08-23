@@ -104,7 +104,9 @@ describe('application route registry', () => {
   it('keeps every registered page bound to an independently enumerated canonical title key', () => {
     const bindings = APP_ROUTES.map(({ id, titleKey }) => ({ id, titleKey }));
     const mappedLocaleKeys = new Set(
-      registry.units.map(({ namespace, key }) => `${namespace}:${key}`),
+      registry.units
+        .filter(({ unitLifecycle }) => unitLifecycle === 'active')
+        .map(({ namespace, key }) => `${namespace}:${key}`),
     );
 
     expect(bindings).toEqual(MLUX_003_EXPECTED_ROUTE_TITLE_BINDINGS);

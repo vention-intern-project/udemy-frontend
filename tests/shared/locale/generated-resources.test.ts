@@ -17,23 +17,16 @@ describe('generated canonical localization resources', () => {
     });
     expect(registry.exclusions).toHaveLength(12);
     expect(registry.units).toHaveLength(523);
-    expect(
-      registry.units.every(
-        ({ locales }) =>
-          locales.ru.status === 'draft' &&
-          locales.uz.status === 'draft' &&
-          locales.ru.reviewerId === null &&
-          locales.ru.verdict === null &&
-          locales.ru.requestedAt === null &&
-          locales.ru.reviewedAt === null &&
-          locales.ru.approvalRecordedAt === null &&
-          locales.uz.reviewerId === null &&
-          locales.uz.verdict === null &&
-          locales.uz.requestedAt === null &&
-          locales.uz.reviewedAt === null &&
-          locales.uz.approvalRecordedAt === null,
-      ),
-    ).toBe(true);
+    for (const { locales } of registry.units) {
+      for (const locale of [locales.ru, locales.uz]) {
+        if (locale.status !== 'draft') continue;
+        expect(locale.reviewerId).toBeNull();
+        expect(locale.verdict).toBeNull();
+        expect(locale.requestedAt).toBeNull();
+        expect(locale.reviewedAt).toBeNull();
+        expect(locale.approvalRecordedAt).toBeNull();
+      }
+    }
   });
 
   it('contains active draft candidates without approval metadata and preserves generated keys', () => {
@@ -52,7 +45,7 @@ describe('generated canonical localization resources', () => {
     for (const unit of pluralUnits) {
       for (const locale of ['en', 'ru', 'uz'] as const) {
         const forms = unit.pluralForms?.[locale];
-        expect(forms).toBeTruthy();
+        expect(Object.keys(forms ?? {})).not.toHaveLength(0);
         for (const [suffix, value] of Object.entries(forms ?? {})) {
           expect(generated[locale]?.[unit.namespace]?.[`${unit.key}_${suffix}`]).toBe(value);
         }

@@ -1699,4 +1699,4 @@ export const GENERATED_LOCALE_RESOURCES = {
       "coursesCourseActions": "{{courseTitle}} kursi bo‘yicha amallar"
     }
   }
-} as Resource;
+} satisfies Resource & Readonly<Record<'en' | 'ru' | 'uz', Resource[string]>>;

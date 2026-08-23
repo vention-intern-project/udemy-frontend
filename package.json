@@ -34,6 +34,10 @@
       "eslint --max-warnings 0",
       "npm run localization:check"
     ],
+    "localization/corpus/registry.json": [
+      "prettier --write",
+      "npm run localization:check"
+    ],
     "*.css": [
       "prettier --write",
       "stylelint --max-warnings 0"

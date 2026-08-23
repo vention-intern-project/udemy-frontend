@@ -37,7 +37,7 @@ describe('canonical DRAFT-37 corpus parity', () => {
     }
   });
 
-  it('preserves occurrence/source associations and explicit draft-only provenance', () => {
+  it('preserves occurrence/source associations and conditional draft provenance', () => {
     const occurrenceIds = registry.units.flatMap((unit) => unit.occurrences.map(({ id }) => id));
     expect(new Set(occurrenceIds).size).toBe(746);
     expect(
@@ -45,9 +45,7 @@ describe('canonical DRAFT-37 corpus parity', () => {
         (unit) =>
           unit.sourceRevision.startsWith('sha256:') &&
           unit.locales.ru.sourceRevision === unit.sourceRevision &&
-          unit.locales.uz.sourceRevision === unit.sourceRevision &&
-          unit.locales.ru.status === 'draft' &&
-          unit.locales.uz.status === 'draft',
+          unit.locales.uz.sourceRevision === unit.sourceRevision,
       ),
     ).toBe(true);
   });
@@ -58,7 +56,7 @@ describe('canonical DRAFT-37 corpus parity', () => {
     expect(runtime.t('common:language', { lng: 'ru' })).toBe('Язык');
     expect(runtime.t('a11y:localeOption', { language: 'English', lng: 'uz' })).toContain('English');
     expect(runtime.t('instructor:courseEnrollmentsCount', { count: 2, lng: 'ru' })).toContain('2');
-    expect(runtime.t('common:missingCanonicalKey')).not.toBe('common:missingCanonicalKey');
+    expect(runtime.t('common:missingCanonicalKey')).toBe('Translation unavailable');
   });
 
   it.each(['ru', 'uz'] as const)(

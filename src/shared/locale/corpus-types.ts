@@ -64,6 +64,14 @@ export interface LocaleApprovalAuthority {
   readonly reviewerName: string;
 }
 
+export interface LocaleApprovalRecord {
+  readonly reviewerId: string;
+  readonly reviewerName: string;
+  readonly reviewedAt: string;
+  readonly approvalRecordedAt: string;
+  readonly approvalAuthority: LocaleApprovalAuthority;
+}
+
 export interface LocaleSourceRevisionHistoryEvent {
   readonly type: 'source_revision';
   readonly sourceRevision: string;
@@ -75,7 +83,7 @@ export interface LocaleTransitionHistoryEvent {
   readonly to: LocaleReviewStatus;
   readonly previousCandidate: string;
   readonly nextCandidate: string;
-  readonly humanApproval?: LocaleApprovalAuthority;
+  readonly humanApproval?: LocaleApprovalRecord;
 }
 
 export type LocaleCandidateHistoryEvent =

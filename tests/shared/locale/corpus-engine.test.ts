@@ -10,6 +10,7 @@ const {
   protectedSourceFingerprint,
   retiredConsumerViolations,
   reviseProtectedSource,
+  checkCorpus,
   syncCorpus,
   transitionLocaleCandidate,
   validateCorpus,
@@ -210,6 +211,52 @@ describe('canonical localization corpus engine', () => {
     );
   });
 
+  it('rejects replacing a candidate on every transition except stale to draft', () => {
+    const candidate = fixture().units[0].locales.ru;
+    expect(() =>
+      transitionLocaleCandidate(candidate, 'review_requested', {
+        newCandidate: 'Replacement {{name}}',
+      }),
+    ).toThrow('candidate replacement is only allowed for stale -> draft');
+    const requested = transitionLocaleCandidate(candidate, 'review_requested');
+    expect(() =>
+      transitionLocaleCandidate(requested, 'approved', {
+        newCandidate: 'Replacement {{name}}',
+        humanApproval: {
+          reviewerId: 'native-7',
+          reviewerName: 'Native Reviewer',
+          reviewedAt: '2026-08-23T00:00:00.000Z',
+          approvalRecordedAt: '2026-08-23T00:01:00.000Z',
+          approvalAuthority: {
+            kind: 'human_native_review',
+            reviewerId: 'native-7',
+            reviewerName: 'Native Reviewer',
+          },
+        },
+      }),
+    ).toThrow('candidate replacement is only allowed for stale -> draft');
+  });
+
+  it('returns violations instead of throwing for malformed placeholder contracts', () => {
+    const corpus = fixture();
+    (corpus.units[0] as { placeholdersByLocale?: unknown }).placeholdersByLocale = undefined;
+    expect(() => validateCorpus(corpus)).not.toThrow();
+    expect(validateCorpus(corpus)).toEqual(
+      expect.arrayContaining([
+        'MLUX-C0001: invalid locale placeholder contract',
+        'MLUX-C0001: ru placeholder mismatch',
+        'MLUX-C0001: uz placeholder mismatch',
+      ]),
+    );
+    (corpus.units[0] as { pluralForms?: unknown }).pluralForms = {
+      en: { one: 'One {{name}}' },
+      ru: { one: 'Один {{name}}' },
+      uz: { one: 'Bitta {{name}}' },
+    };
+    expect(() => validateCorpus(corpus)).not.toThrow();
+    expect(validateCorpus(corpus)).toContain('MLUX-C0001: en plural placeholder mismatch');
+  });
+
   it('rejects direct stale-to-draft history that does not contain a genuinely new current candidate', () => {
     const corpus = fixture();
     const candidate = corpus.units[0].locales.ru as FixtureCandidate;
@@ -349,6 +396,39 @@ describe('canonical localization corpus engine', () => {
     expect(await retiredConsumerViolations(corpus, directory)).toEqual([
       'MLUX-C0001: retired unit has source consumer consumer.ts',
     ]);
+  });
+
+  it('detects only quoted or namespaced retired keys and escapes metacharacters', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'fe066-retired-'));
+    const corpus = fixture();
+    corpus.units[0].unitLifecycle = 'retired';
+    corpus.units[0].key = 'page.name';
+    corpus.units[0].occurrences = [];
+    (
+      corpus.units[0] as (typeof corpus.units)[number] & {
+        retirement?: { reason: string; sourceRevision: string };
+      }
+    ).retirement = { reason: 'removed', sourceRevision: corpus.units[0].sourceRevision };
+    await writeFile(join(directory, 'identifier.ts'), 'const pageName = 1;', 'utf8');
+    await writeFile(join(directory, 'consumer.ts'), "runtime.t('common:page.name')", 'utf8');
+    await writeFile(join(directory, 'quoted.ts'), "const retired = 'page.name';", 'utf8');
+    expect(await retiredConsumerViolations(corpus, directory)).toEqual([
+      'MLUX-C0001: retired unit has source consumer consumer.ts',
+      'MLUX-C0001: retired unit has source consumer quoted.ts',
+    ]);
+  });
+
+  it('returns a missing generated-output violation without throwing', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'fe066-check-'));
+    const registryPath = join(directory, 'registry.json');
+    await writeFile(registryPath, JSON.stringify(fixture()), 'utf8');
+    await expect(
+      checkCorpus({
+        registryPath,
+        outputPath: join(directory, 'missing.ts'),
+        sourceRoot: directory,
+      }),
+    ).resolves.toEqual([expect.stringContaining('generated resources cannot be read')]);
   });
 
   it('rejects restoration that reuses the retired source revision or an approved candidate', () => {
