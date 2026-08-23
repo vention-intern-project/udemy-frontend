@@ -26,9 +26,13 @@
     "preview": "vite preview"
   },
   "lint-staged": {
-    "*.{ts,tsx,cjs,mjs}": [
+    "!(*generated-resources).{ts,tsx,cjs,mjs}": [
       "prettier --write",
       "eslint --max-warnings 0"
+    ],
+    "src/shared/locale/generated-resources.ts": [
+      "eslint --max-warnings 0",
+      "npm run localization:check"
     ],
     "*.css": [
       "prettier --write",
