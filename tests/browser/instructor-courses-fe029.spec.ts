@@ -426,6 +426,9 @@ test('uses the approved responsive decorative canvas and preserves Instructor he
   });
   await page.setViewportSize({ width: 1024, height: 900 });
   await page.goto('/instructor/courses', { waitUntil: 'domcontentloaded' });
+  // The collection's settled-state accessibility announcement focuses its heading. Observe that
+  // completed transition before asserting the independent header action so it cannot steal focus.
+  await expect(page.getByRole('heading', { level: 2, name: 'Your courses' })).toBeFocused();
   const createAction = (await instructorCourseHeaderActions(page, 1024)).createAction;
   const courseTitle = page.getByRole('textbox', { name: 'Course title' });
   await createAction.press('Enter');
