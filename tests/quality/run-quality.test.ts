@@ -1492,7 +1492,31 @@ describe('staged and CI decision simulations', () => {
     expect(workflow).not.toContain('browser-applicability');
     expect(workflow).toContain('  browser:\n');
     expect(workflow).toContain('npx playwright install --with-deps chromium');
-    expect(workflow).toContain('npm run test:browser');
+    const browser = workflow.slice(
+      workflow.indexOf('  browser:\n'),
+      workflow.indexOf('  quality-report:\n'),
+    );
+    expect(browser).toContain('fail-fast: false');
+    expect(browser).toContain('config:');
+    expect(
+      [...browser.matchAll(/- (tests\/browser\/[^\n]+config\.ts)/g)].map(([, config]) => config),
+    ).toEqual([
+      'tests/browser/playwright.config.ts',
+      'tests/browser/mlux006-multilingual-closure.playwright.config.ts',
+      'tests/browser/app-shell.playwright.config.ts',
+      'tests/browser/auth-workflows.playwright.config.ts',
+      'tests/browser/cart-workflow.playwright.config.ts',
+      'tests/browser/catalog-discovery.playwright.config.ts',
+      'tests/browser/checkout-cart.playwright.config.ts',
+      'tests/browser/course-chat.playwright.config.ts',
+      'tests/browser/course-detail.playwright.config.ts',
+      'tests/browser/instructor-courses-fe029.playwright.config.ts',
+      'tests/browser/learning-progress.playwright.config.ts',
+    ]);
+    expect(browser).toContain(
+      'npx playwright test --config "${{ matrix.config }}" --project=chromium --workers=1 --retries=0 --reporter=line',
+    );
+    expect(browser).not.toContain('npm run test:browser');
     expect(workflow).toContain(
       'needs: [resolve-target, lint-static, typecheck, tests, build, browser, quality-report]',
     );

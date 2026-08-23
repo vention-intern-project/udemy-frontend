@@ -92,7 +92,8 @@ function runtimeLocalizedValue(
   mapping: LocaleMappingRecord,
 ): string {
   const key = mapping.plural ? `${mapping.key}_one` : mapping.key;
-  return String(runtime.getResource(locale, mapping.namespace, key) ?? '');
+  const resource = runtime.getResource(locale, mapping.namespace, key);
+  return typeof resource === 'string' ? resource : '';
 }
 
 function interpolateTemplate(value: string, count: number): string {
@@ -355,6 +356,17 @@ function projectionIntegrityViolations(projection: Mlux004Draft20Projection): st
 }
 
 describe('MLUX-004 DRAFT-22 independent parity', () => {
+  it('rejects a non-string runtime resource even when its string coercion mimics the expected translation', () => {
+    const mapping = MLUX_004_RUNTIME_MAPPING.find(({ unitId }) => unitId === 'MLUX-C0399');
+    if (!mapping) throw new Error('MLUX-C0399 mapping is absent');
+    const expected = createLocaleRuntime('en').getResource('ru', mapping.namespace, mapping.key);
+    const runtime = {
+      getResource: vi.fn(() => ({ toString: () => expected })),
+    } as unknown as ReturnType<typeof createLocaleRuntime>;
+
+    expect(runtimeLocalizedValue(runtime, 'ru', mapping)).toBe('');
+  });
+
   it('preserves the artifact-derived 449-unit / 628-occurrence corpus and reconciled C0143/C0170/C0446 provenance', () => {
     expect(MLUX004_DRAFT20_CORPUS_PROJECTION.version).toBe('MLUX-001-DRAFT-22');
     expect(MLUX004_DRAFT20_CORPUS_PROJECTION.sha256).toBe(
