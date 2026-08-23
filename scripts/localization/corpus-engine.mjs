@@ -80,7 +80,7 @@ export function protectedSourceFingerprint(unit) {
 }
 
 function validHumanApproval(candidate) {
-  const authority = candidate.approvalAuthority;
+  const authority = candidate?.approvalAuthority;
   return (
     authority &&
     authority.kind === 'human_native_review' &&
@@ -91,6 +91,41 @@ function validHumanApproval(candidate) {
     nonEmptyString(candidate.reviewedAt) &&
     nonEmptyString(candidate.approvalRecordedAt)
   );
+}
+
+function approvalRecord(candidate) {
+  return {
+    reviewerId: candidate.reviewerId,
+    reviewerName: candidate.approvalAuthority?.reviewerName,
+    reviewedAt: candidate.reviewedAt,
+    approvalRecordedAt: candidate.approvalRecordedAt,
+    approvalAuthority: candidate.approvalAuthority,
+  };
+}
+
+function hasApprovalMetadata(candidate) {
+  return [
+    candidate.reviewerId,
+    candidate.verdict,
+    candidate.reviewedAt,
+    candidate.approvalRecordedAt,
+    candidate.approvalAuthority,
+  ].some((value) => value !== null && value !== undefined);
+}
+
+function clearApprovalMetadata(candidate) {
+  return {
+    ...candidate,
+    reviewerId: null,
+    verdict: null,
+    reviewedAt: null,
+    approvalRecordedAt: null,
+    approvalAuthority: null,
+  };
+}
+
+function sameApprovalRecord(candidate, approval) {
+  return JSON.stringify(stable(approvalRecord(candidate))) === JSON.stringify(stable(approval));
 }
 
 function lifecycleViolation(candidate) {
@@ -131,15 +166,23 @@ function lifecycleViolation(candidate) {
       if (event.previousCandidate === event.nextCandidate)
         return 'stale -> draft requires a new candidate history';
     }
-    if (event.to === 'approved' && !validHumanApproval(event.humanApproval ?? candidate))
-      return 'approved history lacks human-native authority';
+    if (event.to === 'approved' && !validHumanApproval(event.humanApproval))
+      return 'approved history lacks transition-specific human-native authority';
     status = event.to;
   }
   if (status !== candidate.status) return 'history does not end at current status';
   if (heldCandidate !== null && heldCandidate !== candidate.candidate)
     return 'transition history does not bind current candidate';
-  if (candidate.status === 'approved' && !validHumanApproval(candidate))
-    return 'approved candidate lacks human-native authority';
+  if (candidate.status === 'approved') {
+    const terminalApproval = [...candidate.history]
+      .reverse()
+      .find((event) => event?.type === 'transition' && event.to === 'approved');
+    if (!validHumanApproval(candidate)) return 'approved candidate lacks human-native authority';
+    if (!terminalApproval || !sameApprovalRecord(candidate, terminalApproval.humanApproval))
+      return 'approved candidate does not match terminal approval history';
+  } else if (hasApprovalMetadata(candidate)) {
+    return 'non-approved candidate retains approval metadata';
+  }
   return null;
 }
 
@@ -418,14 +461,14 @@ export function transitionLocaleCandidate(candidate, nextStatus, options = {}) {
   )
     throw new Error('changes_requested -> draft requires a new candidate when replacing one');
   const next = {
-    ...candidate,
+    ...clearApprovalMetadata(candidate),
     candidate: options.newCandidate ?? candidate.candidate,
     status: nextStatus,
   };
   if (nextStatus === 'approved') {
-    Object.assign(next, options.humanApproval);
-    if (!validHumanApproval(next))
+    if (!validHumanApproval(options.humanApproval))
       throw new Error('approved requires named human-native authority');
+    Object.assign(next, options.humanApproval, { verdict: 'approved' });
   }
   return {
     ...next,
@@ -466,7 +509,7 @@ export function applyProtectedSourceRevision(candidate, sourceRevision) {
     candidate.status,
   );
   return {
-    ...candidate,
+    ...clearApprovalMetadata(candidate),
     sourceRevision,
     status: shouldStale ? 'stale' : candidate.status,
     history: [
@@ -592,8 +635,9 @@ export async function retiredConsumerViolations(corpus, sourceRoot = resolve('sr
   for (const unit of retired) {
     const escapedNamespace = unit.namespace.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const escapedKey = unit.key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const translationCall = String.raw`(?:\b[A-Za-z_$][A-Za-z0-9_$]*(?:\s*\.\s*[A-Za-z_$][A-Za-z0-9_$]*)*\s*\.\s*)?t\s*\(\s*`;
     const sourceConsumer = new RegExp(
-      `(?:^|[^A-Za-z0-9_$])${escapedNamespace}:${escapedKey}(?![A-Za-z0-9_$])|['"]${escapedKey}['"]`,
+      `${translationCall}['"](?:${escapedNamespace}:${escapedKey}|${escapedKey})['"]`,
     );
     for (const [file, text] of contents)
       if (!text.startsWith(GENERATED_OUTPUT_BANNER) && sourceConsumer.test(text))

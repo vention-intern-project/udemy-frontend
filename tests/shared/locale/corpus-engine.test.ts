@@ -274,6 +274,124 @@ describe('canonical localization corpus engine', () => {
     );
   });
 
+  it('requires fresh transition-specific human approval after stale candidates are rewritten', () => {
+    const candidate = fixture().units[0].locales.ru;
+    const firstApproval = {
+      reviewerId: 'native-a',
+      reviewerName: 'Reviewer A',
+      reviewedAt: '2026-08-23T00:00:00.000Z',
+      approvalRecordedAt: '2026-08-23T00:01:00.000Z',
+      approvalAuthority: {
+        kind: 'human_native_review',
+        reviewerId: 'native-a',
+        reviewerName: 'Reviewer A',
+      },
+    };
+    const approved = transitionLocaleCandidate(
+      transitionLocaleCandidate(candidate, 'review_requested'),
+      'approved',
+      { humanApproval: firstApproval },
+    );
+    const rewritten = transitionLocaleCandidate(
+      transitionLocaleCandidate(approved, 'stale'),
+      'draft',
+      { newCandidate: 'Обновленный перевод, {{name}}' },
+    );
+    const rerequested = transitionLocaleCandidate(rewritten, 'review_requested');
+
+    expect(rewritten).toMatchObject({
+      reviewerId: null,
+      verdict: null,
+      reviewedAt: null,
+      approvalRecordedAt: null,
+      approvalAuthority: null,
+    });
+    expect(() => transitionLocaleCandidate(rerequested, 'approved')).toThrow(
+      'approved requires named human-native authority',
+    );
+
+    const reapproved = transitionLocaleCandidate(rerequested, 'approved', {
+      humanApproval: {
+        reviewerId: 'native-b',
+        reviewerName: 'Reviewer B',
+        reviewedAt: '2026-08-24T00:00:00.000Z',
+        approvalRecordedAt: '2026-08-24T00:01:00.000Z',
+        approvalAuthority: {
+          kind: 'human_native_review',
+          reviewerId: 'native-b',
+          reviewerName: 'Reviewer B',
+        },
+      },
+    });
+    const corpus = fixture();
+    corpus.units[0].locales.ru = reapproved;
+    expect(validateCorpus(corpus)).toEqual([]);
+
+    const missingTransitionApproval = structuredClone(reapproved);
+    delete (
+      missingTransitionApproval.history[missingTransitionApproval.history.length - 1] as {
+        humanApproval?: unknown;
+      }
+    ).humanApproval;
+    corpus.units[0].locales.ru = missingTransitionApproval;
+    expect(validateCorpus(corpus)).toContain(
+      'MLUX-C0001: ru approved history lacks transition-specific human-native authority',
+    );
+  });
+
+  it('rejects current approval metadata that differs from its terminal approval event', () => {
+    const candidate = fixture().units[0].locales.ru;
+    const approvedByA = transitionLocaleCandidate(
+      transitionLocaleCandidate(candidate, 'review_requested'),
+      'approved',
+      {
+        humanApproval: {
+          reviewerId: 'native-a',
+          reviewerName: 'Reviewer A',
+          reviewedAt: '2026-08-23T00:00:00.000Z',
+          approvalRecordedAt: '2026-08-23T00:01:00.000Z',
+          approvalAuthority: {
+            kind: 'human_native_review',
+            reviewerId: 'native-a',
+            reviewerName: 'Reviewer A',
+          },
+        },
+      },
+    );
+    const approvedByB = transitionLocaleCandidate(
+      transitionLocaleCandidate(transitionLocaleCandidate(approvedByA, 'stale'), 'draft', {
+        newCandidate: 'Обновленный перевод, {{name}}',
+      }),
+      'review_requested',
+    );
+    const reapproved = transitionLocaleCandidate(approvedByB, 'approved', {
+      humanApproval: {
+        reviewerId: 'native-b',
+        reviewerName: 'Reviewer B',
+        reviewedAt: '2026-08-24T00:00:00.000Z',
+        approvalRecordedAt: '2026-08-24T00:01:00.000Z',
+        approvalAuthority: {
+          kind: 'human_native_review',
+          reviewerId: 'native-b',
+          reviewerName: 'Reviewer B',
+        },
+      },
+    });
+    const forged = {
+      ...reapproved,
+      reviewerId: approvedByA.reviewerId,
+      reviewedAt: approvedByA.reviewedAt,
+      approvalRecordedAt: approvedByA.approvalRecordedAt,
+      approvalAuthority: approvedByA.approvalAuthority,
+    };
+    const corpus = fixture();
+    corpus.units[0].locales.ru = forged;
+
+    expect(validateCorpus(corpus)).toContain(
+      'MLUX-C0001: ru approved candidate does not match terminal approval history',
+    );
+  });
+
   it('rejects replacing a candidate on every transition except stale to draft', () => {
     const candidate = fixture().units[0].locales.ru;
     expect(() =>
@@ -621,7 +739,7 @@ describe('canonical localization corpus engine', () => {
     ]);
   });
 
-  it('detects only quoted or namespaced retired keys and escapes metacharacters', async () => {
+  it('detects translation calls but not ordinary quoted retired keys, including metacharacters', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'fe066-retired-'));
     const corpus = fixture();
     corpus.units[0].unitLifecycle = 'retired';
@@ -634,10 +752,30 @@ describe('canonical localization corpus engine', () => {
     ).retirement = { reason: 'removed', sourceRevision: corpus.units[0].sourceRevision };
     await writeFile(join(directory, 'identifier.ts'), 'const pageName = 1;', 'utf8');
     await writeFile(join(directory, 'consumer.ts'), "runtime.t('common:page.name')", 'utf8');
-    await writeFile(join(directory, 'quoted.ts'), "const retired = 'page.name';", 'utf8');
+    await writeFile(join(directory, 'ordinary.ts'), "const retired = 'page.name';", 'utf8');
+    await writeFile(join(directory, 'key-only.ts'), "runtime.t('page.name')", 'utf8');
     expect(await retiredConsumerViolations(corpus, directory)).toEqual([
       'MLUX-C0001: retired unit has source consumer consumer.ts',
-      'MLUX-C0001: retired unit has source consumer quoted.ts',
+      'MLUX-C0001: retired unit has source consumer key-only.ts',
+    ]);
+  });
+
+  it('does not treat an ordinary common-domain string as a retired translation consumer', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'fe066-retired-domain-'));
+    const corpus = fixture();
+    corpus.units[0].unitLifecycle = 'retired';
+    corpus.units[0].key = 'remove';
+    corpus.units[0].occurrences = [];
+    (
+      corpus.units[0] as (typeof corpus.units)[number] & {
+        retirement?: { reason: string; sourceRevision: string };
+      }
+    ).retirement = { reason: 'removed', sourceRevision: corpus.units[0].sourceRevision };
+    await writeFile(join(directory, 'ordinary.ts'), "const verb = 'remove';", 'utf8');
+    await writeFile(join(directory, 'consumer.ts'), "t('remove')", 'utf8');
+
+    expect(await retiredConsumerViolations(corpus, directory)).toEqual([
+      'MLUX-C0001: retired unit has source consumer consumer.ts',
     ]);
   });
 
@@ -736,14 +874,14 @@ describe('canonical localization corpus engine', () => {
       ru: { common: { welcome: 'Добро пожаловать, {{name}}', preserved: 'ru preserved' } },
       uz: { common: { welcome: 'Xush kelibsiz, {{name}}', preserved: 'uz preserved' } },
     });
-    for (const locale of ['en', 'ru', 'uz'])
-      expect(generateResources(corpus)[locale].common).not.toEqual(
-        expect.objectContaining({
-          welcome_one: expect.any(String),
-          welcome_other: expect.any(String),
-          welcome_zero: expect.any(String),
-        }),
-      );
+    for (const locale of ['en', 'ru', 'uz']) {
+      const generated = generateResources(corpus)[locale].common;
+      for (const suffix of [
+        ...new globalThis.Intl.PluralRules(locale).resolvedOptions().pluralCategories,
+        'zero',
+      ])
+        expect(generated).not.toHaveProperty(`welcome_${suffix}`);
+    }
   });
 
   it('removes stale plural keys for retired units without a current plural declaration', () => {
