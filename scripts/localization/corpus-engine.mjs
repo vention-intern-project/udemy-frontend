@@ -61,6 +61,10 @@ function nonEmptyString(value) {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
+function pluralCategories(locale) {
+  return [...new globalThis.Intl.PluralRules(locale).resolvedOptions().pluralCategories].sort();
+}
+
 export function protectedSourceFingerprint(unit) {
   return digest({
     english: unit.english,
@@ -200,6 +204,11 @@ function validatePluralForms(unit, violations) {
       violations.push(`${unit.id}: invalid ${locale} plural forms`);
       continue;
     }
+    const missingCategories = pluralCategories(locale).filter(
+      (category) => !Object.hasOwn(forms, category),
+    );
+    if (missingCategories.length)
+      violations.push(`${unit.id}: ${locale} plural forms missing required categories`);
     const expectedPlaceholders = localePlaceholderContract(unit, locale);
     for (const value of Object.values(forms)) {
       if (
@@ -363,17 +372,24 @@ export function applyProtectedDrift(unit, _ignoredChangedFields, sourceRevision)
 export function transitionLocaleCandidate(candidate, nextStatus, options = {}) {
   if (!STATUSES.has(nextStatus) || !TRANSITIONS.get(candidate.status)?.has(nextStatus))
     throw new Error(`${candidate.status} -> ${nextStatus} is forbidden`);
-  if (
-    options.newCandidate !== undefined &&
-    !(candidate.status === 'stale' && nextStatus === 'draft')
-  )
-    throw new Error('candidate replacement is only allowed for stale -> draft');
+  const returnsToDraft =
+    nextStatus === 'draft' && ['stale', 'changes_requested'].includes(candidate.status);
+  if (options.newCandidate !== undefined && !returnsToDraft)
+    throw new Error(
+      'candidate replacement is only allowed while returning stale or changes_requested to draft',
+    );
   if (
     candidate.status === 'stale' &&
     nextStatus === 'draft' &&
     (!nonEmptyString(options.newCandidate) || options.newCandidate === candidate.candidate)
   )
     throw new Error('stale -> draft requires a new candidate');
+  if (
+    candidate.status === 'changes_requested' &&
+    options.newCandidate !== undefined &&
+    (!nonEmptyString(options.newCandidate) || options.newCandidate === candidate.candidate)
+  )
+    throw new Error('changes_requested -> draft requires a new candidate when replacing one');
   const next = {
     ...candidate,
     candidate: options.newCandidate ?? candidate.candidate,
@@ -447,7 +463,16 @@ export function applyProtectedSourceRevision(candidate, sourceRevision) {
 export function generateResources(corpus) {
   const resources = JSON.parse(JSON.stringify(corpus.baselineResources));
   for (const unit of [...corpus.units].sort((a, b) => a.id.localeCompare(b.id))) {
-    if (unit.unitLifecycle !== 'active') continue;
+    if (unit.unitLifecycle !== 'active') {
+      for (const locale of LOCALES) {
+        const namespace = resources[locale]?.[unit.namespace];
+        if (!namespace || typeof namespace !== 'object') continue;
+        delete namespace[unit.key];
+        for (const suffix of Object.keys(unit.pluralForms?.[locale] ?? {}))
+          delete namespace[`${unit.key}_${suffix}`];
+      }
+      continue;
+    }
     for (const [locale, value] of [
       ['en', unit.english],
       ['ru', unit.locales.ru.candidate],

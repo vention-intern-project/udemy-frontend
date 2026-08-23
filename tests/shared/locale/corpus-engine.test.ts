@@ -8,6 +8,7 @@ import draft37Registry from '../../../localization/corpus/registry.json';
 
 const {
   protectedSourceFingerprint,
+  generateResources,
   retiredConsumerViolations,
   reviseProtectedSource,
   checkCorpus,
@@ -217,7 +218,9 @@ describe('canonical localization corpus engine', () => {
       transitionLocaleCandidate(candidate, 'review_requested', {
         newCandidate: 'Replacement {{name}}',
       }),
-    ).toThrow('candidate replacement is only allowed for stale -> draft');
+    ).toThrow(
+      'candidate replacement is only allowed while returning stale or changes_requested to draft',
+    );
     const requested = transitionLocaleCandidate(candidate, 'review_requested');
     expect(() =>
       transitionLocaleCandidate(requested, 'approved', {
@@ -234,7 +237,39 @@ describe('canonical localization corpus engine', () => {
           },
         },
       }),
-    ).toThrow('candidate replacement is only allowed for stale -> draft');
+    ).toThrow(
+      'candidate replacement is only allowed while returning stale or changes_requested to draft',
+    );
+  });
+
+  it('allows a corrected candidate when changes requested returns to draft without allowing approval-time edits', () => {
+    const candidate = fixture().units[0].locales.ru as FixtureCandidate;
+    const changesRequested = transitionLocaleCandidate(
+      transitionLocaleCandidate(candidate, 'review_requested'),
+      'changes_requested',
+    );
+    const corrected = transitionLocaleCandidate(changesRequested, 'draft', {
+      newCandidate: 'Исправленный перевод, {{name}}',
+    });
+    expect(corrected).toMatchObject({
+      status: 'draft',
+      candidate: 'Исправленный перевод, {{name}}',
+    });
+    expect(corrected.history.at(-1)).toMatchObject({
+      from: 'changes_requested',
+      to: 'draft',
+      previousCandidate: candidate.candidate,
+      nextCandidate: 'Исправленный перевод, {{name}}',
+    });
+    expect(() =>
+      transitionLocaleCandidate(changesRequested, 'approved', {
+        newCandidate: 'Несанкционированная замена, {{name}}',
+      }),
+    ).toThrow('changes_requested -> approved is forbidden');
+
+    const corpus = fixture();
+    corpus.units[0].locales.ru = corrected;
+    expect(validateCorpus(corpus)).toEqual([]);
   });
 
   it('returns violations instead of throwing for malformed placeholder contracts', () => {
@@ -416,6 +451,96 @@ describe('canonical localization corpus engine', () => {
       'MLUX-C0001: retired unit has source consumer consumer.ts',
       'MLUX-C0001: retired unit has source consumer quoted.ts',
     ]);
+  });
+
+  it('removes retired canonical base and plural keys inherited from baseline resources', () => {
+    const corpus = fixture();
+    const unit = corpus.units[0] as unknown as {
+      key: string;
+      pluralForms: Record<string, Record<string, string>> | null;
+      unitLifecycle: string;
+      occurrences: unknown[];
+      retirement?: { reason: string; sourceRevision: string };
+      sourceRevision: string;
+      locales: Record<'ru' | 'uz', { sourceRevision: string }>;
+    };
+    unit.pluralForms = Object.fromEntries(
+      ['en', 'ru', 'uz'].map((locale) => [
+        locale,
+        Object.fromEntries(
+          [...new Intl.PluralRules(locale).resolvedOptions().pluralCategories, 'zero'].map(
+            (category) => [category, `${locale} ${category} {{name}}`],
+          ),
+        ),
+      ]),
+    );
+    unit.unitLifecycle = 'retired';
+    unit.occurrences = [];
+    unit.sourceRevision = protectedSourceFingerprint(corpus.units[0]);
+    unit.locales.ru.sourceRevision = unit.sourceRevision;
+    unit.locales.uz.sourceRevision = unit.sourceRevision;
+    unit.retirement = { reason: 'obsolete', sourceRevision: unit.sourceRevision };
+    corpus.summary.sourceOccurrences = 0;
+    corpus.migration.sourceOccurrences = 0;
+    (
+      corpus as unknown as {
+        baselineResources: Record<string, Record<string, Record<string, string>>>;
+      }
+    ).baselineResources = Object.fromEntries(
+      ['en', 'ru', 'uz'].map((locale) => [
+        locale,
+        {
+          common: {
+            welcome: `${locale} base`,
+            preserved: `${locale} preserved`,
+            ...Object.fromEntries(
+              Object.keys(unit.pluralForms?.[locale] ?? {}).map((category) => [
+                `welcome_${category}`,
+                `${locale} ${category}`,
+              ]),
+            ),
+          },
+        },
+      ]),
+    );
+
+    expect(validateCorpus(corpus)).toEqual([]);
+    for (const locale of ['en', 'ru', 'uz']) {
+      const generated = generateResources(corpus)[locale].common;
+      expect(generated).toEqual({ preserved: `${locale} preserved` });
+    }
+  });
+
+  it('requires every Intl.PluralRules category for each supported locale', () => {
+    const corpus = fixture();
+    const unit = corpus.units[0] as unknown as {
+      pluralForms: Record<string, Record<string, string>> | null;
+      sourceRevision: string;
+      locales: Record<'ru' | 'uz', { sourceRevision: string }>;
+    };
+    unit.pluralForms = Object.fromEntries(
+      ['en', 'ru', 'uz'].map((locale) => [
+        locale,
+        Object.fromEntries(
+          [...new Intl.PluralRules(locale).resolvedOptions().pluralCategories, 'zero'].map(
+            (category) => [category, `${locale} ${category} {{name}}`],
+          ),
+        ),
+      ]),
+    );
+    unit.sourceRevision = protectedSourceFingerprint(corpus.units[0]);
+    unit.locales.ru.sourceRevision = unit.sourceRevision;
+    unit.locales.uz.sourceRevision = unit.sourceRevision;
+    expect(validateCorpus(corpus)).toEqual([]);
+
+    const missingCategory = new Intl.PluralRules('ru').resolvedOptions().pluralCategories[0];
+    delete unit.pluralForms.ru[missingCategory];
+    unit.sourceRevision = protectedSourceFingerprint(corpus.units[0]);
+    unit.locales.ru.sourceRevision = unit.sourceRevision;
+    unit.locales.uz.sourceRevision = unit.sourceRevision;
+    expect(validateCorpus(corpus)).toContain(
+      'MLUX-C0001: ru plural forms missing required categories',
+    );
   });
 
   it('returns a missing generated-output violation without throwing', async () => {
