@@ -36,6 +36,20 @@ interface CatalogViewportGeometry {
   readonly clientWidth: number;
 }
 
+interface HorizontalBounds {
+  readonly left: number;
+  readonly right: number;
+}
+
+interface ZoomedCatalogGeometry {
+  readonly clientWidth: number;
+  readonly scrollWidthWithFocusedDisclosureOutline: number;
+  readonly scrollWidthWithoutFocusedDisclosureOutline: number;
+  readonly freeCard: HorizontalBounds | undefined;
+  readonly paidCard: HorizontalBounds | undefined;
+  readonly bounds: HorizontalBounds;
+}
+
 function response(items: readonly unknown[] = [], pagination: CatalogPaginationFixture = {}) {
   return JSON.stringify({
     items,
@@ -4767,24 +4781,47 @@ test('renders the D20 Catalog vertical slice in Russian and Uzbek without changi
     await page.evaluate(() => {
       document.documentElement.style.zoom = '200%';
     });
-    const zoomedCatalog = await page
-      .locator('[data-part="catalog-result-list"]')
-      .evaluate((list) => ({
-        clientWidth: list.clientWidth,
-        scrollWidth: list.scrollWidth,
-        freeCard: list
-          .querySelector<HTMLElement>('[data-course-card-id="8"]')
-          ?.getBoundingClientRect()
-          .toJSON(),
-        paidCard: list
-          .querySelector<HTMLElement>('[data-course-card-id="11"]')
-          ?.getBoundingClientRect()
-          .toJSON(),
-        bounds: list.getBoundingClientRect().toJSON(),
-      }));
-    // Chromium may include the focused disclosure outline in scrollWidth. Card
-    // bounds below remain the structural containment contract.
-    expect(zoomedCatalog.scrollWidth - zoomedCatalog.clientWidth).toBeLessThanOrEqual(8);
+    const zoomedCatalog = await page.evaluate<ZoomedCatalogGeometry>(() => {
+      const list = document.querySelector<HTMLElement>('[data-part="catalog-result-list"]');
+      const focusedDisclosure = document.activeElement;
+      if (!list) throw new Error('Catalog result list is missing.');
+      if (!(focusedDisclosure instanceof HTMLButtonElement)) {
+        throw new Error('Focused catalog disclosure button is missing.');
+      }
+      const focusedPill = focusedDisclosure.querySelector<HTMLElement>(
+        '[data-part="course-card-disclosure-pill"]',
+      );
+      if (!focusedPill || !focusedDisclosure.closest('[data-course-card-id="8"]')) {
+        throw new Error('Focused catalog disclosure pill does not belong to the free course card.');
+      }
+      const outline = focusedPill.style.outline;
+      const toHorizontalBounds = (element: Element): HorizontalBounds => {
+        const { left, right } = element.getBoundingClientRect();
+        return { left, right };
+      };
+      const scrollWidthWithFocusedDisclosureOutline = list.scrollWidth;
+      try {
+        focusedPill.style.outline = 'none';
+        const freeCard = list.querySelector('[data-course-card-id="8"]');
+        const paidCard = list.querySelector('[data-course-card-id="11"]');
+        return {
+          clientWidth: list.clientWidth,
+          scrollWidthWithFocusedDisclosureOutline,
+          scrollWidthWithoutFocusedDisclosureOutline: list.scrollWidth,
+          freeCard: freeCard ? toHorizontalBounds(freeCard) : undefined,
+          paidCard: paidCard ? toHorizontalBounds(paidCard) : undefined,
+          bounds: toHorizontalBounds(list),
+        };
+      } finally {
+        focusedPill.style.outline = outline;
+      }
+    });
+    expect(zoomedCatalog.scrollWidthWithFocusedDisclosureOutline).toBeGreaterThanOrEqual(
+      zoomedCatalog.scrollWidthWithoutFocusedDisclosureOutline,
+    );
+    expect(zoomedCatalog.scrollWidthWithoutFocusedDisclosureOutline).toBe(
+      zoomedCatalog.clientWidth,
+    );
     expect(zoomedCatalog.freeCard?.left).toBeGreaterThanOrEqual(zoomedCatalog.bounds.left - 1);
     expect(zoomedCatalog.freeCard?.right).toBeLessThanOrEqual(zoomedCatalog.bounds.right + 1);
     expect(zoomedCatalog.paidCard?.left).toBeGreaterThanOrEqual(zoomedCatalog.bounds.left - 1);

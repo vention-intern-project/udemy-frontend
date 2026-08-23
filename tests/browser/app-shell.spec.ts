@@ -1849,15 +1849,27 @@ test('preserves same-path query scroll and navigates a hash target in Chromium',
   await expect(page.getByRole('button', { name: 'Sort by: Newest' })).toBeFocused();
 
   await page.getByRole('contentinfo').scrollIntoViewIfNeeded();
-  const beforeHashScroll = await page.evaluate(() => window.scrollY);
   const skipLink = page.getByRole('link', { name: 'Skip to main content' });
   await skipLink.focus();
+  const beforeHashNavigation = await page.locator('#main-content').evaluate((mainContent) => ({
+    scrollY: window.scrollY,
+    targetTop: mainContent.getBoundingClientRect().top,
+  }));
+  expect(beforeHashNavigation.scrollY).toBeGreaterThan(0);
+  expect(beforeHashNavigation.targetTop).toBeLessThan(0);
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/\?sort=-created_at#main-content$/);
   await expect
     .poll(() => page.evaluate(() => window.scrollY))
-    .toBeLessThanOrEqual(beforeHashScroll);
+    .toBeLessThan(beforeHashNavigation.scrollY);
   await expect(page.locator('#main-content')).toBeInViewport();
+  await expect
+    .poll(() =>
+      page
+        .locator('#main-content')
+        .evaluate((mainContent) => mainContent.getBoundingClientRect().top),
+    )
+    .toBeGreaterThanOrEqual(-1);
   await expect(page.locator('#main-content')).toBeFocused();
   await expect(page.locator('#main-content')).toHaveCSS('outline-style', 'solid');
   await expectNoHorizontalOverflow(page);
