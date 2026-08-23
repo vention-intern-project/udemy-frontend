@@ -123,6 +123,62 @@ describe('canonical localization corpus engine', () => {
     });
   });
 
+  it.each(['review_requested', 'changes_requested', 'approved'] as const)(
+    'rejects a forged protected revision that leaves %s current',
+    (status) => {
+      const corpus = fixture();
+      const candidate = transitionLocaleCandidate(corpus.units[0].locales.ru, 'review_requested');
+      const reviewed =
+        status === 'changes_requested'
+          ? transitionLocaleCandidate(candidate, 'changes_requested')
+          : status === 'approved'
+            ? transitionLocaleCandidate(candidate, 'approved', {
+                humanApproval: {
+                  reviewerId: 'native-7',
+                  reviewerName: 'Native Reviewer',
+                  reviewedAt: '2026-08-23T00:00:00.000Z',
+                  approvalRecordedAt: '2026-08-23T00:01:00.000Z',
+                  approvalAuthority: {
+                    kind: 'human_native_review',
+                    reviewerId: 'native-7',
+                    reviewerName: 'Native Reviewer',
+                  },
+                },
+              })
+            : candidate;
+      corpus.units[0].english = 'Welcome revised {{name}}';
+      const sourceRevision = protectedSourceFingerprint(corpus.units[0]);
+      corpus.units[0].sourceRevision = sourceRevision;
+      corpus.units[0].locales.ru = {
+        ...reviewed,
+        sourceRevision,
+        history: [...reviewed.history, { type: 'source_revision', sourceRevision }],
+      };
+      corpus.units[0].locales.uz.sourceRevision = sourceRevision;
+
+      expect(validateCorpus(corpus)).toContain(
+        'MLUX-C0001: ru source revision history requires immediate stale transition',
+      );
+    },
+  );
+
+  it.each(['draft', 'stale'] as const)(
+    'allows a protected revision while %s is not under active review',
+    (status) => {
+      const corpus = fixture();
+      if (status === 'stale')
+        corpus.units[0].locales.ru = transitionLocaleCandidate(
+          transitionLocaleCandidate(corpus.units[0].locales.ru, 'review_requested'),
+          'stale',
+        );
+      corpus.units[0] = reviseProtectedSource(corpus.units[0], {
+        english: 'Welcome revised {{name}}',
+      });
+
+      expect(validateCorpus(corpus)).toEqual([]);
+    },
+  );
+
   it.each(['occurrences', 'placeholdersByLocale', 'pluralForms'] as const)(
     'derives a new source revision and stales reviewed candidates for %s changes',
     (field) => {
@@ -435,6 +491,104 @@ describe('canonical localization corpus engine', () => {
       nextCandidate: 'Добро пожаловать, {{name}}',
     });
     expect(validateCorpus(corpus)).toEqual([]);
+  });
+
+  it('rejects a canonical key that collides with another unit plural cleanup shape', () => {
+    const corpus = fixture();
+    const pluralOwner = corpus.units[0];
+    pluralOwner.key = 'foo';
+    pluralOwner.sourceRevision = protectedSourceFingerprint(pluralOwner);
+    pluralOwner.locales.ru.sourceRevision = pluralOwner.sourceRevision;
+    pluralOwner.locales.uz.sourceRevision = pluralOwner.sourceRevision;
+    const pluralShapedUnit = structuredClone(pluralOwner);
+    pluralShapedUnit.id = 'MLUX-C0002';
+    pluralShapedUnit.key = 'foo_one';
+    pluralShapedUnit.occurrences = [{ id: 'MLUX-O0002', context: 'second fixture owner' }];
+    pluralShapedUnit.sourceRevision = protectedSourceFingerprint(pluralShapedUnit);
+    pluralShapedUnit.locales.ru.sourceRevision = pluralShapedUnit.sourceRevision;
+    pluralShapedUnit.locales.uz.sourceRevision = pluralShapedUnit.sourceRevision;
+    corpus.units.push(pluralShapedUnit);
+    corpus.summary.translationUnits = 2;
+    corpus.summary.sourceOccurrences = 2;
+    corpus.migration.sourceOccurrences = 2;
+
+    expect(validateCorpus(corpus)).toContain(
+      'MLUX-C0002: namespace/key collides with generated shape of MLUX-C0001 (common:foo_one)',
+    );
+  });
+
+  it('rejects canonical keys reserved by explicit zero and exact historic cleanup ownership', () => {
+    const zeroCorpus = fixture();
+    const zeroOwner = zeroCorpus.units[0];
+    zeroOwner.key = 'bar';
+    zeroOwner.sourceRevision = protectedSourceFingerprint(zeroOwner);
+    zeroOwner.locales.ru.sourceRevision = zeroOwner.sourceRevision;
+    zeroOwner.locales.uz.sourceRevision = zeroOwner.sourceRevision;
+    const zeroShapedUnit = structuredClone(zeroOwner);
+    zeroShapedUnit.id = 'MLUX-C0002';
+    zeroShapedUnit.key = 'bar_zero';
+    zeroShapedUnit.occurrences = [{ id: 'MLUX-O0002', context: 'zero fixture owner' }];
+    zeroShapedUnit.sourceRevision = protectedSourceFingerprint(zeroShapedUnit);
+    zeroShapedUnit.locales.ru.sourceRevision = zeroShapedUnit.sourceRevision;
+    zeroShapedUnit.locales.uz.sourceRevision = zeroShapedUnit.sourceRevision;
+    zeroCorpus.units.push(zeroShapedUnit);
+    zeroCorpus.summary.translationUnits = 2;
+    zeroCorpus.summary.sourceOccurrences = 2;
+    zeroCorpus.migration.sourceOccurrences = 2;
+
+    expect(validateCorpus(zeroCorpus)).toContain(
+      'MLUX-C0002: namespace/key collides with generated shape of MLUX-C0001 (common:bar_zero)',
+    );
+
+    const historicCorpus = structuredClone(draft37Registry);
+    const historicOwner = historicCorpus.units.find(
+      (unit) => unit.namespace === 'catalog' && unit.key === 'lessonAvailability',
+    );
+    expect(historicOwner).toBeDefined();
+    const historicShapedUnit = structuredClone(historicOwner!);
+    historicShapedUnit.id = 'MLUX-C9999';
+    historicShapedUnit.key = 'lessonAvailability_custom';
+    historicShapedUnit.occurrences = [{ id: 'MLUX-O9999', context: 'historic fixture owner' }];
+    historicShapedUnit.sourceRevision = protectedSourceFingerprint(historicShapedUnit);
+    historicShapedUnit.locales.ru.sourceRevision = historicShapedUnit.sourceRevision;
+    historicShapedUnit.locales.uz.sourceRevision = historicShapedUnit.sourceRevision;
+    historicCorpus.units.push(historicShapedUnit);
+    historicCorpus.summary.translationUnits += 1;
+    historicCorpus.summary.sourceOccurrences += 1;
+    historicCorpus.migration.sourceOccurrences += 1;
+
+    expect(validateCorpus(historicCorpus)).toContain(
+      `${historicShapedUnit.id}: namespace/key collides with generated shape of ${historicOwner!.id} (catalog:lessonAvailability_custom)`,
+    );
+  });
+
+  it('preserves non-colliding plural-shaped lookalikes in every locale output', () => {
+    const corpus = fixture();
+    const pluralOwner = corpus.units[0];
+    pluralOwner.key = 'foo';
+    pluralOwner.sourceRevision = protectedSourceFingerprint(pluralOwner);
+    pluralOwner.locales.ru.sourceRevision = pluralOwner.sourceRevision;
+    pluralOwner.locales.uz.sourceRevision = pluralOwner.sourceRevision;
+    const lookalike = structuredClone(pluralOwner);
+    lookalike.id = 'MLUX-C0002';
+    lookalike.key = 'foo_oneness';
+    lookalike.occurrences = [{ id: 'MLUX-O0002', context: 'lookalike fixture owner' }];
+    lookalike.sourceRevision = protectedSourceFingerprint(lookalike);
+    lookalike.locales.ru.sourceRevision = lookalike.sourceRevision;
+    lookalike.locales.uz.sourceRevision = lookalike.sourceRevision;
+    corpus.units.push(lookalike);
+    corpus.summary.translationUnits = 2;
+    corpus.summary.sourceOccurrences = 2;
+    corpus.migration.sourceOccurrences = 2;
+
+    expect(validateCorpus(corpus)).toEqual([]);
+    for (const locale of ['en', 'ru', 'uz'])
+      expect(generateResources(corpus)[locale].common).toEqual(
+        expect.objectContaining({
+          foo: expect.any(String),
+          foo_oneness: expect.any(String),
+        }),
+      );
   });
 
   it('rejects DRAFT-37 source-hash and per-unit migration-provenance mutations before generation', () => {

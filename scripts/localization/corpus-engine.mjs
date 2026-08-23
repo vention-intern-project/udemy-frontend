@@ -97,11 +97,21 @@ function lifecycleViolation(candidate) {
   if (!Array.isArray(candidate.history)) return 'history must be an array';
   let status = 'draft';
   let heldCandidate = null;
-  for (const event of candidate.history) {
+  for (const [index, event] of candidate.history.entries()) {
     if (!event || typeof event !== 'object' || typeof event.type !== 'string')
       return 'invalid history event';
     if (event.type === 'source_revision') {
       if (!REVISION.test(event.sourceRevision)) return 'invalid source revision history';
+      if (['review_requested', 'changes_requested', 'approved'].includes(status)) {
+        const staleTransition = candidate.history[index + 1];
+        if (
+          !staleTransition ||
+          staleTransition.type !== 'transition' ||
+          staleTransition.from !== status ||
+          staleTransition.to !== 'stale'
+        )
+          return 'source revision history requires immediate stale transition';
+      }
       continue;
     }
     if (event.type !== 'transition' || !STATUSES.has(event.from) || !STATUSES.has(event.to))
@@ -347,6 +357,7 @@ export function validateCorpus(corpus) {
     validatePluralForms(unit, violations);
     validateRestoration(unit, violations);
   }
+  validateGeneratedShapeCollisions(corpus.units, violations);
   if (corpus.summary?.translationUnits !== corpus.units.length)
     violations.push('summary translation unit count mismatch');
   if (
@@ -515,6 +526,33 @@ function pluralKeySuffixes(unit, locale) {
     ...Object.keys(unit.pluralForms?.[locale] ?? {}),
     ...(HISTORIC_GENERATED_PLURAL_SUFFIXES.get(`${unit.namespace}:${unit.key}`) ?? []),
   ]);
+}
+
+function generatedShapeKeys(unit) {
+  return new Set([
+    unit.key,
+    ...LOCALES.flatMap((locale) =>
+      [...pluralKeySuffixes(unit, locale)].map((suffix) => `${unit.key}_${suffix}`),
+    ),
+  ]);
+}
+
+function validateGeneratedShapeCollisions(units, violations) {
+  const owners = new Map();
+  for (const unit of [...units]
+    .filter((candidate) => candidate && typeof candidate === 'object')
+    .sort((left, right) => String(left.id).localeCompare(String(right.id)))) {
+    if (!nonEmptyString(unit.namespace) || !nonEmptyString(unit.key)) continue;
+    for (const generatedKey of generatedShapeKeys(unit)) {
+      const resourceKey = `${unit.namespace}:${generatedKey}`;
+      const owner = owners.get(resourceKey);
+      if (owner && owner.id !== unit.id)
+        violations.push(
+          `${unit.id}: namespace/key collides with generated shape of ${owner.id} (${resourceKey})`,
+        );
+      else owners.set(resourceKey, unit);
+    }
+  }
 }
 
 function removeUnitResourceShape(namespace, unit, locale) {
