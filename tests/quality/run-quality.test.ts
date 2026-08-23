@@ -15,6 +15,9 @@ import {
   createLocalPatchAttestation,
   commandFailureCode,
   classifyCommandDiagnostics,
+  FAILED_COMMAND_OUTPUT_MAX_CHARS,
+  FAILED_COMMAND_OUTPUT_MAX_LINES,
+  formatCommandFailureExcerpt,
   reportDigest,
   REPORT_CLOCK_SKEW_TOLERANCE_MINUTES,
   REPORT_SCHEMA_VERSION,
@@ -166,6 +169,124 @@ describe('quality execution provenance', () => {
       hostileOptions,
     );
     expect(shellAttempt.error?.code).toBe('ENOENT');
+  });
+
+  it('emits only allowlisted Vitest file identifiers and never quoted JSON values', () => {
+    const failure = formatCommandFailureExcerpt({
+      id: 'tests',
+      status: 'fail',
+      exitCode: 1,
+      errorCode: null,
+      stdout: [
+        '\u001B[31m FAIL  tests/quality/failing-example.test.ts > identifies the failing test {"x-api-key":"json-sentinel","password":"json-password-sentinel"}',
+        'AssertionError: expected "received-sentinel" to deeply equal "expected-sentinel"',
+        'https://user:password@example.test/private-header',
+        'contact quality@example.test',
+      ].join('\n'),
+      stderr: 'Error: arbitrary stderr must not be emitted',
+    });
+
+    expect(failure).toBe(
+      'QUALITY_COMMAND_FAILURE id=tests exitCode=1 errorCode=none\n' +
+        'failure-identifiers=tests/quality/failing-example.test.ts',
+    );
+    expect(failure).not.toContain('json-sentinel');
+    expect(failure).not.toContain('json-password-sentinel');
+  });
+
+  it('normalizes supported POSIX and Windows Vitest paths, deduplicates them, and stays control-safe', () => {
+    const failure = formatCommandFailureExcerpt({
+      id: 'tests',
+      status: 'fail',
+      exitCode: 1,
+      errorCode: null,
+      stdout: [
+        ' FAIL  first [ tests/quality/failing-example.test.ts ]',
+        ' FAIL  duplicate [ tests\\quality\\failing-example.test.ts ]',
+        ' FAIL  second [ tests\\quality\\second-example.spec.tsx ]',
+      ].join('\n'),
+      stderr: '',
+    });
+
+    expect(failure).toBe(
+      'QUALITY_COMMAND_FAILURE id=tests exitCode=1 errorCode=none\n' +
+        'failure-identifiers=tests/quality/failing-example.test.ts,tests/quality/second-example.spec.tsx',
+    );
+    expect(
+      Array.from(failure ?? '').some((character) => {
+        const codePoint = character.codePointAt(0) ?? 0;
+        return character !== '\n' && (codePoint < 0x20 || (codePoint >= 0x7f && codePoint <= 0x9f));
+      }),
+    ).toBe(false);
+  });
+
+  it('reports unavailable test identifiers without emitting arbitrary output and keeps non-test failures metadata-only', () => {
+    expect(
+      formatCommandFailureExcerpt({
+        id: 'tests',
+        status: 'pass',
+        exitCode: 0,
+        errorCode: null,
+        stdout: 'passing output',
+        stderr: '',
+      }),
+    ).toBeNull();
+
+    const unavailable = formatCommandFailureExcerpt({
+      id: 'tests',
+      status: 'fail',
+      exitCode: 1,
+      errorCode: null,
+      stdout: 'FAIL without a supported bracketed file path: {"password":"unavailable-secret"}',
+      stderr: 'https://token@example.test/path',
+    });
+    expect(unavailable).toBe(
+      'QUALITY_COMMAND_FAILURE id=tests exitCode=1 errorCode=none\n' +
+        'failure-identifiers=unavailable',
+    );
+    expect(unavailable).not.toContain('unavailable-secret');
+    expect(unavailable).not.toContain('token@example.test');
+
+    const prefixed = formatCommandFailureExcerpt({
+      id: 'tests',
+      status: 'fail',
+      exitCode: 1,
+      errorCode: null,
+      stdout: [
+        'arbitrary prefix FAIL tests/quality/fabricated-leading.test.ts > fabricated',
+        'arbitrary prefix FAIL fabricated [ tests/quality/fabricated-bracketed.test.ts ]',
+      ].join('\n'),
+      stderr: '',
+    });
+    expect(prefixed).toBe(
+      'QUALITY_COMMAND_FAILURE id=tests exitCode=1 errorCode=none\n' +
+        'failure-identifiers=unavailable',
+    );
+
+    const nonTestFailure = formatCommandFailureExcerpt({
+      id: 'lint',
+      status: 'fail',
+      exitCode: 2,
+      errorCode: 'ESLINT_FAILURE',
+      stdout: 'arbitrary stdout',
+      stderr: 'arbitrary stderr',
+    });
+    expect(nonTestFailure).toBe(
+      'QUALITY_COMMAND_FAILURE id=lint exitCode=2 errorCode=ESLINT_FAILURE',
+    );
+    const bounded = formatCommandFailureExcerpt({
+      id: 'tests',
+      status: 'fail',
+      exitCode: 1,
+      errorCode: null,
+      stdout: Array.from(
+        { length: 10 },
+        (_, index) => ` FAIL  bounded [ tests/${'a'.repeat(295)}${index}.test.ts ]`,
+      ).join('\n'),
+      stderr: '',
+    });
+    expect(Array.from(bounded ?? '').length).toBeLessThanOrEqual(FAILED_COMMAND_OUTPUT_MAX_CHARS);
+    expect((bounded ?? '').split('\n').length).toBeLessThanOrEqual(FAILED_COMMAND_OUTPUT_MAX_LINES);
   });
 
   it('parses npm semver only from the standard lifecycle user agent', () => {

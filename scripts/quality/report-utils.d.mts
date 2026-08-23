@@ -2,6 +2,16 @@ export const REPORT_SCHEMA_VERSION: number;
 export const REPORT_CLOCK_SKEW_TOLERANCE_MINUTES: number;
 export const REQUIRED_QUALITY_COMMAND_IDS: readonly string[];
 export const DIAGNOSTIC_SUMMARY_KEYS: readonly string[];
+export const FAILED_COMMAND_OUTPUT_MAX_CHARS: number;
+export const FAILED_COMMAND_OUTPUT_MAX_LINES: number;
+export interface CommandFailureExcerpt {
+  id: string;
+  status: 'pass' | 'fail';
+  exitCode: number | null;
+  errorCode: string | null;
+  stdout?: string;
+  stderr?: string;
+}
 export function classifyCommandDiagnostics(
   stdout?: string,
   stderr?: string,
@@ -21,6 +31,7 @@ export function commandFailureCode(
   result: CommandProcessResult,
   hasUnexpectedDiagnostics: boolean,
 ): string | null;
+export function formatCommandFailureExcerpt(command: CommandFailureExcerpt): string | null;
 export function npmVersionFromUserAgent(userAgent?: string): string;
 export interface CapturedCommandResult {
   status: number | null;
