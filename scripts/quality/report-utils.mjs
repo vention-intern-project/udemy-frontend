@@ -335,6 +335,7 @@ const MAX_FAILURE_IDENTIFIERS = 8;
 const MAX_FAILURE_IDENTIFIER_LENGTH = 320;
 const vitestBracketedFailureLine = /^\s*FAIL\b[^\r\n]*\[\s*([^\]\r\n]+?)\s*\]\s*$/;
 const vitestLeadingFailureLine = /^\s*FAIL\s+([^\s>]+)\s+>/;
+const vitestDiagnosticOwnershipLine = /^\s*stderr\s*\|\s*([^\s>|]+)\s+>/;
 
 function normalizeVitestFailureIdentifier(rawIdentifier) {
   const normalized = String(rawIdentifier ?? '')
@@ -371,6 +372,20 @@ function vitestFailureIdentifiers(stdout, stderr) {
   return [...identifiers];
 }
 
+function vitestDiagnosticIdentifiers(stderr) {
+  const identifiers = new Set();
+  for (const line of String(stderr ?? '')
+    .replace(ansiEscapeSequence, '')
+    .replace(controlCharacters, '')
+    .split(/\r?\n/)) {
+    const match = line.match(vitestDiagnosticOwnershipLine);
+    const identifier = match && normalizeVitestFailureIdentifier(match[1]);
+    if (identifier) identifiers.add(identifier);
+    if (identifiers.size === MAX_FAILURE_IDENTIFIERS) break;
+  }
+  return [...identifiers];
+}
+
 export function formatCommandFailureExcerpt(command) {
   if (command.status === 'pass') return null;
   const id = REQUIRED_QUALITY_COMMAND_IDS.includes(command.id) ? command.id : 'unknown';
@@ -382,7 +397,12 @@ export function formatCommandFailureExcerpt(command) {
   const header = `QUALITY_COMMAND_FAILURE id=${id} exitCode=${exitCode} errorCode=${errorCode}`;
   if (id !== 'tests') return header;
   const identifiers = vitestFailureIdentifiers(command.stdout, command.stderr);
-  return `${header}\nfailure-identifiers=${identifiers.join(',') || 'unavailable'}`;
+  const output = [`${header}`, `failure-identifiers=${identifiers.join(',') || 'unavailable'}`];
+  if (errorCode === 'QUALITY_UNEXPECTED_DIAGNOSTICS' || command.hasUnexpectedDiagnostics) {
+    const diagnosticIdentifiers = vitestDiagnosticIdentifiers(command.stderr);
+    output.push(`diagnostic-identifiers=${diagnosticIdentifiers.join(',') || 'unavailable'}`);
+  }
+  return output.join('\n');
 }
 
 export function npmVersionFromUserAgent(userAgent) {

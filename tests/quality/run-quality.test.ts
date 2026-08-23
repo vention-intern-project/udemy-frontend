@@ -220,6 +220,46 @@ describe('quality execution provenance', () => {
     ).toBe(false);
   });
 
+  it('emits only allowlisted unexpected-diagnostic owner identifiers', () => {
+    const diagnostic = formatCommandFailureExcerpt({
+      id: 'tests',
+      status: 'fail',
+      exitCode: 0,
+      errorCode: 'QUALITY_UNEXPECTED_DIAGNOSTICS',
+      stdout: 'ordinary stdout must not be emitted',
+      stderr: [
+        '\u001B[90m stderr | tests/quality/diagnostic-owner.test.ts > warning {"x-api-key":"diagnostic-secret"}\r',
+        'stderr | tests\\quality\\diagnostic-owner.test.ts > duplicate',
+        'stderr | tests/quality/second-owner.spec.tsx > https://user:password@example.test/path',
+        'prefix stderr | tests/quality/fabricated-prefix.test.ts > fabricated',
+        'stderr | ../outside.test.ts > traversal',
+        'stderr | C:\\outside.test.ts > drive path',
+        'stderr | /outside.test.ts > absolute path',
+        'warning stderr | tests/quality/fabricated-mid-line.test.ts > fabricated',
+      ].join('\n'),
+    });
+
+    expect(diagnostic).toBe(
+      'QUALITY_COMMAND_FAILURE id=tests exitCode=0 errorCode=QUALITY_UNEXPECTED_DIAGNOSTICS\n' +
+        'failure-identifiers=unavailable\n' +
+        'diagnostic-identifiers=tests/quality/diagnostic-owner.test.ts,tests/quality/second-owner.spec.tsx',
+    );
+    expect(diagnostic).not.toContain('diagnostic-secret');
+    expect(diagnostic).not.toContain('user:password');
+    expect(diagnostic).not.toContain('fabricated');
+
+    const diagnosticFlag = formatCommandFailureExcerpt({
+      id: 'tests',
+      status: 'fail',
+      exitCode: 0,
+      errorCode: null,
+      hasUnexpectedDiagnostics: true,
+      stdout: '',
+      stderr: 'stderr | tests/quality/flag-owner.test.ts > title',
+    });
+    expect(diagnosticFlag).toContain('diagnostic-identifiers=tests/quality/flag-owner.test.ts');
+  });
+
   it('reports unavailable test identifiers without emitting arbitrary output and keeps non-test failures metadata-only', () => {
     expect(
       formatCommandFailureExcerpt({

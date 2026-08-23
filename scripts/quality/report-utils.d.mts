@@ -11,6 +11,7 @@ export interface CommandFailureExcerpt {
   errorCode: string | null;
   stdout?: string;
   stderr?: string;
+  hasUnexpectedDiagnostics?: boolean;
 }
 export function classifyCommandDiagnostics(
   stdout?: string,

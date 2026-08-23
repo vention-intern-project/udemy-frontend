@@ -75,20 +75,19 @@ function run(id, args) {
     },
   );
   const diagnostics = classifyCommandDiagnostics(result.stdout, result.stderr);
+  const hasUnexpectedDiagnostics = unexpectedDiagnosticCount(diagnostics) > 0;
   return {
     command: {
       id,
-      status:
-        result.status === 0 && !result.error && unexpectedDiagnosticCount(diagnostics) === 0
-          ? 'pass'
-          : 'fail',
+      status: result.status === 0 && !result.error && !hasUnexpectedDiagnostics ? 'pass' : 'fail',
       durationMs: Date.now() - started,
       exitCode: result.status ?? null,
-      errorCode: commandFailureCode(result, unexpectedDiagnosticCount(diagnostics) > 0),
+      errorCode: commandFailureCode(result, hasUnexpectedDiagnostics),
       diagnostics,
     },
     stdout: result.stdout,
     stderr: result.stderr,
+    hasUnexpectedDiagnostics,
   };
 }
 
@@ -196,8 +195,13 @@ if (errors.length)
 await mkdir(dirname(output), { recursive: true });
 await writeFile(output, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
 console.log(summaryFor(report));
-for (const { command, stdout, stderr } of executions) {
-  const excerpt = formatCommandFailureExcerpt({ ...command, stdout, stderr });
+for (const { command, stdout, stderr, hasUnexpectedDiagnostics } of executions) {
+  const excerpt = formatCommandFailureExcerpt({
+    ...command,
+    stdout,
+    stderr,
+    hasUnexpectedDiagnostics,
+  });
   if (excerpt) console.error(excerpt);
 }
 if (report.outcome !== 'pass') process.exitCode = 1;
