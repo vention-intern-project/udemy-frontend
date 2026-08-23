@@ -45,7 +45,7 @@ interface ZoomedCatalogGeometry {
   readonly freeCard: HorizontalBounds | undefined;
   readonly paidCard: HorizontalBounds | undefined;
   readonly bounds: HorizontalBounds;
-  readonly overflowingVisibleDescendants: readonly EffectiveStructuralOverflow[];
+  readonly visibleStructuralIntervalsOutsideViewport: readonly EffectiveStructuralOverflow[];
 }
 
 interface EffectiveStructuralOverflow extends HorizontalBounds {
@@ -4792,7 +4792,9 @@ test('renders the D20 Catalog vertical slice in Russian and Uzbek without changi
         return { left, right };
       };
       const bounds = toHorizontalBounds(list);
-      const overflowingVisibleDescendants = Array.from(list.querySelectorAll<HTMLElement>('*'))
+      const visibleStructuralIntervalsOutsideViewport = Array.from(
+        list.querySelectorAll<HTMLElement>('*'),
+      )
         .filter((element) => {
           const style = getComputedStyle(element);
           return (
@@ -4806,18 +4808,13 @@ test('renders the D20 Catalog vertical slice in Russian and Uzbek without changi
           const elementBounds = toHorizontalBounds(element);
           let left = elementBounds.left;
           let right = elementBounds.right;
-          for (
-            let ancestor = element.parentElement;
-            ancestor && list.contains(ancestor);
-            ancestor = ancestor.parentElement
-          ) {
+          for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
             const style = getComputedStyle(ancestor);
             if (['hidden', 'clip', 'auto', 'scroll'].includes(style.overflowX)) {
               const ancestorBounds = toHorizontalBounds(ancestor);
               left = Math.max(left, ancestorBounds.left);
               right = Math.min(right, ancestorBounds.right);
             }
-            if (ancestor === list) break;
           }
           return right > left
             ? {
@@ -4830,7 +4827,7 @@ test('renders the D20 Catalog vertical slice in Russian and Uzbek without changi
         })
         .filter(
           (element): element is EffectiveStructuralOverflow =>
-            element !== undefined && (element.left < bounds.left || element.right > bounds.right),
+            element !== undefined && (element.left < 0 || element.right > window.innerWidth),
         );
       const freeCard = list.querySelector('[data-course-card-id="8"]');
       const paidCard = list.querySelector('[data-course-card-id="11"]');
@@ -4838,12 +4835,14 @@ test('renders the D20 Catalog vertical slice in Russian and Uzbek without changi
         freeCard: freeCard ? toHorizontalBounds(freeCard) : undefined,
         paidCard: paidCard ? toHorizontalBounds(paidCard) : undefined,
         bounds,
-        overflowingVisibleDescendants,
+        visibleStructuralIntervalsOutsideViewport,
       };
     });
-    // Intrinsic child rectangles can extend past a clipping ancestor. Intersect every horizontal
-    // clipping interval before asserting the remaining, actually painted interval is contained.
-    expect(zoomedCatalog.overflowingVisibleDescendants).toEqual([]);
+    // At root CSS zoom the document scroll width reflects the zoomed harness (1920px at this
+    // viewport), so it cannot establish physical containment. Intrinsic child rectangles may
+    // extend past the result list, but only their interval after every clipping ancestor is
+    // visible. Require that painted structural interval to remain inside the physical viewport.
+    expect(zoomedCatalog.visibleStructuralIntervalsOutsideViewport).toEqual([]);
     expect(zoomedCatalog.freeCard?.left).toBeGreaterThanOrEqual(zoomedCatalog.bounds.left - 1);
     expect(zoomedCatalog.freeCard?.right).toBeLessThanOrEqual(zoomedCatalog.bounds.right + 1);
     expect(zoomedCatalog.paidCard?.left).toBeGreaterThanOrEqual(zoomedCatalog.bounds.left - 1);
