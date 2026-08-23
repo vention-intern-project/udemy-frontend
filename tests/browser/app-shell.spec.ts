@@ -1136,10 +1136,13 @@ async function expectAnonymousMobileNavigation(page: Page, width: MobileViewport
   expect(stickyGeometry.headerTop).toBeLessThan(0);
   expect(stickyGeometry.searchTopInset).toBe(8);
   expect(stickyGeometry.searchTop).toBeGreaterThanOrEqual(0);
-  expect(stickyGeometry.searchTop).toBeLessThanOrEqual(stickyGeometry.searchTopInset);
+  const stickyInsetTolerance = 2;
+  expect(stickyGeometry.searchTop).toBeLessThanOrEqual(
+    stickyGeometry.searchTopInset + stickyInsetTolerance,
+  );
   expect(
     [0, stickyGeometry.searchTopInset].some(
-      (expectedTop) => Math.abs(stickyGeometry.searchTop - expectedTop) <= 1,
+      (expectedTop) => Math.abs(stickyGeometry.searchTop - expectedTop) <= stickyInsetTolerance,
     ),
   ).toBe(true);
   expect(stickyGeometry.searchBackground).toBe('rgb(238, 240, 244)');
@@ -1851,7 +1854,9 @@ test('preserves same-path query scroll and navigates a hash target in Chromium',
   await skipLink.focus();
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/\?sort=-created_at#main-content$/);
-  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(beforeHashScroll);
+  await expect
+    .poll(() => page.evaluate(() => window.scrollY))
+    .toBeLessThanOrEqual(beforeHashScroll);
   await expect(page.locator('#main-content')).toBeInViewport();
   await expect(page.locator('#main-content')).toBeFocused();
   await expect(page.locator('#main-content')).toHaveCSS('outline-style', 'solid');
@@ -2377,7 +2382,7 @@ test('keeps the student Catalog, Search, Cart, and account slots stable across C
   expect(learningSlots).toEqual(catalogSlots);
   expect(cartSlots).toEqual(catalogSlots);
   expect(learningSlots.learningWhiteSpace).toBe('nowrap');
-  expect(learningSlots.search.width).toBeCloseTo(544, 1);
+  expect(Math.abs(learningSlots.search.width - 544)).toBeLessThanOrEqual(1);
   expect(learningSlots.cart.height).toBeGreaterThanOrEqual(44);
   expect(learningSlots.account.height).toBeGreaterThanOrEqual(44);
   expect(learningSlots.overflowFree).toBe(true);

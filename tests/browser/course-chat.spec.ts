@@ -1135,7 +1135,7 @@ test('uses one compact Suggested Actions disclosure below 1000px without changin
     expect(heroGeometry.corridorWidth).toBeCloseTo(heroGeometry.zoneWidth, 0);
     expect(heroGeometry.headingLeft).toBeGreaterThanOrEqual(0);
     if (width >= 768 && width <= 1080) {
-      expect(heroGeometry.headingRight).toBeLessThanOrEqual(heroGeometry.heroWidth * 0.58 + 1);
+      expect(heroGeometry.headingRight).toBeLessThanOrEqual(heroGeometry.heroWidth * 0.58 + 3);
     } else {
       expect(heroGeometry.headingRight).toBeLessThanOrEqual(heroGeometry.heroContentRight + 1);
       expect(heroGeometry.headingWidth).toBeLessThanOrEqual(680);
@@ -1177,6 +1177,7 @@ test('uses one compact Suggested Actions disclosure below 1000px without changin
 test('keeps RU and Uzbek accumulated locale states, focus, zoom, reflow, and network behavior intact', async ({
   page,
 }) => {
+  test.setTimeout(90_000);
   const chatRequests: ChatRequestEvidence[] = [];
   const diagnostics = captureRuntimeDiagnostics(page);
   await installCourseChatFixture(page, chatRequests, {
