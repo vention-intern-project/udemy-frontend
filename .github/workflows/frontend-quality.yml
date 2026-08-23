@@ -118,6 +118,7 @@ jobs:
           - tests/browser/course-chat.playwright.config.ts
           - tests/browser/course-detail.playwright.config.ts
           - tests/browser/instructor-courses-fe029.playwright.config.ts
+          - tests/browser/instructor-course-editor-fe014.playwright.config.ts
           - tests/browser/learning-progress.playwright.config.ts
     env:
       QUALITY_TARGET_SHA: ${{ needs.resolve-target.outputs.quality-target-sha }}
