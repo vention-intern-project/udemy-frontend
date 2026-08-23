@@ -27,6 +27,71 @@ const enrollment = {
   },
 };
 const emptyCart = { id: 1, items: [], total_price: '0.00', currency: 'USD', item_count: 0 };
+
+interface LearningResidualBrowserCopy {
+  readonly absentDescription: string;
+  readonly breadcrumb: string;
+  readonly catalog: string;
+  readonly myLearning: string;
+  readonly paymentPending: string;
+  readonly pendingBody: string;
+  readonly failedAction: string;
+  readonly declinedTitle: string;
+  readonly declinedBody: string;
+  readonly progressHeading: string;
+  readonly progressSummary: string;
+  readonly progressAccessibleName: string;
+}
+
+const learningResidualBrowserCopy: Readonly<
+  Record<'en' | 'ru' | 'uz', LearningResidualBrowserCopy>
+> = {
+  en: {
+    absentDescription: 'No course description is available.',
+    breadcrumb: 'Breadcrumb',
+    catalog: 'Catalog',
+    myLearning: 'My learning',
+    paymentPending: 'Payment pending',
+    pendingBody:
+      'Mock payment is awaiting completion. Learning remains locked until your enrollment is active.',
+    failedAction: 'Simulate mock payment failure',
+    declinedTitle: 'Mock payment declined',
+    declinedBody: 'The mock payment was declined. This enrollment remains locked.',
+    progressHeading: 'Learning progress',
+    progressSummary: '2 of 5 lessons completed',
+    progressAccessibleName: '2 of 5 lessons completed, 40%',
+  },
+  ru: {
+    absentDescription: 'Описание курса отсутствует.',
+    breadcrumb: 'Хлебные крошки',
+    catalog: 'Каталог',
+    myLearning: 'Моё обучение',
+    paymentPending: 'Платёж ожидается',
+    pendingBody:
+      'Тестовая оплата ожидает завершения. Обучение останется заблокированным, пока запись не станет активной.',
+    failedAction: 'Сымитировать сбой тестовой оплаты',
+    declinedTitle: 'Тестовый платёж отклонён',
+    declinedBody: 'Тестовая оплата отклонена. Эта запись остаётся заблокированной.',
+    progressHeading: 'Прогресс обучения',
+    progressSummary: 'Завершено: 2 из 5 уроков',
+    progressAccessibleName: 'Завершено: 2 из 5 уроков, 40%',
+  },
+  uz: {
+    absentDescription: 'Kurs tavsifi mavjud emas.',
+    breadcrumb: 'Yo‘l ko‘rsatkich',
+    catalog: 'Katalog',
+    myLearning: 'Ta’limim',
+    paymentPending: 'To‘lov kutilmoqda',
+    pendingBody:
+      'Sinov to‘lovi yakunlanishini kutmoqda. Ro‘yxatdan o‘tishingiz faol bo‘lmaguncha ta’lim yopiq qoladi.',
+    failedAction: 'Sinov to‘lovi xatosini taqlid qilish',
+    declinedTitle: 'Sinov to‘lovi rad etildi',
+    declinedBody: 'Sinov to‘lovi rad etildi. Bu ro‘yxatdan o‘tish yopiq qoladi.',
+    progressHeading: 'Ta’lim jarayoni',
+    progressSummary: '5 ta darsdan 2 tasi yakunlandi',
+    progressAccessibleName: '5 ta darsdan 2 tasi yakunlandi, 40%',
+  },
+};
 const VALID_VIDEO_MP4 = Buffer.from(
   'AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAAIZnJlZQAACIhtZGF0//tQxAADwAABpAAAACAAADSAAAAETEFNRTMuOTkuNVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVUxBTUUzLjk5LjVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVQAAAq4GBf//qtxF6b3m2Ui3lizYINkj7u94MjY0IC0gY29yZSAxNDggcjI2NDMgNWM2NTcwNCAtIEguMjY0L01QRUctNCBBVkMgY29kZWMgLSBDb3B5bGVmdCAyMDAzLTIwMTUgLSBodHRwOi8vd3d3LnZpZGVvbGFuLm9yZy94MjY0Lmh0bWwgLSBvcHRpb25zOiBjYWJhYz0xIHJlZj0zIGRlYmxvY2s9MTowOjAgYW5hbHlzZT0weDM6MHgxMTMgbWU9aGV4IHN1Ym1lPTcgcHN5PTEgcHN5X3JkPTEuMDA6MC4wMCBtaXhlZF9yZWY9MSBtZV9yYW5nZT0xNiBjaHJvbWFfbWU9MSB0cmVsbGlzPTEgOHg4ZGN0PTEgY3FtPTAgZGVhZHpvbmU9MjEsMTEgZmFzdF9wc2tpcD0xIGNocm9tYV9xcF9vZmZzZXQ9LTIgdGhyZWFkcz0xIGxvb2thaGVhZF90aHJlYWRzPTEgc2xpY2VkX3RocmVhZHM9MCBucj0wIGRlY2ltYXRlPTEgaW50ZXJsYWNlZD0wIGJsdXJheV9jb21wYXQ9MCBjb25zdHJhaW5lZF9pbnRyYT0wIGJmcmFtZXM9MyBiX3B5cmFtaWQ9MiBiX2FkYXB0PTEgYl9iaWFzPTAgZGlyZWN0PTEgd2VpZ2h0Yj0xIG9wZW5fZ29wPTAgd2VpZ2h0cD0yIGtleWludD0yNTAga2V5aW50X21pbj0yNSBzY2VuZWN1dD00MCBpbnRyYV9yZWZyZXNoPTAgcmNfbG9va2FoZWFkPTQwIHJjPWNyZiBtYnRyZWU9MSBjcmY9MjMuMCBxY29tcD0wLjYwIHFwbWluPTAgcXBtYXg9NjkgcXBzdGVwPTQgaXBfcmF0aW89MS40MCBhcT0xOjEuMDAAgAAAABRliIQAK//+2OfzLJOXereQdLvG0f/7UsRdg8AAAaQAAAAgAAA0gAAABFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMuOTkuNVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//tSxKGDwAABpAAAACAAADSAAAAEVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVMQU1FMy45OS41VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/+1LEoYPAAAGkAAAAIAAANIAAAARVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVUxBTUUzLjk5LjVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/7UsShg8AAAaQAAAAgAAA0gAAABFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMuOTkuNVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//tSxKGDwAABpAAAACAAADSAAAAEVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/+1LEoYPAAAGkAAAAIAAANIAAAARVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVQAABP9tb292AAAAbG12aGQAAAAAAAAAAAAAAAAAAAPoAAAAtgABAAABAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAAACEXRyYWsAAABcdGtoZAAAAAMAAAAAAAAAAAAAAAEAAAAAAAAAtgAAAAAAAAAAAAAAAQEAAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAACRlZHRzAAAAHGVsc3QAAAAAAAAAAQAAAJwAAARRAAEAAAAAAYltZGlhAAAAIG1kaGQAAAAAAAAAAAAAAAAAAKxEAAAfUVXEAAAAAAAtaGRscgAAAAAAAAAAc291bgAAAAAAAAAAAAAAAFNvdW5kSGFuZGxlcgAAAAE0bWluZgAAABBzbWhkAAAAAAAAAAAAAAAkZGluZgAAABxkcmVmAAAAAAAAAAEAAAAMdXJsIAAAAAEAAAD4c3RibAAAAGBzdHNkAAAAAAAAAAEAAABQbXA0YQAAAAAAAAABAAAAAAAAAAAAAgAQAAAAAKxEAAAAAAAsZXNkcwAAAAADgICAGwABAASAgIANaxUAAAAAAPtRAAD7UQaAgIABAgAAACBzdHRzAAAAAAAAAAIAAAAGAAAEgAAAAAEAAARRAAAAKHN0c2MAAAAAAAAAAgAAAAEAAAABAAAAAQAAAAIAAAAGAAAAAQAAADBzdHN6AAAAAAAAAAAAAAAHAAAA0AAAANEAAADRAAAA0QAAANEAAADRAAAA0QAAABhzdGNvAAAAAAAAAAIAAAAwAAADygAAAhh0cmFrAAAAXHRraGQAAAADAAAAAAAAAAAAAAACAAAAAAAAACgAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAIAAAACAAAAAAAkZWR0cwAAABxlbHN0AAAAAAAAAAEAAAAoAAAAAAABAAAAAAGQbWRpYQAAACBtZGhkAAAAAAAAAAAAAAAAAAAyAAAAAgBVxAAAAAAALWhkbHIAAAAAAAAAAHZpZGUAAAAAAAAAAAAAAABWaWRlb0hhbmRsZXIAAAABO21pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAAPtzdGJsAAAAl3N0c2QAAAAAAAAAAQAAAIdhdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAIAAgBIAAAASAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGP//AAAAMWF2Y0MBZAAK/+EAGGdkAAqs2V+IiIQAAAMABAAAAwDIPEiWWAEABmjr48siwAAAABhzdHRzAAAAAAAAAAEAAAABAAACAAAAABxzdHNjAAAAAAAAAAEAAAABAAAAAQAAAAEAAAAUc3RzegAAAAAAAALKAAAAAQAAABRzdGNvAAAAAAAAAAEAAAEAAAAAYnVkdGEAAABabWV0YQAAAAAAAAAhaGRscgAAAAAAAAAAbWRpcmFwcGwAAAAAAAAAAAAAAAAtaWxzdAAAACWpdG9vAAAAHWRhdGEAAAABAAAAAExhdmY1Ni40MC4xMDE=',
   'base64',
@@ -351,6 +416,7 @@ async function expectEffectivePageScaleGeometry(page: Page, preview: Locator) {
     expect(scaleEvidence.visualWidth).toBeLessThan(scaleEvidence.layoutWidth);
     await expectStableLessonMediaGeometry(preview);
   } finally {
+    await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 });
     await cdp.detach();
   }
 }
@@ -539,17 +605,21 @@ test('renders the My learning empty state within its responsive geometry', async
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/learning');
   const cdp = await page.context().newCDPSession(page);
-  await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 2 });
-  const scaleGeometry = await page.evaluate(() => ({
-    scale: window.visualViewport?.scale ?? 1,
-    documentWidth: document.documentElement.scrollWidth,
-    bodyWidth: document.body.scrollWidth,
-    layoutWidth: document.documentElement.clientWidth,
-  }));
-  expect(scaleGeometry.scale).toBeCloseTo(2, 1);
-  expect(scaleGeometry.documentWidth).toBeLessThanOrEqual(scaleGeometry.layoutWidth);
-  expect(scaleGeometry.bodyWidth).toBeLessThanOrEqual(scaleGeometry.layoutWidth);
-  await cdp.detach();
+  try {
+    await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 2 });
+    const scaleGeometry = await page.evaluate(() => ({
+      scale: window.visualViewport?.scale ?? 1,
+      documentWidth: document.documentElement.scrollWidth,
+      bodyWidth: document.body.scrollWidth,
+      layoutWidth: document.documentElement.clientWidth,
+    }));
+    expect(scaleGeometry.scale).toBeCloseTo(2, 1);
+    expect(scaleGeometry.documentWidth).toBeLessThanOrEqual(scaleGeometry.layoutWidth);
+    expect(scaleGeometry.bodyWidth).toBeLessThanOrEqual(scaleGeometry.layoutWidth);
+  } finally {
+    await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 });
+    await cdp.detach();
+  }
   expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
   expect(diagnostics.httpFailures).toEqual([]);
 });
@@ -560,7 +630,7 @@ test('keeps aggregate progress separate from fresh lesson state, dedupes action,
   await installStudent(page);
   const diagnostics = captureRuntimeDiagnostics(page, {
     failedResourcePaths: new Set(['/courses/7/lessons/12/complete']),
-    abortedRequests: [expectedGetAbort('/enrollments/4', 2)],
+    abortedRequests: [expectedGetAbort('/cart', 4), expectedGetAbort('/enrollments/4', 4)],
   });
   const requests: string[] = [];
   let completeRequests = 0;
@@ -761,16 +831,29 @@ test('keeps aggregate progress separate from fresh lesson state, dedupes action,
     expect(dimensions.documentWidth).toBeLessThanOrEqual(dimensions.client);
     expect(dimensions.bodyWidth).toBeLessThanOrEqual(dimensions.client);
   }
-  await page.evaluate(() => {
-    document.documentElement.style.zoom = '200%';
-  });
-  const zoomed = await page.evaluate(() => ({
-    client: document.documentElement.clientWidth,
-    documentWidth: document.documentElement.scrollWidth,
-    bodyWidth: document.body.scrollWidth,
-  }));
-  expect(zoomed.documentWidth).toBeLessThanOrEqual(zoomed.client);
-  expect(zoomed.bodyWidth).toBeLessThanOrEqual(zoomed.client);
+  const effectiveScaleGeometry = async () => {
+    await page.evaluate(() => {
+      document.documentElement.style.zoom = '200%';
+    });
+    return page.evaluate(() => ({
+      client: document.documentElement.clientWidth,
+      documentWidth: document.documentElement.scrollWidth,
+      bodyWidth: document.body.scrollWidth,
+    }));
+  };
+  const zoomedByLocale = [{ locale: 'en', ...(await effectiveScaleGeometry()) }];
+  for (const locale of ['ru', 'uz'] as const) {
+    await page.evaluate((selectedLocale) => {
+      localStorage.setItem('learnhub.locale', selectedLocale);
+    }, locale);
+    await page.reload();
+    await expect(page.getByRole('heading', { name: 'Browser learning course' })).toBeVisible();
+    zoomedByLocale.push({ locale, ...(await effectiveScaleGeometry()) });
+  }
+  for (const zoomed of zoomedByLocale) {
+    expect(zoomed.documentWidth, JSON.stringify(zoomedByLocale)).toBeLessThanOrEqual(zoomed.client);
+    expect(zoomed.bodyWidth, JSON.stringify(zoomedByLocale)).toBeLessThanOrEqual(zoomed.client);
+  }
   expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
   expect(diagnostics.httpFailures).toEqual(['POST /courses/7/lessons/12/complete 500']);
 });
@@ -1721,6 +1804,79 @@ for (const scenario of partialAvailabilityScenarios)
     );
   });
 
+const learningFailureCopy = {
+  en: {
+    title: 'Learning data is unavailable',
+    message: 'The server returned an invalid response. Try again.',
+    retry: 'Try again',
+  },
+  ru: {
+    title: 'Данные об обучении недоступны',
+    message: 'Сервер вернул некорректный ответ. Повторите попытку.',
+    retry: 'Повторить',
+  },
+  uz: {
+    title: 'Ta’lim ma’lumotlari mavjud emas',
+    message: 'Server noto‘g‘ri javob qaytardi. Qayta urinib ko‘ring.',
+    retry: 'Qayta urinish',
+  },
+} as const;
+
+for (const locale of ['en', 'ru', 'uz'] as const) {
+  test(`resolves a settled Learning failure in ${locale} without private server text`, async ({
+    page,
+  }) => {
+    await installStudent(page);
+    const diagnostics = captureRuntimeDiagnostics(page, {
+      abortedRequests: [expectedGetAbort('/enrollments/4', 1)],
+    });
+    let writes = 0;
+    page.on('request', (request) => {
+      if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method())) writes += 1;
+    });
+    await page.route('**/*', async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (url.origin !== 'http://127.0.0.1:4179') return route.fallback();
+      if (url.pathname === '/me') return json(route, student);
+      if (url.pathname === '/enrollments/4')
+        return json(route, { malformed: 'private learning failure' });
+      if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/'))
+        throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
+      return route.fallback();
+    });
+
+    await page.goto('/learning/enrollments/4');
+    if (locale !== 'en') {
+      await page.getByRole('button', { name: 'Change language' }).press('Enter');
+      await page
+        .getByRole('button', { name: locale === 'ru' ? 'Русский' : "O'zbek", exact: true })
+        .press('Enter');
+    }
+
+    const copy = learningFailureCopy[locale];
+    await expect(page.getByRole('heading', { level: 1, name: copy.title })).toBeVisible();
+    await expect(page.getByText(copy.message, { exact: true })).toBeVisible();
+    await expect(page.getByText('private learning failure')).toHaveCount(0);
+    const retry = page.getByRole('button', { name: copy.retry });
+    for (const width of [320, 390, 768, 1280] as const) {
+      await page.setViewportSize({ width, height: 900 });
+      await retry.focus();
+      await expect(retry).toBeFocused();
+      const geometry = await page.evaluate(() => ({
+        documentWidth: document.documentElement.scrollWidth,
+        bodyWidth: document.body.scrollWidth,
+        layoutWidth: document.documentElement.clientWidth,
+      }));
+      expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.layoutWidth);
+      expect(geometry.bodyWidth).toBeLessThanOrEqual(geometry.layoutWidth);
+    }
+    expect(writes).toBe(0);
+    expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
+    expect(diagnostics.httpFailures).toEqual([]);
+  });
+}
+
 test('recovers API-022 enrollment detail by keyboard and focuses the restored course heading', async ({
   page,
 }) => {
@@ -1933,6 +2089,173 @@ for (const status of ['pending_payment', 'cancelled'] as const)
     expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
     expect(diagnostics.httpFailures).toEqual([]);
   });
+
+for (const locale of ['en', 'ru', 'uz'] as const) {
+  test(`resolves the complete DRAFT-22 learning residual family and exact payment write in ${locale}`, async ({
+    page,
+  }) => {
+    test.slow();
+    await installStudent(page);
+    const copy = learningResidualBrowserCopy[locale];
+    const diagnostics = captureRuntimeDiagnostics(page, {
+      abortedRequests: [
+        expectedGetAbort('/cart', 4),
+        expectedGetAbort('/enrollments/my', 2),
+        expectedGetAbort('/enrollments/4', 4),
+        expectedGetAbort('/courses/7/progress', 2),
+        expectedGetAbort('/courses/7/lessons', 2),
+      ],
+    });
+    let enrollmentStatus: 'pending_payment' | 'cancelled' | 'active' = 'pending_payment';
+    const writeRequests: string[] = [];
+    page.on('request', (request) => {
+      const url = new URL(request.url());
+      if (
+        url.origin === 'http://127.0.0.1:4179' &&
+        !['GET', 'HEAD', 'OPTIONS'].includes(request.method())
+      ) {
+        writeRequests.push(`${request.method()} ${url.pathname}`);
+      }
+    });
+    await page.route('**/*', async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (url.origin !== 'http://127.0.0.1:4179') return route.fallback();
+      if (url.pathname === '/me') return json(route, student);
+      if (url.pathname === '/enrollments/my')
+        return json(route, {
+          items: [{ ...enrollment, status: enrollmentStatus }],
+          page: 1,
+          page_size: 20,
+          total: 1,
+          pages: 1,
+          has_next: false,
+          has_previous: false,
+        });
+      if (url.pathname === '/enrollments/4')
+        return json(route, { ...enrollment, status: enrollmentStatus });
+      if (url.pathname === '/payments/complete') {
+        expect(request.method()).toBe('POST');
+        expect(request.headers().authorization).toBe('Bearer student-token');
+        expect(request.postDataJSON()).toEqual({ enrollment_id: 4, status: 'failed' });
+        enrollmentStatus = 'cancelled';
+        return json(route, { enrollment_id: 4, status: 'cancelled', message: 'private mock' });
+      }
+      if (url.pathname === '/courses/7/progress') {
+        if (enrollmentStatus !== 'active')
+          throw new Error(`Progress requested for ${enrollmentStatus} enrollment`);
+        return json(route, {
+          course_id: 7,
+          completed_lessons: 2,
+          total_lessons: 5,
+          progress_percentage: 40,
+        });
+      }
+      if (url.pathname === '/courses/7/lessons') {
+        if (enrollmentStatus !== 'active')
+          throw new Error(`Lessons requested for ${enrollmentStatus} enrollment`);
+        return json(route, {
+          items: [],
+          page: 1,
+          page_size: 100,
+          total: 0,
+          pages: 0,
+          has_next: false,
+          has_previous: false,
+        });
+      }
+      if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/'))
+        throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
+      return route.fallback();
+    });
+
+    await page.goto('/learning');
+    if (locale !== 'en') {
+      await page.getByRole('button', { name: 'Change language' }).press('Enter');
+      await page
+        .getByRole('button', { name: locale === 'ru' ? 'Русский' : "O'zbek", exact: true })
+        .press('Enter');
+    }
+    await expect(page).toHaveURL(/\/learning$/);
+    const listBreadcrumb = page.getByRole('navigation', { name: copy.breadcrumb });
+    await expect(listBreadcrumb.getByRole('link', { name: copy.catalog })).toHaveAttribute(
+      'href',
+      '/',
+    );
+    await expect(listBreadcrumb.locator('[aria-current="page"]')).toHaveText(`/${copy.myLearning}`);
+
+    await page.goto('/learning/enrollments/4');
+    await expect(page.getByText(copy.paymentPending, { exact: true }).last()).toBeVisible();
+    await expect(page.getByText(copy.pendingBody, { exact: true })).toBeVisible();
+    const failedAction = page.getByRole('button', { name: copy.failedAction });
+    await tabTo(page, failedAction);
+    await expect(failedAction).toBeFocused();
+    await page.keyboard.press('Enter');
+    const declined = page.getByRole('alert');
+    await expect(declined).toContainText(copy.declinedTitle);
+    await expect(declined).toContainText(copy.declinedBody);
+    await expect(declined).toHaveAttribute('aria-live', 'assertive');
+    await expect(declined).toHaveAttribute('aria-atomic', 'true');
+    await expect(page.locator('body')).not.toContainText(/private mock|learning:\w+|a11y:\w+/);
+    expect(writeRequests).toEqual(['POST /payments/complete']);
+
+    enrollmentStatus = 'active';
+    await page.reload();
+    await expect(page.getByRole('heading', { name: enrollment.course.title })).toBeVisible();
+    await expect(page.getByText(copy.absentDescription, { exact: true })).toBeVisible();
+    if (locale !== 'en')
+      await expect(
+        page.getByText('No course description is available.', { exact: true }),
+      ).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: copy.progressHeading })).toBeVisible();
+    await expect(page.getByText(copy.progressSummary, { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole('progressbar', { name: copy.progressAccessibleName }),
+    ).toBeVisible();
+    const detailBreadcrumb = page.getByRole('navigation', { name: copy.breadcrumb });
+    const backLink = detailBreadcrumb.getByRole('link', { name: copy.myLearning });
+    await expect(backLink).toHaveAttribute('href', '/learning');
+
+    for (const width of [320, 390, 768, 1280] as const) {
+      await page.setViewportSize({ width, height: 900 });
+      await backLink.focus();
+      await expect(backLink).toBeFocused();
+      const geometry = await page.evaluate(() => ({
+        clientWidth: document.documentElement.clientWidth,
+        documentWidth: document.documentElement.scrollWidth,
+        bodyWidth: document.body.scrollWidth,
+      }));
+      expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.clientWidth);
+      expect(geometry.bodyWidth).toBeLessThanOrEqual(geometry.clientWidth);
+    }
+
+    const cdp = await page.context().newCDPSession(page);
+    try {
+      await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 2 });
+      const scaledGeometry = await page.evaluate(() => ({
+        scale: window.visualViewport?.scale ?? 1,
+        visualWidth: window.visualViewport?.width ?? window.innerWidth,
+        layoutWidth: document.documentElement.clientWidth,
+        documentWidth: document.documentElement.scrollWidth,
+        bodyWidth: document.body.scrollWidth,
+      }));
+      expect(scaledGeometry.scale).toBeCloseTo(2, 1);
+      expect(scaledGeometry.visualWidth * scaledGeometry.scale).toBeCloseTo(
+        scaledGeometry.layoutWidth,
+        0,
+      );
+      expect(scaledGeometry.documentWidth).toBeLessThanOrEqual(scaledGeometry.layoutWidth);
+      expect(scaledGeometry.bodyWidth).toBeLessThanOrEqual(scaledGeometry.layoutWidth);
+    } finally {
+      await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 });
+      await cdp.detach();
+    }
+
+    expect(writeRequests).toEqual(['POST /payments/complete']);
+    expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
+    expect(diagnostics.httpFailures).toEqual([]);
+  });
+}
 
 test('supports keyboard traversal and restores focus after list and workspace recovery', async ({
   page,

@@ -15,6 +15,44 @@ interface CatalogPaginationFixture {
   has_previous?: boolean;
 }
 
+interface CatalogLocaleExpectation {
+  readonly locale: 'ru' | 'uz';
+  readonly heroTitle: string;
+  readonly resultCount: string;
+  readonly sortBy: string;
+  readonly sortCompact: string;
+  readonly free: string;
+  readonly details: string;
+  readonly detailsAccessibleName: string;
+  readonly lessons: string;
+  readonly enrollForFree: string;
+  readonly addToCart: string;
+}
+
+interface CatalogViewportGeometry {
+  readonly width: number;
+  readonly documentWidth: number;
+  readonly bodyWidth: number;
+  readonly clientWidth: number;
+}
+
+interface HorizontalBounds {
+  readonly left: number;
+  readonly right: number;
+}
+
+interface ZoomedCatalogGeometry {
+  readonly freeCard: HorizontalBounds | undefined;
+  readonly paidCard: HorizontalBounds | undefined;
+  readonly bounds: HorizontalBounds;
+  readonly visibleStructuralIntervalsOutsideViewport: readonly EffectiveStructuralOverflow[];
+}
+
+interface EffectiveStructuralOverflow extends HorizontalBounds {
+  readonly dataPart: string | null;
+  readonly tagName: string;
+}
+
 function response(items: readonly unknown[] = [], pagination: CatalogPaginationFixture = {}) {
   return JSON.stringify({
     items,
@@ -2943,6 +2981,14 @@ test('keeps an inverted price range invalid, then submits a corrected value with
   await expect(page.getByText('Enter a non-negative price.')).toBeVisible();
   await expect(minimum).toHaveAttribute('aria-invalid', 'true');
   await expect(minimum).toHaveAttribute('aria-describedby', /-error/);
+  await page.getByRole('button', { name: 'Change language' }).click();
+  await page.getByRole('button', { name: 'Русский', exact: true }).click();
+  await expect(page.getByText('Введите неотрицательное значение цены.')).toBeVisible();
+  await page.getByRole('button', { name: 'Язык' }).click();
+  await page.getByRole('button', { name: "O'zbek", exact: true }).click();
+  await expect(page.getByText('Narx manfiy bo‘lmasligi kerak.')).toBeVisible();
+  await page.getByRole('button', { name: 'Til' }).click();
+  await page.getByRole('button', { name: 'English', exact: true }).press('Enter');
   await expect(page).toHaveURL('/');
   expect(requests).toHaveLength(requestCountBeforeInvalidSubmit);
 
@@ -3873,6 +3919,27 @@ test('renders the DD-045 CourseCard action and status system without changing ac
   await page.evaluate(() => {
     document.documentElement.style.zoom = '';
   });
+  for (const [triggerName, optionName, label] of [
+    ['Change language', 'Русский', 'Записаться бесплатно'],
+    ['Изменить язык', "O'zbek", 'Bepul yozilish'],
+  ] as const) {
+    await page.getByRole('button', { name: triggerName }).click();
+    await page.getByRole('button', { name: optionName }).click();
+    const localizedEnroll = page
+      .locator('[data-part="course-card"]')
+      .filter({ has: page.getByRole('heading', { level: 3, name: 'Free course' }) })
+      .getByRole('button', { name: label });
+    await expect(localizedEnroll).toBeVisible();
+    await localizedEnroll.focus();
+    await expect(localizedEnroll).toBeFocused();
+    expect(
+      await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth <= document.documentElement.clientWidth &&
+          document.body.scrollWidth <= document.documentElement.clientWidth,
+      ),
+    ).toBe(true);
+  }
   assertClean();
 });
 
@@ -4044,20 +4111,30 @@ test('recovers only authoritative preflight after a successful Catalog mutation 
   assertClean();
 });
 
-test('routes instructors to their course workspace without student reads or mutations', async ({
+test('redirects Instructor Catalog root access without public Catalog or student requests', async ({
   page,
 }) => {
-  const privateRequests: string[] = [];
+  const assertClean = await monitor(page);
+  assertClean.allowRequestFailure(
+    {
+      method: 'GET',
+      path: '/courses/my?page=1&page_size=20',
+      errorText: 'net::ERR_ABORTED',
+    },
+    1,
+  );
+  const forbiddenRequests: string[] = [];
   await page.addInitScript(() => localStorage.setItem('learnhub.access-token', 'instructor-token'));
   page.on('request', (request) => {
     const path = new URL(request.url()).pathname;
     if (
+      (request.method() === 'GET' && path === '/courses') ||
       path === '/cart' ||
       path === '/enrollments/my' ||
       request.method() === 'POST' ||
       request.method() === 'DELETE'
     )
-      privateRequests.push(`${request.method()} ${path}`);
+      forbiddenRequests.push(`${request.method()} ${path}`);
   });
   await page.route('**/me', async (route) => {
     await route.fulfill({
@@ -4074,7 +4151,7 @@ test('routes instructors to their course workspace without student reads or muta
       }),
     });
   });
-  await page.route('**/courses**', async (route) => {
+  await page.route('**/courses/my**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -4085,8 +4162,13 @@ test('routes instructors to their course workspace without student reads or muta
       ]),
     });
   });
-  await page.goto('/');
-  await page.waitForURL('**/instructor/courses');
+  const instructorCollection = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'GET' && new URL(response.url()).pathname === '/courses/my',
+  );
+  await Promise.all([instructorCollection, page.goto('/')]);
+  await expect(page).toHaveURL('/instructor/courses');
+  await expect(page.getByRole('heading', { level: 1, name: 'Instructor courses' })).toBeVisible();
   const courseList = page.getByRole('region', { name: 'Your courses' });
   await expect(courseList).toBeVisible();
   for (const [title, courseId] of [
@@ -4106,7 +4188,9 @@ test('routes instructors to their course workspace without student reads or muta
       `/instructor/courses/${courseId}/enrollments`,
     );
   }
-  expect(privateRequests).toEqual([]);
+  await expect(page.locator('[data-part="catalog-page"]')).toHaveCount(0);
+  expect(forbiddenRequests).toEqual([]);
+  assertClean();
 });
 
 test('allows only the exact simulated offline request failure and retries successfully', async ({
@@ -4417,5 +4501,357 @@ test('Keeps compact fine-pointer hover and focus free of dangling disclosure ARI
   await expect(card.getByRole('button', { name: 'View course details' })).toHaveCount(0);
   await expect(page.getByRole('tooltip')).toHaveCount(0);
   await expect(link).not.toHaveAttribute('aria-describedby');
+  assertClean();
+});
+
+test('localizes the D05 price filter fieldset and accessible names without changing responsive behavior', async ({
+  page,
+}) => {
+  const assertClean = await monitor(page);
+  assertClean.allowRequestFailure(
+    {
+      method: 'GET',
+      path: '/courses?page=1&page_size=20&sort=created_at',
+      errorText: 'net::ERR_ABORTED',
+    },
+    6,
+  );
+  await page.route('**/courses**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: response([permittedCourse()]),
+    });
+  });
+
+  const expectations = [
+    {
+      locale: 'en',
+      group: 'Price range',
+      minimum: 'Min price',
+      maximum: 'Max price',
+      label: 'Price:',
+    },
+    {
+      locale: 'ru',
+      group: 'Диапазон цен',
+      minimum: 'Мин. цена',
+      maximum: 'Макс. цена',
+      label: 'Цена:',
+    },
+    {
+      locale: 'uz',
+      group: 'Narx oralig‘i',
+      minimum: 'Min. narx',
+      maximum: 'Maks. narx',
+      label: 'Narx:',
+    },
+  ] as const;
+
+  const compactWidths = [320, 390, 617, 767];
+  const desktopWidths = [768, 1280];
+
+  for (const expected of expectations) {
+    await page.goto('/');
+    await page.evaluate(
+      (locale) => localStorage.setItem('learnhub.locale', locale),
+      expected.locale,
+    );
+    await page.reload();
+
+    for (const width of compactWidths) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(page.getByRole('group', { name: expected.group })).toBeVisible();
+      await expect(page.getByLabel(expected.minimum)).toHaveAccessibleName(expected.minimum);
+      await expect(page.getByLabel(expected.maximum)).toHaveAccessibleName(expected.maximum);
+      await expect(page.locator('[data-part="catalog-filter-price-label"]')).toBeHidden();
+      const geometry = await page.evaluate<CatalogViewportGeometry>(() => ({
+        width: window.innerWidth,
+        documentWidth: document.documentElement.scrollWidth,
+        bodyWidth: document.body.scrollWidth,
+        clientWidth: document.documentElement.clientWidth,
+      }));
+      expect(geometry.documentWidth, JSON.stringify(geometry)).toBeLessThanOrEqual(
+        geometry.clientWidth,
+      );
+      expect(geometry.bodyWidth, JSON.stringify(geometry)).toBeLessThanOrEqual(
+        geometry.clientWidth,
+      );
+    }
+
+    for (const width of desktopWidths) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(page.getByRole('group', { name: expected.group })).toBeVisible();
+      await expect(page.getByLabel(expected.minimum)).toHaveAccessibleName(expected.minimum);
+      await expect(page.getByLabel(expected.maximum)).toHaveAccessibleName(expected.maximum);
+      await expect(page.locator('[data-part="catalog-filter-price-label"]')).toHaveText(
+        expected.label,
+      );
+    }
+  }
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.evaluate(() => {
+    document.documentElement.style.zoom = '200%';
+  });
+  const zoomedPriceRange = await page
+    .getByRole('group', { name: 'Narx oralig‘i' })
+    .evaluate((fieldset) => {
+      const fieldsetRect = fieldset.getBoundingClientRect();
+      const inputRects = Array.from(fieldset.querySelectorAll('input')).map((input) =>
+        input.getBoundingClientRect().toJSON(),
+      );
+      return {
+        clientWidth: fieldset.clientWidth,
+        scrollWidth: fieldset.scrollWidth,
+        fieldset: fieldsetRect.toJSON(),
+        inputs: inputRects,
+      };
+    });
+  // Root CSS zoom expands the existing Catalog harness. D05 must not add a local
+  // price-fieldset overflow on top of that established document-level behavior.
+  expect(zoomedPriceRange.scrollWidth).toBeLessThanOrEqual(zoomedPriceRange.clientWidth);
+  expect(
+    zoomedPriceRange.inputs.every(
+      (input) =>
+        input.left >= zoomedPriceRange.fieldset.left - 1 &&
+        input.right <= zoomedPriceRange.fieldset.right + 1,
+    ),
+  ).toBe(true);
+  await page.evaluate(() => {
+    document.documentElement.style.zoom = '';
+  });
+  assertClean();
+});
+
+test('renders the D20 Catalog vertical slice in Russian and Uzbek without changing API data or anonymous actions', async ({
+  page,
+}) => {
+  const assertClean = await monitor(page);
+  assertClean.allowRequestFailure(
+    {
+      method: 'GET',
+      path: '/courses?page=1&page_size=20&sort=created_at',
+      errorText: 'net::ERR_ABORTED',
+    },
+    4,
+  );
+  const mutationRequests: string[] = [];
+  page.on('request', (request) => {
+    if (request.method() === 'POST' || request.method() === 'DELETE') {
+      mutationRequests.push(`${request.method()} ${new URL(request.url()).pathname}`);
+    }
+  });
+  await page.route('**/courses**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: response([
+        {
+          ...permittedCourse('React Fundamentals: Components'),
+          id: 8,
+          price: '0.00',
+          currency: 'UZS',
+          instructor: { id: 1, name: 'Samira', surname: 'Karimova' },
+          lessons: [
+            { id: 1, title: 'Intro' },
+            { id: 2, title: 'State' },
+            { id: 3, title: 'Effects' },
+          ],
+        },
+        {
+          ...permittedCourse('FastAPI and Async SQLAlchemy'),
+          id: 11,
+          price: '349000.00',
+          currency: 'UZS',
+          instructor: { id: 2, name: 'Nodira', surname: 'Yuldasheva' },
+          lessons: [
+            { id: 4, title: 'Setup' },
+            { id: 5, title: 'Models' },
+            { id: 6, title: 'Routes' },
+          ],
+        },
+      ]),
+    });
+  });
+
+  const expectations: readonly CatalogLocaleExpectation[] = [
+    {
+      locale: 'ru',
+      heroTitle: 'Освойте навыки, которые формируют будущее',
+      resultCount: 'Найдено 2 курса',
+      sortBy: 'Сортировать по:',
+      sortCompact: 'Сортировка:',
+      free: 'БЕСПЛАТНО',
+      details: 'Подробнее',
+      detailsAccessibleName: 'Открыть сведения о курсе',
+      lessons: '3 доступных урока',
+      enrollForFree: 'Записаться бесплатно',
+      addToCart: 'В корзину',
+    },
+    {
+      locale: 'uz',
+      heroTitle: 'Kelajakni shakllantiruvchi ko‘nikmalarni egallang',
+      resultCount: 'Topildi 2 ta kurs',
+      sortBy: 'Saralash:',
+      sortCompact: 'Saralash:',
+      free: 'BEPUL',
+      details: 'Batafsil',
+      detailsAccessibleName: 'Kurs tafsilotlarini ko‘rish',
+      lessons: '3 ta dars mavjud',
+      enrollForFree: 'Bepul yozilish',
+      addToCart: 'Savatga qo‘shish',
+    },
+  ];
+
+  for (const expected of expectations) {
+    await page.goto('/');
+    await page.evaluate(
+      (locale) => localStorage.setItem('learnhub.locale', locale),
+      expected.locale,
+    );
+    await page.reload();
+
+    const freeCard = page.locator('[data-part="course-card"]').filter({
+      has: page.getByRole('heading', { level: 3, name: 'React Fundamentals: Components' }),
+    });
+    const paidCard = page.locator('[data-part="course-card"]').filter({
+      has: page.getByRole('heading', { level: 3, name: 'FastAPI and Async SQLAlchemy' }),
+    });
+    const freeAction = freeCard.getByRole('link', { name: expected.enrollForFree });
+    const paidAction = paidCard.getByRole('link', { name: expected.addToCart });
+
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(expected.heroTitle);
+    await expect(page.getByRole('heading', { level: 2 })).toHaveText(expected.resultCount);
+    await expect(freeCard.getByRole('heading', { level: 3 })).toHaveText(
+      'React Fundamentals: Components',
+    );
+    await expect(freeCard.getByText('Samira Karimova')).toBeVisible();
+    await expect(freeCard.getByText(expected.lessons)).toBeVisible();
+    await expect(freeCard.locator('[data-part="course-card-price"]')).toHaveText(expected.free);
+    await expect(paidCard.getByRole('heading', { level: 3 })).toHaveText(
+      'FastAPI and Async SQLAlchemy',
+    );
+    await expect(paidCard.getByText('Nodira Yuldasheva')).toBeVisible();
+    await expect(paidCard.locator('[data-part="course-card-price"]')).toContainText('UZS');
+    await expect(freeAction).toHaveAttribute('href', '/login?returnTo=%2Fcourses%2F8');
+    await expect(paidAction).toHaveAttribute('href', '/login?returnTo=%2Fcourses%2F11');
+
+    for (const width of [320, 390, 768, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+      await expect(page.getByRole('heading', { level: 2 })).toHaveText(expected.resultCount);
+      if (width >= 768) {
+        await expect(
+          freeCard
+            .getByRole('button', { name: expected.detailsAccessibleName })
+            .locator('[data-part="course-card-disclosure-pill"]'),
+        ).toHaveText(expected.details);
+      }
+      const visibleSortLabels = await page
+        .locator('[data-part="catalog-sort-toolbar"] span[aria-hidden="true"]')
+        .evaluateAll((labels) =>
+          labels
+            .filter((label) => getComputedStyle(label).display !== 'none')
+            .map((label) => label.textContent?.trim()),
+        );
+      expect(visibleSortLabels).toContain(width < 768 ? expected.sortCompact : expected.sortBy);
+      const viewportGeometry = await page.evaluate<CatalogViewportGeometry>(() => ({
+        width: window.innerWidth,
+        documentWidth: document.documentElement.scrollWidth,
+        bodyWidth: document.body.scrollWidth,
+        clientWidth: document.documentElement.clientWidth,
+      }));
+      expect(viewportGeometry.documentWidth, JSON.stringify(viewportGeometry)).toBeLessThanOrEqual(
+        viewportGeometry.clientWidth,
+      );
+      expect(viewportGeometry.bodyWidth, JSON.stringify(viewportGeometry)).toBeLessThanOrEqual(
+        viewportGeometry.clientWidth,
+      );
+    }
+
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await freeAction.focus();
+    await expect(freeAction).toBeFocused();
+    expect(await freeAction.evaluate((element) => element.matches(':focus-visible'))).toBe(true);
+    const details = freeCard.getByRole('button', { name: expected.detailsAccessibleName });
+    await details.click();
+    await expect(details).toHaveAttribute('aria-expanded', 'true');
+    await page.keyboard.press('Escape');
+    await expect(details).toBeFocused();
+    await expect(details).toHaveAttribute('aria-expanded', 'false');
+
+    await page.evaluate(() => {
+      document.documentElement.style.zoom = '200%';
+    });
+    const zoomedCatalog = await page.evaluate<ZoomedCatalogGeometry>(() => {
+      const list = document.querySelector<HTMLElement>('[data-part="catalog-result-list"]');
+      if (!list) throw new Error('Catalog result list is missing.');
+      const toHorizontalBounds = (element: Element): HorizontalBounds => {
+        const { left, right } = element.getBoundingClientRect();
+        return { left, right };
+      };
+      const bounds = toHorizontalBounds(list);
+      const visibleStructuralIntervalsOutsideViewport = Array.from(
+        list.querySelectorAll<HTMLElement>('*'),
+      )
+        .filter((element) => {
+          const style = getComputedStyle(element);
+          return (
+            style.display !== 'none' &&
+            style.visibility !== 'hidden' &&
+            style.position !== 'absolute' &&
+            style.position !== 'fixed'
+          );
+        })
+        .map((element) => {
+          const elementBounds = toHorizontalBounds(element);
+          let left = elementBounds.left;
+          let right = elementBounds.right;
+          for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
+            const style = getComputedStyle(ancestor);
+            if (['hidden', 'clip', 'auto', 'scroll'].includes(style.overflowX)) {
+              const ancestorBounds = toHorizontalBounds(ancestor);
+              left = Math.max(left, ancestorBounds.left);
+              right = Math.min(right, ancestorBounds.right);
+            }
+          }
+          return right > left
+            ? {
+                left,
+                right,
+                dataPart: element.getAttribute('data-part'),
+                tagName: element.tagName,
+              }
+            : undefined;
+        })
+        .filter(
+          (element): element is EffectiveStructuralOverflow =>
+            element !== undefined && (element.left < 0 || element.right > window.innerWidth),
+        );
+      const freeCard = list.querySelector('[data-course-card-id="8"]');
+      const paidCard = list.querySelector('[data-course-card-id="11"]');
+      return {
+        freeCard: freeCard ? toHorizontalBounds(freeCard) : undefined,
+        paidCard: paidCard ? toHorizontalBounds(paidCard) : undefined,
+        bounds,
+        visibleStructuralIntervalsOutsideViewport,
+      };
+    });
+    // At root CSS zoom the document scroll width reflects the zoomed harness (1920px at this
+    // viewport), so it cannot establish physical containment. Intrinsic child rectangles may
+    // extend past the result list, but only their interval after every clipping ancestor is
+    // visible. Require that painted structural interval to remain inside the physical viewport.
+    expect(zoomedCatalog.visibleStructuralIntervalsOutsideViewport).toEqual([]);
+    expect(zoomedCatalog.freeCard?.left).toBeGreaterThanOrEqual(zoomedCatalog.bounds.left - 1);
+    expect(zoomedCatalog.freeCard?.right).toBeLessThanOrEqual(zoomedCatalog.bounds.right + 1);
+    expect(zoomedCatalog.paidCard?.left).toBeGreaterThanOrEqual(zoomedCatalog.bounds.left - 1);
+    expect(zoomedCatalog.paidCard?.right).toBeLessThanOrEqual(zoomedCatalog.bounds.right + 1);
+    await page.evaluate(() => {
+      document.documentElement.style.zoom = '';
+    });
+  }
+
+  expect(mutationRequests).toEqual([]);
   assertClean();
 });

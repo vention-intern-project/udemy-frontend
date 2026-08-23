@@ -12,6 +12,8 @@ import {
   createLocalPatchAttestation,
   commandFailureCode,
   classifyCommandDiagnostics,
+  collectVitestTestIdentifiers,
+  formatCommandFailureExcerpt,
   npmVersionFromUserAgent,
   runCapturedCommand,
   reportDigest,
@@ -74,16 +76,19 @@ function run(id, args) {
     },
   );
   const diagnostics = classifyCommandDiagnostics(result.stdout, result.stderr);
+  const hasUnexpectedDiagnostics = unexpectedDiagnosticCount(diagnostics) > 0;
   return {
-    id,
-    status:
-      result.status === 0 && !result.error && unexpectedDiagnosticCount(diagnostics) === 0
-        ? 'pass'
-        : 'fail',
-    durationMs: Date.now() - started,
-    exitCode: result.status ?? null,
-    errorCode: commandFailureCode(result, unexpectedDiagnosticCount(diagnostics) > 0),
-    diagnostics,
+    command: {
+      id,
+      status: result.status === 0 && !result.error && !hasUnexpectedDiagnostics ? 'pass' : 'fail',
+      durationMs: Date.now() - started,
+      exitCode: result.status ?? null,
+      errorCode: commandFailureCode(result, hasUnexpectedDiagnostics),
+      diagnostics,
+    },
+    stdout: result.stdout,
+    stderr: result.stderr,
+    hasUnexpectedDiagnostics,
   };
 }
 
@@ -148,7 +153,9 @@ if (scope === 'full' && !localAttestationKey)
     'Local full reports require the ephemeral Manager-supplied QUALITY_REPORT_ATTESTATION_KEY after target capture.',
   );
 const sha = scope === 'ci' ? target.sha : currentSha(false);
-const commands = qualityCommands.map(([id, args]) => run(id, args));
+const knownTestIdentifiers = collectVitestTestIdentifiers(root);
+const executions = qualityCommands.map(([id, args]) => run(id, args));
+const commands = executions.map(({ command }) => command);
 const findings = await collectStaticFindings();
 const complexity = await collectComplexitySignals();
 const report = {
@@ -190,4 +197,14 @@ if (errors.length)
 await mkdir(dirname(output), { recursive: true });
 await writeFile(output, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
 console.log(summaryFor(report));
+for (const { command, stdout, stderr, hasUnexpectedDiagnostics } of executions) {
+  const excerpt = formatCommandFailureExcerpt({
+    ...command,
+    stdout,
+    stderr,
+    hasUnexpectedDiagnostics,
+    knownTestIdentifiers,
+  });
+  if (excerpt) console.error(excerpt);
+}
 if (report.outcome !== 'pass') process.exitCode = 1;

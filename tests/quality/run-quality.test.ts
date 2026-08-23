@@ -15,6 +15,10 @@ import {
   createLocalPatchAttestation,
   commandFailureCode,
   classifyCommandDiagnostics,
+  collectVitestTestIdentifiers,
+  FAILED_COMMAND_OUTPUT_MAX_CHARS,
+  FAILED_COMMAND_OUTPUT_MAX_LINES,
+  formatCommandFailureExcerpt,
   reportDigest,
   REPORT_CLOCK_SKEW_TOLERANCE_MINUTES,
   REPORT_SCHEMA_VERSION,
@@ -107,6 +111,22 @@ interface NativeEslintConstructor {
 const temporaryPaths: string[] = [];
 const fixtureRoot = resolve('tests/quality/fixtures/static');
 const testAttestationKey = randomBytes(32).toString('base64url');
+const formatterFixtureTestIdentifiers = Object.freeze([
+  'tests/quality/diagnostic-owner.test.ts',
+  'tests/quality/failing-example.test.ts',
+  'tests/quality/flag-owner.test.ts',
+  'tests/quality/second-example.spec.tsx',
+  'tests/quality/second-owner.spec.tsx',
+]);
+type CommandFailureExcerptInput = Parameters<typeof formatCommandFailureExcerpt>[0];
+function formatFixtureCommandFailureExcerpt(
+  command: Omit<CommandFailureExcerptInput, 'knownTestIdentifiers'>,
+) {
+  return formatCommandFailureExcerpt({
+    ...command,
+    knownTestIdentifiers: formatterFixtureTestIdentifiers,
+  });
+}
 const { ESLint } = createRequire(import.meta.url)('eslint') as {
   ESLint: NativeEslintConstructor;
 };
@@ -123,6 +143,22 @@ describe('quality execution provenance', () => {
     );
     expect(qualityRunner).not.toContain('--poolOptions.forks.singleFork=true');
     expect(packageJson.scripts.test).toBe('vitest run');
+  });
+
+  it('snapshots actual workspace Vitest identifiers before child commands run', async () => {
+    const qualityRunner = await readFile(resolve('scripts/quality/run-quality.mjs'), 'utf8');
+    const identifiers = collectVitestTestIdentifiers(process.cwd());
+
+    expect(identifiers).toContain('tests/quality/run-quality.test.ts');
+    expect(identifiers).toContain('tests/app/app-shell.test.tsx');
+    expect(
+      qualityRunner.indexOf('const knownTestIdentifiers = collectVitestTestIdentifiers(root);'),
+    ).toBeLessThan(
+      qualityRunner.indexOf(
+        'const executions = qualityCommands.map(([id, args]) => run(id, args));',
+      ),
+    );
+    expect(qualityRunner).toContain('knownTestIdentifiers,');
   });
 
   it("captures output above Node's default and fails closed at an explicit bounded cap", () => {
@@ -166,6 +202,215 @@ describe('quality execution provenance', () => {
       hostileOptions,
     );
     expect(shellAttempt.error?.code).toBe('ENOENT');
+  });
+
+  it('emits only allowlisted Vitest file identifiers and never quoted JSON values', () => {
+    const failure = formatFixtureCommandFailureExcerpt({
+      id: 'tests',
+      status: 'fail',
+      exitCode: 1,
+      errorCode: null,
+      stdout: [
+        '\u001B[31m FAIL  tests/quality/failing-example.test.ts > identifies the failing test {"x-api-key":"json-sentinel","password":"json-password-sentinel"}',
+        'AssertionError: expected "received-sentinel" to deeply equal "expected-sentinel"',
+        'https://user:password@example.test/private-header',
+        'contact quality@example.test',
+      ].join('\n'),
+      stderr: 'Error: arbitrary stderr must not be emitted',
+    });
+
+    expect(failure).toBe(
+      'QUALITY_COMMAND_FAILURE id=tests exitCode=1 errorCode=none\n' +
+        'failure-identifiers=tests/quality/failing-example.test.ts',
+    );
+    expect(failure).not.toContain('json-sentinel');
+    expect(failure).not.toContain('json-password-sentinel');
+  });
+
+  it('normalizes supported POSIX and Windows Vitest paths, deduplicates them, and stays control-safe', () => {
+    const failure = formatFixtureCommandFailureExcerpt({
+      id: 'tests',
+      status: 'fail',
+      exitCode: 1,
+      errorCode: null,
+      stdout: [
+        ' FAIL  first [ tests/quality/failing-example.test.ts ]',
+        ' FAIL  duplicate [ tests\\quality\\failing-example.test.ts ]',
+        ' FAIL  second [ tests\\quality\\second-example.spec.tsx ]',
+      ].join('\n'),
+      stderr: '',
+    });
+
+    expect(failure).toBe(
+      'QUALITY_COMMAND_FAILURE id=tests exitCode=1 errorCode=none\n' +
+        'failure-identifiers=tests/quality/failing-example.test.ts,tests/quality/second-example.spec.tsx',
+    );
+    expect(
+      Array.from(failure ?? '').some((character) => {
+        const codePoint = character.codePointAt(0) ?? 0;
+        return character !== '\n' && (codePoint < 0x20 || (codePoint >= 0x7f && codePoint <= 0x9f));
+      }),
+    ).toBe(false);
+  });
+
+  it('emits only allowlisted unexpected-diagnostic owner identifiers', () => {
+    const diagnostic = formatFixtureCommandFailureExcerpt({
+      id: 'tests',
+      status: 'fail',
+      exitCode: 0,
+      errorCode: 'QUALITY_UNEXPECTED_DIAGNOSTICS',
+      stdout: 'ordinary stdout must not be emitted',
+      stderr: [
+        '\u001B[90m stderr | tests/quality/diagnostic-owner.test.ts > warning {"x-api-key":"diagnostic-secret"}\r',
+        'stderr | tests\\quality\\diagnostic-owner.test.ts > duplicate',
+        'stderr | tests/quality/second-owner.spec.tsx > https://user:password@example.test/path',
+        'prefix stderr | tests/quality/fabricated-prefix.test.ts > fabricated',
+        'stderr | ../outside.test.ts > traversal',
+        'stderr | C:\\outside.test.ts > drive path',
+        'stderr | /outside.test.ts > absolute path',
+        'warning stderr | tests/quality/fabricated-mid-line.test.ts > fabricated',
+      ].join('\n'),
+    });
+
+    expect(diagnostic).toBe(
+      'QUALITY_COMMAND_FAILURE id=tests exitCode=0 errorCode=QUALITY_UNEXPECTED_DIAGNOSTICS\n' +
+        'failure-identifiers=unavailable\n' +
+        'diagnostic-identifiers=tests/quality/diagnostic-owner.test.ts,tests/quality/second-owner.spec.tsx',
+    );
+    expect(diagnostic).not.toContain('diagnostic-secret');
+    expect(diagnostic).not.toContain('user:password');
+    expect(diagnostic).not.toContain('fabricated');
+
+    const diagnosticFlag = formatFixtureCommandFailureExcerpt({
+      id: 'tests',
+      status: 'fail',
+      exitCode: 0,
+      errorCode: null,
+      hasUnexpectedDiagnostics: true,
+      stdout: '',
+      stderr: 'stderr | tests/quality/flag-owner.test.ts > title',
+    });
+    expect(diagnosticFlag).toContain('diagnostic-identifiers=tests/quality/flag-owner.test.ts');
+  });
+
+  it('reports unavailable test identifiers without emitting arbitrary output and keeps non-test failures metadata-only', () => {
+    expect(
+      formatFixtureCommandFailureExcerpt({
+        id: 'tests',
+        status: 'pass',
+        exitCode: 0,
+        errorCode: null,
+        stdout: 'passing output',
+        stderr: '',
+      }),
+    ).toBeNull();
+
+    const unavailable = formatFixtureCommandFailureExcerpt({
+      id: 'tests',
+      status: 'fail',
+      exitCode: 1,
+      errorCode: null,
+      stdout: 'FAIL without a supported bracketed file path: {"password":"unavailable-secret"}',
+      stderr: 'https://token@example.test/path',
+    });
+    expect(unavailable).toBe(
+      'QUALITY_COMMAND_FAILURE id=tests exitCode=1 errorCode=none\n' +
+        'failure-identifiers=unavailable',
+    );
+    expect(unavailable).not.toContain('unavailable-secret');
+    expect(unavailable).not.toContain('token@example.test');
+
+    const prefixed = formatFixtureCommandFailureExcerpt({
+      id: 'tests',
+      status: 'fail',
+      exitCode: 1,
+      errorCode: null,
+      stdout: [
+        'arbitrary prefix FAIL tests/quality/fabricated-leading.test.ts > fabricated',
+        'arbitrary prefix FAIL fabricated [ tests/quality/fabricated-bracketed.test.ts ]',
+      ].join('\n'),
+      stderr: '',
+    });
+    expect(prefixed).toBe(
+      'QUALITY_COMMAND_FAILURE id=tests exitCode=1 errorCode=none\n' +
+        'failure-identifiers=unavailable',
+    );
+
+    const nonTestFailure = formatFixtureCommandFailureExcerpt({
+      id: 'lint',
+      status: 'fail',
+      exitCode: 2,
+      errorCode: 'ESLINT_FAILURE',
+      stdout: 'arbitrary stdout',
+      stderr: 'arbitrary stderr',
+    });
+    expect(nonTestFailure).toBe(
+      'QUALITY_COMMAND_FAILURE id=lint exitCode=2 errorCode=ESLINT_FAILURE',
+    );
+    const bounded = formatFixtureCommandFailureExcerpt({
+      id: 'tests',
+      status: 'fail',
+      exitCode: 1,
+      errorCode: null,
+      stdout: Array.from(
+        { length: 10 },
+        (_, index) => ` FAIL  bounded [ tests/${'a'.repeat(295)}${index}.test.ts ]`,
+      ).join('\n'),
+      stderr: '',
+    });
+    expect(Array.from(bounded ?? '').length).toBeLessThanOrEqual(FAILED_COMMAND_OUTPUT_MAX_CHARS);
+    expect((bounded ?? '').split('\n').length).toBeLessThanOrEqual(FAILED_COMMAND_OUTPUT_MAX_LINES);
+
+    const combinedIdentifiers = Array.from(
+      { length: 8 },
+      (_, index) => `tests/${'a'.repeat(305)}${index}.test.ts`,
+    );
+    const combined = formatCommandFailureExcerpt({
+      id: 'tests',
+      status: 'fail',
+      exitCode: 1,
+      errorCode: 'QUALITY_UNEXPECTED_DIAGNOSTICS',
+      stdout: combinedIdentifiers
+        .map((identifier) => ` FAIL  bounded [ ${identifier} ]`)
+        .join('\n'),
+      stderr: combinedIdentifiers
+        .map((identifier) => `stderr | ${identifier.replace(/a/g, 'b')} > warning`)
+        .join('\n'),
+      knownTestIdentifiers: [
+        ...combinedIdentifiers,
+        ...combinedIdentifiers.map((identifier) => identifier.replace(/a/g, 'b')),
+      ],
+    });
+    expect(Array.from(combined ?? '').length).toBeLessThanOrEqual(FAILED_COMMAND_OUTPUT_MAX_CHARS);
+    expect((combined ?? '').split('\n').length).toBeLessThanOrEqual(
+      FAILED_COMMAND_OUTPUT_MAX_LINES,
+    );
+    expect(combined).toContain('failure-identifiers=tests/');
+    expect(combined).toContain('diagnostic-identifiers=');
+  });
+
+  it('emits only pre-execution workspace test identifiers from failed-test output', () => {
+    const actualIdentifier = 'tests/quality/run-quality.test.ts';
+    const encodedSecretIdentifier = 'tests/quality/encoded-attestation-value.test.ts';
+    const excerpt = formatCommandFailureExcerpt({
+      id: 'tests',
+      status: 'fail',
+      exitCode: 1,
+      errorCode: 'QUALITY_UNEXPECTED_DIAGNOSTICS',
+      stdout: [
+        ` FAIL  ${actualIdentifier} > real failure`,
+        ` FAIL  ${encodedSecretIdentifier} > fake failure`,
+      ].join('\n'),
+      stderr: [
+        `stderr | ${actualIdentifier} > real diagnostic`,
+        `stderr | ${encodedSecretIdentifier} > fake diagnostic`,
+      ].join('\n'),
+      knownTestIdentifiers: [actualIdentifier],
+    });
+
+    expect(excerpt).toContain(`failure-identifiers=${actualIdentifier}`);
+    expect(excerpt).toContain(`diagnostic-identifiers=${actualIdentifier}`);
+    expect(excerpt).not.toContain('encoded-attestation-value');
   });
 
   it('parses npm semver only from the standard lifecycle user agent', () => {
@@ -1492,7 +1737,32 @@ describe('staged and CI decision simulations', () => {
     expect(workflow).not.toContain('browser-applicability');
     expect(workflow).toContain('  browser:\n');
     expect(workflow).toContain('npx playwright install --with-deps chromium');
-    expect(workflow).toContain('npm run test:browser');
+    const browser = workflow.slice(
+      workflow.indexOf('  browser:\n'),
+      workflow.indexOf('  quality-report:\n'),
+    );
+    expect(browser).toContain('fail-fast: false');
+    expect(browser).toContain('config:');
+    expect(
+      [...browser.matchAll(/- (tests\/browser\/[^\n]+config\.ts)/g)].map(([, config]) => config),
+    ).toEqual([
+      'tests/browser/playwright.config.ts',
+      'tests/browser/mlux006-multilingual-closure.playwright.config.ts',
+      'tests/browser/app-shell.playwright.config.ts',
+      'tests/browser/auth-workflows.playwright.config.ts',
+      'tests/browser/cart-workflow.playwright.config.ts',
+      'tests/browser/catalog-discovery.playwright.config.ts',
+      'tests/browser/checkout-cart.playwright.config.ts',
+      'tests/browser/course-chat.playwright.config.ts',
+      'tests/browser/course-detail.playwright.config.ts',
+      'tests/browser/instructor-courses-fe029.playwright.config.ts',
+      'tests/browser/instructor-course-editor-fe014.playwright.config.ts',
+      'tests/browser/learning-progress.playwright.config.ts',
+    ]);
+    expect(browser).toContain(
+      'npx playwright test --config "${{ matrix.config }}" --project=chromium --workers=1 --retries=0 --reporter=line',
+    );
+    expect(browser).not.toContain('npm run test:browser');
     expect(workflow).toContain(
       'needs: [resolve-target, lint-static, typecheck, tests, build, browser, quality-report]',
     );

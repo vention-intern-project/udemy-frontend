@@ -196,6 +196,18 @@ async function dispatchSameTickSubmits(page: Page) {
   });
 }
 
+async function navigateWithinApp(page: Page, path: string) {
+  await page.evaluate((nextPath) => {
+    window.history.pushState(
+      { ...(window.history.state as object), key: `auth-browser-${Date.now()}` },
+      '',
+      nextPath,
+    );
+    window.dispatchEvent(new PopStateEvent('popstate', { state: window.history.state }));
+  }, path);
+  await expect(page).toHaveURL(new RegExp(`${path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`));
+}
+
 function createDeferred() {
   let resolve!: () => void;
   const promise = new Promise<void>((resolvePromise) => {
@@ -213,6 +225,69 @@ interface AuthViewportScenario {
   readonly pageScaleFactor: number;
   readonly widths: readonly number[];
 }
+
+type AuthResidualLocale = 'en' | 'ru' | 'uz';
+
+interface AuthResidualLocaleCopy {
+  readonly continueLabel: string;
+  readonly createAccount: string;
+  readonly createAnAccount: string;
+  readonly forgotPassword: string;
+  readonly logIn: string;
+  readonly passwordUpdated: string;
+  readonly recoveryChannel: string;
+  readonly recoveryLink: string;
+  readonly resetPassword: string;
+  readonly resetTokenHelp: string;
+}
+
+const authResidualCopy: Readonly<Record<AuthResidualLocale, AuthResidualLocaleCopy>> = {
+  en: {
+    continueLabel: 'Continue',
+    createAccount: 'Create account',
+    createAnAccount: 'Create an account',
+    forgotPassword: 'Forgot your password?',
+    logIn: 'Log in',
+    passwordUpdated: 'Your password has been updated.',
+    recoveryChannel:
+      'If the account can use password recovery, the next steps will be available through the configured recovery channel.',
+    recoveryLink:
+      'Open the password-reset link from your recovery message to choose a new password.',
+    resetPassword: 'Reset password',
+    resetTokenHelp:
+      'Your reset link supplies a private token. It stays hidden while you complete this form.',
+  },
+  ru: {
+    continueLabel: 'Продолжить',
+    createAccount: 'Создать аккаунт',
+    createAnAccount: 'Создать аккаунт',
+    forgotPassword: 'Забыли пароль?',
+    logIn: 'Войти',
+    passwordUpdated: 'Ваш пароль обновлён.',
+    recoveryChannel:
+      'Если для аккаунта доступно восстановление пароля, дальнейшие шаги будут доступны через настроенный канал восстановления.',
+    recoveryLink:
+      'Откройте ссылку для сброса пароля из сообщения для восстановления, чтобы выбрать новый пароль.',
+    resetPassword: 'Сбросить пароль',
+    resetTokenHelp:
+      'Ссылка для сброса содержит приватный токен. Он остаётся скрытым, пока вы заполняете форму.',
+  },
+  uz: {
+    continueLabel: 'Davom etish',
+    createAccount: 'Akkaunt yaratish',
+    createAnAccount: 'Akkaunt yaratish',
+    forgotPassword: 'Parolni unutdingizmi?',
+    logIn: 'Kirish',
+    passwordUpdated: 'Parolingiz yangilandi.',
+    recoveryChannel:
+      'Agar akkaunt parolni tiklashdan foydalana olsa, keyingi qadamlar sozlangan tiklash kanali orqali mavjud bo‘ladi.',
+    recoveryLink:
+      'Yangi parol tanlash uchun tiklash xabaringizdagi parolni tiklash havolasini oching.',
+    resetPassword: 'Parolni tiklash',
+    resetTokenHelp:
+      'Tiklash havolangiz maxfiy tokenni o‘z ichiga oladi. Shaklni to‘ldirayotganingizda u yashirin qoladi.',
+  },
+};
 
 const workflowUi = {
   signup: {
@@ -752,6 +827,7 @@ test('uses the Sort-pattern Role listbox and purple reveal states', async ({ pag
   await instructor.click();
   await expect(role).toContainText('Instructor');
 
+  await page.mouse.move(0, 0);
   await role.focus();
   await page.keyboard.press('ArrowDown');
   await expect(listbox).toBeFocused();
@@ -1122,6 +1198,120 @@ test('reset covers missing token, safe 400/422, offline retry, pending double-su
   await expect(page.getByRole('link', { name: 'Log in with your new password' })).toBeVisible();
   expect(attempts).toBe(4);
 });
+
+for (const locale of ['en', 'ru', 'uz'] as const) {
+  test(`DRAFT-21 auth residual copy reflows and preserves keyboard focus in ${locale}`, async ({
+    page,
+  }) => {
+    test.slow();
+    const copy = authResidualCopy[locale];
+    let forgotWrites = 0;
+    let resetWrites = 0;
+    await page.route('**/forgot-password', async (route) => {
+      if (route.request().method() !== 'POST') return route.fallback();
+      forgotWrites += 1;
+      await fulfillJson(route, 200, { message: 'ok' });
+    });
+    await page.route('**/reset-password', async (route) => {
+      if (route.request().method() !== 'POST') return route.fallback();
+      resetWrites += 1;
+      await fulfillJson(route, 200, { message: 'ok' });
+    });
+
+    await page.goto('/login');
+    if (locale !== 'en') {
+      const languageSelector = page.getByRole('button', { name: 'Change language' });
+      await languageSelector.press('Enter');
+      await page
+        .getByRole('button', { name: locale === 'ru' ? 'Русский' : "O'zbek", exact: true })
+        .press('Enter');
+    }
+
+    const residualScenarios: readonly AuthViewportScenario[] = [
+      { label: 'default scale', pageScaleFactor: 1, widths: [320, 390, 768, 1280] },
+      { label: 'effective 200% page scale', pageScaleFactor: 2, widths: [1280] },
+    ];
+    for (const { pageScaleFactor, widths } of residualScenarios) {
+      for (const width of widths) {
+        await page.setViewportSize({ width, height: 900 });
+        const cdp = pageScaleFactor === 1 ? null : await page.context().newCDPSession(page);
+
+        await navigateWithinApp(page, '/login');
+        if (cdp) {
+          await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor });
+          await expectEffectivePageScaleViewportRelation(page, pageScaleFactor);
+        }
+        const loginMain = page.getByRole('main');
+        const forgotLink = loginMain.getByRole('link', { name: copy.forgotPassword });
+        const loginButton = loginMain.getByRole('button', { name: copy.logIn });
+        const createAccountLink = loginMain.getByRole('link', { name: copy.createAnAccount });
+        await expect(forgotLink).toBeVisible();
+        await expect(createAccountLink).toBeVisible();
+        await forgotLink.focus();
+        await expect(forgotLink).toBeFocused();
+        await forgotLink.press('Tab');
+        await expect(loginButton).toBeFocused();
+        await loginButton.press('Tab');
+        await expect(createAccountLink).toBeFocused();
+        await expectNoHorizontalOverflow(page);
+
+        await createAccountLink.press('Enter');
+        await expect(page).toHaveURL(/\/signup$/);
+        const signupMain = page.getByRole('main');
+        const signupLoginLink = signupMain.getByRole('link', { name: copy.logIn });
+        await expect(signupLoginLink).toBeVisible();
+        await expect(signupMain.getByRole('button', { name: copy.createAccount })).toBeVisible();
+        await expectNoHorizontalOverflow(page);
+
+        await signupLoginLink.press('Enter');
+        await expect(page).toHaveURL(/\/login$/);
+        const returnedLoginMain = page.getByRole('main');
+        await expect(returnedLoginMain).toBeFocused();
+        const returnedForgotLink = returnedLoginMain.getByRole('link', {
+          name: copy.forgotPassword,
+        });
+        await expect(returnedForgotLink).toHaveAttribute('href', '/forgot-password');
+        await returnedForgotLink.focus();
+        await expect(returnedForgotLink).toBeFocused();
+        await returnedForgotLink.press('Enter');
+        await expect(page).toHaveURL(/\/forgot-password$/);
+        const forgotMain = page.getByRole('main');
+        await expect(forgotMain.getByRole('button', { name: copy.continueLabel })).toBeVisible();
+        await expectNoHorizontalOverflow(page);
+
+        await navigateWithinApp(page, '/reset-password?token=localized-browser-token');
+        const resetMain = page.getByRole('main');
+        await expect(resetMain.getByText(copy.resetTokenHelp, { exact: true })).toBeVisible();
+        await expect(resetMain.getByRole('button', { name: copy.resetPassword })).toBeVisible();
+        if (cdp) await expectAllMainControlsReachableInVisualViewport(page);
+        await expectNoHorizontalOverflow(page);
+
+        if (cdp) {
+          await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 });
+          await cdp.detach();
+        }
+      }
+    }
+
+    await page.setViewportSize({ width: 390, height: 900 });
+    await navigateWithinApp(page, '/forgot-password?reason=missing-token');
+    await expect(
+      page.getByRole('main').getByText(copy.recoveryLink, { exact: true }),
+    ).toBeVisible();
+    await navigateWithinApp(page, '/forgot-password');
+    await page.locator('#email').fill('learner@example.com');
+    await page.getByRole('button', { name: copy.continueLabel }).press('Enter');
+    await expect(page.getByRole('main').getByRole('status')).toContainText(copy.recoveryChannel);
+
+    await navigateWithinApp(page, '/reset-password?token=localized-browser-token');
+    await page.locator('#password').fill('new password');
+    await page.locator('#passwordConfirmation').fill('new password');
+    await page.getByRole('button', { name: copy.resetPassword }).press('Enter');
+    await expect(page.getByRole('main').getByRole('status')).toContainText(copy.passwordUpdated);
+    expect({ forgotWrites, resetWrites }).toEqual({ forgotWrites: 1, resetWrites: 1 });
+    await expectNoHorizontalOverflow(page);
+  });
+}
 
 const authViewportScenarios: readonly AuthViewportScenario[] = [
   { label: 'default scale', pageScaleFactor: 1, widths: [320, 390, 640, 768, 1280] },

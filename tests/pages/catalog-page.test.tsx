@@ -252,7 +252,9 @@ describe('CatalogPage public URL and pagination behavior', () => {
         name: 'Kelajakni shakllantiruvchi ko‘nikmalarni egallang',
       }),
     ).toBeTruthy();
-    expect(screen.getByRole('heading', { level: 2, name: 'Topildi 1 ta kurs' })).toBeTruthy();
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'Topildi 1 ta kurs' }),
+    ).toBeTruthy();
     expect(screen.getAllByText('Saralash:')).toHaveLength(2);
     expect(screen.getByText('BEPUL')).toBeTruthy();
     expect(screen.getByText('2 ta dars mavjud')).toBeTruthy();

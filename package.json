@@ -9,7 +9,7 @@
     "build": "tsc && vite build",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:browser": "playwright test --config tests/browser/playwright.config.ts --project=chromium --workers=1 --retries=0 --reporter=line",
+    "test:browser": "playwright test --config tests/browser/playwright.config.ts --project=chromium --workers=1 --retries=0 --reporter=line && playwright test --config tests/browser/mlux006-multilingual-closure.playwright.config.ts --project=chromium --workers=1 --retries=0 --reporter=line",
     "test:all": "npm run typecheck && npm run lint && npm test && npm run test:browser",
     "lint": "eslint src tests vite.config.ts .eslintrc.cjs --ext ts,tsx,cjs --report-unused-disable-directives --max-warnings 0",
     "lint:quality": "eslint scripts/quality tests/quality --ext mjs,ts --report-unused-disable-directives --max-warnings 0",

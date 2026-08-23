@@ -104,6 +104,22 @@ jobs:
   browser:
     needs: resolve-target
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - tests/browser/playwright.config.ts
+          - tests/browser/mlux006-multilingual-closure.playwright.config.ts
+          - tests/browser/app-shell.playwright.config.ts
+          - tests/browser/auth-workflows.playwright.config.ts
+          - tests/browser/cart-workflow.playwright.config.ts
+          - tests/browser/catalog-discovery.playwright.config.ts
+          - tests/browser/checkout-cart.playwright.config.ts
+          - tests/browser/course-chat.playwright.config.ts
+          - tests/browser/course-detail.playwright.config.ts
+          - tests/browser/instructor-courses-fe029.playwright.config.ts
+          - tests/browser/instructor-course-editor-fe014.playwright.config.ts
+          - tests/browser/learning-progress.playwright.config.ts
     env:
       QUALITY_TARGET_SHA: ${{ needs.resolve-target.outputs.quality-target-sha }}
     steps:
@@ -116,7 +132,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - run: npm run test:browser
+      - run: npx playwright test --config "${{ matrix.config }}" --project=chromium --workers=1 --retries=0 --reporter=line
 
   quality-report:
     needs: resolve-target

@@ -157,6 +157,52 @@ async function expectInstructorCanvasEndsAfterWorkFrame(page: Page) {
   expect(geometry.articleBottom - geometry.workFrameBottom).toBeLessThanOrEqual(65);
 }
 
+test('renders the instructor course collection in Russian and Uzbek without overflow', async ({
+  page,
+}) => {
+  await installInstructorSession(page);
+  await page.route('**/courses/my**', async (route) => {
+    await fulfillJson(route, 200, collectionResponse(firstPageCourses, 1, 20, 1));
+  });
+  for (const [locale, heading, lessonCount, editCourse, enrollments, courseActions] of [
+    [
+      'ru',
+      'Ваши курсы',
+      '1 урок',
+      'Редактировать курс',
+      'Записи на курс',
+      `Действия с курсом «${course.title}»`,
+    ],
+    [
+      'uz',
+      'Kurslaringiz',
+      '1 dars',
+      'Kursni tahrirlash',
+      'Kursga yozilishlar',
+      `${course.title} kursi bo‘yicha amallar`,
+    ],
+  ] as const) {
+    await page.goto('/instructor/courses', { waitUntil: 'domcontentloaded' });
+    await page.evaluate((selectedLocale: string) => {
+      localStorage.setItem('learnhub.locale', selectedLocale);
+    }, locale);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(page.getByText(course.title)).toBeVisible();
+    await expect(page.getByRole('heading', { name: heading })).toBeVisible();
+    await expect(page.getByText(lessonCount, { exact: true }).first()).toBeVisible();
+    const actions = page.getByRole('navigation', { name: courseActions }).first();
+    const editLink = actions.getByRole('link', { name: editCourse });
+    const enrollmentsLink = actions.getByRole('link', { name: enrollments });
+    await expect(editLink).toBeVisible();
+    await expect(enrollmentsLink).toBeVisible();
+    await editLink.focus();
+    await expect(editLink).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(enrollmentsLink).toBeFocused();
+    await expectNoHorizontalOverflow(page);
+  }
+});
+
 async function readInstructorCoursesBackground(
   page: Page,
 ): Promise<InstructorCoursesBackgroundComposition> {
@@ -380,6 +426,9 @@ test('uses the approved responsive decorative canvas and preserves Instructor he
   });
   await page.setViewportSize({ width: 1024, height: 900 });
   await page.goto('/instructor/courses', { waitUntil: 'domcontentloaded' });
+  // The collection's settled-state accessibility announcement focuses its heading. Observe that
+  // completed transition before asserting the independent header action so it cannot steal focus.
+  await expect(page.getByRole('heading', { level: 2, name: 'Your courses' })).toBeFocused();
   const createAction = (await instructorCourseHeaderActions(page, 1024)).createAction;
   const courseTitle = page.getByRole('textbox', { name: 'Course title' });
   await createAction.press('Enter');

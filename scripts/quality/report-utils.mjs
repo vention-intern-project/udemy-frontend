@@ -1,6 +1,8 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { readdirSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+import { relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const REPORT_SCHEMA_VERSION = 2;
@@ -22,6 +24,17 @@ export const DIAGNOSTIC_SUMMARY_KEYS = Object.freeze([
   'unexpectedConsoleWarnings',
   'unexpectedGenericWarnings',
 ]);
+export const FAILED_COMMAND_OUTPUT_MAX_CHARS = 4_000;
+export const FAILED_COMMAND_OUTPUT_MAX_LINES = 40;
+const regularExpressionEscape = '\\';
+const ansiEscapeSequence = new RegExp(
+  `${regularExpressionEscape}u001B${regularExpressionEscape}[[0-?]*[ -/]*[@-~]`,
+  'g',
+);
+const controlCharacters = new RegExp(
+  `[${regularExpressionEscape}u0000-${regularExpressionEscape}u0008${regularExpressionEscape}u000B-${regularExpressionEscape}u001F${regularExpressionEscape}u007F-${regularExpressionEscape}u009F]`,
+  'g',
+);
 const schemaPath = fileURLToPath(new URL('./report.schema.json', import.meta.url));
 const reportSchema = JSON.parse(await readFile(schemaPath, 'utf8'));
 const supportedKeywords = new Set([
@@ -318,6 +331,129 @@ export function commandFailureCode(result, hasUnexpectedDiagnostics) {
     (result.signal ? `QUALITY_SIGNAL_${result.signal}` : null) ??
     (hasUnexpectedDiagnostics ? 'QUALITY_UNEXPECTED_DIAGNOSTICS' : null)
   );
+}
+
+const MAX_FAILURE_IDENTIFIERS = 8;
+const MAX_FAILURE_IDENTIFIER_LENGTH = 320;
+const vitestTestFileName = /\.(?:test|spec)\.(?:[cm]?[jt]sx?)$/i;
+const vitestBracketedFailureLine = /^\s*FAIL\b[^\r\n]*\[\s*([^\]\r\n]+?)\s*\]\s*$/;
+const vitestLeadingFailureLine = /^\s*FAIL\s+([^\s>]+)\s+>/;
+const vitestDiagnosticOwnershipLine = /^\s*stderr\s*\|\s*([^\s>|]+)\s+>/;
+
+function normalizeVitestFailureIdentifier(rawIdentifier) {
+  const normalized = String(rawIdentifier ?? '')
+    .replaceAll('\\', '/')
+    .replace(/\/{2,}/g, '/')
+    .trim();
+  if (
+    !normalized ||
+    Array.from(normalized).length > MAX_FAILURE_IDENTIFIER_LENGTH ||
+    normalized.startsWith('/') ||
+    /^[a-z]:\//i.test(normalized)
+  )
+    return null;
+  const segments = normalized.split('/');
+  if (
+    segments.some((segment) => !/^[A-Za-z0-9][A-Za-z0-9._@-]*$/.test(segment) || segment === '..')
+  )
+    return null;
+  const fileName = segments.at(-1);
+  return /\.(?:[cm]?[jt]sx?)$/i.test(fileName ?? '') ? segments.join('/') : null;
+}
+
+export function collectVitestTestIdentifiers(root) {
+  const identifiers = new Set();
+  const visit = (directory) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = resolve(directory, entry.name);
+      if (entry.isDirectory()) visit(path);
+      else if (entry.isFile() && vitestTestFileName.test(entry.name)) {
+        const identifier = normalizeVitestFailureIdentifier(relative(root, path));
+        if (identifier) identifiers.add(identifier);
+      }
+    }
+  };
+  visit(resolve(root, 'tests'));
+  return [...identifiers].sort();
+}
+
+function knownVitestIdentifiers(identifiers) {
+  return new Set(
+    (Array.isArray(identifiers) ? identifiers : [])
+      .map((identifier) => normalizeVitestFailureIdentifier(identifier))
+      .filter(Boolean),
+  );
+}
+
+function vitestFailureIdentifiers(stdout, stderr, knownIdentifiers) {
+  const identifiers = new Set();
+  for (const line of `${stdout ?? ''}\n${stderr ?? ''}`
+    .replace(ansiEscapeSequence, '')
+    .replace(controlCharacters, '')
+    .split(/\r?\n/)) {
+    const match = line.match(vitestBracketedFailureLine) ?? line.match(vitestLeadingFailureLine);
+    const identifier = match && normalizeVitestFailureIdentifier(match[1]);
+    if (identifier && knownIdentifiers.has(identifier)) identifiers.add(identifier);
+    if (identifiers.size === MAX_FAILURE_IDENTIFIERS) break;
+  }
+  return [...identifiers];
+}
+
+function vitestDiagnosticIdentifiers(stderr, knownIdentifiers) {
+  const identifiers = new Set();
+  for (const line of String(stderr ?? '')
+    .replace(ansiEscapeSequence, '')
+    .replace(controlCharacters, '')
+    .split(/\r?\n/)) {
+    const match = line.match(vitestDiagnosticOwnershipLine);
+    const identifier = match && normalizeVitestFailureIdentifier(match[1]);
+    if (identifier && knownIdentifiers.has(identifier)) identifiers.add(identifier);
+    if (identifiers.size === MAX_FAILURE_IDENTIFIERS) break;
+  }
+  return [...identifiers];
+}
+
+function boundedIdentifierLine(label, identifiers, maxCharacters) {
+  const prefix = `${label}=`;
+  const unavailable = `${prefix}unavailable`;
+  if (Array.from(unavailable).length > maxCharacters) return null;
+  const selected = [];
+  for (const identifier of identifiers) {
+    const candidate = `${prefix}${[...selected, identifier].join(',')}`;
+    if (Array.from(candidate).length > maxCharacters) break;
+    selected.push(identifier);
+  }
+  return selected.length ? `${prefix}${selected.join(',')}` : unavailable;
+}
+
+export function formatCommandFailureExcerpt(command) {
+  if (command.status === 'pass') return null;
+  const id = REQUIRED_QUALITY_COMMAND_IDS.includes(command.id) ? command.id : 'unknown';
+  const exitCode = Number.isInteger(command.exitCode) ? command.exitCode : 'null';
+  const errorCode =
+    typeof command.errorCode === 'string' && /^[A-Z0-9_]{1,64}$/.test(command.errorCode)
+      ? command.errorCode
+      : 'none';
+  const header = `QUALITY_COMMAND_FAILURE id=${id} exitCode=${exitCode} errorCode=${errorCode}`;
+  if (id !== 'tests') return header;
+  const knownIdentifiers = knownVitestIdentifiers(command.knownTestIdentifiers);
+  const identifiers = vitestFailureIdentifiers(command.stdout, command.stderr, knownIdentifiers);
+  const output = [header];
+  const appendIdentifierLine = (label, candidates) => {
+    const usedCharacters = Array.from(output.join('\n')).length + 1;
+    const line = boundedIdentifierLine(
+      label,
+      candidates,
+      FAILED_COMMAND_OUTPUT_MAX_CHARS - usedCharacters,
+    );
+    if (line) output.push(line);
+  };
+  appendIdentifierLine('failure-identifiers', identifiers);
+  if (errorCode === 'QUALITY_UNEXPECTED_DIAGNOSTICS' || command.hasUnexpectedDiagnostics) {
+    const diagnosticIdentifiers = vitestDiagnosticIdentifiers(command.stderr, knownIdentifiers);
+    appendIdentifierLine('diagnostic-identifiers', diagnosticIdentifiers);
+  }
+  return output.join('\n');
 }
 
 export function npmVersionFromUserAgent(userAgent) {

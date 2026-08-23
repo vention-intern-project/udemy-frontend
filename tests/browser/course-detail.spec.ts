@@ -118,6 +118,77 @@ interface DiagnosticAssertions {
   assertClean(): void;
 }
 
+interface CourseResidualBrowserCopy {
+  readonly loadingDetails: string;
+  readonly loadingOutline: string;
+  readonly coursePrice: string;
+  readonly outlineHeading: string;
+  readonly emptyOutline: string;
+  readonly lessonMarker: string;
+  readonly lessonType: string;
+  readonly draftCourse: string;
+  readonly notFoundDescription: string;
+  readonly guestSignIn: string;
+  readonly guestGuidance: string;
+  readonly guestDisabledAction: string;
+  readonly draftDisabledAction: string;
+}
+
+interface LocalizedCoursePriceFallbackScenario {
+  readonly localeButton: string;
+  readonly freeLabel: string;
+  readonly unavailableLabel: string;
+  readonly actionLabel: string;
+}
+
+const courseResidualBrowserCopy: Readonly<Record<'en' | 'ru' | 'uz', CourseResidualBrowserCopy>> = {
+  en: {
+    loadingDetails: 'Loading course details',
+    loadingOutline: 'Loading course outline',
+    coursePrice: '$19.9900',
+    outlineHeading: 'Course outline',
+    emptyOutline: 'No lessons have been added yet.',
+    lessonMarker: 'lesson ·',
+    lessonType: 'Video',
+    draftCourse: 'Draft course',
+    notFoundDescription: 'This course does not exist or is no longer available.',
+    guestSignIn: 'Sign in',
+    guestGuidance: 'Sign in to add this course to your cart.',
+    guestDisabledAction: 'Add to cart',
+    draftDisabledAction: 'Course is not published',
+  },
+  ru: {
+    loadingDetails: 'Загрузка сведений о курсе',
+    loadingOutline: 'Загрузка программы курса',
+    coursePrice: '19,9900 $',
+    outlineHeading: 'Программа курса',
+    emptyOutline: 'Уроки ещё не добавлены.',
+    lessonMarker: 'урок ·',
+    lessonType: 'Видео',
+    draftCourse: 'Черновик курса',
+    notFoundDescription: 'Курс не существует или больше недоступен.',
+    guestSignIn: 'Войти',
+    guestGuidance: 'Войти, чтобы добавить этот курс в корзину.',
+    guestDisabledAction: 'В корзину',
+    draftDisabledAction: 'Курс не опубликован',
+  },
+  uz: {
+    loadingDetails: 'Kurs tafsilotlari yuklanmoqda',
+    loadingOutline: 'Kurs dasturi yuklanmoqda',
+    coursePrice: '$ 19.9900',
+    outlineHeading: 'Kurs dasturi',
+    emptyOutline: 'Hali darslar qo‘shilmagan.',
+    lessonMarker: 'dars ·',
+    lessonType: 'Video',
+    draftCourse: 'Kurs qoralamasi',
+    notFoundDescription: 'Bu kurs mavjud emas yoki endi ochiq emas.',
+    guestSignIn: 'Kiring',
+    guestGuidance: 'Kiring bu kursni savatga qo‘shish uchun.',
+    guestDisabledAction: 'Savatga qo‘shish',
+    draftDisabledAction: 'Kurs nashr qilinmagan',
+  },
+};
+
 function parseResourceStatusConsoleEntry(
   text: string,
   locationUrl: string,
@@ -211,6 +282,19 @@ async function installDiagnostics(page: Page) {
     },
   };
   return diagnostics;
+}
+
+async function expectNoHorizontalOverflow(page: Page) {
+  const geometry = await page.evaluate(() => ({
+    bodyWidth: document.body.scrollWidth,
+    documentWidth: document.documentElement.scrollWidth,
+    layoutWidth: document.documentElement.clientWidth,
+    scale: window.visualViewport?.scale ?? 1,
+    visualWidth: window.visualViewport?.width ?? window.innerWidth,
+  }));
+  expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.layoutWidth + 0.5);
+  expect(geometry.bodyWidth).toBeLessThanOrEqual(geometry.layoutWidth + 0.5);
+  return geometry;
 }
 
 test('binds a resource-status console allowance to the exact observed response URL', () => {
@@ -315,6 +399,57 @@ test('clears a genuine invalid bearer after 401 and performs public metadata rea
   expect(await page.evaluate(() => localStorage.getItem('learnhub.access-token'))).toBeNull();
   diagnostics.assertClean();
 });
+
+const courseFailureCopy = {
+  en: { title: 'We could not load this course', message: 'Please try again.' },
+  ru: { title: 'Не удалось загрузить курс', message: 'Повторите попытку.' },
+  uz: { title: 'Kursni yuklab bo‘lmadi', message: 'Qayta urinib ko‘ring.' },
+} as const;
+
+for (const locale of ['en', 'ru', 'uz'] as const) {
+  test(`resolves a settled Course Detail failure in ${locale} without private server text`, async ({
+    page,
+  }) => {
+    const diagnostics = await installDiagnostics(page);
+    diagnostics.expectHttpFailure({ method: 'GET', pathname: '/courses/7', status: 500 });
+    diagnostics.expectHttpFailure({ method: 'GET', pathname: '/courses/7', status: 500 });
+    let writes = 0;
+    page.on('request', (request) => {
+      if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method())) writes += 1;
+    });
+    await page.route('**/courses/7', async (route) => {
+      if (isDocumentNavigation(route)) {
+        await route.fallback();
+        return;
+      }
+      await json(route, { detail: 'private course failure' }, 500);
+    });
+
+    await page.goto('/courses/7');
+    if (locale !== 'en') {
+      await page.getByRole('button', { name: 'Change language' }).press('Enter');
+      await page
+        .getByRole('button', { name: locale === 'ru' ? 'Русский' : "O'zbek", exact: true })
+        .press('Enter');
+    }
+
+    const copy = courseFailureCopy[locale];
+    await expect(page.getByRole('heading', { level: 1, name: copy.title })).toBeVisible();
+    await expect(page.getByText(copy.message, { exact: true })).toBeVisible();
+    await expect(page.getByText('private course failure')).toHaveCount(0);
+    const retry = page.getByRole('button', {
+      name: locale === 'ru' ? 'Повторить' : locale === 'uz' ? 'Qayta urinish' : 'Try again',
+    });
+    for (const width of [320, 390, 768, 1280] as const) {
+      await page.setViewportSize({ width, height: 900 });
+      await retry.focus();
+      await expect(retry).toBeFocused();
+      await expectNoHorizontalOverflow(page);
+    }
+    expect(writes).toBe(0);
+    diagnostics.assertClean();
+  });
+}
 
 test('recovers detail and outline independently with keyboard focus and polite status', async ({
   page,
@@ -531,6 +666,124 @@ test('sends the paid cart request once and reports cart-specific success', async
   expect(mutations).toBe(1);
   diagnostics.assertClean();
 });
+
+for (const scenario of [
+  {
+    localeButton: 'Русский',
+    price: '0.00',
+    action: 'Записаться бесплатно',
+    mutationPath: '**/enrollments',
+    mutationResponse: enrollmentMutation,
+  },
+  {
+    localeButton: "O'zbek",
+    price: '19.99',
+    action: 'Savatga qo‘shish',
+    mutationPath: '**/cart/items',
+    mutationResponse: cartItemMutation,
+  },
+]) {
+  test(`localizes the authenticated eligible Course Detail action after selecting ${scenario.localeButton}`, async ({
+    page,
+  }) => {
+    const diagnostics = await installDiagnostics(page);
+    await installStudentToken(page);
+    await routeStudentReads(page, scenario.price);
+    let mutations = 0;
+    await page.route(scenario.mutationPath, async (route) => {
+      mutations += 1;
+      expect(route.request().postDataJSON()).toEqual({ course_id: 7 });
+      await json(route, scenario.mutationResponse, 201);
+    });
+
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/courses/7');
+    await page.getByRole('button', { name: 'Change language' }).click();
+    await page.getByRole('button', { name: scenario.localeButton, exact: true }).click();
+
+    const action = page.getByRole('button', { name: scenario.action });
+    await expect(action).toBeEnabled();
+    await action.focus();
+    await expect(action).toBeFocused();
+    await expectNoHorizontalOverflow(page);
+
+    await page.setViewportSize({ width: 390, height: 900 });
+    await expect(action).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 2 });
+    const geometry = await expectNoHorizontalOverflow(page);
+    expect(geometry.scale).toBeCloseTo(2, 1);
+    await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 });
+    await cdp.detach();
+
+    await action.click();
+    expect(mutations).toBe(1);
+    diagnostics.assertClean();
+  });
+}
+
+for (const scenario of [
+  {
+    localeButton: 'English',
+    freeLabel: 'FREE',
+    unavailableLabel: 'Price unavailable',
+    actionLabel: 'Enroll free',
+  },
+  {
+    localeButton: 'Русский',
+    freeLabel: 'БЕСПЛАТНО',
+    unavailableLabel: 'Цена недоступна',
+    actionLabel: 'Записаться бесплатно',
+  },
+  {
+    localeButton: "O'zbek",
+    freeLabel: 'BEPUL',
+    unavailableLabel: 'Narx mavjud emas',
+    actionLabel: 'Bepul yozilish',
+  },
+] satisfies readonly LocalizedCoursePriceFallbackScenario[]) {
+  test(`renders localized free and unavailable Course Detail prices after selecting ${scenario.localeButton}`, async ({
+    page,
+  }) => {
+    const diagnostics = await installDiagnostics(page);
+    let price = '0.00';
+    await installStudentToken(page);
+    await page.route('**/me', (route) => json(route, studentProfile));
+    await page.route('**/courses/7**', (route) => {
+      if (isDocumentNavigation(route)) return route.fallback();
+      const path = new URL(route.request().url()).pathname;
+      return json(route, path.endsWith('/lessons') ? outline(null) : { ...detail, price });
+    });
+    await page.route('**/cart', (route) => json(route, emptyCart));
+    await page.route('**/enrollments/my**', (route) => json(route, emptyEnrollments));
+
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/courses/7');
+    if (scenario.localeButton !== 'English') {
+      await page.getByRole('button', { name: 'Change language' }).click();
+      await page.getByRole('button', { name: scenario.localeButton, exact: true }).click();
+    }
+    const priceData = page.locator('aside data');
+    await expect(priceData).toHaveText(scenario.freeLabel);
+    await expect(priceData).toHaveAttribute('value', '0.00');
+    const action = page.getByRole('button', { name: scenario.actionLabel });
+    await action.focus();
+    await expect(action).toBeFocused();
+
+    price = 'not-a-decimal';
+    await page.goto('/courses/7?fixture=localized-invalid-price');
+    await expect(priceData).toHaveText(scenario.unavailableLabel);
+    await expect(priceData).toHaveAttribute('value', 'not-a-decimal');
+    await expect(page.locator('body')).not.toContainText('USD not-a-decimal');
+    for (const width of [320, 390, 768, 1280] as const) {
+      await page.setViewportSize({ width, height: 900 });
+      await expectNoHorizontalOverflow(page);
+    }
+    diagnostics.assertClean();
+  });
+}
 
 for (const scenario of [
   {
@@ -848,6 +1101,18 @@ test('keeps only offline/server mutation failure retryable', async ({ page }) =>
   await expect(
     page.getByText('The action failed. Check your connection and try again.'),
   ).toBeVisible();
+  await page.getByRole('button', { name: 'Change language' }).click();
+  await page.getByRole('button', { name: 'Русский', exact: true }).click();
+  await expect(
+    page.getByText('Не удалось выполнить действие. Проверьте подключение и повторите попытку.'),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Язык' }).click();
+  await page.getByRole('button', { name: "O'zbek", exact: true }).click();
+  await expect(
+    page.getByText('Amalni bajarib bo‘lmadi. Ulanishni tekshirib, qayta urinib ko‘ring.'),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Til' }).click();
+  await page.getByRole('button', { name: 'English', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Enroll free' })).toBeEnabled();
   await page.getByRole('button', { name: 'Enroll free' }).click();
   await expect(page.getByText('You are now enrolled in this course.')).toBeVisible();
@@ -962,3 +1227,114 @@ test('preserves keyboard access and reflow without horizontal overflow', async (
   ).toBe('0ms');
   diagnostics.assertClean();
 });
+
+for (const locale of ['en', 'ru', 'uz'] as const) {
+  test(`resolves the complete admitted course residual family without overflow or writes in ${locale}`, async ({
+    page,
+  }) => {
+    test.slow();
+    const copy = courseResidualBrowserCopy[locale];
+    const diagnostics = await installDiagnostics(page);
+    let writes = 0;
+    let detailPending = true;
+    let outlinePending = true;
+    let draft = false;
+    let outlineItems = 1;
+    let resolveDetail: (() => void) | undefined;
+    let resolveOutline: (() => void) | undefined;
+    const detailGate = new Promise<void>((resolve) => {
+      resolveDetail = resolve;
+    });
+    const outlineGate = new Promise<void>((resolve) => {
+      resolveOutline = resolve;
+    });
+    page.on('request', (request) => {
+      if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method())) writes += 1;
+    });
+    await page.route('**/courses/7**', async (route) => {
+      if (isDocumentNavigation(route)) {
+        await route.fallback();
+        return;
+      }
+      const path = new URL(route.request().url()).pathname;
+      if (path.endsWith('/lessons')) {
+        if (outlinePending) await outlineGate;
+        await json(route, outline(null, outlineItems));
+        return;
+      }
+      if (detailPending) await detailGate;
+      await json(route, { ...detail, published_at: draft ? null : detail.published_at });
+    });
+
+    await page.goto('/courses/7');
+    if (locale !== 'en') {
+      await page.getByRole('button', { name: 'Change language' }).press('Enter');
+      await page
+        .getByRole('button', { name: locale === 'ru' ? 'Русский' : "O'zbek", exact: true })
+        .press('Enter');
+    }
+    await expect(page.getByRole('status', { name: copy.loadingDetails })).toBeVisible();
+
+    detailPending = false;
+    resolveDetail?.();
+    await expect(page.getByRole('heading', { level: 1, name: detail.title })).toBeVisible();
+    await expect(page.getByRole('status', { name: copy.loadingOutline })).toBeVisible();
+
+    outlinePending = false;
+    resolveOutline?.();
+    await expect(page.getByRole('heading', { level: 2, name: copy.outlineHeading })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 3, name: 'Welcome' })).toBeVisible();
+    await expect(page.locator('aside data')).toHaveText(copy.coursePrice);
+    await expect(
+      page.getByText(new RegExp(`${copy.lessonType} ${copy.lessonMarker}`)),
+    ).toBeVisible();
+    await expect(page.getByText('Ada Lovelace')).toBeVisible();
+
+    for (const width of [320, 390, 768, 1280] as const) {
+      await page.setViewportSize({ width, height: 900 });
+      const signIn = page.locator('aside').getByRole('link', { name: copy.guestSignIn });
+      await signIn.focus();
+      await expect(signIn).toBeFocused();
+      await expect(signIn.locator('xpath=ancestor::p')).toHaveText(copy.guestGuidance);
+      await expect(
+        page.locator('aside').getByRole('button', { name: copy.guestDisabledAction }),
+      ).toBeDisabled();
+      if (locale !== 'en') {
+        await expect(page.locator('aside')).not.toContainText(/Sign in|Enroll for free/);
+      }
+      await expectNoHorizontalOverflow(page);
+    }
+
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 2 });
+    const scaledGeometry = await expectNoHorizontalOverflow(page);
+    expect(scaledGeometry.scale).toBeCloseTo(2, 1);
+    expect(scaledGeometry.visualWidth * scaledGeometry.scale).toBeCloseTo(
+      scaledGeometry.layoutWidth,
+      0,
+    );
+    await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 });
+    await cdp.detach();
+
+    draft = true;
+    outlineItems = 0;
+    await page.reload();
+    await expect(page.getByText(copy.draftCourse, { exact: true })).toBeVisible();
+    await expect(page.getByText(copy.emptyOutline, { exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: detail.title })).toBeVisible();
+    await expect(page.getByRole('button', { name: copy.draftDisabledAction })).toBeDisabled();
+    if (locale !== 'en') {
+      await expect(page.locator('aside')).not.toContainText(/Course is not published/);
+    }
+    await expectNoHorizontalOverflow(page);
+
+    await page.goto('/courses/not-a-number');
+    await expect(page.getByText(copy.notFoundDescription, { exact: true })).toBeVisible();
+    await expect(page.locator('body')).not.toContainText(
+      /Translation unavailable|a11y:\w+|course:(?:courseOutline|draftCourse|lessonMarker|noLessonsAdded|thisCourseDoesNotExistOr)/,
+    );
+    await expectNoHorizontalOverflow(page);
+    expect(writes).toBe(0);
+    diagnostics.assertClean();
+  });
+}
