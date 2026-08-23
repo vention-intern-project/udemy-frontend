@@ -1,6 +1,8 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { readdirSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+import { relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const REPORT_SCHEMA_VERSION = 2;
@@ -333,6 +335,7 @@ export function commandFailureCode(result, hasUnexpectedDiagnostics) {
 
 const MAX_FAILURE_IDENTIFIERS = 8;
 const MAX_FAILURE_IDENTIFIER_LENGTH = 320;
+const vitestTestFileName = /\.(?:test|spec)\.(?:[cm]?[jt]sx?)$/i;
 const vitestBracketedFailureLine = /^\s*FAIL\b[^\r\n]*\[\s*([^\]\r\n]+?)\s*\]\s*$/;
 const vitestLeadingFailureLine = /^\s*FAIL\s+([^\s>]+)\s+>/;
 const vitestDiagnosticOwnershipLine = /^\s*stderr\s*\|\s*([^\s>|]+)\s+>/;
@@ -358,7 +361,31 @@ function normalizeVitestFailureIdentifier(rawIdentifier) {
   return /\.(?:[cm]?[jt]sx?)$/i.test(fileName ?? '') ? segments.join('/') : null;
 }
 
-function vitestFailureIdentifiers(stdout, stderr) {
+export function collectVitestTestIdentifiers(root) {
+  const identifiers = new Set();
+  const visit = (directory) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = resolve(directory, entry.name);
+      if (entry.isDirectory()) visit(path);
+      else if (entry.isFile() && vitestTestFileName.test(entry.name)) {
+        const identifier = normalizeVitestFailureIdentifier(relative(root, path));
+        if (identifier) identifiers.add(identifier);
+      }
+    }
+  };
+  visit(resolve(root, 'tests'));
+  return [...identifiers].sort();
+}
+
+function knownVitestIdentifiers(identifiers) {
+  return new Set(
+    (Array.isArray(identifiers) ? identifiers : [])
+      .map((identifier) => normalizeVitestFailureIdentifier(identifier))
+      .filter(Boolean),
+  );
+}
+
+function vitestFailureIdentifiers(stdout, stderr, knownIdentifiers) {
   const identifiers = new Set();
   for (const line of `${stdout ?? ''}\n${stderr ?? ''}`
     .replace(ansiEscapeSequence, '')
@@ -366,13 +393,13 @@ function vitestFailureIdentifiers(stdout, stderr) {
     .split(/\r?\n/)) {
     const match = line.match(vitestBracketedFailureLine) ?? line.match(vitestLeadingFailureLine);
     const identifier = match && normalizeVitestFailureIdentifier(match[1]);
-    if (identifier) identifiers.add(identifier);
+    if (identifier && knownIdentifiers.has(identifier)) identifiers.add(identifier);
     if (identifiers.size === MAX_FAILURE_IDENTIFIERS) break;
   }
   return [...identifiers];
 }
 
-function vitestDiagnosticIdentifiers(stderr) {
+function vitestDiagnosticIdentifiers(stderr, knownIdentifiers) {
   const identifiers = new Set();
   for (const line of String(stderr ?? '')
     .replace(ansiEscapeSequence, '')
@@ -380,7 +407,7 @@ function vitestDiagnosticIdentifiers(stderr) {
     .split(/\r?\n/)) {
     const match = line.match(vitestDiagnosticOwnershipLine);
     const identifier = match && normalizeVitestFailureIdentifier(match[1]);
-    if (identifier) identifiers.add(identifier);
+    if (identifier && knownIdentifiers.has(identifier)) identifiers.add(identifier);
     if (identifiers.size === MAX_FAILURE_IDENTIFIERS) break;
   }
   return [...identifiers];
@@ -409,7 +436,8 @@ export function formatCommandFailureExcerpt(command) {
       : 'none';
   const header = `QUALITY_COMMAND_FAILURE id=${id} exitCode=${exitCode} errorCode=${errorCode}`;
   if (id !== 'tests') return header;
-  const identifiers = vitestFailureIdentifiers(command.stdout, command.stderr);
+  const knownIdentifiers = knownVitestIdentifiers(command.knownTestIdentifiers);
+  const identifiers = vitestFailureIdentifiers(command.stdout, command.stderr, knownIdentifiers);
   const output = [header];
   const appendIdentifierLine = (label, candidates) => {
     const usedCharacters = Array.from(output.join('\n')).length + 1;
@@ -422,7 +450,7 @@ export function formatCommandFailureExcerpt(command) {
   };
   appendIdentifierLine('failure-identifiers', identifiers);
   if (errorCode === 'QUALITY_UNEXPECTED_DIAGNOSTICS' || command.hasUnexpectedDiagnostics) {
-    const diagnosticIdentifiers = vitestDiagnosticIdentifiers(command.stderr);
+    const diagnosticIdentifiers = vitestDiagnosticIdentifiers(command.stderr, knownIdentifiers);
     appendIdentifierLine('diagnostic-identifiers', diagnosticIdentifiers);
   }
   return output.join('\n');

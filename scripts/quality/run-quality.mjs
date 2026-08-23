@@ -12,6 +12,7 @@ import {
   createLocalPatchAttestation,
   commandFailureCode,
   classifyCommandDiagnostics,
+  collectVitestTestIdentifiers,
   formatCommandFailureExcerpt,
   npmVersionFromUserAgent,
   runCapturedCommand,
@@ -152,6 +153,7 @@ if (scope === 'full' && !localAttestationKey)
     'Local full reports require the ephemeral Manager-supplied QUALITY_REPORT_ATTESTATION_KEY after target capture.',
   );
 const sha = scope === 'ci' ? target.sha : currentSha(false);
+const knownTestIdentifiers = collectVitestTestIdentifiers(root);
 const executions = qualityCommands.map(([id, args]) => run(id, args));
 const commands = executions.map(({ command }) => command);
 const findings = await collectStaticFindings();
@@ -201,6 +203,7 @@ for (const { command, stdout, stderr, hasUnexpectedDiagnostics } of executions) 
     stdout,
     stderr,
     hasUnexpectedDiagnostics,
+    knownTestIdentifiers,
   });
   if (excerpt) console.error(excerpt);
 }

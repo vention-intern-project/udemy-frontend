@@ -15,6 +15,7 @@ import {
   createLocalPatchAttestation,
   commandFailureCode,
   classifyCommandDiagnostics,
+  collectVitestTestIdentifiers,
   FAILED_COMMAND_OUTPUT_MAX_CHARS,
   FAILED_COMMAND_OUTPUT_MAX_LINES,
   formatCommandFailureExcerpt,
@@ -110,6 +111,22 @@ interface NativeEslintConstructor {
 const temporaryPaths: string[] = [];
 const fixtureRoot = resolve('tests/quality/fixtures/static');
 const testAttestationKey = randomBytes(32).toString('base64url');
+const formatterFixtureTestIdentifiers = Object.freeze([
+  'tests/quality/diagnostic-owner.test.ts',
+  'tests/quality/failing-example.test.ts',
+  'tests/quality/flag-owner.test.ts',
+  'tests/quality/second-example.spec.tsx',
+  'tests/quality/second-owner.spec.tsx',
+]);
+type CommandFailureExcerptInput = Parameters<typeof formatCommandFailureExcerpt>[0];
+function formatFixtureCommandFailureExcerpt(
+  command: Omit<CommandFailureExcerptInput, 'knownTestIdentifiers'>,
+) {
+  return formatCommandFailureExcerpt({
+    ...command,
+    knownTestIdentifiers: formatterFixtureTestIdentifiers,
+  });
+}
 const { ESLint } = createRequire(import.meta.url)('eslint') as {
   ESLint: NativeEslintConstructor;
 };
@@ -126,6 +143,22 @@ describe('quality execution provenance', () => {
     );
     expect(qualityRunner).not.toContain('--poolOptions.forks.singleFork=true');
     expect(packageJson.scripts.test).toBe('vitest run');
+  });
+
+  it('snapshots actual workspace Vitest identifiers before child commands run', async () => {
+    const qualityRunner = await readFile(resolve('scripts/quality/run-quality.mjs'), 'utf8');
+    const identifiers = collectVitestTestIdentifiers(process.cwd());
+
+    expect(identifiers).toContain('tests/quality/run-quality.test.ts');
+    expect(identifiers).toContain('tests/app/app-shell.test.tsx');
+    expect(
+      qualityRunner.indexOf('const knownTestIdentifiers = collectVitestTestIdentifiers(root);'),
+    ).toBeLessThan(
+      qualityRunner.indexOf(
+        'const executions = qualityCommands.map(([id, args]) => run(id, args));',
+      ),
+    );
+    expect(qualityRunner).toContain('knownTestIdentifiers,');
   });
 
   it("captures output above Node's default and fails closed at an explicit bounded cap", () => {
@@ -172,7 +205,7 @@ describe('quality execution provenance', () => {
   });
 
   it('emits only allowlisted Vitest file identifiers and never quoted JSON values', () => {
-    const failure = formatCommandFailureExcerpt({
+    const failure = formatFixtureCommandFailureExcerpt({
       id: 'tests',
       status: 'fail',
       exitCode: 1,
@@ -195,7 +228,7 @@ describe('quality execution provenance', () => {
   });
 
   it('normalizes supported POSIX and Windows Vitest paths, deduplicates them, and stays control-safe', () => {
-    const failure = formatCommandFailureExcerpt({
+    const failure = formatFixtureCommandFailureExcerpt({
       id: 'tests',
       status: 'fail',
       exitCode: 1,
@@ -221,7 +254,7 @@ describe('quality execution provenance', () => {
   });
 
   it('emits only allowlisted unexpected-diagnostic owner identifiers', () => {
-    const diagnostic = formatCommandFailureExcerpt({
+    const diagnostic = formatFixtureCommandFailureExcerpt({
       id: 'tests',
       status: 'fail',
       exitCode: 0,
@@ -248,7 +281,7 @@ describe('quality execution provenance', () => {
     expect(diagnostic).not.toContain('user:password');
     expect(diagnostic).not.toContain('fabricated');
 
-    const diagnosticFlag = formatCommandFailureExcerpt({
+    const diagnosticFlag = formatFixtureCommandFailureExcerpt({
       id: 'tests',
       status: 'fail',
       exitCode: 0,
@@ -262,7 +295,7 @@ describe('quality execution provenance', () => {
 
   it('reports unavailable test identifiers without emitting arbitrary output and keeps non-test failures metadata-only', () => {
     expect(
-      formatCommandFailureExcerpt({
+      formatFixtureCommandFailureExcerpt({
         id: 'tests',
         status: 'pass',
         exitCode: 0,
@@ -272,7 +305,7 @@ describe('quality execution provenance', () => {
       }),
     ).toBeNull();
 
-    const unavailable = formatCommandFailureExcerpt({
+    const unavailable = formatFixtureCommandFailureExcerpt({
       id: 'tests',
       status: 'fail',
       exitCode: 1,
@@ -287,7 +320,7 @@ describe('quality execution provenance', () => {
     expect(unavailable).not.toContain('unavailable-secret');
     expect(unavailable).not.toContain('token@example.test');
 
-    const prefixed = formatCommandFailureExcerpt({
+    const prefixed = formatFixtureCommandFailureExcerpt({
       id: 'tests',
       status: 'fail',
       exitCode: 1,
@@ -303,7 +336,7 @@ describe('quality execution provenance', () => {
         'failure-identifiers=unavailable',
     );
 
-    const nonTestFailure = formatCommandFailureExcerpt({
+    const nonTestFailure = formatFixtureCommandFailureExcerpt({
       id: 'lint',
       status: 'fail',
       exitCode: 2,
@@ -314,7 +347,7 @@ describe('quality execution provenance', () => {
     expect(nonTestFailure).toBe(
       'QUALITY_COMMAND_FAILURE id=lint exitCode=2 errorCode=ESLINT_FAILURE',
     );
-    const bounded = formatCommandFailureExcerpt({
+    const bounded = formatFixtureCommandFailureExcerpt({
       id: 'tests',
       status: 'fail',
       exitCode: 1,
@@ -343,6 +376,10 @@ describe('quality execution provenance', () => {
       stderr: combinedIdentifiers
         .map((identifier) => `stderr | ${identifier.replace(/a/g, 'b')} > warning`)
         .join('\n'),
+      knownTestIdentifiers: [
+        ...combinedIdentifiers,
+        ...combinedIdentifiers.map((identifier) => identifier.replace(/a/g, 'b')),
+      ],
     });
     expect(Array.from(combined ?? '').length).toBeLessThanOrEqual(FAILED_COMMAND_OUTPUT_MAX_CHARS);
     expect((combined ?? '').split('\n').length).toBeLessThanOrEqual(
@@ -350,6 +387,30 @@ describe('quality execution provenance', () => {
     );
     expect(combined).toContain('failure-identifiers=tests/');
     expect(combined).toContain('diagnostic-identifiers=');
+  });
+
+  it('emits only pre-execution workspace test identifiers from failed-test output', () => {
+    const actualIdentifier = 'tests/quality/run-quality.test.ts';
+    const encodedSecretIdentifier = 'tests/quality/encoded-attestation-value.test.ts';
+    const excerpt = formatCommandFailureExcerpt({
+      id: 'tests',
+      status: 'fail',
+      exitCode: 1,
+      errorCode: 'QUALITY_UNEXPECTED_DIAGNOSTICS',
+      stdout: [
+        ` FAIL  ${actualIdentifier} > real failure`,
+        ` FAIL  ${encodedSecretIdentifier} > fake failure`,
+      ].join('\n'),
+      stderr: [
+        `stderr | ${actualIdentifier} > real diagnostic`,
+        `stderr | ${encodedSecretIdentifier} > fake diagnostic`,
+      ].join('\n'),
+      knownTestIdentifiers: [actualIdentifier],
+    });
+
+    expect(excerpt).toContain(`failure-identifiers=${actualIdentifier}`);
+    expect(excerpt).toContain(`diagnostic-identifiers=${actualIdentifier}`);
+    expect(excerpt).not.toContain('encoded-attestation-value');
   });
 
   it('parses npm semver only from the standard lifecycle user agent', () => {

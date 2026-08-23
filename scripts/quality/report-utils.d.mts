@@ -12,6 +12,7 @@ export interface CommandFailureExcerpt {
   stdout?: string;
   stderr?: string;
   hasUnexpectedDiagnostics?: boolean;
+  knownTestIdentifiers: readonly string[];
 }
 export function classifyCommandDiagnostics(
   stdout?: string,
@@ -33,6 +34,7 @@ export function commandFailureCode(
   hasUnexpectedDiagnostics: boolean,
 ): string | null;
 export function formatCommandFailureExcerpt(command: CommandFailureExcerpt): string | null;
+export function collectVitestTestIdentifiers(root: string): string[];
 export function npmVersionFromUserAgent(userAgent?: string): string;
 export interface CapturedCommandResult {
   status: number | null;
