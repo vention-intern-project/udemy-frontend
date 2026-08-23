@@ -327,6 +327,29 @@ describe('quality execution provenance', () => {
     });
     expect(Array.from(bounded ?? '').length).toBeLessThanOrEqual(FAILED_COMMAND_OUTPUT_MAX_CHARS);
     expect((bounded ?? '').split('\n').length).toBeLessThanOrEqual(FAILED_COMMAND_OUTPUT_MAX_LINES);
+
+    const combinedIdentifiers = Array.from(
+      { length: 8 },
+      (_, index) => `tests/${'a'.repeat(305)}${index}.test.ts`,
+    );
+    const combined = formatCommandFailureExcerpt({
+      id: 'tests',
+      status: 'fail',
+      exitCode: 1,
+      errorCode: 'QUALITY_UNEXPECTED_DIAGNOSTICS',
+      stdout: combinedIdentifiers
+        .map((identifier) => ` FAIL  bounded [ ${identifier} ]`)
+        .join('\n'),
+      stderr: combinedIdentifiers
+        .map((identifier) => `stderr | ${identifier.replace(/a/g, 'b')} > warning`)
+        .join('\n'),
+    });
+    expect(Array.from(combined ?? '').length).toBeLessThanOrEqual(FAILED_COMMAND_OUTPUT_MAX_CHARS);
+    expect((combined ?? '').split('\n').length).toBeLessThanOrEqual(
+      FAILED_COMMAND_OUTPUT_MAX_LINES,
+    );
+    expect(combined).toContain('failure-identifiers=tests/');
+    expect(combined).toContain('diagnostic-identifiers=');
   });
 
   it('parses npm semver only from the standard lifecycle user agent', () => {

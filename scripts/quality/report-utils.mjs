@@ -386,6 +386,19 @@ function vitestDiagnosticIdentifiers(stderr) {
   return [...identifiers];
 }
 
+function boundedIdentifierLine(label, identifiers, maxCharacters) {
+  const prefix = `${label}=`;
+  const unavailable = `${prefix}unavailable`;
+  if (Array.from(unavailable).length > maxCharacters) return null;
+  const selected = [];
+  for (const identifier of identifiers) {
+    const candidate = `${prefix}${[...selected, identifier].join(',')}`;
+    if (Array.from(candidate).length > maxCharacters) break;
+    selected.push(identifier);
+  }
+  return selected.length ? `${prefix}${selected.join(',')}` : unavailable;
+}
+
 export function formatCommandFailureExcerpt(command) {
   if (command.status === 'pass') return null;
   const id = REQUIRED_QUALITY_COMMAND_IDS.includes(command.id) ? command.id : 'unknown';
@@ -397,10 +410,20 @@ export function formatCommandFailureExcerpt(command) {
   const header = `QUALITY_COMMAND_FAILURE id=${id} exitCode=${exitCode} errorCode=${errorCode}`;
   if (id !== 'tests') return header;
   const identifiers = vitestFailureIdentifiers(command.stdout, command.stderr);
-  const output = [`${header}`, `failure-identifiers=${identifiers.join(',') || 'unavailable'}`];
+  const output = [header];
+  const appendIdentifierLine = (label, candidates) => {
+    const usedCharacters = Array.from(output.join('\n')).length + 1;
+    const line = boundedIdentifierLine(
+      label,
+      candidates,
+      FAILED_COMMAND_OUTPUT_MAX_CHARS - usedCharacters,
+    );
+    if (line) output.push(line);
+  };
+  appendIdentifierLine('failure-identifiers', identifiers);
   if (errorCode === 'QUALITY_UNEXPECTED_DIAGNOSTICS' || command.hasUnexpectedDiagnostics) {
     const diagnosticIdentifiers = vitestDiagnosticIdentifiers(command.stderr);
-    output.push(`diagnostic-identifiers=${diagnosticIdentifiers.join(',') || 'unavailable'}`);
+    appendIdentifierLine('diagnostic-identifiers', diagnosticIdentifiers);
   }
   return output.join('\n');
 }

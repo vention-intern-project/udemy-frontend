@@ -1152,12 +1152,14 @@ describe('AppShell student cart query and presentation', () => {
     await act(async () => {
       await user.click(navigationTrigger);
     });
-    expect(screen.getByRole('navigation', { name: 'Mobile navigation' })).toBeTruthy();
+    const mobileNavigation = screen.getByRole('navigation', { name: 'Mobile navigation' });
+    act(() => within(mobileNavigation).getByRole('link', { name: 'Instructor courses' }).focus());
+    expect(document.activeElement).not.toBe(navigationTrigger);
     await act(async () => {
       await user.keyboard('{Escape}');
     });
     expect(screen.queryByRole('navigation', { name: 'Mobile navigation' })).toBeNull();
-    expect(document.activeElement).toBe(navigationTrigger);
+    await waitFor(() => expect(document.activeElement).toBe(navigationTrigger));
     await act(async () => {
       await user.click(accountMenu);
     });
