@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { matchPath } from 'react-router-dom';
 
-import { MLUX_003_RUNTIME_MAPPING } from '../../src/shared/locale';
+import registry from '../../localization/corpus/registry.json';
 import {
   APP_ROUTE_BY_ID,
   APP_ROUTES,
@@ -101,10 +101,10 @@ describe('application route registry', () => {
     expect('PAGE-015' in APP_ROUTE_BY_ID).toBe(true);
   });
 
-  it('keeps every registered page bound to the independently enumerated MLUX-003 title key', () => {
+  it('keeps every registered page bound to an independently enumerated canonical title key', () => {
     const bindings = APP_ROUTES.map(({ id, titleKey }) => ({ id, titleKey }));
     const mappedLocaleKeys = new Set(
-      MLUX_003_RUNTIME_MAPPING.map(({ namespace, key }) => `${namespace}:${key}`),
+      registry.units.map(({ namespace, key }) => `${namespace}:${key}`),
     );
 
     expect(bindings).toEqual(MLUX_003_EXPECTED_ROUTE_TITLE_BINDINGS);

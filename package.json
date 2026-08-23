@@ -11,6 +11,8 @@
     "test:watch": "vitest",
     "test:browser": "playwright test --config tests/browser/playwright.config.ts --project=chromium --workers=1 --retries=0 --reporter=line && playwright test --config tests/browser/mlux006-multilingual-closure.playwright.config.ts --project=chromium --workers=1 --retries=0 --reporter=line",
     "test:all": "npm run typecheck && npm run lint && npm test && npm run test:browser",
+    "localization:sync": "node scripts/localization/sync.mjs",
+    "localization:check": "node scripts/localization/check.mjs",
     "lint": "eslint src tests vite.config.ts .eslintrc.cjs --ext ts,tsx,cjs --report-unused-disable-directives --max-warnings 0",
     "lint:quality": "eslint scripts/quality tests/quality --ext mjs,ts --report-unused-disable-directives --max-warnings 0",
     "format:check": "prettier --check package.json .eslintrc.cjs .prettierrc.json stylelint.config.cjs tsconfig.eslint.json scripts/quality tests/quality .github/workflows",
