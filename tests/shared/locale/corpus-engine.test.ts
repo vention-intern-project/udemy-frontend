@@ -2518,6 +2518,7 @@ describe('canonical localization corpus engine', () => {
     const retired = structuredClone(draft37Registry);
     retired.units[0].unitLifecycle = 'retired';
     retired.units[0].occurrences = [];
+    retired.summary.sourceOccurrences -= 1;
     retired.units[0].sourceRevision = protectedSourceFingerprint(retired.units[0]);
     retired.units[0].locales.ru.sourceRevision = retired.units[0].sourceRevision;
     retired.units[0].locales.uz.sourceRevision = retired.units[0].sourceRevision;
@@ -2529,7 +2530,13 @@ describe('canonical localization corpus engine', () => {
       reason: 'legal identity-preserving retirement',
       sourceRevision: retired.units[0].sourceRevision,
     };
-    expect(validateCorpus(retired)).not.toContain('DRAFT-37 semantic identity mismatch');
+    expect(retired.migration.sourceOccurrences).toBe(746);
+    expect(retired.summary.sourceOccurrences).toBe(745);
+    expect(validateCorpus(retired)).toEqual([]);
+
+    const rewrittenImportCount = structuredClone(retired);
+    rewrittenImportCount.migration.sourceOccurrences = 745;
+    expect(validateCorpus(rewrittenImportCount)).toContain('DRAFT-37 identity/count mismatch');
   });
 
   it('binds historic review events and helper authority to their active revision and reviewer', () => {

@@ -515,7 +515,6 @@ function validateTopLevel(corpus, violations) {
     corpus.migration?.sourceSha256 !== DRAFT_37_SOURCE_SHA256 ||
     corpus.units?.length !== 523 ||
     corpus.summary?.translationUnits !== 523 ||
-    corpus.summary?.sourceOccurrences !== 746 ||
     corpus.summary?.mergedDuplicateRows !== 223 ||
     corpus.exclusions?.length !== 12 ||
     corpus.migration?.sourceOccurrences !== 746
@@ -771,10 +770,7 @@ export function validateCorpus(corpus) {
   validateConsumerGrammar(corpus, ids, violations);
   if (corpus.summary?.translationUnits !== corpus.units.length)
     violations.push('summary translation unit count mismatch');
-  if (
-    corpus.summary?.sourceOccurrences !== occurrenceCount ||
-    corpus.migration?.sourceOccurrences !== occurrenceCount
-  )
+  if (corpus.summary?.sourceOccurrences !== occurrenceCount)
     violations.push('summary source occurrence count mismatch');
   return violations.sort();
 }
