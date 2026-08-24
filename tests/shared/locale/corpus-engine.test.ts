@@ -521,6 +521,71 @@ describe('canonical localization corpus engine', () => {
     );
   });
 
+  it('returns deterministic public check violations when units are missing or non-array', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'fe066-malformed-units-check-'));
+    const registryPath = join(directory, 'registry.json');
+    const outputPath = join(directory, 'generated.ts');
+    const expectedViolations = [
+      'DRAFT-37 exclusion identity mismatch',
+      'DRAFT-37 identity/count mismatch',
+      'DRAFT-37 semantic identity mismatch',
+      'invalid corpus source sha256',
+      'invalid migration provenance',
+      'invalid summary',
+      'missing baseline en resources',
+      'missing baseline resources',
+      'missing baseline ru resources',
+      'missing baseline uz resources',
+      'missing exclusions',
+      'missing units',
+      'unsupported corpus version',
+      'unsupported migration source version',
+    ];
+
+    for (const units of [undefined, {}]) {
+      const corpus = { formatVersion: 1, corpusVersion: 'x', source: { sha256: 'x' }, units };
+      await writeFile(registryPath, JSON.stringify(corpus), 'utf8');
+
+      await expect(
+        checkCorpus({ registryPath, outputPath, sourceRoot: directory }),
+      ).resolves.toEqual(expectedViolations);
+    }
+  });
+
+  it('rejects public sync without replacing output when units are missing or non-array', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'fe066-malformed-units-sync-'));
+    const registryPath = join(directory, 'registry.json');
+    const outputPath = join(directory, 'generated.ts');
+    const priorOutput = 'prior generated output\n';
+    const expectedViolations = [
+      'DRAFT-37 exclusion identity mismatch',
+      'DRAFT-37 identity/count mismatch',
+      'DRAFT-37 semantic identity mismatch',
+      'invalid corpus source sha256',
+      'invalid migration provenance',
+      'invalid summary',
+      'missing baseline en resources',
+      'missing baseline resources',
+      'missing baseline ru resources',
+      'missing baseline uz resources',
+      'missing exclusions',
+      'missing units',
+      'unsupported corpus version',
+      'unsupported migration source version',
+    ];
+    await writeFile(outputPath, priorOutput, 'utf8');
+
+    for (const units of [undefined, {}]) {
+      const corpus = { formatVersion: 1, corpusVersion: 'x', source: { sha256: 'x' }, units };
+      await writeFile(registryPath, JSON.stringify(corpus), 'utf8');
+
+      await expect(syncCorpus({ registryPath, outputPath, sourceRoot: directory })).rejects.toThrow(
+        expectedViolations.join('\n'),
+      );
+      await expect(readFile(outputPath, 'utf8')).resolves.toBe(priorOutput);
+    }
+  });
+
   it('rejects malformed baseline namespaces and leaves existing generated output untouched', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'fe066-baseline-shape-'));
     const registryPath = join(directory, 'registry.json');
@@ -567,6 +632,49 @@ describe('canonical localization corpus engine', () => {
     } as unknown as Record<string, string>;
 
     expect(validateCorpus(corpus)).toContain('invalid baseline ru.common.welcome resource');
+  });
+
+  it('returns deterministic violations instead of throwing for non-array occurrences', () => {
+    const corpus = fixture();
+    corpus.units[0].occurrences = {} as unknown as (typeof corpus.units)[number]['occurrences'];
+
+    expect(validateCorpus(corpus)).toEqual([
+      'DRAFT-37 exclusion identity mismatch',
+      'DRAFT-37 identity/count mismatch',
+      'DRAFT-37 semantic identity mismatch',
+      'MLUX-C0001: invalid occurrences',
+      'MLUX-C0001: source revision fingerprint mismatch',
+      'summary source occurrence count mismatch',
+    ]);
+  });
+
+  it('returns deterministic violations instead of throwing for malformed occurrence elements', () => {
+    const corpus = fixture();
+    const malformedOccurrences: unknown[] = [null, 7, 'invalid', {}, []];
+    corpus.units[0].occurrences =
+      malformedOccurrences as (typeof corpus.units)[number]['occurrences'];
+
+    expect(protectedSourceFingerprint(corpus.units[0])).toBe(
+      protectedSourceFingerprint(corpus.units[0]),
+    );
+    const expectedViolations = [
+      'DRAFT-37 exclusion identity mismatch',
+      'DRAFT-37 identity/count mismatch',
+      'DRAFT-37 semantic identity mismatch',
+      'MLUX-C0001: duplicate occurrence id',
+      'MLUX-C0001: duplicate occurrence id',
+      'MLUX-C0001: duplicate occurrence id',
+      'MLUX-C0001: duplicate occurrence id',
+      'MLUX-C0001: invalid occurrence',
+      'MLUX-C0001: invalid occurrence',
+      'MLUX-C0001: invalid occurrence',
+      'MLUX-C0001: invalid occurrence',
+      'MLUX-C0001: invalid occurrence',
+      'MLUX-C0001: source revision fingerprint mismatch',
+      'summary source occurrence count mismatch',
+    ];
+    expect(validateCorpus(corpus)).toEqual(expectedViolations);
+    expect(validateCorpus(corpus)).toEqual(expectedViolations);
   });
 
   it('requires exact plural-form locale keys while accepting the canonical EN/RU/UZ shape', () => {
@@ -779,6 +887,16 @@ describe('canonical localization corpus engine', () => {
     expect(reviseProtectedSource(noPluralUnit, { pluralForms: null })).toBe(noPluralUnit);
   });
 
+  it('distinguishes omitted rendering metadata from explicit null clearing', () => {
+    const unit = fixture().units[0];
+
+    expect(reviseProtectedSource(unit, {})).toBe(unit);
+    const revised = reviseProtectedSource(unit, { renderingContract: null });
+    expect(revised).not.toBe(unit);
+    expect(revised.renderingContract).toBeNull();
+    expect(revised.sourceRevision).not.toBe(unit.sourceRevision);
+  });
+
   it('rejects direct approved records that omit legal history or named human-native provenance', () => {
     const corpus = fixture();
     const candidate = corpus.units[0].locales.ru as FixtureCandidate;
@@ -814,6 +932,27 @@ describe('canonical localization corpus engine', () => {
     expect(() => transitionLocaleCandidate(candidate, 'approved')).toThrow(
       'draft -> approved is forbidden',
     );
+  });
+
+  it('rejects approval helper records with missing or blank reviewer names', () => {
+    const requested = transitionLocaleCandidate(fixture().units[0].locales.ru, 'review_requested');
+    const approvalAuthority = {
+      kind: 'human_native_review',
+      reviewerId: 'native-7',
+      reviewerName: 'Native Reviewer',
+    };
+    const approvalEvidence = {
+      reviewerId: 'native-7',
+      reviewedAt: '2026-08-23T00:00:00.000Z',
+      approvalRecordedAt: '2026-08-23T00:01:00.000Z',
+      approvalAuthority,
+    };
+
+    for (const humanApproval of [approvalEvidence, { ...approvalEvidence, reviewerName: '' }]) {
+      expect(() => transitionLocaleCandidate(requested, 'approved', { humanApproval })).toThrow(
+        'approved requires named human-native authority',
+      );
+    }
   });
 
   it('replaces a draft default in generated resources only through explicit human approval and keeps its history', () => {

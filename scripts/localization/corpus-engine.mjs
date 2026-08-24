@@ -140,7 +140,13 @@ export function protectedSourceFingerprint(unit) {
     namespace: unit.namespace,
     key: unit.key,
     english: unit.english,
-    occurrences: (unit.occurrences ?? []).map(({ id, context }) => ({ id, context })),
+    occurrences: Array.isArray(unit.occurrences)
+      ? unit.occurrences.map((occurrence) =>
+          occurrence && typeof occurrence === 'object' && !Array.isArray(occurrence)
+            ? { id: occurrence.id, context: occurrence.context }
+            : { id: null, context: null },
+        )
+      : [],
     placeholdersByLocale: unit.placeholdersByLocale,
     renderingContract: unit.renderingContract ?? null,
     pluralForms: unit.pluralForms ?? null,
@@ -712,7 +718,7 @@ export function validateCorpus(corpus) {
     if (!['active', 'retired'].includes(unit.unitLifecycle))
       violations.push(`${unit.id}: invalid unit lifecycle`);
     if (!Array.isArray(unit.occurrences)) violations.push(`${unit.id}: invalid occurrences`);
-    for (const occurrence of unit.occurrences ?? []) {
+    for (const occurrence of Array.isArray(unit.occurrences) ? unit.occurrences : []) {
       occurrenceCount += 1;
       if (!occurrence || !OCCURRENCE.test(occurrence.id) || !nonEmptyString(occurrence.context))
         violations.push(`${unit.id}: invalid occurrence`);
@@ -779,7 +785,9 @@ export function reviseProtectedSource(unit, changes) {
     ...changes,
     occurrences: changes.occurrences ?? unit.occurrences,
     placeholdersByLocale: changes.placeholdersByLocale ?? unit.placeholdersByLocale,
-    renderingContract: changes.renderingContract ?? unit.renderingContract,
+    renderingContract: Object.hasOwn(changes, 'renderingContract')
+      ? changes.renderingContract
+      : unit.renderingContract,
     pluralForms: Object.hasOwn(changes, 'pluralForms') ? changes.pluralForms : unit.pluralForms,
   };
   const sourceRevision = protectedSourceFingerprint(next);
@@ -831,7 +839,10 @@ export function transitionLocaleCandidate(candidate, nextStatus, options = {}) {
     status: nextStatus,
   };
   if (nextStatus === 'approved') {
-    if (!validHumanApproval(options.humanApproval))
+    if (
+      !validHumanApproval(options.humanApproval) ||
+      !nonEmptyString(options.humanApproval.reviewerName)
+    )
       throw new Error('approved requires named human-native authority');
     if (options.newCandidate !== undefined && !nonEmptyString(options.newCandidate))
       throw new Error('approved replacement requires a non-empty candidate');
@@ -1677,10 +1688,12 @@ async function atomicWrite(outputPath, output) {
 
 async function validatedCorpus({ registryPath, sourceRoot }) {
   const corpus = await readCorpus(registryPath);
+  const schemaViolations = validateCorpus(corpus);
+  if (!Array.isArray(corpus?.units)) return { corpus, violations: schemaViolations };
   return {
     corpus,
     violations: [
-      ...validateCorpus(corpus),
+      ...schemaViolations,
       ...(await retiredConsumerViolations(corpus, sourceRoot)),
     ].sort(),
   };
