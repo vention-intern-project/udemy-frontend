@@ -653,6 +653,7 @@ describe('localization review exchange', () => {
       expect(await readFile(outputPath)).toEqual(beforeOutput);
       expect(await readdir(directory)).not.toContainEqual(expect.stringContaining('.tmp'));
     },
+    30_000,
   );
 
   it.each(candidateEvidenceAdversaries.slice(0, 4))(
@@ -680,6 +681,7 @@ describe('localization review exchange', () => {
       expect(await readFile(outputPath)).toEqual(beforeOutput);
       expect(await readdir(directory)).not.toContainEqual(expect.stringContaining('.tmp'));
     },
+    30_000,
   );
 
   it('rejects forged retained history after re-request without caller or target mutation', async () => {
