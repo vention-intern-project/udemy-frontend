@@ -42,6 +42,8 @@ const execFileAsync = promisify(execFile);
 const temporaryDirectories: string[] = [];
 type ReviewLocale = 'ru' | 'uz';
 type ReviewVerdict = 'approve' | 'request_changes' | 'withdraw';
+type MutableReviewCandidate = Record<string, unknown>;
+type MutableReviewCandidates = Record<ReviewLocale, MutableReviewCandidate>;
 type ReviewDecision = {
   verdict: ReviewVerdict;
   replacement?: string;
@@ -50,12 +52,25 @@ type ReviewDecisionByLocale = Record<ReviewLocale, ReviewDecision>;
 type ReviewUnit = (typeof draft37Registry.units)[number];
 type MalformedUnitMutation = (unit: ReviewUnit) => void;
 type MalformedCorpusMutation = (corpus: typeof draft37Registry) => void;
+type MutableReviewHistoryEvent = Record<string, unknown> & { sourceRevision: string };
+interface MutableChangeRequestHistoryEvent {
+  readonly type?: unknown;
+  readonly from?: unknown;
+  readonly to?: unknown;
+  readonly changeRequest?: { replacement: string };
+}
 type ReviewReport = {
   counts: Record<string, number>;
   currentTaskRequiredReview: { total: number };
   inheritedPendingDebt: { total: number };
   globalViolations: string[];
 };
+
+interface CandidateEvidenceAdversary {
+  readonly name: string;
+  readonly forgedKey: string;
+  readonly forgedValue: unknown;
+}
 
 afterEach(async () => {
   await Promise.all(
@@ -77,6 +92,229 @@ function corpusInReviewFor(locales: readonly ReviewLocale[]) {
 
 function corpusInReview(locale: ReviewLocale = 'ru') {
   return corpusInReviewFor([locale]);
+}
+
+function requestChanges(candidate: Record<string, unknown>) {
+  return transitionLocaleCandidate(candidate, 'changes_requested', {
+    changeRequest: {
+      replacement: String(candidate.candidate),
+      reviewerId: 'native-7',
+      reviewerName: 'Native Reviewer',
+      reviewerAttestation: 'native-review',
+      requestedAt: REQUESTED_AT,
+      reviewedAt: REVIEWED_AT,
+      changeRequestedAt: IMPORTED_AT,
+    },
+  });
+}
+
+function retainedChangeRequest(candidate: Record<string, unknown>) {
+  const history = candidate.history as MutableChangeRequestHistoryEvent[];
+  const event = history.find(
+    (entry) =>
+      entry.type === 'transition' &&
+      entry.from === 'review_requested' &&
+      entry.to === 'changes_requested',
+  );
+  if (!event?.changeRequest) throw new Error('fixture retained change request is missing');
+  return event.changeRequest;
+}
+
+function corpusWithTamperedRetainedChangeRequest() {
+  const corpus = corpusInReview();
+  const unit = corpus.units.find(({ id }) => id === 'MLUX-C0001');
+  if (!unit) throw new Error('fixture unit is missing');
+  const changed = requestChanges(unit.locales.ru);
+  const corrected = transitionLocaleCandidate(changed, 'draft', {
+    newCandidate: 'Исправленная локализация {{identity}}',
+  });
+  unit.locales.ru = {
+    ...transitionLocaleCandidate(corrected, 'review_requested'),
+    requestedAt: REQUESTED_AT,
+  };
+  retainedChangeRequest(unit.locales.ru).replacement = 'Исправление без placeholder';
+  return corpus;
+}
+
+function corpusWithForgedRetainedHistory() {
+  const corpus = corpusInReview();
+  const unit = corpus.units.find(({ id }) => id === 'MLUX-C0001');
+  if (!unit) throw new Error('fixture unit is missing');
+  const changed = requestChanges(unit.locales.ru);
+  const corrected = transitionLocaleCandidate(changed, 'draft', {
+    newCandidate: 'Исправленная локализация {{identity}}',
+  });
+  unit.locales.ru = {
+    ...transitionLocaleCandidate(corrected, 'review_requested'),
+    requestedAt: REQUESTED_AT,
+  };
+  const history = unit.locales.ru.history as MutableReviewHistoryEvent[];
+  const forgedEvent = history.find(
+    (event) =>
+      event.type === 'transition' &&
+      event.from === 'review_requested' &&
+      event.to === 'changes_requested',
+  );
+  if (!forgedEvent) throw new Error('fixture retained change-request event is missing');
+  forgedEvent.humanApproval = {
+    reviewerId: 'forged-reviewer',
+    reviewerName: 'Forged Reviewer',
+    reviewedAt: REVIEWED_AT,
+    approvalRecordedAt: IMPORTED_AT,
+    approvalAuthority: {
+      kind: 'human_native_review',
+      reviewerId: 'forged-reviewer',
+      reviewerName: 'Forged Reviewer',
+    },
+  };
+  return corpus;
+}
+
+function corpusWithStaleToDraftRevision(revision: unknown) {
+  const corpus = corpusInReview();
+  const unit = corpus.units.find(({ id }) => id === 'MLUX-C0001');
+  if (!unit) throw new Error('fixture unit is missing');
+  const revised = reviseProtectedSource(unit, {
+    occurrences: [{ ...unit.occurrences[0], context: 'protected revision before re-request' }],
+  });
+  const reactivated = transitionLocaleCandidate(revised.locales.ru, 'draft', {
+    newCandidate: 'Исправленная локализация {{identity}}',
+  });
+  revised.locales.ru = {
+    ...transitionLocaleCandidate(reactivated, 'review_requested'),
+    requestedAt: REQUESTED_AT,
+  };
+  const staleToDraft = (revised.locales.ru.history as MutableReviewHistoryEvent[]).find(
+    (event) => event.from === 'stale' && event.to === 'draft',
+  );
+  if (!staleToDraft) throw new Error('fixture stale-to-draft event is missing');
+  Reflect.set(staleToDraft, 'sourceRevision', revision);
+  const unitIndex = corpus.units.findIndex(({ id }) => id === unit.id);
+  corpus.units[unitIndex] = revised;
+  return corpus;
+}
+
+function corpusWithFabricatedApprovalMetadata() {
+  const corpus = corpusInReview();
+  const unit = corpus.units.find(({ id }) => id === 'MLUX-C0001');
+  if (!unit) throw new Error('fixture unit is missing');
+  const locales = unit.locales as unknown as MutableReviewCandidates;
+  locales.ru = {
+    ...locales.ru,
+    reviewerId: 'fabricated-reviewer',
+    reviewerName: 'Fabricated Reviewer',
+    verdict: 'approved',
+    reviewedAt: REVIEWED_AT,
+    approvalRecordedAt: IMPORTED_AT,
+    approvalAuthority: {
+      kind: 'human_native_review',
+      reviewerId: 'fabricated-reviewer',
+      reviewerName: 'Fabricated Reviewer',
+    },
+  };
+  return corpus;
+}
+
+const candidateEvidenceAdversaries: readonly CandidateEvidenceAdversary[] = [
+  {
+    name: 'human approval history evidence',
+    forgedKey: 'humanApproval',
+    forgedValue: {
+      reviewerId: 'forged-reviewer',
+      reviewerName: 'Forged Reviewer',
+      reviewedAt: REVIEWED_AT,
+      approvalRecordedAt: IMPORTED_AT,
+      approvalAuthority: {
+        kind: 'human_native_review',
+        reviewerId: 'forged-reviewer',
+        reviewerName: 'Forged Reviewer',
+      },
+    },
+  },
+  {
+    name: 'supplied-artifact approval history evidence',
+    forgedKey: 'suppliedArtifactApproval',
+    forgedValue: {
+      reviewerId: null,
+      reviewedAt: null,
+      approvalRecordedAt: IMPORTED_AT,
+      approvalAuthority: {
+        kind: 'user-authorized supplied review artifact',
+        artifactName: 'learnhub-multilingual-review-readable.md',
+        artifactSha256: 'ED5D3D613F21DE188DB0512B3701EA9C0C0A6D254FD1C77829FB3E61ECD3310C',
+      },
+    },
+  },
+  {
+    name: 'change-request history evidence',
+    forgedKey: 'changeRequest',
+    forgedValue: {
+      replacement: 'Исправьте {{identity}}',
+      reviewerId: 'native-7',
+      reviewerName: 'Native Reviewer',
+      reviewerAttestation: 'native-review',
+      requestedAt: REQUESTED_AT,
+      reviewedAt: REVIEWED_AT,
+      changeRequestedAt: IMPORTED_AT,
+    },
+  },
+  { name: 'withdrawal history evidence', forgedKey: 'withdrawal', forgedValue: true },
+  {
+    name: 'reviewer alias object',
+    forgedKey: 'reviewer',
+    forgedValue: { id: 'native-7', name: 'Native Reviewer' },
+  },
+  {
+    name: 'review-authority alias object',
+    forgedKey: 'reviewAuthority',
+    forgedValue: {
+      kind: 'human_native_review',
+      reviewerId: 'native-7',
+      reviewerName: 'Native Reviewer',
+    },
+  },
+  {
+    name: 'review-evidence alias object',
+    forgedKey: 'reviewEvidence',
+    forgedValue: { reviewerAttestation: 'native-review', reviewedAt: REVIEWED_AT },
+  },
+  {
+    name: 'approval-evidence alias object',
+    forgedKey: 'approvalEvidence',
+    forgedValue: { reviewerId: 'native-7', reviewedAt: REVIEWED_AT },
+  },
+  {
+    name: 'reviewer-attestation wrong-owner field',
+    forgedKey: 'reviewerAttestation',
+    forgedValue: 'native-review',
+  },
+];
+
+function corpusWithCandidateEvidence(
+  adversary: CandidateEvidenceAdversary,
+  inReview = true,
+): ReturnType<typeof corpusInReview> {
+  const corpus = inReview
+    ? corpusInReview()
+    : (structuredClone(draft37Registry) as ReturnType<typeof corpusInReview>);
+  const unit = corpus.units.find(({ id }) => id === 'MLUX-C0001');
+  if (!unit) throw new Error('fixture unit is missing');
+  Reflect.set(unit.locales.ru, adversary.forgedKey, structuredClone(adversary.forgedValue));
+  return corpus;
+}
+
+function verdictDecisionOverrides(verdict: ReviewVerdict): Record<string, string> {
+  if (verdict === 'request_changes') return { verdict, replacement: 'Исправьте {{identity}}' };
+  if (verdict === 'withdraw')
+    return {
+      verdict,
+      replacement: '',
+      reviewerId: '',
+      reviewerName: '',
+      reviewerAttestation: '',
+      reviewedAt: '',
+    };
+  return { verdict, replacement: '' };
 }
 
 function decisionCsv(
@@ -236,6 +474,273 @@ describe('localization review exchange', () => {
     if (status !== 'approved') expect(candidate.approvalAuthority).toBeNull();
   });
 
+  it('records trimmed native-review change-request evidence without replacing the candidate', () => {
+    const corpus = corpusInReview();
+    const original = corpus.units.find(({ id }) => id === 'MLUX-C0001')?.locales.ru.candidate;
+
+    const result = preflight(
+      corpus,
+      decisionCsv(corpus, {
+        verdict: 'request_changes',
+        replacement: '  Исправьте {{identity}}  ',
+      }),
+    );
+
+    const candidate = result.corpus.units.find(({ id }: { id: string }) => id === 'MLUX-C0001')
+      .locales.ru;
+    expect(candidate.candidate).toBe(original);
+    expect(candidate.history.at(-1)).toEqual({
+      type: 'transition',
+      from: 'review_requested',
+      to: 'changes_requested',
+      previousCandidate: original,
+      nextCandidate: original,
+      sourceRevision: candidate.sourceRevision,
+      changeRequest: {
+        replacement: 'Исправьте {{identity}}',
+        reviewerId: 'native-7',
+        reviewerName: 'Native Reviewer',
+        reviewerAttestation: 'native-review',
+        requestedAt: REQUESTED_AT,
+        reviewedAt: REVIEWED_AT,
+        changeRequestedAt: IMPORTED_AT,
+      },
+    });
+    expect(corpus.units.find(({ id }) => id === 'MLUX-C0001')?.locales.ru.status).toBe(
+      'review_requested',
+    );
+  });
+
+  it('records withdrawal directly without fabricating a change request', () => {
+    const corpus = corpusInReview();
+
+    const result = preflight(
+      corpus,
+      decisionCsv(corpus, {
+        verdict: 'withdraw',
+        replacement: '',
+        reviewerId: '',
+        reviewerName: '',
+        reviewerAttestation: '',
+        reviewedAt: '',
+      }),
+    );
+
+    const candidate = result.corpus.units.find(({ id }: { id: string }) => id === 'MLUX-C0001')
+      .locales.ru;
+    expect(candidate.requestedAt).toBeNull();
+    expect(candidate.history.slice(-1)).toEqual([
+      {
+        type: 'transition',
+        from: 'review_requested',
+        to: 'draft',
+        previousCandidate: candidate.candidate,
+        nextCandidate: candidate.candidate,
+        sourceRevision: candidate.sourceRevision,
+        withdrawal: true,
+      },
+    ]);
+    expect(candidate.history).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ to: 'changes_requested' })]),
+    );
+  });
+
+  it('rejects malformed incoming review history without mutating the source corpus', () => {
+    const corpus = corpusInReview();
+    const unit = corpus.units.find(({ id }) => id === 'MLUX-C0001');
+    if (!unit) throw new Error('fixture unit is missing');
+    const history = unit.locales.ru.history as MutableReviewHistoryEvent[];
+    history[history.length - 1].sourceRevision = `sha256:${'0'.repeat(64)}`;
+    const before = structuredClone(corpus);
+    const content = decisionCsv(corpus, {
+      verdict: 'withdraw',
+      replacement: '',
+      reviewerId: '',
+      reviewerName: '',
+      reviewerAttestation: '',
+      reviewedAt: '',
+    });
+
+    expect(() => preflight(corpus, content)).toThrow(
+      /invalid review history|protected source revision/,
+    );
+    expect(corpus).toEqual(before);
+  });
+
+  it('rejects retained change-request placeholder drift through preflight and import atomically', async () => {
+    const corpus = corpusWithTamperedRetainedChangeRequest();
+    const content = decisionCsv(corpus, verdictDecisionOverrides('approve'));
+    const beforeSource = structuredClone(corpus);
+
+    expect(() => preflight(corpus, content)).toThrow(/change-request replacement placeholder/);
+    expect(corpus).toEqual(beforeSource);
+
+    const { registryPath, outputPath } = await temporaryTargets();
+    await writeFile(registryPath, `${JSON.stringify(corpus, null, 2)}\n`, 'utf8');
+    const beforeRegistry = await readFile(registryPath);
+    const beforeOutput = await readFile(outputPath);
+    await expect(
+      importReviewPack({
+        content,
+        registryPath,
+        outputPath,
+        importedAt: IMPORTED_AT,
+        taskId: TASK_ID,
+      }),
+    ).rejects.toThrow(/change-request replacement placeholder/);
+    expect(await readFile(registryPath)).toEqual(beforeRegistry);
+    expect(await readFile(outputPath)).toEqual(beforeOutput);
+  }, 30_000);
+
+  it.each(['approve', 'request_changes', 'withdraw'] as const)(
+    'rejects fabricated non-approved authority on %s without source or output mutation',
+    async (verdict) => {
+      const corpus = corpusWithFabricatedApprovalMetadata();
+      const content = decisionCsv(corpus, verdictDecisionOverrides(verdict));
+      const beforeSource = structuredClone(corpus);
+
+      expect(() => preflight(corpus, content)).toThrow(
+        /non-approved candidate retains approval metadata/,
+      );
+      expect(corpus).toEqual(beforeSource);
+
+      const { registryPath, outputPath } = await temporaryTargets();
+      await writeFile(registryPath, `${JSON.stringify(corpus, null, 2)}\n`, 'utf8');
+      const beforeRegistry = await readFile(registryPath);
+      const beforeOutput = await readFile(outputPath);
+      await expect(
+        importReviewPack({
+          content,
+          registryPath,
+          outputPath,
+          importedAt: IMPORTED_AT,
+          taskId: TASK_ID,
+        }),
+      ).rejects.toThrow(/non-approved candidate retains approval metadata/);
+      expect(await readFile(registryPath)).toEqual(beforeRegistry);
+      expect(await readFile(outputPath)).toEqual(beforeOutput);
+    },
+    30_000,
+  );
+
+  it.each(candidateEvidenceAdversaries)(
+    'rejects candidate-level $name through real preflight and ordinary import without mutation',
+    async (adversary) => {
+      const corpus = corpusWithCandidateEvidence(adversary);
+      const content = decisionCsv(corpus);
+      const beforeSource = structuredClone(corpus);
+      const expected = new RegExp(
+        `candidate contains property outside LocaleCandidate schema: ${adversary.forgedKey}`,
+      );
+
+      expect(() => preflight(corpus, content)).toThrow(expected);
+      expect(corpus).toEqual(beforeSource);
+
+      const { directory, registryPath, outputPath } = await temporaryTargets();
+      await writeFile(registryPath, `${JSON.stringify(corpus, null, 2)}\n`, 'utf8');
+      const beforeRegistry = await readFile(registryPath);
+      const beforeOutput = await readFile(outputPath);
+      await expect(
+        importReviewPack({
+          content,
+          registryPath,
+          outputPath,
+          importedAt: IMPORTED_AT,
+          taskId: TASK_ID,
+        }),
+      ).rejects.toThrow(expected);
+      expect(await readFile(registryPath)).toEqual(beforeRegistry);
+      expect(await readFile(outputPath)).toEqual(beforeOutput);
+      expect(await readdir(directory)).not.toContainEqual(expect.stringContaining('.tmp'));
+    },
+  );
+
+  it.each(candidateEvidenceAdversaries.slice(0, 4))(
+    'rejects candidate-level $name through real supplied-artifact import without mutation',
+    async (adversary) => {
+      const corpus = corpusWithCandidateEvidence(adversary, false);
+      const { directory, registryPath, outputPath } = await temporaryTargets();
+      await writeFile(registryPath, `${JSON.stringify(corpus, null, 2)}\n`, 'utf8');
+      const beforeRegistry = await readFile(registryPath);
+      const beforeOutput = await readFile(outputPath);
+
+      await expect(
+        importSuppliedReviewArtifact({
+          artifactPath: ARTIFACT_FIXTURE,
+          registryPath,
+          outputPath,
+          approvalRecordedAt: IMPORTED_AT,
+        }),
+      ).rejects.toThrow(
+        new RegExp(
+          `candidate contains property outside LocaleCandidate schema: ${adversary.forgedKey}`,
+        ),
+      );
+      expect(await readFile(registryPath)).toEqual(beforeRegistry);
+      expect(await readFile(outputPath)).toEqual(beforeOutput);
+      expect(await readdir(directory)).not.toContainEqual(expect.stringContaining('.tmp'));
+    },
+  );
+
+  it('rejects forged retained history after re-request without caller or target mutation', async () => {
+    const corpus = corpusWithForgedRetainedHistory();
+    const content = decisionCsv(corpus);
+    const beforeSource = structuredClone(corpus);
+
+    expect(() => preflight(corpus, content)).toThrow(/invalid history event shape/);
+    expect(corpus).toEqual(beforeSource);
+
+    const { registryPath, outputPath } = await temporaryTargets();
+    await writeFile(registryPath, `${JSON.stringify(corpus, null, 2)}\n`, 'utf8');
+    const beforeRegistry = await readFile(registryPath);
+    const beforeOutput = await readFile(outputPath);
+    await expect(
+      importReviewPack({
+        content,
+        registryPath,
+        outputPath,
+        importedAt: IMPORTED_AT,
+        taskId: TASK_ID,
+      }),
+    ).rejects.toThrow(/invalid history event shape/);
+    expect(await readFile(registryPath)).toEqual(beforeRegistry);
+    expect(await readFile(outputPath)).toEqual(beforeOutput);
+  });
+
+  it.each([
+    ['null', null],
+    ['malformed', 'forged'],
+    ['valid-looking but unbound', `sha256:${'0'.repeat(64)}`],
+  ])(
+    'rejects a re-request with a %s stale-to-draft revision without caller, target, or temporary mutation',
+    async (_name, forgedRevision) => {
+      const corpus = corpusWithStaleToDraftRevision(forgedRevision);
+      const content = decisionCsv(corpus);
+      const beforeSource = structuredClone(corpus);
+
+      expect(() => preflight(corpus, content)).toThrow(
+        /stale -> draft history does not match active protected source revision/,
+      );
+      expect(corpus).toEqual(beforeSource);
+
+      const { directory, registryPath, outputPath } = await temporaryTargets(corpus);
+      const beforeRegistry = await readFile(registryPath);
+      const beforeOutput = await readFile(outputPath);
+      await expect(
+        importReviewPack({
+          content,
+          registryPath,
+          outputPath,
+          importedAt: IMPORTED_AT,
+          taskId: TASK_ID,
+        }),
+      ).rejects.toThrow(/stale -> draft history does not match active protected source revision/);
+      expect(await readFile(registryPath)).toEqual(beforeRegistry);
+      expect(await readFile(outputPath)).toEqual(beforeOutput);
+      expect(await readdir(directory)).not.toContainEqual(expect.stringContaining('.tmp'));
+    },
+  );
+
   it.each([
     ['invalid verdict', { verdict: 'accept' }, /verdict/],
     [
@@ -275,6 +780,64 @@ describe('localization review exchange', () => {
       pack.rows[0][field] = value;
       expect(() => preflight(reviewed, serializeReviewCsv(pack.rows)), field).toThrow();
     }
+  });
+
+  it.each([
+    ['object', { ids: ['MLUX-C0001'] }],
+    ['empty array', []],
+    ['number member', ['MLUX-C0001', 7]],
+    ['empty string member', ['']],
+    ['blank string member', ['   ']],
+  ])(
+    'rejects public export CLI unit IDs with %s using the stable contract error',
+    async (_name, value) => {
+      const { directory, registryPath } = await temporaryTargets();
+      const outputPath = join(directory, 'review.csv');
+      const unitIdsPath = join(directory, 'unit-ids.json');
+      await writeFile(unitIdsPath, JSON.stringify(value), 'utf8');
+
+      await expect(
+        execFileAsync(
+          process.execPath,
+          [
+            join(process.cwd(), 'scripts/localization/review-export.mjs'),
+            registryPath,
+            outputPath,
+            TASK_ID,
+            'ru',
+            unitIdsPath,
+          ],
+          { cwd: process.cwd() },
+        ),
+      ).rejects.toMatchObject({
+        stderr: expect.stringContaining('unitIds must be a non-empty list of stable IDs'),
+      });
+      await expect(readFile(outputPath)).rejects.toThrow();
+    },
+  );
+
+  it('preserves public export CLI behavior for a valid unit ID list', async () => {
+    const { directory, registryPath } = await temporaryTargets();
+    const outputPath = join(directory, 'review.csv');
+    const unitIdsPath = join(directory, 'unit-ids.json');
+    await writeFile(unitIdsPath, JSON.stringify(['MLUX-C0001']), 'utf8');
+
+    await execFileAsync(
+      process.execPath,
+      [
+        join(process.cwd(), 'scripts/localization/review-export.mjs'),
+        registryPath,
+        outputPath,
+        TASK_ID,
+        'ru',
+        unitIdsPath,
+      ],
+      { cwd: process.cwd() },
+    );
+
+    const rows = parseReviewCsv(await readFile(outputPath, 'utf8')).rows;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id: 'MLUX-C0001', locale: 'ru', taskId: TASK_ID });
   });
 
   it('rejects unknown/retired IDs, malformed schema, and conflicting duplicates', () => {
@@ -436,7 +999,7 @@ describe('localization review exchange', () => {
       ...transitionLocaleCandidate(unit.locales.ru, 'review_requested'),
       requestedAt: REQUESTED_AT,
     };
-    unit.locales.ru = transitionLocaleCandidate(requested, 'changes_requested');
+    unit.locales.ru = requestChanges(requested);
     const before = structuredClone(corpus);
 
     const report = inspectSuppliedReviewArtifact({
@@ -616,7 +1179,7 @@ describe('localization review exchange', () => {
         ...transitionLocaleCandidate(unit.locales.ru, 'review_requested'),
         requestedAt: REQUESTED_AT,
       };
-      unit.locales.ru = transitionLocaleCandidate(requested, 'changes_requested');
+      unit.locales.ru = requestChanges(requested);
 
       const report = inspectSuppliedReviewArtifact({ bytes, corpus }).report;
 

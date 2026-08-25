@@ -17,6 +17,7 @@ import {
   serializeGeneratedResources,
   transitionLocaleCandidate,
   validateCorpus,
+  withdrawLocaleCandidateReview,
 } from './corpus-engine.mjs';
 
 export { readCorpus } from './corpus-engine.mjs';
@@ -537,13 +538,19 @@ export function preflightReviewPack({ content, corpus, importedAt, taskId }) {
         },
       });
     } else if (row.verdict === 'request_changes') {
-      unit.locales[row.locale] = transitionLocaleCandidate(candidate, 'changes_requested');
+      unit.locales[row.locale] = transitionLocaleCandidate(candidate, 'changes_requested', {
+        changeRequest: {
+          replacement,
+          reviewerId: row.reviewerId,
+          reviewerName: row.reviewerName,
+          reviewerAttestation: row.reviewerAttestation,
+          requestedAt: row.requestedAt,
+          reviewedAt: row.reviewedAt,
+          changeRequestedAt: importedAt,
+        },
+      });
     } else if (row.verdict === 'withdraw') {
-      const changesRequested = transitionLocaleCandidate(candidate, 'changes_requested');
-      unit.locales[row.locale] = {
-        ...transitionLocaleCandidate(changesRequested, 'draft'),
-        requestedAt: null,
-      };
+      unit.locales[row.locale] = withdrawLocaleCandidateReview(candidate);
     }
     affectedUnitIds.add(unit.id);
   }

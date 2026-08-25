@@ -71,6 +71,68 @@ const MIGRATION_OWNER_TASKS = new Set([
 const HISTORIC_GENERATED_PLURAL_SUFFIXES = new Map([
   ['catalog:lessonAvailability', new Set(['custom'])],
 ]);
+const SOURCE_REVISION_HISTORY_KEYS = ['previousSourceRevision', 'sourceRevision', 'type'];
+const TRANSITION_HISTORY_KEYS = [
+  'from',
+  'nextCandidate',
+  'previousCandidate',
+  'sourceRevision',
+  'to',
+  'type',
+];
+const TRANSITION_HISTORY_KEYS_WITHOUT_REVISION = [
+  'from',
+  'nextCandidate',
+  'previousCandidate',
+  'to',
+  'type',
+];
+const CHANGE_REQUEST_HISTORY_KEYS = ['changeRequest', ...TRANSITION_HISTORY_KEYS];
+const HUMAN_APPROVAL_HISTORY_KEYS = ['from', 'humanApproval', ...TRANSITION_HISTORY_KEYS.slice(1)];
+const SUPPLIED_APPROVAL_HISTORY_KEYS = [
+  'from',
+  'nextCandidate',
+  'previousCandidate',
+  'sourceRevision',
+  'suppliedArtifactApproval',
+  'to',
+  'type',
+];
+const WITHDRAWAL_HISTORY_KEYS = [
+  'from',
+  'nextCandidate',
+  'previousCandidate',
+  'sourceRevision',
+  'to',
+  'type',
+  'withdrawal',
+];
+const HUMAN_APPROVAL_AUTHORITY_KEYS = ['kind', 'reviewerId', 'reviewerName'];
+const HUMAN_APPROVAL_RECORD_KEYS = [
+  'approvalAuthority',
+  'approvalRecordedAt',
+  'reviewedAt',
+  'reviewerId',
+  'reviewerName',
+];
+const SUPPLIED_APPROVAL_RECORD_KEYS = [
+  'approvalAuthority',
+  'approvalRecordedAt',
+  'reviewedAt',
+  'reviewerId',
+];
+const LOCALE_CANDIDATE_KEYS = new Set([
+  'approvalAuthority',
+  'approvalRecordedAt',
+  'candidate',
+  'history',
+  'requestedAt',
+  'reviewedAt',
+  'reviewerId',
+  'sourceRevision',
+  'status',
+  'verdict',
+]);
 
 function stable(value) {
   if (Array.isArray(value)) return value.map(stable);
@@ -125,6 +187,15 @@ function same(left, right) {
   );
 }
 
+function hasExactKeys(value, expectedKeys) {
+  return (
+    value &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    same(Object.keys(value).sort(), expectedKeys)
+  );
+}
+
 function hasExactLocaleKeys(value) {
   return (
     value &&
@@ -173,10 +244,48 @@ function validInstant(value) {
   return new Date(value).toISOString() === value;
 }
 
+function validChangeRequest(changeRequest) {
+  if (!changeRequest || typeof changeRequest !== 'object' || Array.isArray(changeRequest))
+    return false;
+  if (
+    Object.keys(changeRequest).sort().join(',') !==
+    'changeRequestedAt,replacement,requestedAt,reviewedAt,reviewerAttestation,reviewerId,reviewerName'
+  )
+    return false;
+  for (const field of ['replacement', 'reviewerId', 'reviewerName'])
+    if (
+      !nonEmptyString(changeRequest[field]) ||
+      changeRequest[field].trim() !== changeRequest[field]
+    )
+      return false;
+  if (changeRequest.reviewerAttestation !== 'native-review') return false;
+  if (
+    !validInstant(changeRequest.requestedAt) ||
+    !validInstant(changeRequest.reviewedAt) ||
+    !validInstant(changeRequest.changeRequestedAt)
+  )
+    return false;
+  return (
+    Date.parse(changeRequest.requestedAt) < Date.parse(changeRequest.reviewedAt) &&
+    Date.parse(changeRequest.reviewedAt) <= Date.parse(changeRequest.changeRequestedAt)
+  );
+}
+
+function changeRequestMatchesHistoricalPlaceholderContext(event) {
+  return [...RENDERING_MODES].some((mode) => {
+    const renderingContract = { mode };
+    const historicalPlaceholders = placeholders(event.previousCandidate, renderingContract);
+    return same(
+      placeholders(event.changeRequest.replacement, renderingContract),
+      historicalPlaceholders,
+    );
+  });
+}
+
 function validHumanApproval(candidate) {
   const authority = candidate?.approvalAuthority;
   return (
-    authority &&
+    hasExactKeys(authority, HUMAN_APPROVAL_AUTHORITY_KEYS) &&
     authority.kind === 'human_native_review' &&
     nonEmptyString(authority.reviewerId) &&
     nonEmptyString(authority.reviewerName) &&
@@ -188,6 +297,10 @@ function validHumanApproval(candidate) {
     validInstant(candidate.approvalRecordedAt) &&
     Date.parse(candidate.reviewedAt) <= Date.parse(candidate.approvalRecordedAt)
   );
+}
+
+function validHumanApprovalRecord(approval) {
+  return hasExactKeys(approval, HUMAN_APPROVAL_RECORD_KEYS) && validHumanApproval(approval);
 }
 
 function validSuppliedArtifactApproval(candidate) {
@@ -202,6 +315,12 @@ function validSuppliedArtifactApproval(candidate) {
     candidate.reviewedAt === null &&
     !Object.hasOwn(candidate, 'reviewerName') &&
     validInstant(candidate.approvalRecordedAt)
+  );
+}
+
+function validSuppliedArtifactApprovalRecord(approval) {
+  return (
+    hasExactKeys(approval, SUPPLIED_APPROVAL_RECORD_KEYS) && validSuppliedArtifactApproval(approval)
   );
 }
 
@@ -230,6 +349,33 @@ function hasApprovalMetadata(candidate) {
   ].some((value) => value !== null && value !== undefined);
 }
 
+function candidateSchemaViolation(candidate) {
+  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate))
+    return 'candidate must be an object';
+  const unknownKeys = Object.keys(candidate)
+    .filter((key) => !LOCALE_CANDIDATE_KEYS.has(key))
+    .sort();
+  if (unknownKeys.length === 0) return null;
+  const propertyLabel = unknownKeys.length === 1 ? 'property' : 'properties';
+  return `candidate contains ${propertyLabel} outside LocaleCandidate schema: ${unknownKeys.join(', ')}`;
+}
+
+function assertCandidateSchemaInvariant(candidate, operation) {
+  const violation = candidateSchemaViolation(candidate);
+  if (violation) throw new Error(`cannot ${operation} candidate from invalid source: ${violation}`);
+}
+
+function nonApprovedMetadataViolation(candidate) {
+  return candidate.status !== 'approved' && hasApprovalMetadata(candidate)
+    ? 'non-approved candidate retains approval metadata'
+    : null;
+}
+
+function assertNonApprovedMetadataInvariant(candidate, operation) {
+  const violation = nonApprovedMetadataViolation(candidate);
+  if (violation) throw new Error(`cannot ${operation} candidate from invalid source: ${violation}`);
+}
+
 function clearApprovalMetadata(candidate) {
   const { reviewerName, ...candidateWithoutReviewerName } = candidate;
   void reviewerName;
@@ -247,7 +393,27 @@ function sameApprovalRecord(candidate, approval) {
   return JSON.stringify(stable(approvalRecord(candidate))) === JSON.stringify(stable(approval));
 }
 
+function hasExactTransitionHistoryKeys(event) {
+  if (event.from === 'review_requested' && event.to === 'approved')
+    return event.suppliedArtifactApproval !== undefined
+      ? hasExactKeys(event, SUPPLIED_APPROVAL_HISTORY_KEYS)
+      : hasExactKeys(event, HUMAN_APPROVAL_HISTORY_KEYS);
+  if (event.from === 'review_requested' && event.to === 'changes_requested')
+    return hasExactKeys(event, CHANGE_REQUEST_HISTORY_KEYS);
+  if (event.from === 'review_requested' && event.to === 'draft')
+    return hasExactKeys(event, WITHDRAWAL_HISTORY_KEYS);
+  if (event.from === 'stale' && event.to === 'draft' && event.sourceRevision === undefined)
+    return hasExactKeys(event, TRANSITION_HISTORY_KEYS_WITHOUT_REVISION);
+  return hasExactKeys(event, TRANSITION_HISTORY_KEYS);
+}
+
 function lifecycleViolation(candidate) {
+  if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
+    const metadataViolation = nonApprovedMetadataViolation(candidate);
+    if (metadataViolation) return metadataViolation;
+  }
+  const schemaViolation = candidateSchemaViolation(candidate);
+  if (schemaViolation) return schemaViolation;
   if (!Array.isArray(candidate.history)) return 'history must be an array';
   const suppliedArtifactApprovals = candidate.history.filter(
     (event) =>
@@ -266,6 +432,7 @@ function lifecycleViolation(candidate) {
     if (!event || typeof event !== 'object' || typeof event.type !== 'string')
       return 'invalid history event';
     if (event.type === 'source_revision') {
+      if (!hasExactKeys(event, SOURCE_REVISION_HISTORY_KEYS)) return 'invalid history event shape';
       if (
         !REVISION.test(event.previousSourceRevision ?? '') ||
         !REVISION.test(event.sourceRevision) ||
@@ -291,18 +458,39 @@ function lifecycleViolation(candidate) {
     }
     if (event.type !== 'transition' || !STATUSES.has(event.from) || !STATUSES.has(event.to))
       return 'invalid history event';
-    if (event.from !== status || !TRANSITIONS.get(event.from)?.has(event.to))
+    const isWithdrawal = event.from === 'review_requested' && event.to === 'draft';
+    if (event.from !== status || (!TRANSITIONS.get(event.from)?.has(event.to) && !isWithdrawal))
       return 'illegal transition history';
     if (!nonEmptyString(event.previousCandidate) || !nonEmptyString(event.nextCandidate))
       return 'transition history lacks candidate binding';
     if (heldCandidate !== null && event.previousCandidate !== heldCandidate)
       return 'transition history candidate discontinuity';
+    if (isWithdrawal) {
+      if (
+        event.withdrawal !== true ||
+        !hasExactKeys(event, WITHDRAWAL_HISTORY_KEYS) ||
+        event.previousCandidate !== event.nextCandidate
+      )
+        return 'invalid review withdrawal history';
+    } else if (event.withdrawal !== undefined) {
+      return 'invalid review withdrawal history';
+    }
+    const isChangeRequest = event.from === 'review_requested' && event.to === 'changes_requested';
+    if (isChangeRequest) {
+      if (!validChangeRequest(event.changeRequest))
+        return 'changes-requested history lacks valid native-review evidence';
+      if (!changeRequestMatchesHistoricalPlaceholderContext(event))
+        return 'change-request replacement placeholder mismatch';
+    } else if (event.changeRequest !== undefined) {
+      return 'change-request evidence appears outside changes-requested history';
+    }
     const replacesDefaultWithApproval =
       event.from === 'review_requested' && event.to === 'approved';
     const returnsToDraft =
       event.to === 'draft' && ['stale', 'changes_requested'].includes(event.from);
     if (
       !returnsToDraft &&
+      !isWithdrawal &&
       !replacesDefaultWithApproval &&
       event.previousCandidate !== event.nextCandidate
     )
@@ -311,6 +499,12 @@ function lifecycleViolation(candidate) {
     if (event.from === 'stale' && event.to === 'draft') {
       if (event.previousCandidate === event.nextCandidate)
         return 'stale -> draft requires a new candidate history';
+      if (
+        Object.hasOwn(event, 'sourceRevision') &&
+        (!REVISION.test(event.sourceRevision ?? '') ||
+          event.sourceRevision !== activeSourceRevision)
+      )
+        return 'stale -> draft history does not match active protected source revision';
     }
     const reviewRelated =
       ['review_requested', 'changes_requested', 'approved'].includes(event.from) ||
@@ -326,14 +520,15 @@ function lifecycleViolation(candidate) {
         if (event.suppliedArtifactApproval !== undefined) {
           if (
             event.humanApproval !== undefined ||
-            !validSuppliedArtifactApproval(event.suppliedArtifactApproval)
+            !validSuppliedArtifactApprovalRecord(event.suppliedArtifactApproval)
           )
             return 'approved history lacks transition-specific supplied-artifact authority';
-        } else if (!validHumanApproval(event.humanApproval)) {
+        } else if (!validHumanApprovalRecord(event.humanApproval)) {
           return 'approved history lacks transition-specific human-native authority';
         }
       }
     }
+    if (!hasExactTransitionHistoryKeys(event)) return 'invalid history event shape';
     status = event.to;
   }
   if (status !== candidate.status) return 'history does not end at current status';
@@ -363,10 +558,19 @@ function lifecycleViolation(candidate) {
       .find((event) => event?.type === 'transition' && event.to === candidate.status);
     if (!terminalReview || terminalReview.sourceRevision !== candidate.sourceRevision)
       return 'review history does not match current protected source revision';
-  } else if (hasApprovalMetadata(candidate)) {
-    return 'non-approved candidate retains approval metadata';
+    if (
+      candidate.status === 'changes_requested' &&
+      terminalReview.changeRequest?.requestedAt !== candidate.requestedAt
+    )
+      return 'changes-requested candidate does not match terminal evidence';
   }
   return null;
+}
+
+function assertValidCandidateLifecycleSource(candidate, operation) {
+  assertNonApprovedMetadataInvariant(candidate, operation);
+  const violation = lifecycleViolation(candidate);
+  if (violation) throw new Error(`cannot ${operation} candidate from invalid source: ${violation}`);
 }
 
 function validateRestoration(unit, violations) {
@@ -861,10 +1065,19 @@ export function applyProtectedDrift(unit, _ignoredChangedFields, sourceRevision)
 export function transitionLocaleCandidate(candidate, nextStatus, options = {}) {
   if (!STATUSES.has(nextStatus) || !TRANSITIONS.get(candidate.status)?.has(nextStatus))
     throw new Error(`${candidate.status} -> ${nextStatus} is forbidden`);
+  assertNonApprovedMetadataInvariant(candidate, 'transition');
+  assertCandidateSchemaInvariant(candidate, 'transition');
   const returnsToDraft =
     nextStatus === 'draft' && ['stale', 'changes_requested'].includes(candidate.status);
   const replacesDefaultWithApproval =
     candidate.status === 'review_requested' && nextStatus === 'approved';
+  const recordsChangeRequest =
+    candidate.status === 'review_requested' && nextStatus === 'changes_requested';
+  if (replacesDefaultWithApproval || recordsChangeRequest)
+    assertValidCandidateLifecycleSource(
+      candidate,
+      replacesDefaultWithApproval ? 'approve' : 'request changes for',
+    );
   if (options.newCandidate !== undefined && !returnsToDraft && !replacesDefaultWithApproval)
     throw new Error(
       'candidate replacement is only allowed for a human approval or while returning stale or changes_requested to draft',
@@ -881,6 +1094,14 @@ export function transitionLocaleCandidate(candidate, nextStatus, options = {}) {
     (!nonEmptyString(options.newCandidate) || options.newCandidate === candidate.candidate)
   )
     throw new Error('changes_requested -> draft requires a new candidate when replacing one');
+  if (
+    recordsChangeRequest &&
+    (!validChangeRequest(options.changeRequest) ||
+      options.changeRequest.requestedAt !== candidate.requestedAt)
+  )
+    throw new Error('changes_requested requires valid native-review change-request evidence');
+  if (!recordsChangeRequest && options.changeRequest !== undefined)
+    throw new Error('change-request evidence is only allowed for changes_requested');
   const next = {
     ...clearApprovalMetadata(candidate),
     candidate: options.newCandidate ?? candidate.candidate,
@@ -888,7 +1109,7 @@ export function transitionLocaleCandidate(candidate, nextStatus, options = {}) {
   };
   if (nextStatus === 'approved') {
     if (
-      !validHumanApproval(options.humanApproval) ||
+      !validHumanApprovalRecord(options.humanApproval) ||
       !nonEmptyString(options.humanApproval.reviewerName)
     )
       throw new Error('approved requires named human-native authority');
@@ -914,6 +1135,33 @@ export function transitionLocaleCandidate(candidate, nextStatus, options = {}) {
         nextCandidate: next.candidate,
         sourceRevision: candidate.sourceRevision,
         ...(nextStatus === 'approved' ? { humanApproval: options.humanApproval } : {}),
+        ...(recordsChangeRequest ? { changeRequest: options.changeRequest } : {}),
+      },
+    ],
+  };
+}
+
+export function withdrawLocaleCandidateReview(candidate) {
+  if (candidate.status !== 'review_requested')
+    throw new Error(`${candidate.status} -> draft withdrawal is forbidden`);
+  assertValidCandidateLifecycleSource(candidate, 'withdraw');
+  const next = {
+    ...clearApprovalMetadata(candidate),
+    status: 'draft',
+    requestedAt: null,
+  };
+  return {
+    ...next,
+    history: [
+      ...candidate.history,
+      {
+        type: 'transition',
+        from: 'review_requested',
+        to: 'draft',
+        previousCandidate: candidate.candidate,
+        nextCandidate: candidate.candidate,
+        sourceRevision: candidate.sourceRevision,
+        withdrawal: true,
       },
     ],
   };
@@ -922,6 +1170,7 @@ export function transitionLocaleCandidate(candidate, nextStatus, options = {}) {
 export function approveSuppliedReviewArtifactCandidate(candidate, options = {}) {
   if (candidate.status !== 'review_requested')
     throw new Error(`${candidate.status} -> approved is forbidden`);
+  assertValidCandidateLifecycleSource(candidate, 'approve supplied-artifact review for');
   if (options.artifactSha256 !== SUPPLIED_REVIEW_ARTIFACT.artifactSha256)
     throw new Error('supplied review artifact hash is not authorized');
   if (
@@ -942,7 +1191,7 @@ export function approveSuppliedReviewArtifactCandidate(candidate, options = {}) 
     approvalRecordedAt: options.approvalRecordedAt,
     approvalAuthority: { ...SUPPLIED_REVIEW_ARTIFACT },
   };
-  if (!validSuppliedArtifactApproval(suppliedArtifactApproval))
+  if (!validSuppliedArtifactApprovalRecord(suppliedArtifactApproval))
     throw new Error('supplied review artifact approval is invalid');
   return {
     ...clearApprovalMetadata(candidate),
@@ -987,6 +1236,7 @@ export function migrateLegacyDraft(
 }
 
 export function applyProtectedSourceRevision(candidate, sourceRevision) {
+  assertValidCandidateLifecycleSource(candidate, 'revise protected source for');
   const shouldStale = ['approved', 'review_requested', 'changes_requested'].includes(
     candidate.status,
   );

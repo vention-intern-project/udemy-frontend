@@ -12,6 +12,8 @@ import type {
   LocaleCandidate,
   LocaleCandidateHistoryEvent,
   LocaleApprovedTransitionHistoryEvent,
+  LocaleReviewRequestedToChangesRequestedTransitionHistoryEvent,
+  LocaleReviewRequestedToDraftWithdrawalTransitionHistoryEvent,
   LocaleReviewRequestedToSuppliedArtifactApprovedTransitionHistoryEvent,
   LocaleReviewedTransitionHistoryEvent,
   LocalizationUnit,
@@ -22,8 +24,10 @@ import type {
 import draft37Registry from '../../../localization/corpus/registry.json';
 
 const {
+  SUPPLIED_REVIEW_ARTIFACT,
   protectedSourceFingerprint,
   semanticIdentityDigest,
+  applyProtectedSourceRevision,
   generateResources,
   retiredConsumerViolations,
   reviseProtectedSource,
@@ -32,6 +36,7 @@ const {
   syncCorpus,
   transitionLocaleCandidate,
   validateCorpus,
+  withdrawLocaleCandidateReview,
   // @ts-expect-error The dependency-free Node engine intentionally has no TypeScript declaration.
 } = await import('../../../scripts/localization/corpus-engine.mjs');
 
@@ -41,6 +46,216 @@ type FixtureCandidate = Record<string, unknown> & {
   sourceRevision: string;
   history: unknown[];
 };
+type MutableFixtureLocales = Record<'ru' | 'uz', FixtureCandidate>;
+type MutableHistoryEvent = Record<string, unknown>;
+
+interface HistoryOuterShapeAdversary {
+  readonly name: string;
+  readonly candidate: () => FixtureCandidate;
+  readonly event: (candidate: FixtureCandidate) => MutableHistoryEvent;
+  readonly forgedKey: string;
+  readonly forgedValue: unknown;
+  readonly expectedViolation?: string;
+}
+
+interface ApprovalRecordShapeAdversary {
+  readonly name: string;
+  readonly candidate: () => FixtureCandidate;
+  readonly approvalProperty: 'humanApproval' | 'suppliedArtifactApproval';
+  readonly mutate: (approval: MutableHistoryEvent) => void;
+  readonly expectedViolation: string;
+}
+
+type ProtectedRevisionStatus = 'draft' | 'review_requested' | 'changes_requested' | 'stale';
+
+interface MutableChangeRequestHistoryEvent {
+  readonly type?: unknown;
+  readonly from?: unknown;
+  readonly to?: unknown;
+  readonly changeRequest?: { replacement: string };
+}
+
+interface ReviewVerdictOperationCase {
+  readonly name: string;
+  readonly run: (candidate: FixtureCandidate) => unknown;
+}
+
+interface StaleToDraftHistoryFixture {
+  readonly corpus: ReturnType<typeof fixture>;
+  readonly activeRevisionAtReactivation: string;
+  readonly currentRevision: string;
+}
+
+interface CandidateOuterShapeAdversary {
+  readonly name: string;
+  readonly forgedKey: string;
+  readonly forgedValue: unknown;
+}
+
+interface CandidateTransitionOperation {
+  readonly name: string;
+  readonly candidate: () => FixtureCandidate;
+  readonly run: (candidate: FixtureCandidate) => unknown;
+}
+
+interface ValidCandidateShapeControl {
+  readonly name: string;
+  readonly candidate: () => FixtureCandidate;
+}
+
+function requestChanges(candidate: FixtureCandidate) {
+  const requestedAt =
+    typeof candidate.requestedAt === 'string' ? candidate.requestedAt : '2026-08-23T00:00:00.000Z';
+  return transitionLocaleCandidate({ ...candidate, requestedAt }, 'changes_requested', {
+    changeRequest: {
+      replacement: 'Исправленный перевод, {{name}}',
+      reviewerId: 'native-7',
+      reviewerName: 'Native Reviewer',
+      reviewerAttestation: 'native-review',
+      requestedAt,
+      reviewedAt: '2026-08-23T00:01:00.000Z',
+      changeRequestedAt: '2026-08-23T00:02:00.000Z',
+    },
+  });
+}
+
+function retainedChangeRequest(candidate: FixtureCandidate) {
+  const event = (candidate.history as MutableChangeRequestHistoryEvent[]).find(
+    (entry) =>
+      entry.type === 'transition' &&
+      entry.from === 'review_requested' &&
+      entry.to === 'changes_requested',
+  );
+  if (!event?.changeRequest) throw new Error('fixture retained change request is missing');
+  return event.changeRequest;
+}
+
+function withFabricatedApprovalMetadata(candidate: FixtureCandidate): FixtureCandidate {
+  return {
+    ...candidate,
+    reviewerId: 'fabricated-reviewer',
+    reviewerName: 'Fabricated Reviewer',
+    verdict: 'approved',
+    reviewedAt: '2026-08-23T00:01:00.000Z',
+    approvalRecordedAt: '2026-08-23T00:02:00.000Z',
+    approvalAuthority: {
+      kind: 'human_native_review',
+      reviewerId: 'fabricated-reviewer',
+      reviewerName: 'Fabricated Reviewer',
+    },
+  };
+}
+
+function reviewRequestedFixtureCandidate(): FixtureCandidate {
+  return {
+    ...transitionLocaleCandidate(fixture().units[0].locales.ru, 'review_requested'),
+    requestedAt: '2026-08-23T00:00:00.000Z',
+  } as FixtureCandidate;
+}
+
+function humanApprovedFixtureCandidate(): FixtureCandidate {
+  return transitionLocaleCandidate(reviewRequestedFixtureCandidate(), 'approved', {
+    humanApproval: {
+      reviewerId: 'native-7',
+      reviewerName: 'Native Reviewer',
+      reviewedAt: '2026-08-23T00:01:00.000Z',
+      approvalRecordedAt: '2026-08-23T00:02:00.000Z',
+      approvalAuthority: {
+        kind: 'human_native_review',
+        reviewerId: 'native-7',
+        reviewerName: 'Native Reviewer',
+      },
+    },
+  }) as FixtureCandidate;
+}
+
+function suppliedApprovedFixtureCandidate(): FixtureCandidate {
+  return approveSuppliedReviewArtifactCandidate(reviewRequestedFixtureCandidate(), {
+    approvalRecordedAt: '2026-08-25T00:00:00.000Z',
+    artifactSha256: 'ED5D3D613F21DE188DB0512B3701EA9C0C0A6D254FD1C77829FB3E61ECD3310C',
+  }) as FixtureCandidate;
+}
+
+function mutableHistoryEvent(candidate: FixtureCandidate, index = -1): MutableHistoryEvent {
+  const resolvedIndex = index < 0 ? candidate.history.length + index : index;
+  const event = candidate.history[resolvedIndex];
+  if (!event || typeof event !== 'object') throw new Error('fixture history event is missing');
+  return event as MutableHistoryEvent;
+}
+
+function forgedHumanApprovalRecord(): MutableHistoryEvent {
+  return {
+    reviewerId: 'forged-reviewer',
+    reviewerName: 'Forged Reviewer',
+    reviewedAt: '2026-08-23T00:01:00.000Z',
+    approvalRecordedAt: '2026-08-23T00:02:00.000Z',
+    approvalAuthority: {
+      kind: 'human_native_review',
+      reviewerId: 'forged-reviewer',
+      reviewerName: 'Forged Reviewer',
+    },
+  };
+}
+
+function protectedRevisionFixtureCandidate(status: ProtectedRevisionStatus): FixtureCandidate {
+  if (status === 'draft') return structuredClone(fixture().units[0].locales.ru) as FixtureCandidate;
+  if (status === 'review_requested') return reviewRequestedFixtureCandidate();
+  if (status === 'changes_requested') return requestChanges(reviewRequestedFixtureCandidate());
+  return transitionLocaleCandidate(humanApprovedFixtureCandidate(), 'stale') as FixtureCandidate;
+}
+
+function staleToDraftHistoryFixture(): StaleToDraftHistoryFixture {
+  const corpus = fixture();
+  const unit = corpus.units[0];
+  const locales = unit.locales as unknown as MutableFixtureLocales;
+  locales.ru = transitionLocaleCandidate(unit.locales.ru, 'review_requested') as FixtureCandidate;
+  const firstRevision = reviseProtectedSource(unit, {
+    occurrences: [{ ...unit.occurrences[0], context: 'first protected revision' }],
+  });
+  const activeRevisionAtReactivation = firstRevision.sourceRevision;
+  firstRevision.locales.ru = transitionLocaleCandidate(firstRevision.locales.ru, 'draft', {
+    newCandidate: 'Исправленная локализация, {{name}}',
+  }) as FixtureCandidate;
+  const current = reviseProtectedSource(firstRevision, {
+    occurrences: [{ ...firstRevision.occurrences[0], context: 'later protected revision' }],
+  });
+  corpus.units[0] = current;
+  return {
+    corpus,
+    activeRevisionAtReactivation,
+    currentRevision: current.sourceRevision,
+  };
+}
+
+function staleToDraftHistoryEvent(candidate: FixtureCandidate): MutableHistoryEvent {
+  const event = (candidate.history as MutableHistoryEvent[]).find(
+    (entry) => entry.from === 'stale' && entry.to === 'draft',
+  );
+  if (!event) throw new Error('fixture stale-to-draft event is missing');
+  return event;
+}
+
+const REVIEW_VERDICT_OPERATIONS: readonly ReviewVerdictOperationCase[] = [
+  {
+    name: 'approve',
+    run: (candidate) =>
+      transitionLocaleCandidate(candidate, 'approved', {
+        humanApproval: {
+          reviewerId: 'native-7',
+          reviewerName: 'Native Reviewer',
+          reviewedAt: '2026-08-23T00:03:00.000Z',
+          approvalRecordedAt: '2026-08-23T00:04:00.000Z',
+          approvalAuthority: {
+            kind: 'human_native_review',
+            reviewerId: 'native-7',
+            reviewerName: 'Native Reviewer',
+          },
+        },
+      }),
+  },
+  { name: 'request changes', run: requestChanges },
+  { name: 'withdraw', run: withdrawLocaleCandidateReview },
+];
 
 interface FixtureSourceRevisionEvent {
   type: 'source_revision';
@@ -358,6 +573,35 @@ describe('canonical localization corpus engine', () => {
     };
     expectTypeOf(pluralForms.ru).toMatchTypeOf<LocalizationPluralForms['ru']>();
     expectTypeOf(reviewedTransition).toMatchTypeOf<LocaleCandidateHistoryEvent>();
+    const changeRequestedTransition: LocaleReviewRequestedToChangesRequestedTransitionHistoryEvent =
+      {
+        type: 'transition',
+        from: 'review_requested',
+        to: 'changes_requested',
+        previousCandidate: 'review requested',
+        nextCandidate: 'review requested',
+        sourceRevision: 'sha256:changes-requested',
+        changeRequest: {
+          replacement: 'Исправленный перевод',
+          reviewerId: 'native-7',
+          reviewerName: 'Native Reviewer',
+          reviewerAttestation: 'native-review',
+          requestedAt: '2026-08-23T00:00:00.000Z',
+          reviewedAt: '2026-08-23T00:01:00.000Z',
+          changeRequestedAt: '2026-08-23T00:02:00.000Z',
+        },
+      };
+    const withdrawalTransition: LocaleReviewRequestedToDraftWithdrawalTransitionHistoryEvent = {
+      type: 'transition',
+      from: 'review_requested',
+      to: 'draft',
+      previousCandidate: 'review requested',
+      nextCandidate: 'review requested',
+      sourceRevision: 'sha256:withdrawn',
+      withdrawal: true,
+    };
+    expectTypeOf(changeRequestedTransition).toMatchTypeOf<LocaleCandidateHistoryEvent>();
+    expectTypeOf(withdrawalTransition).toMatchTypeOf<LocaleCandidateHistoryEvent>();
     const approvedTransition: LocaleApprovedTransitionHistoryEvent = {
       type: 'transition',
       from: 'review_requested',
@@ -806,7 +1050,7 @@ describe('canonical localization corpus engine', () => {
       const candidate = transitionLocaleCandidate(corpus.units[0].locales.ru, 'review_requested');
       const reviewed =
         status === 'changes_requested'
-          ? transitionLocaleCandidate(candidate, 'changes_requested')
+          ? requestChanges(candidate)
           : status === 'approved'
             ? transitionLocaleCandidate(candidate, 'approved', {
                 humanApproval: {
@@ -867,11 +1111,7 @@ describe('canonical localization corpus engine', () => {
     (field) => {
       const unit = fixture().units[0];
       const approved = transitionLocaleCandidate(
-        {
-          ...unit.locales.ru,
-          status: 'review_requested',
-          history: [{ type: 'transition', from: 'draft', to: 'review_requested' }],
-        } as FixtureCandidate,
+        transitionLocaleCandidate(unit.locales.ru, 'review_requested'),
         'approved',
         {
           humanApproval: {
@@ -960,10 +1200,7 @@ describe('canonical localization corpus engine', () => {
     (locale, status) => {
       const { unit } = pluralFixture();
       const requested = transitionLocaleCandidate(unit.locales[locale], 'review_requested');
-      unit.locales[locale] =
-        status === 'changes_requested'
-          ? transitionLocaleCandidate(requested, 'changes_requested')
-          : requested;
+      unit.locales[locale] = status === 'changes_requested' ? requestChanges(requested) : requested;
 
       const revised = reviseProtectedSource(unit, { pluralForms: null });
 
@@ -1332,9 +1569,8 @@ describe('canonical localization corpus engine', () => {
 
   it('allows a corrected candidate when changes requested returns to draft without allowing approval-time edits', () => {
     const candidate = fixture().units[0].locales.ru as FixtureCandidate;
-    const changesRequested = transitionLocaleCandidate(
+    const changesRequested = requestChanges(
       transitionLocaleCandidate(candidate, 'review_requested'),
-      'changes_requested',
     );
     const corrected = transitionLocaleCandidate(changesRequested, 'draft', {
       newCandidate: 'Исправленный перевод, {{name}}',
@@ -1359,6 +1595,658 @@ describe('canonical localization corpus engine', () => {
     corpus.units[0].locales.ru = corrected;
     expect(validateFixtureCorpus(corpus)).toEqual([]);
   });
+
+  it('records a first-class review withdrawal and clears request metadata inside the operation', () => {
+    const corpus = fixture();
+    const requested = {
+      ...transitionLocaleCandidate(corpus.units[0].locales.ru, 'review_requested'),
+      requestedAt: '2026-08-23T00:00:00.000Z',
+    };
+
+    const withdrawn = withdrawLocaleCandidateReview(requested);
+
+    expect(withdrawn).toMatchObject({
+      status: 'draft',
+      candidate: requested.candidate,
+      requestedAt: null,
+      reviewerId: null,
+      verdict: null,
+      reviewedAt: null,
+      approvalRecordedAt: null,
+      approvalAuthority: null,
+    });
+    expect(withdrawn.history.at(-1)).toEqual({
+      type: 'transition',
+      from: 'review_requested',
+      to: 'draft',
+      previousCandidate: requested.candidate,
+      nextCandidate: requested.candidate,
+      sourceRevision: requested.sourceRevision,
+      withdrawal: true,
+    });
+    corpus.units[0].locales.ru = withdrawn;
+    expect(validateFixtureCorpus(corpus)).toEqual([]);
+    expect(() => transitionLocaleCandidate(requested, 'draft')).toThrow(
+      'review_requested -> draft is forbidden',
+    );
+  });
+
+  it('retains validated change-request evidence without changing the candidate', () => {
+    const corpus = fixture();
+    const requested = {
+      ...transitionLocaleCandidate(corpus.units[0].locales.ru, 'review_requested'),
+      requestedAt: '2026-08-23T00:00:00.000Z',
+    };
+    const changeRequest = {
+      replacement: 'Исправленный перевод, {{name}}',
+      reviewerId: 'native-7',
+      reviewerName: 'Native Reviewer',
+      reviewerAttestation: 'native-review',
+      requestedAt: requested.requestedAt,
+      reviewedAt: '2026-08-23T00:01:00.000Z',
+      changeRequestedAt: '2026-08-23T00:02:00.000Z',
+    };
+
+    const changesRequested = transitionLocaleCandidate(requested, 'changes_requested', {
+      changeRequest,
+    });
+
+    expect(changesRequested.candidate).toBe(requested.candidate);
+    expect(changesRequested.history.at(-1)).toMatchObject({
+      from: 'review_requested',
+      to: 'changes_requested',
+      previousCandidate: requested.candidate,
+      nextCandidate: requested.candidate,
+      changeRequest,
+    });
+    corpus.units[0].locales.ru = changesRequested;
+    expect(validateFixtureCorpus(corpus)).toEqual([]);
+  });
+
+  it.each([
+    ['blank replacement', { replacement: '  ' }],
+    ['untrimmed reviewer', { reviewerId: ' native-7 ' }],
+    ['wrong attestation', { reviewerAttestation: 'machine-review' }],
+    ['mismatched request time', { requestedAt: '2026-08-22T23:59:59.000Z' }],
+    ['review before request', { reviewedAt: '2026-08-22T23:59:59.999Z' }],
+    ['record before review', { changeRequestedAt: '2026-08-23T00:00:30.000Z' }],
+  ])(
+    'rejects a malformed %s change-request record without mutating its input',
+    (_name, override) => {
+      const requested = {
+        ...transitionLocaleCandidate(fixture().units[0].locales.ru, 'review_requested'),
+        requestedAt: '2026-08-23T00:00:00.000Z',
+      };
+      const before = structuredClone(requested);
+
+      expect(() =>
+        transitionLocaleCandidate(requested, 'changes_requested', {
+          changeRequest: {
+            replacement: 'Исправленный перевод, {{name}}',
+            reviewerId: 'native-7',
+            reviewerName: 'Native Reviewer',
+            reviewerAttestation: 'native-review',
+            requestedAt: requested.requestedAt,
+            reviewedAt: '2026-08-23T00:01:00.000Z',
+            changeRequestedAt: '2026-08-23T00:02:00.000Z',
+            ...override,
+          },
+        }),
+      ).toThrow('changes_requested requires valid native-review change-request evidence');
+      expect(requested).toEqual(before);
+    },
+  );
+
+  it('rejects malformed withdrawal and change-request history through normal corpus validation', () => {
+    const corpus = fixture();
+    const requested = {
+      ...transitionLocaleCandidate(corpus.units[0].locales.ru, 'review_requested'),
+      requestedAt: '2026-08-23T00:00:00.000Z',
+    };
+    const withdrawn = withdrawLocaleCandidateReview(requested);
+    const malformedWithdrawal = structuredClone(withdrawn);
+    (malformedWithdrawal.history.at(-1) as Record<string, unknown>).reviewerId = 'fabricated';
+    corpus.units[0].locales.ru = malformedWithdrawal;
+    expect(validateFixtureCorpus(corpus)).toContain(
+      'MLUX-C0001: ru invalid review withdrawal history',
+    );
+
+    const changed = transitionLocaleCandidate(requested, 'changes_requested', {
+      changeRequest: {
+        replacement: 'Исправленный перевод, {{name}}',
+        reviewerId: 'native-7',
+        reviewerName: 'Native Reviewer',
+        reviewerAttestation: 'native-review',
+        requestedAt: requested.requestedAt,
+        reviewedAt: '2026-08-23T00:01:00.000Z',
+        changeRequestedAt: '2026-08-23T00:02:00.000Z',
+      },
+    });
+    const malformedChangeRequest = structuredClone(changed);
+    Reflect.deleteProperty(
+      (malformedChangeRequest.history.at(-1) as { changeRequest: Record<string, unknown> })
+        .changeRequest,
+      'reviewerAttestation',
+    );
+    corpus.units[0].locales.ru = malformedChangeRequest;
+    expect(validateFixtureCorpus(corpus)).toContain(
+      'MLUX-C0001: ru changes-requested history lacks valid native-review evidence',
+    );
+
+    const malformedReplacement = structuredClone(changed);
+    (
+      malformedReplacement.history.at(-1) as {
+        changeRequest: { replacement: string };
+      }
+    ).changeRequest.replacement = 'Исправленный перевод без placeholder';
+    corpus.units[0].locales.ru = malformedReplacement;
+    expect(validateFixtureCorpus(corpus)).toContain(
+      'MLUX-C0001: ru change-request replacement placeholder mismatch',
+    );
+  });
+
+  it('rejects retained change-request placeholder drift after a later draft transition', () => {
+    const corpus = fixture();
+    const requested = {
+      ...transitionLocaleCandidate(corpus.units[0].locales.ru, 'review_requested'),
+      requestedAt: '2026-08-23T00:00:00.000Z',
+    } as FixtureCandidate;
+    const corrected = transitionLocaleCandidate(requestChanges(requested), 'draft', {
+      newCandidate: 'Исправленный перевод, {{name}}',
+    }) as FixtureCandidate;
+    const tampered = structuredClone(corrected);
+    retainedChangeRequest(tampered).replacement = 'Подставьте имя без placeholder';
+    (corpus.units[0].locales as unknown as MutableFixtureLocales).ru = tampered;
+
+    expect(validateFixtureCorpus(corpus)).toContain(
+      'MLUX-C0001: ru change-request replacement placeholder mismatch',
+    );
+  });
+
+  it('validates retained change requests against their historical revision context', () => {
+    const staleCorpus = fixture();
+    const staleUnit = staleCorpus.units[0];
+    const requested = {
+      ...transitionLocaleCandidate(staleUnit.locales.ru, 'review_requested'),
+      requestedAt: '2026-08-23T00:00:00.000Z',
+    } as FixtureCandidate;
+    staleUnit.locales.ru = requestChanges(requested);
+    staleCorpus.units[0] = reviseProtectedSource(staleUnit, {
+      english: 'Welcome from the revised context, {{name}}',
+    });
+    expect(validateFixtureCorpus(staleCorpus)).toEqual([]);
+
+    const tamperedStale = structuredClone(staleCorpus);
+    retainedChangeRequest(tamperedStale.units[0].locales.ru as FixtureCandidate).replacement =
+      'Подставьте имя без placeholder';
+    expect(validateFixtureCorpus(tamperedStale)).toContain(
+      'MLUX-C0001: ru change-request replacement placeholder mismatch',
+    );
+
+    const revisedCorpus = fixture();
+    const revisedUnit = revisedCorpus.units[0];
+    const revisedRequested = {
+      ...transitionLocaleCandidate(revisedUnit.locales.ru, 'review_requested'),
+      requestedAt: '2026-08-23T00:00:00.000Z',
+    } as FixtureCandidate;
+    revisedUnit.locales.ru = requestChanges(revisedRequested);
+    const revised = reviseProtectedSource(revisedUnit, {
+      placeholdersByLocale: {
+        ...revisedUnit.placeholdersByLocale,
+        ru: ['identity'],
+      },
+    });
+    const rewritten = transitionLocaleCandidate(revised.locales.ru, 'draft', {
+      newCandidate: 'Исправленный перевод, {{identity}}',
+    });
+    revisedCorpus.units[0] = {
+      ...revised,
+      locales: { ...revised.locales, ru: rewritten },
+    };
+
+    expect(validateFixtureCorpus(revisedCorpus)).toEqual([]);
+    const tamperedRevised = structuredClone(revisedCorpus);
+    retainedChangeRequest(tamperedRevised.units[0].locales.ru as FixtureCandidate).replacement =
+      'Исправьте {{identity}}';
+    expect(validateFixtureCorpus(tamperedRevised)).toContain(
+      'MLUX-C0001: ru change-request replacement placeholder mismatch',
+    );
+  });
+
+  it.each(REVIEW_VERDICT_OPERATIONS)(
+    'rejects fabricated approval metadata before the $name verdict transition',
+    ({ run }) => {
+      const requested = {
+        ...transitionLocaleCandidate(fixture().units[0].locales.ru, 'review_requested'),
+        requestedAt: '2026-08-23T00:00:00.000Z',
+      } as FixtureCandidate;
+      const invalidSource = withFabricatedApprovalMetadata(requested);
+      const before = structuredClone(invalidSource);
+
+      expect(() => run(invalidSource)).toThrow(/non-approved candidate retains approval metadata/);
+      expect(invalidSource).toEqual(before);
+    },
+  );
+
+  it('rejects fabricated approval metadata before a changes-requested candidate can return to draft', () => {
+    const requested = {
+      ...transitionLocaleCandidate(fixture().units[0].locales.ru, 'review_requested'),
+      requestedAt: '2026-08-23T00:00:00.000Z',
+    } as FixtureCandidate;
+    const invalidSource = withFabricatedApprovalMetadata(requestChanges(requested));
+    const before = structuredClone(invalidSource);
+
+    expect(() =>
+      transitionLocaleCandidate(invalidSource, 'draft', {
+        newCandidate: 'Исправленная локализация, {{name}}',
+      }),
+    ).toThrow(/non-approved candidate retains approval metadata/);
+    expect(invalidSource).toEqual(before);
+  });
+
+  it.each<ProtectedRevisionStatus>(['draft', 'review_requested', 'changes_requested', 'stale'])(
+    'rejects fabricated $status authority before protected-source normalization',
+    (status) => {
+      const invalidCandidate = withFabricatedApprovalMetadata(
+        protectedRevisionFixtureCandidate(status),
+      );
+      const beforeCandidate = structuredClone(invalidCandidate);
+      const nextRevision = `sha256:${'f'.repeat(64)}`;
+
+      expect(() => applyProtectedSourceRevision(invalidCandidate, nextRevision)).toThrow(
+        /non-approved candidate retains approval metadata/,
+      );
+      expect(invalidCandidate).toEqual(beforeCandidate);
+
+      const unit = fixture().units[0];
+      (unit.locales as unknown as MutableFixtureLocales).ru = invalidCandidate;
+      const beforeUnit = structuredClone(unit);
+      expect(() => reviseProtectedSource(unit, { english: 'Revised source, {{name}}' })).toThrow(
+        /non-approved candidate retains approval metadata/,
+      );
+      expect(unit).toEqual(beforeUnit);
+    },
+  );
+
+  it('validates retained lifecycle history before protected-source normalization', () => {
+    const invalidCandidate = reviewRequestedFixtureCandidate();
+    mutableHistoryEvent(invalidCandidate).reviewerId = 'forged-reviewer';
+    const beforeCandidate = structuredClone(invalidCandidate);
+
+    expect(() =>
+      applyProtectedSourceRevision(invalidCandidate, `sha256:${'e'.repeat(64)}`),
+    ).toThrow(/invalid history event shape/);
+    expect(invalidCandidate).toEqual(beforeCandidate);
+
+    const unit = fixture().units[0];
+    (unit.locales as unknown as MutableFixtureLocales).ru = invalidCandidate;
+    const beforeUnit = structuredClone(unit);
+    expect(() => reviseProtectedSource(unit, { english: 'Revised source, {{name}}' })).toThrow(
+      /invalid history event shape/,
+    );
+    expect(unit).toEqual(beforeUnit);
+  });
+
+  it('preserves valid approved-to-stale normalization and historical change-request evidence', () => {
+    const approvedCorpus = fixture();
+    const approvedUnit = approvedCorpus.units[0];
+    (approvedUnit.locales as unknown as MutableFixtureLocales).ru = humanApprovedFixtureCandidate();
+    approvedCorpus.units[0] = reviseProtectedSource(approvedUnit, {
+      english: 'Approved revision, {{name}}',
+    });
+    expect(approvedCorpus.units[0].locales.ru.status).toBe('stale');
+    expect(validateFixtureCorpus(approvedCorpus)).toEqual([]);
+
+    const changedCorpus = fixture();
+    const changedUnit = changedCorpus.units[0];
+    (changedUnit.locales as unknown as MutableFixtureLocales).ru = requestChanges(
+      reviewRequestedFixtureCandidate(),
+    );
+    changedCorpus.units[0] = reviseProtectedSource(changedUnit, {
+      english: 'Change-request revision, {{name}}',
+    });
+    expect(
+      retainedChangeRequest(changedCorpus.units[0].locales.ru as FixtureCandidate),
+    ).toMatchObject({ replacement: 'Исправленный перевод, {{name}}' });
+    expect(validateFixtureCorpus(changedCorpus)).toEqual([]);
+  });
+
+  const candidateOuterShapeAdversaries: readonly CandidateOuterShapeAdversary[] = [
+    {
+      name: 'human approval history evidence',
+      forgedKey: 'humanApproval',
+      forgedValue: forgedHumanApprovalRecord(),
+    },
+    {
+      name: 'supplied-artifact approval history evidence',
+      forgedKey: 'suppliedArtifactApproval',
+      forgedValue: {
+        reviewerId: null,
+        reviewedAt: null,
+        approvalRecordedAt: '2026-08-25T00:00:00.000Z',
+        approvalAuthority: { ...SUPPLIED_REVIEW_ARTIFACT },
+      },
+    },
+    {
+      name: 'change-request history evidence',
+      forgedKey: 'changeRequest',
+      forgedValue: {
+        replacement: 'Исправленный перевод, {{name}}',
+        reviewerId: 'native-7',
+        reviewerName: 'Native Reviewer',
+        reviewerAttestation: 'native-review',
+        requestedAt: '2026-08-23T00:00:00.000Z',
+        reviewedAt: '2026-08-23T00:01:00.000Z',
+        changeRequestedAt: '2026-08-23T00:02:00.000Z',
+      },
+    },
+    { name: 'withdrawal history evidence', forgedKey: 'withdrawal', forgedValue: true },
+    {
+      name: 'reviewer alias object',
+      forgedKey: 'reviewer',
+      forgedValue: { id: 'native-7', name: 'Native Reviewer' },
+    },
+    {
+      name: 'review-authority alias object',
+      forgedKey: 'reviewAuthority',
+      forgedValue: {
+        kind: 'human_native_review',
+        reviewerId: 'native-7',
+        reviewerName: 'Native Reviewer',
+      },
+    },
+    {
+      name: 'review-evidence alias object',
+      forgedKey: 'reviewEvidence',
+      forgedValue: {
+        reviewerAttestation: 'native-review',
+        reviewedAt: '2026-08-23T00:01:00.000Z',
+      },
+    },
+    {
+      name: 'approval-evidence alias object',
+      forgedKey: 'approvalEvidence',
+      forgedValue: forgedHumanApprovalRecord(),
+    },
+    {
+      name: 'reviewer-attestation wrong-owner field',
+      forgedKey: 'reviewerAttestation',
+      forgedValue: 'native-review',
+    },
+  ];
+
+  it.each(candidateOuterShapeAdversaries)(
+    'rejects candidate-level $name before validation or protected-source normalization',
+    ({ forgedKey, forgedValue }) => {
+      const corpus = fixture();
+      const candidate = corpus.units[0].locales.ru as FixtureCandidate;
+      candidate[forgedKey] = structuredClone(forgedValue);
+      const before = structuredClone(candidate);
+      const expected = `MLUX-C0001: ru candidate contains property outside LocaleCandidate schema: ${forgedKey}`;
+
+      expect(validateFixtureCorpus(corpus)).toContain(expected);
+      expect(() => applyProtectedSourceRevision(candidate, `sha256:${'f'.repeat(64)}`)).toThrow(
+        `candidate contains property outside LocaleCandidate schema: ${forgedKey}`,
+      );
+      expect(candidate).toEqual(before);
+    },
+  );
+
+  const candidateTransitionOperations: readonly CandidateTransitionOperation[] = [
+    {
+      name: 'draft to review requested',
+      candidate: () => fixture().units[0].locales.ru as FixtureCandidate,
+      run: (candidate) => transitionLocaleCandidate(candidate, 'review_requested'),
+    },
+    {
+      name: 'review requested to human approved',
+      candidate: reviewRequestedFixtureCandidate,
+      run: (candidate) =>
+        transitionLocaleCandidate(candidate, 'approved', {
+          humanApproval: forgedHumanApprovalRecord(),
+        }),
+    },
+    {
+      name: 'review requested to supplied approved',
+      candidate: reviewRequestedFixtureCandidate,
+      run: (candidate) =>
+        approveSuppliedReviewArtifactCandidate(candidate, {
+          approvalRecordedAt: '2026-08-25T00:00:00.000Z',
+          artifactSha256: SUPPLIED_REVIEW_ARTIFACT.artifactSha256,
+        }),
+    },
+    {
+      name: 'review requested to changes requested',
+      candidate: reviewRequestedFixtureCandidate,
+      run: requestChanges,
+    },
+    {
+      name: 'review requested withdrawal to draft',
+      candidate: reviewRequestedFixtureCandidate,
+      run: withdrawLocaleCandidateReview,
+    },
+    {
+      name: 'review requested to stale',
+      candidate: reviewRequestedFixtureCandidate,
+      run: (candidate) => transitionLocaleCandidate(candidate, 'stale'),
+    },
+    {
+      name: 'changes requested to draft',
+      candidate: () => requestChanges(reviewRequestedFixtureCandidate()) as FixtureCandidate,
+      run: (candidate) =>
+        transitionLocaleCandidate(candidate, 'draft', {
+          newCandidate: 'Исправленная локализация, {{name}}',
+        }),
+    },
+    {
+      name: 'changes requested to stale',
+      candidate: () => requestChanges(reviewRequestedFixtureCandidate()) as FixtureCandidate,
+      run: (candidate) => transitionLocaleCandidate(candidate, 'stale'),
+    },
+    {
+      name: 'approved to stale',
+      candidate: humanApprovedFixtureCandidate,
+      run: (candidate) => transitionLocaleCandidate(candidate, 'stale'),
+    },
+    {
+      name: 'stale to draft',
+      candidate: () =>
+        transitionLocaleCandidate(humanApprovedFixtureCandidate(), 'stale') as FixtureCandidate,
+      run: (candidate) =>
+        transitionLocaleCandidate(candidate, 'draft', {
+          newCandidate: 'Возвращенная локализация, {{name}}',
+        }),
+    },
+  ];
+
+  it.each(candidateTransitionOperations)(
+    'rejects candidate-level evidence before the $name transition',
+    ({ candidate: createCandidate, run }) => {
+      const candidate = createCandidate();
+      candidate.humanApproval = forgedHumanApprovalRecord();
+      const before = structuredClone(candidate);
+
+      expect(() => run(candidate)).toThrow(
+        'candidate contains property outside LocaleCandidate schema: humanApproval',
+      );
+      expect(candidate).toEqual(before);
+    },
+  );
+
+  const validCandidateShapeControls: readonly ValidCandidateShapeControl[] = [
+    { name: 'draft', candidate: () => fixture().units[0].locales.ru as FixtureCandidate },
+    { name: 'review-requested', candidate: reviewRequestedFixtureCandidate },
+    { name: 'ordinary approved', candidate: humanApprovedFixtureCandidate },
+    { name: 'supplied-artifact approved', candidate: suppliedApprovedFixtureCandidate },
+  ];
+
+  it.each(validCandidateShapeControls)(
+    'accepts the named $name LocaleCandidate properties',
+    ({ candidate: createCandidate }) => {
+      const corpus = fixture();
+      (corpus.units[0].locales as unknown as MutableFixtureLocales).ru = createCandidate();
+
+      expect(validateFixtureCorpus(corpus)).toEqual([]);
+    },
+  );
+
+  const historyOuterShapeAdversaries: readonly HistoryOuterShapeAdversary[] = [
+    {
+      name: 'source revision with approval authority',
+      candidate: () => {
+        const unit = fixture().units[0];
+        return reviseProtectedSource(unit, { english: 'Revised source, {{name}}' }).locales
+          .ru as FixtureCandidate;
+      },
+      event: (candidate) => mutableHistoryEvent(candidate),
+      forgedKey: 'humanApproval',
+      forgedValue: forgedHumanApprovalRecord(),
+    },
+    {
+      name: 'review request with supplied-artifact authority',
+      candidate: reviewRequestedFixtureCandidate,
+      event: (candidate) => mutableHistoryEvent(candidate),
+      forgedKey: 'suppliedArtifactApproval',
+      forgedValue: {
+        reviewerId: null,
+        reviewedAt: null,
+        approvalRecordedAt: '2026-08-25T00:00:00.000Z',
+        approvalAuthority: {
+          kind: 'user-authorized supplied review artifact',
+          artifactName: 'learnhub-multilingual-review-readable.md',
+          artifactSha256: 'ED5D3D613F21DE188DB0512B3701EA9C0C0A6D254FD1C77829FB3E61ECD3310C',
+        },
+      },
+    },
+    {
+      name: 'change request with human approval authority',
+      candidate: () => requestChanges(reviewRequestedFixtureCandidate()),
+      event: (candidate) => mutableHistoryEvent(candidate),
+      forgedKey: 'humanApproval',
+      forgedValue: forgedHumanApprovalRecord(),
+    },
+    {
+      name: 'withdrawal with reviewer identity',
+      candidate: () => withdrawLocaleCandidateReview(reviewRequestedFixtureCandidate()),
+      event: (candidate) => mutableHistoryEvent(candidate),
+      forgedKey: 'reviewerId',
+      forgedValue: 'forged-reviewer',
+      expectedViolation: 'MLUX-C0001: ru invalid review withdrawal history',
+    },
+    {
+      name: 'approved-to-stale transition with reviewer identity',
+      candidate: () =>
+        transitionLocaleCandidate(humanApprovedFixtureCandidate(), 'stale') as FixtureCandidate,
+      event: (candidate) => mutableHistoryEvent(candidate),
+      forgedKey: 'reviewerId',
+      forgedValue: 'forged-reviewer',
+    },
+    {
+      name: 'stale-to-draft transition with approval authority',
+      candidate: () =>
+        transitionLocaleCandidate(
+          transitionLocaleCandidate(humanApprovedFixtureCandidate(), 'stale'),
+          'draft',
+          { newCandidate: 'Reactivated candidate, {{name}}' },
+        ) as FixtureCandidate,
+      event: (candidate) => mutableHistoryEvent(candidate),
+      forgedKey: 'humanApproval',
+      forgedValue: forgedHumanApprovalRecord(),
+    },
+    {
+      name: 'ordinary approval with outer reviewer identity',
+      candidate: humanApprovedFixtureCandidate,
+      event: (candidate) => mutableHistoryEvent(candidate),
+      forgedKey: 'reviewerId',
+      forgedValue: 'forged-reviewer',
+    },
+    {
+      name: 'supplied approval with outer reviewer identity',
+      candidate: suppliedApprovedFixtureCandidate,
+      event: (candidate) => mutableHistoryEvent(candidate),
+      forgedKey: 'reviewerId',
+      forgedValue: 'forged-reviewer',
+    },
+  ];
+
+  it.each(historyOuterShapeAdversaries)(
+    'rejects $name outside its owning history-event variant',
+    ({
+      candidate: createCandidate,
+      event: selectEvent,
+      forgedKey,
+      forgedValue,
+      expectedViolation,
+    }) => {
+      const corpus = fixture();
+      const candidate = createCandidate();
+      selectEvent(candidate)[forgedKey] = structuredClone(forgedValue);
+      (corpus.units[0].locales as unknown as MutableFixtureLocales).ru = candidate;
+
+      expect(validateFixtureCorpus(corpus)).toContain(
+        expectedViolation ?? 'MLUX-C0001: ru invalid history event shape',
+      );
+    },
+  );
+
+  const approvalRecordShapeAdversaries: readonly ApprovalRecordShapeAdversary[] = [
+    {
+      name: 'ordinary approval record with an extra attestation',
+      candidate: humanApprovedFixtureCandidate,
+      approvalProperty: 'humanApproval',
+      mutate: (approval) => {
+        approval.reviewerAttestation = 'native-review';
+      },
+      expectedViolation:
+        'MLUX-C0001: ru approved history lacks transition-specific human-native authority',
+    },
+    {
+      name: 'ordinary approval authority with a supplied-artifact member',
+      candidate: humanApprovedFixtureCandidate,
+      approvalProperty: 'humanApproval',
+      mutate: (approval) => {
+        (approval.approvalAuthority as MutableHistoryEvent).artifactName =
+          'learnhub-multilingual-review-readable.md';
+      },
+      expectedViolation:
+        'MLUX-C0001: ru approved history lacks transition-specific human-native authority',
+    },
+    {
+      name: 'supplied approval record with a verdict',
+      candidate: suppliedApprovedFixtureCandidate,
+      approvalProperty: 'suppliedArtifactApproval',
+      mutate: (approval) => {
+        approval.verdict = 'approved';
+      },
+      expectedViolation:
+        'MLUX-C0001: ru approved history lacks transition-specific supplied-artifact authority',
+    },
+    {
+      name: 'supplied approval authority with a reviewer identity',
+      candidate: suppliedApprovedFixtureCandidate,
+      approvalProperty: 'suppliedArtifactApproval',
+      mutate: (approval) => {
+        (approval.approvalAuthority as MutableHistoryEvent).reviewerId = 'forged-reviewer';
+      },
+      expectedViolation:
+        'MLUX-C0001: ru approved history lacks transition-specific supplied-artifact authority',
+    },
+  ];
+
+  it.each(approvalRecordShapeAdversaries)(
+    'rejects $name',
+    ({ candidate: createCandidate, approvalProperty, mutate, expectedViolation }) => {
+      const corpus = fixture();
+      const candidate = createCandidate();
+      const approval = mutableHistoryEvent(candidate)[approvalProperty];
+      if (!approval || typeof approval !== 'object')
+        throw new Error('fixture approval record is missing');
+      mutate(approval as MutableHistoryEvent);
+      (corpus.units[0].locales as unknown as MutableFixtureLocales).ru = candidate;
+
+      expect(validateFixtureCorpus(corpus)).toContain(expectedViolation);
+    },
+  );
 
   it('returns violations instead of throwing for malformed placeholder contracts', () => {
     const corpus = fixture();
@@ -1426,6 +2314,47 @@ describe('canonical localization corpus engine', () => {
     const corpus = fixture();
     corpus.units[0].locales.ru = reactivated;
     expect(validateFixtureCorpus(corpus)).toEqual([]);
+  });
+
+  it('binds a present stale-to-draft revision to the protected revision active at that event', () => {
+    const { corpus, activeRevisionAtReactivation, currentRevision } = staleToDraftHistoryFixture();
+    const candidate = corpus.units[0].locales.ru as FixtureCandidate;
+
+    expect(activeRevisionAtReactivation).not.toBe(currentRevision);
+    expect(staleToDraftHistoryEvent(candidate).sourceRevision).toBe(activeRevisionAtReactivation);
+    expect(validateFixtureCorpus(corpus)).toEqual([]);
+
+    const legacy = structuredClone(corpus);
+    Reflect.deleteProperty(
+      staleToDraftHistoryEvent(legacy.units[0].locales.ru as FixtureCandidate),
+      'sourceRevision',
+    );
+    expect(validateFixtureCorpus(legacy)).toEqual([]);
+  });
+
+  it.each([
+    ['null', null],
+    ['malformed', 'forged'],
+    ['valid-looking but unbound', `sha256:${'0'.repeat(64)}`],
+    ['explicit undefined', undefined],
+  ])('rejects a present stale-to-draft revision that is %s', (_name, forgedRevision) => {
+    const { corpus } = staleToDraftHistoryFixture();
+    const candidate = corpus.units[0].locales.ru as FixtureCandidate;
+    staleToDraftHistoryEvent(candidate).sourceRevision = forgedRevision;
+
+    expect(validateFixtureCorpus(corpus)).toContain(
+      'MLUX-C0001: ru stale -> draft history does not match active protected source revision',
+    );
+  });
+
+  it('rejects a later current revision when it is forged onto an earlier stale-to-draft event', () => {
+    const { corpus, currentRevision } = staleToDraftHistoryFixture();
+    const candidate = corpus.units[0].locales.ru as FixtureCandidate;
+    staleToDraftHistoryEvent(candidate).sourceRevision = currentRevision;
+
+    expect(validateFixtureCorpus(corpus)).toContain(
+      'MLUX-C0001: ru stale -> draft history does not match active protected source revision',
+    );
   });
 
   it.each(['ru', 'uz'] as const)(

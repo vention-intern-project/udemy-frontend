@@ -10,8 +10,9 @@ corpus engine and committed together with the registry only after full-pack pref
 npm run localization:review:export -- <registryPath> <outputCsvPath> <taskId> [ru,uz] [unitIdsJsonPath]
 ```
 
-`unitIdsJsonPath`, when supplied, must name a JSON array of stable corpus IDs. Rows are sorted by
-ID and locale. The fixed columns bind the task, ID, locale, source revision, contexts,
+`unitIdsJsonPath`, when supplied, must name a non-empty JSON array of non-empty stable corpus ID
+strings. Invalid shapes fail with `unitIds must be a non-empty list of stable IDs`. Rows are sorted
+by ID and locale. The fixed columns bind the task, ID, locale, source revision, contexts,
 placeholders, plurals, candidate, status, request time, verdict, replacement, reviewer identity,
 native-review attestation, and review time. Exporting the same corpus and arguments produces the
 same bytes. Registry and output must be distinct files; lexical, normalized, case-insensitive
@@ -22,13 +23,25 @@ Reviewers may leave a row undecided or enter exactly one verdict:
 - `approve`: allowed only from `review_requested`; a trimmed replacement is applied, otherwise the
   current candidate is approved unchanged.
 - `request_changes`: allowed only from `review_requested`; a non-empty trimmed replacement is
-  required as review evidence and the candidate becomes `changes_requested`.
+  retained with the native-review identity/time evidence while the unchanged candidate becomes
+  `changes_requested`. A later authorized drafting transition may apply a corrected candidate.
 - `withdraw`: allowed only from `review_requested`; all review fields and replacement stay empty,
-  and the candidate returns to `draft` without approval.
+  and one first-class withdrawal transition returns the candidate to `draft` without approval or a
+  fabricated change request.
 
 Ordinary approvals and change requests require a trimmed reviewer ID/name, exact
 `native-review` attestation, and a UTC RFC3339 millisecond `reviewedAt` after the exported
 `requestedAt` and no later than the import time.
+Every locale candidate accepts only the properties owned by the public `LocaleCandidate` contract;
+event-owned approval, change-request, withdrawal, reviewer, authority, and evidence properties are
+rejected before transition or normalization. Every non-approved candidate must also carry no
+approval or reviewer authority metadata; approve, request-changes, and withdrawal reject an invalid
+source candidate before any metadata can be cleared. Protected-source revisions apply the same rule
+and validate the complete current lifecycle before stale or metadata normalization. Retained history
+accepts only the exact outer keys owned by each source-revision or transition variant; ordinary and
+supplied-artifact approval records and their authority objects are exact-shape validated. Retained
+change-request replacements remain placeholder-validated against the historical candidate bound to
+their source revision, including after a later draft or protected-source change.
 
 ## Import a reviewed pack
 

@@ -192,6 +192,16 @@ export type LocaleApprovalRecord =
   | HumanNativeReviewApprovalRecord
   | SuppliedReviewArtifactApprovalRecord;
 
+export interface LocaleChangeRequestRecord {
+  readonly replacement: string;
+  readonly reviewerId: string;
+  readonly reviewerName: string;
+  readonly reviewerAttestation: 'native-review';
+  readonly requestedAt: string;
+  readonly reviewedAt: string;
+  readonly changeRequestedAt: string;
+}
+
 export interface LocaleSourceRevisionHistoryEvent {
   readonly type: 'source_revision';
   readonly previousSourceRevision: string;
@@ -240,6 +250,18 @@ export interface LocaleReviewRequestedToChangesRequestedTransitionHistoryEvent
   readonly from: 'review_requested';
   readonly to: 'changes_requested';
   readonly sourceRevision: string;
+  readonly changeRequest: LocaleChangeRequestRecord;
+  readonly humanApproval?: never;
+  readonly suppliedArtifactApproval?: never;
+}
+
+export interface LocaleReviewRequestedToDraftWithdrawalTransitionHistoryEvent
+  extends LocaleTransitionHistoryEventBase {
+  readonly from: 'review_requested';
+  readonly to: 'draft';
+  readonly sourceRevision: string;
+  readonly withdrawal: true;
+  readonly changeRequest?: never;
   readonly humanApproval?: never;
   readonly suppliedArtifactApproval?: never;
 }
@@ -296,6 +318,7 @@ export type LocaleReviewedTransitionHistoryEvent =
   | LocaleReviewRequestedToChangesRequestedTransitionHistoryEvent;
 
 export type LocaleNonReviewTransitionHistoryEvent =
+  | LocaleReviewRequestedToDraftWithdrawalTransitionHistoryEvent
   | LocaleReviewRequestedToStaleTransitionHistoryEvent
   | LocaleChangesRequestedToDraftTransitionHistoryEvent
   | LocaleChangesRequestedToStaleTransitionHistoryEvent
