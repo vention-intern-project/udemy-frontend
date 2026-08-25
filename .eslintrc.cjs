@@ -91,7 +91,11 @@ module.exports = {
       parserOptions: { sourceType: 'script' },
     },
     {
-      files: ['scripts/quality/**/*.{mjs,ts}', 'tests/quality/**/*.{mjs,ts}'],
+      files: [
+        'scripts/quality/**/*.{mjs,ts}',
+        'scripts/localization/**/*.{mjs,ts}',
+        'tests/quality/**/*.{mjs,ts}',
+      ],
       env: { node: true },
       plugins: ['import'],
       rules: {

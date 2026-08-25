@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { copyFile, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
@@ -38,6 +38,7 @@ import {
   evaluateCiAggregate,
   evaluateStagedGate,
   qualityTargetForEvent,
+  stagedPredicatePlan,
 } from '../../scripts/quality/quality-decisions.mjs';
 
 interface QualityTarget {
@@ -1406,6 +1407,67 @@ describe('quality report schema and exact-target admission', () => {
 });
 
 describe('staged and CI decision simulations', () => {
+  it('preserves the exact authenticated localization fixture through staged Prettier selection', async () => {
+    const fixturePath =
+      'tests/shared/locale/fixtures/review-exchange/learnhub-multilingual-review-readable.md';
+    const authorizedSha256 = 'ED5D3D613F21DE188DB0512B3701EA9C0C0A6D254FD1C77829FB3E61ECD3310C';
+    const sourceBytes = await readFile(resolve(fixturePath));
+    expect(createHash('sha256').update(sourceBytes).digest('hex').toUpperCase()).toBe(
+      authorizedSha256,
+    );
+    expect(stagedPredicatePlan([fixturePath]).selected.prettier).toEqual([fixturePath]);
+
+    const directory = await mkdtemp(resolve(tmpdir(), 'fe067-authenticated-fixture-'));
+    temporaryPaths.push(directory);
+    const repository = resolve(directory, 'repository');
+    const isolatedFixturePath = resolve(repository, fixturePath);
+    await mkdir(dirname(isolatedFixturePath), { recursive: true });
+    await Promise.all([
+      copyFile(resolve('.prettierignore'), resolve(repository, '.prettierignore')),
+      copyFile(resolve('.prettierrc.json'), resolve(repository, '.prettierrc.json')),
+      copyFile(resolve(fixturePath), isolatedFixturePath),
+    ]);
+
+    const prettier = resolve('node_modules/prettier/bin/prettier.cjs');
+    const formatter = spawnSync(process.execPath, [prettier, '--write', isolatedFixturePath], {
+      cwd: repository,
+      encoding: 'utf8',
+    });
+    expect(formatter.status, `${formatter.stdout}\n${formatter.stderr}`).toBe(0);
+    const formattedBytes = await readFile(isolatedFixturePath);
+    expect(formattedBytes).toEqual(sourceBytes);
+    expect(createHash('sha256').update(formattedBytes).digest('hex').toUpperCase()).toBe(
+      authorizedSha256,
+    );
+  });
+
+  it('keeps every public localization review command inside durable Node lint and format gates', async () => {
+    const packageJson = JSON.parse(await readFile(resolve('package.json'), 'utf8')) as {
+      scripts: Record<string, string>;
+    };
+    const publicReviewTargets = Object.entries(packageJson.scripts)
+      .filter(([name]) => name.startsWith('localization:review:'))
+      .map(([, command]) => command.match(/^node (scripts\/localization\/[^ ]+\.mjs)$/)?.[1]);
+    expect(publicReviewTargets).toHaveLength(3);
+    expect(publicReviewTargets.every((target) => target?.startsWith('scripts/localization/'))).toBe(
+      true,
+    );
+    expect(packageJson.scripts['lint:quality']).toContain('scripts/localization');
+    expect(packageJson.scripts['format:check']).toContain('scripts/localization');
+
+    const eslintConfig = createRequire(import.meta.url)(resolve('.eslintrc.cjs')) as {
+      overrides: Array<{ files?: string[]; env?: { node?: boolean } }>;
+    };
+    const localizationOverride = eslintConfig.overrides.find((override) =>
+      override.files?.includes('scripts/localization/**/*.{mjs,ts}'),
+    );
+    expect(localizationOverride?.env?.node).toBe(true);
+
+    const workflow = await readFile(resolve('.github/workflows/frontend-quality.yml'), 'utf8');
+    expect(workflow).toContain('npm run format:check');
+    expect(workflow).toContain('npm run lint:quality');
+  });
+
   it('formats only the selected staged files through the real pre-commit hook without changing the live index', async () => {
     const liveIndexPath = spawnSync('git', ['rev-parse', '--git-path', 'index'], {
       encoding: 'utf8',
