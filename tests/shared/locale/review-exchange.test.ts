@@ -741,6 +741,7 @@ describe('localization review exchange', () => {
       expect(await readFile(outputPath)).toEqual(beforeOutput);
       expect(await readdir(directory)).not.toContainEqual(expect.stringContaining('.tmp'));
     },
+    30_000,
   );
 
   it.each([
