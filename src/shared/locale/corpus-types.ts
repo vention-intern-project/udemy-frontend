@@ -124,13 +124,22 @@ export interface LocaleCandidateBase {
   readonly requestedAt?: string | null;
 }
 
-export interface ApprovedLocaleCandidate extends LocaleCandidateBase {
+export interface HumanNativeApprovedLocaleCandidate extends LocaleCandidateBase {
   readonly status: 'approved';
   readonly reviewerId: string;
   readonly verdict: 'approved';
   readonly reviewedAt: string;
   readonly approvalRecordedAt: string;
-  readonly approvalAuthority: LocaleApprovalAuthority;
+  readonly approvalAuthority: HumanNativeReviewApprovalAuthority;
+}
+
+export interface SuppliedReviewArtifactApprovedLocaleCandidate extends LocaleCandidateBase {
+  readonly status: 'approved';
+  readonly reviewerId: null;
+  readonly verdict: 'approved';
+  readonly reviewedAt: null;
+  readonly approvalRecordedAt: string;
+  readonly approvalAuthority: SuppliedReviewArtifactApprovalAuthority;
 }
 
 export interface NonApprovedLocaleCandidate extends LocaleCandidateBase {
@@ -142,21 +151,46 @@ export interface NonApprovedLocaleCandidate extends LocaleCandidateBase {
   readonly approvalAuthority?: null;
 }
 
+export type ApprovedLocaleCandidate =
+  | HumanNativeApprovedLocaleCandidate
+  | SuppliedReviewArtifactApprovedLocaleCandidate;
+
 export type LocaleCandidate = ApprovedLocaleCandidate | NonApprovedLocaleCandidate;
 
-export interface LocaleApprovalAuthority {
+export interface HumanNativeReviewApprovalAuthority {
   readonly kind: 'human_native_review';
   readonly reviewerId: string;
   readonly reviewerName: string;
 }
 
-export interface LocaleApprovalRecord {
+export interface SuppliedReviewArtifactApprovalAuthority {
+  readonly kind: 'user-authorized supplied review artifact';
+  readonly artifactName: 'learnhub-multilingual-review-readable.md';
+  readonly artifactSha256: 'ED5D3D613F21DE188DB0512B3701EA9C0C0A6D254FD1C77829FB3E61ECD3310C';
+}
+
+export type LocaleApprovalAuthority =
+  | HumanNativeReviewApprovalAuthority
+  | SuppliedReviewArtifactApprovalAuthority;
+
+export interface HumanNativeReviewApprovalRecord {
   readonly reviewerId: string;
   readonly reviewerName: string;
   readonly reviewedAt: string;
   readonly approvalRecordedAt: string;
-  readonly approvalAuthority: LocaleApprovalAuthority;
+  readonly approvalAuthority: HumanNativeReviewApprovalAuthority;
 }
+
+export interface SuppliedReviewArtifactApprovalRecord {
+  readonly reviewerId: null;
+  readonly reviewedAt: null;
+  readonly approvalRecordedAt: string;
+  readonly approvalAuthority: SuppliedReviewArtifactApprovalAuthority;
+}
+
+export type LocaleApprovalRecord =
+  | HumanNativeReviewApprovalRecord
+  | SuppliedReviewArtifactApprovalRecord;
 
 export interface LocaleSourceRevisionHistoryEvent {
   readonly type: 'source_revision';
@@ -176,15 +210,30 @@ export interface LocaleDraftToReviewRequestedTransitionHistoryEvent
   readonly to: 'review_requested';
   readonly sourceRevision: string;
   readonly humanApproval?: never;
+  readonly suppliedArtifactApproval?: never;
 }
 
-export interface LocaleReviewRequestedToApprovedTransitionHistoryEvent
+export interface LocaleReviewRequestedToHumanApprovedTransitionHistoryEvent
   extends LocaleTransitionHistoryEventBase {
   readonly from: 'review_requested';
   readonly to: 'approved';
   readonly sourceRevision: string;
-  readonly humanApproval: LocaleApprovalRecord;
+  readonly humanApproval: HumanNativeReviewApprovalRecord;
+  readonly suppliedArtifactApproval?: never;
 }
+
+export interface LocaleReviewRequestedToSuppliedArtifactApprovedTransitionHistoryEvent
+  extends LocaleTransitionHistoryEventBase {
+  readonly from: 'review_requested';
+  readonly to: 'approved';
+  readonly sourceRevision: string;
+  readonly humanApproval?: never;
+  readonly suppliedArtifactApproval: SuppliedReviewArtifactApprovalRecord;
+}
+
+export type LocaleReviewRequestedToApprovedTransitionHistoryEvent =
+  | LocaleReviewRequestedToHumanApprovedTransitionHistoryEvent
+  | LocaleReviewRequestedToSuppliedArtifactApprovedTransitionHistoryEvent;
 
 export interface LocaleReviewRequestedToChangesRequestedTransitionHistoryEvent
   extends LocaleTransitionHistoryEventBase {
@@ -192,6 +241,7 @@ export interface LocaleReviewRequestedToChangesRequestedTransitionHistoryEvent
   readonly to: 'changes_requested';
   readonly sourceRevision: string;
   readonly humanApproval?: never;
+  readonly suppliedArtifactApproval?: never;
 }
 
 export interface LocaleReviewRequestedToStaleTransitionHistoryEvent
@@ -200,6 +250,7 @@ export interface LocaleReviewRequestedToStaleTransitionHistoryEvent
   readonly to: 'stale';
   readonly sourceRevision: string;
   readonly humanApproval?: never;
+  readonly suppliedArtifactApproval?: never;
 }
 
 export interface LocaleChangesRequestedToDraftTransitionHistoryEvent
@@ -208,6 +259,7 @@ export interface LocaleChangesRequestedToDraftTransitionHistoryEvent
   readonly to: 'draft';
   readonly sourceRevision: string;
   readonly humanApproval?: never;
+  readonly suppliedArtifactApproval?: never;
 }
 
 export interface LocaleChangesRequestedToStaleTransitionHistoryEvent
@@ -216,6 +268,7 @@ export interface LocaleChangesRequestedToStaleTransitionHistoryEvent
   readonly to: 'stale';
   readonly sourceRevision: string;
   readonly humanApproval?: never;
+  readonly suppliedArtifactApproval?: never;
 }
 
 export interface LocaleApprovedToStaleTransitionHistoryEvent
@@ -224,6 +277,7 @@ export interface LocaleApprovedToStaleTransitionHistoryEvent
   readonly to: 'stale';
   readonly sourceRevision: string;
   readonly humanApproval?: never;
+  readonly suppliedArtifactApproval?: never;
 }
 
 export interface LocaleStaleToDraftTransitionHistoryEvent extends LocaleTransitionHistoryEventBase {
@@ -231,6 +285,7 @@ export interface LocaleStaleToDraftTransitionHistoryEvent extends LocaleTransiti
   readonly to: 'draft';
   readonly sourceRevision?: string;
   readonly humanApproval?: never;
+  readonly suppliedArtifactApproval?: never;
 }
 
 export type LocaleApprovedTransitionHistoryEvent =

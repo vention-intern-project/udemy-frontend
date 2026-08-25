@@ -34,6 +34,13 @@ const REVISION = /^sha256:[a-f0-9]{64}$/;
 const ID = /^(MLUX-C\d{4}|MLUX-003-S\d{3})$/;
 const OCCURRENCE = /^(MLUX-O\d{4}|MLUX-003-SO\d{3})$/;
 const DRAFT_37 = 'MLUX-001-DRAFT-37';
+export const SUPPLIED_REVIEW_ARTIFACT = Object.freeze({
+  artifactName: 'learnhub-multilingual-review-readable.md',
+  artifactSha256: 'ED5D3D613F21DE188DB0512B3701EA9C0C0A6D254FD1C77829FB3E61ECD3310C',
+  kind: 'user-authorized supplied review artifact',
+});
+export const SUPPLIED_REVIEW_PROTECTED_SOURCE_IDENTITY_SHA256 =
+  '24EA5BC9AFC65594F2A886005E646E16708BAD74FB395D5A02BF1EB975700CCA';
 const DRAFT_37_SOURCE_SHA256 = 'C9E208FC5F1AEF55E709290C67270B79E1CBCE4831E7FBCB20555AB5CF8A73AE';
 const SEMANTIC_IDENTITY_VERSION = 'unit-semantic-identity-v1';
 const DRAFT_37_SEMANTIC_IDENTITY_SHA256 =
@@ -183,6 +190,25 @@ function validHumanApproval(candidate) {
   );
 }
 
+function validSuppliedArtifactApproval(candidate) {
+  const authority = candidate?.approvalAuthority;
+  return (
+    authority &&
+    Object.keys(authority).sort().join(',') === 'artifactName,artifactSha256,kind' &&
+    authority.kind === SUPPLIED_REVIEW_ARTIFACT.kind &&
+    authority.artifactName === SUPPLIED_REVIEW_ARTIFACT.artifactName &&
+    authority.artifactSha256 === SUPPLIED_REVIEW_ARTIFACT.artifactSha256 &&
+    candidate.reviewerId === null &&
+    candidate.reviewedAt === null &&
+    !Object.hasOwn(candidate, 'reviewerName') &&
+    validInstant(candidate.approvalRecordedAt)
+  );
+}
+
+function validApproval(candidate) {
+  return validHumanApproval(candidate) || validSuppliedArtifactApproval(candidate);
+}
+
 function approvalRecord(candidate) {
   return {
     reviewerId: candidate.reviewerId,
@@ -223,6 +249,13 @@ function sameApprovalRecord(candidate, approval) {
 
 function lifecycleViolation(candidate) {
   if (!Array.isArray(candidate.history)) return 'history must be an array';
+  const suppliedArtifactApprovals = candidate.history.filter(
+    (event) =>
+      event?.suppliedArtifactApproval ||
+      event?.humanApproval?.approvalAuthority?.kind === SUPPLIED_REVIEW_ARTIFACT.kind,
+  );
+  if (suppliedArtifactApprovals.length > 1)
+    return 'supplied-artifact authority is reused in candidate history';
   let status = 'draft';
   let heldCandidate = null;
   const firstSourceRevision = candidate.history.find((event) => event?.type === 'source_revision');
@@ -289,8 +322,17 @@ function lifecycleViolation(candidate) {
         return candidate.status === 'approved' && event.to === 'approved'
           ? 'approved history does not match current protected source revision'
           : 'review history does not match current protected source revision';
-      if (event.to === 'approved' && !validHumanApproval(event.humanApproval))
-        return 'approved history lacks transition-specific human-native authority';
+      if (event.to === 'approved') {
+        if (event.suppliedArtifactApproval !== undefined) {
+          if (
+            event.humanApproval !== undefined ||
+            !validSuppliedArtifactApproval(event.suppliedArtifactApproval)
+          )
+            return 'approved history lacks transition-specific supplied-artifact authority';
+        } else if (!validHumanApproval(event.humanApproval)) {
+          return 'approved history lacks transition-specific human-native authority';
+        }
+      }
     }
     status = event.to;
   }
@@ -303,9 +345,15 @@ function lifecycleViolation(candidate) {
     const terminalApproval = [...candidate.history]
       .reverse()
       .find((event) => event?.type === 'transition' && event.to === 'approved');
-    if (!validHumanApproval(candidate) || candidate.verdict !== 'approved')
-      return 'approved candidate lacks internally consistent human-native authority';
-    if (!terminalApproval || !sameApprovalRecord(candidate, terminalApproval.humanApproval))
+    if (!validApproval(candidate) || candidate.verdict !== 'approved')
+      return candidate.approvalAuthority?.kind === SUPPLIED_REVIEW_ARTIFACT.kind
+        ? 'approved candidate lacks internally consistent supplied-artifact authority'
+        : 'approved candidate lacks internally consistent human-native authority';
+    const terminalApprovalRecord =
+      candidate.approvalAuthority?.kind === SUPPLIED_REVIEW_ARTIFACT.kind
+        ? terminalApproval?.suppliedArtifactApproval
+        : terminalApproval?.humanApproval;
+    if (!terminalApproval || !sameApprovalRecord(candidate, terminalApprovalRecord))
       return 'approved candidate does not match terminal approval history';
     if (terminalApproval.sourceRevision !== candidate.sourceRevision)
       return 'approved history does not match current protected source revision';
@@ -399,8 +447,12 @@ function validateCandidate(unit, locale, violations) {
     violations.push(`${unit.id}: ${locale} candidate source revision mismatch`);
   const history = lifecycleViolation(candidate);
   if (history) violations.push(`${unit.id}: ${locale} ${history}`);
-  if (candidate.status === 'approved' && !validHumanApproval(candidate)) {
-    violations.push(`${unit.id}: ${locale} approved candidate lacks human-native authority`);
+  if (candidate.status === 'approved' && !validApproval(candidate)) {
+    const authority =
+      candidate.approvalAuthority?.kind === SUPPLIED_REVIEW_ARTIFACT.kind
+        ? 'supplied-artifact'
+        : 'human-native';
+    violations.push(`${unit.id}: ${locale} approved candidate lacks ${authority} authority`);
   }
   const expectedPlaceholders = localePlaceholderContract(unit, locale);
   if (
@@ -862,6 +914,55 @@ export function transitionLocaleCandidate(candidate, nextStatus, options = {}) {
         nextCandidate: next.candidate,
         sourceRevision: candidate.sourceRevision,
         ...(nextStatus === 'approved' ? { humanApproval: options.humanApproval } : {}),
+      },
+    ],
+  };
+}
+
+export function approveSuppliedReviewArtifactCandidate(candidate, options = {}) {
+  if (candidate.status !== 'review_requested')
+    throw new Error(`${candidate.status} -> approved is forbidden`);
+  if (options.artifactSha256 !== SUPPLIED_REVIEW_ARTIFACT.artifactSha256)
+    throw new Error('supplied review artifact hash is not authorized');
+  if (
+    candidate.history.some(
+      (event) =>
+        event?.suppliedArtifactApproval ||
+        event?.humanApproval?.approvalAuthority?.kind === SUPPLIED_REVIEW_ARTIFACT.kind,
+    )
+  )
+    throw new Error('supplied review artifact authority cannot be reused');
+  const nextCandidate =
+    options.newCandidate === undefined ? candidate.candidate : options.newCandidate.trim();
+  if (!nonEmptyString(nextCandidate))
+    throw new Error('approved replacement requires a non-empty candidate');
+  const suppliedArtifactApproval = {
+    reviewerId: null,
+    reviewedAt: null,
+    approvalRecordedAt: options.approvalRecordedAt,
+    approvalAuthority: { ...SUPPLIED_REVIEW_ARTIFACT },
+  };
+  if (!validSuppliedArtifactApproval(suppliedArtifactApproval))
+    throw new Error('supplied review artifact approval is invalid');
+  return {
+    ...clearApprovalMetadata(candidate),
+    candidate: nextCandidate,
+    status: 'approved',
+    reviewerId: null,
+    reviewedAt: null,
+    approvalRecordedAt: options.approvalRecordedAt,
+    approvalAuthority: { ...SUPPLIED_REVIEW_ARTIFACT },
+    verdict: 'approved',
+    history: [
+      ...candidate.history,
+      {
+        type: 'transition',
+        from: 'review_requested',
+        to: 'approved',
+        previousCandidate: candidate.candidate,
+        nextCandidate,
+        sourceRevision: candidate.sourceRevision,
+        suppliedArtifactApproval,
       },
     ],
   };
