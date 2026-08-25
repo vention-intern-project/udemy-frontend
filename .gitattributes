@@ -1,2 +1,2 @@
 * text=auto eol=lf
-tests/shared/locale/fixtures/review-exchange/learnhub-multilingual-review-readable.md whitespace=-blank-at-eof
+tests/shared/locale/fixtures/review-exchange/learnhub-multilingual-review-readable.md -text whitespace=-blank-at-eof
