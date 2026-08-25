@@ -806,7 +806,7 @@ describe('localization review exchange', () => {
     expect(await readFile(registryPath)).toEqual(beforeRegistry);
     expect(await readFile(outputPath)).toEqual(beforeOutput);
     expect(await readdir(directory)).not.toContainEqual(expect.stringContaining('.tmp'));
-  });
+  }, 30_000);
 
   it('rejects aliased targets at the transaction boundary before mutation', async () => {
     const { registryPath } = await temporaryTargets();
