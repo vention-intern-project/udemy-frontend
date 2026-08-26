@@ -45,6 +45,7 @@ export interface CatalogBrowserMonitor {
   (): void;
   allowHttpFailure(identity: HttpFailureIdentity, occurrences?: number): void;
   allowRequestFailure(identity: RequestFailureIdentity, occurrences?: number): void;
+  allowOptionalRequestFailure(identity: RequestFailureIdentity): void;
 }
 
 export interface CatalogAdmissionFixtureOptions {
@@ -173,6 +174,7 @@ export async function installCatalogBrowserMonitor(page: Page): Promise<CatalogB
     responses.allow(identity, occurrences);
   assertClean.allowRequestFailure = (identity, occurrences = 1) =>
     requests.allow(identity, occurrences);
+  assertClean.allowOptionalRequestFailure = (identity) => requests.allowOptional(identity);
   return assertClean;
 }
 

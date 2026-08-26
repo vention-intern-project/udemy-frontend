@@ -57,6 +57,10 @@ export interface CartD03ControllerOptions {
   readonly returnTo?: string;
 }
 
+type CartNavigationAction = () => Promise<unknown>;
+
+const cartReadySurface = 'article[aria-busy]';
+
 export const cartAdmissionItem: CartD03Item = {
   id: 10,
   course_id: 7,
@@ -112,6 +116,19 @@ export async function routeCartApi(page: Page, handler: CartApiRouteHandler) {
 export async function installCartAdmissionRoutes(page: Page, handler: CartApiRouteHandler) {
   await page.route('**/me', (route) => fulfillCartJson(route, student));
   await routeCartApi(page, handler);
+}
+
+async function navigateToCartAndAwaitReadySurface(page: Page, action: CartNavigationAction) {
+  const cartResponse = page.waitForResponse((response) =>
+    response.request().method() === 'GET' &&
+    new URL(response.url()).pathname === '/cart' &&
+    response.status() >= 200 &&
+    response.status() < 300,
+  );
+  await action();
+  const failure = await (await cartResponse).finished();
+  if (failure !== null) throw new Error(`Cart read response did not finish: ${failure}`);
+  await page.locator(cartReadySurface).waitFor({ state: 'visible' });
 }
 
 export function createCartD03Controller(
@@ -185,7 +202,7 @@ export function createCartD03Controller(
       });
     },
     async navigateToCart() {
-      await page.goto('/cart');
+      await navigateToCartAndAwaitReadySurface(page, () => page.goto('/cart', { waitUntil: 'commit' }));
       if (options.returnTo === undefined) return;
       await page.evaluate((returnTo) => {
         window.history.replaceState(
@@ -194,7 +211,7 @@ export function createCartD03Controller(
           window.location.href,
         );
       }, options.returnTo);
-      await page.reload();
+      await navigateToCartAndAwaitReadySurface(page, () => page.reload({ waitUntil: 'commit' }));
     },
   };
 }
