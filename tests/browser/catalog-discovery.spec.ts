@@ -1,19 +1,21 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import {
-  createHttpFailureAccounting,
-  createRequestFailureAccounting,
-  findUnexpectedConsoleErrors,
-  type ConsoleErrorEvidence,
-  type RequestFailureIdentity,
-} from './support/visual-quality';
+  createCatalogResponse,
+  createPermittedCatalogCourse,
+  installAnonymousCatalogScenario,
+  installCatalogAdmissionRoutes,
+  installCatalogActionStateScenario,
+  installCatalogBrowserMonitor,
+  installCatalogCourseDetailScenario,
+  installCatalogHeroScenario,
+  installCatalogLocalizedVerticalSliceScenario,
+  installCatalogQuietCartScenario,
+  installCatalogRefreshScenario,
+} from './fixtures/catalog-discovery-fixture';
 
-interface CatalogPaginationFixture {
-  page?: number;
-  pages?: number;
-  total?: number;
-  has_next?: boolean;
-  has_previous?: boolean;
-}
+const response = createCatalogResponse;
+const permittedCourse = createPermittedCatalogCourse;
+const monitor = installCatalogBrowserMonitor;
 
 interface CatalogLocaleExpectation {
   readonly locale: 'ru' | 'uz';
@@ -53,45 +55,10 @@ interface EffectiveStructuralOverflow extends HorizontalBounds {
   readonly tagName: string;
 }
 
-function response(items: readonly unknown[] = [], pagination: CatalogPaginationFixture = {}) {
-  return JSON.stringify({
-    items,
-    page: 1,
-    page_size: 20,
-    total: items.length,
-    pages: items.length === 0 ? 0 : 1,
-    has_next: false,
-    has_previous: false,
-    ...pagination,
-  });
-}
-
-function permittedCourse(title = 'React') {
-  return {
-    id: 7,
-    title,
-    description: null,
-    price: '9.99',
-    currency: 'USD',
-    published_at: '2026-01-01T00:00:00Z',
-    instructor: { id: 1, name: 'Ada', surname: 'Lovelace' },
-    lessons: [{ id: 1, title: 'Intro' }],
-  };
-}
-
 function expectedCatalogHeroHeight(viewportWidth: number): number {
   if (viewportWidth <= 767) return 208;
   if (viewportWidth >= 1100) return 288;
   return Math.max(208, Math.min(viewportWidth * 0.22, 320));
-}
-
-interface CatalogBrowserMonitor {
-  (): void;
-  allowHttpFailure(
-    identity: { method: string; path: string; status: number },
-    occurrences?: number,
-  ): void;
-  allowRequestFailure(identity: RequestFailureIdentity, occurrences?: number): void;
 }
 
 interface ScreenshotPixelProbe {
@@ -100,51 +67,41 @@ interface ScreenshotPixelProbe {
   junctionSamples: number[][];
 }
 
-async function monitor(page: Page): Promise<CatalogBrowserMonitor> {
-  const pageErrors: string[] = [];
-  const consoleErrors: ConsoleErrorEvidence[] = [];
-  const responses = createHttpFailureAccounting();
-  const requests = createRequestFailureAccounting();
-  page.on('console', (message) => {
-    if (message.type() === 'error')
-      consoleErrors.push({ text: message.text(), url: message.location().url });
+test('opens a published Catalog course through a successful Course Detail response', async ({
+  page,
+}) => {
+  const assertClean = await monitor(page);
+  assertClean.allowRequestFailure({
+    method: 'GET',
+    path: '/courses?page=1&page_size=20&sort=created_at',
+    errorText: 'net::ERR_ABORTED',
   });
-  page.on('pageerror', (error) => pageErrors.push(error.message));
-  page.on('response', (response) => {
-    responses.observe(response.request().method(), response.url(), response.status());
+  assertClean.allowRequestFailure({
+    method: 'GET',
+    path: '/courses/7',
+    errorText: 'net::ERR_ABORTED',
   });
-  page.on('requestfailed', (request) => {
-    requests.observe(request.method(), request.url(), request.failure()?.errorText ?? 'unknown');
-  });
-  const assertClean = (() => {
-    expect(pageErrors, 'unexpected browser page errors').toEqual([]);
-    expect(
-      findUnexpectedConsoleErrors(
-        consoleErrors,
-        responses.acceptedFailures(),
-        requests.acceptedFailures(),
-      ),
-      'unexpected browser console errors',
-    ).toEqual([]);
-    expect(responses.violations().errorResponses, 'unexpected HTTP error responses').toEqual([]);
-    expect(
-      responses.violations().unconsumedExpectedResponses,
-      'expected HTTP errors not observed',
-    ).toEqual([]);
-    expect(requests.violations().requestFailures, 'unexpected browser request failures').toEqual(
-      [],
-    );
-    expect(
-      requests.violations().unconsumedExpectedRequestFailures,
-      'expected browser request failures not observed',
-    ).toEqual([]);
-  }) as CatalogBrowserMonitor;
-  assertClean.allowHttpFailure = (identity, occurrences = 1) =>
-    responses.allow(identity, occurrences);
-  assertClean.allowRequestFailure = (identity, occurrences = 1) =>
-    requests.allow(identity, occurrences);
-  return assertClean;
-}
+  const course = permittedCourse();
+  await installCatalogAdmissionRoutes(page, { courses: [course] });
+  const detail = await installCatalogCourseDetailScenario(page, course);
+
+  await page.goto('/');
+  const courseLink = page.getByRole('link', { name: course.title });
+  await expect(courseLink).toHaveAttribute('href', `/courses/${course.id}`);
+  const detailResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'GET' &&
+      new URL(response.url()).pathname === `/courses/${course.id}` &&
+      response.status() === 200,
+  );
+  await courseLink.click();
+  await expect(page).toHaveURL(`/courses/${course.id}`);
+  await expect(page.getByRole('heading', { level: 1, name: course.title })).toBeVisible();
+  await detailResponse;
+  expect(detail.requests).not.toEqual([]);
+  expect(detail.requests).toEqual(expect.arrayContaining([`GET /courses/${course.id}`]));
+  assertClean();
+});
 
 test('renders a semantic full-width catalog hero at scrollable physical client edges', async ({
   page,
@@ -155,15 +112,7 @@ test('renders a semantic full-width catalog hero at scrollable physical client e
     path: '/courses?page=1&page_size=20&sort=created_at',
     errorText: 'net::ERR_ABORTED',
   });
-  const requests: string[] = [];
-  await page.route('**/courses**', async (route) => {
-    requests.push(route.request().url());
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: response([permittedCourse()]),
-    });
-  });
+  const { requests } = await installCatalogHeroScenario(page);
 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/');
@@ -1452,28 +1401,8 @@ test('keeps Catalog result geometry stable while changed Sort and price requests
     path: '/courses?page=1&page_size=20&sort=-created_at',
     errorText: 'net::ERR_ABORTED',
   });
-  const requests: string[] = [];
-  const courses = Array.from({ length: 20 }, (_, index) => ({
-    ...permittedCourse(`React ${index + 1}`),
-    id: index + 1,
-  }));
-  let deferNextResponse = false;
-  let releaseDeferredResponse: (() => void) | null = null;
-  await page.route('**/courses**', async (route) => {
-    requests.push(route.request().url());
-    if (deferNextResponse) {
-      deferNextResponse = false;
-      await new Promise<void>((resolve) => {
-        releaseDeferredResponse = resolve;
-      });
-      releaseDeferredResponse = null;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: response(courses, { page: 1, pages: 1 }),
-    });
-  });
+  const refreshScenario = await installCatalogRefreshScenario(page);
+  const { requests } = refreshScenario;
   const capture = () =>
     page.evaluate(() => {
       const box = (selector: string) => {
@@ -1548,19 +1477,17 @@ test('keeps Catalog result geometry stable while changed Sort and price requests
               : trigger.getBoundingClientRect().top + window.scrollY - 96,
         });
       }, position);
-    deferNextResponse = true;
+    refreshScenario.deferNextResponse();
     return capture();
   };
   const captureDeferredRefresh = async () => {
-    await expect.poll(() => releaseDeferredResponse !== null).toBe(true);
+    await expect.poll(() => refreshScenario.hasDeferredResponse()).toBe(true);
     await expect(page.getByRole('heading', { level: 2 })).toHaveText('Loading course results…');
     await expect(page.getByRole('status', { name: 'Catalog refresh status' })).toHaveText('');
     return capture();
   };
   const settleRefresh = async () => {
-    const release = releaseDeferredResponse;
-    if (!release) throw new Error('Expected a deferred catalog response.');
-    release();
+    refreshScenario.releaseDeferredResponse();
     await expect(page.locator('[data-part="course-card"]')).toHaveCount(20);
     await expect(page.locator('[data-part="catalog-discovery-results"]')).toHaveAttribute(
       'aria-busy',
@@ -1628,7 +1555,7 @@ test('keeps Catalog result geometry stable while changed Sort and price requests
   await expect(maximum).toBeFocused();
   await expect(page).toHaveURL(priceUrlBeforeApply);
   expect(requests).toHaveLength(requestCountBeforePriceApply);
-  expect(releaseDeferredResponse).toBeNull();
+  expect(refreshScenario.hasDeferredResponse()).toBe(false);
 
   await trigger.focus();
   await expect(trigger).toBeFocused();
@@ -1797,22 +1724,7 @@ test('keeps anonymous published Catalog links semantic and contained across the 
     },
     20,
   );
-  const mutationRequests: string[] = [];
-  page.on('request', (request) => {
-    if (request.method() === 'POST' || request.method() === 'DELETE') {
-      mutationRequests.push(`${request.method()} ${new URL(request.url()).pathname}`);
-    }
-  });
-  await page.route('**/courses**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: response([
-        { ...permittedCourse('Anonymous free'), id: 8, price: '0.00' },
-        { ...permittedCourse('Anonymous paid'), id: 11, price: '29.99' },
-      ]),
-    });
-  });
+  const { mutationRequests } = await installAnonymousCatalogScenario(page);
 
   for (const width of [320, 390, 767, 768, 1024, 1099, 1100, 1279, 1280, 1440]) {
     await page.setViewportSize({ width, height: 900 });
@@ -3388,52 +3300,7 @@ test('renders the DD-174 quiet cart state and Details disclosure without changin
     total: 1,
     pages: 1,
   });
-  await page.addInitScript(() => localStorage.setItem('learnhub.access-token', 'student-token'));
-  await page.route('**/me', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        email: 'student@example.test',
-        name: 'Student',
-        surname: 'One',
-        role: 'student',
-        birthday: null,
-        phone_number: null,
-        created_at: '2026-01-01T00:00:00Z',
-      }),
-    });
-  });
-  await page.route('**/cart', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        id: 1,
-        items: [
-          {
-            id: 11,
-            course_id: 7,
-            added_at: '2026-01-01T00:00:00Z',
-            course: { id: 7, title: 'React', price: '9.99', currency: 'USD' },
-          },
-        ],
-        total_price: '9.99',
-        currency: 'USD',
-        item_count: 1,
-      }),
-    });
-  });
-  await page.route('**/enrollments/my**', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: response() });
-  });
-  await page.route('**/courses**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: response([permittedCourse()]),
-    });
-  });
+  await installCatalogQuietCartScenario(page);
 
   await page.setViewportSize({ width: 1024, height: 900 });
   await page.goto('/');
@@ -3509,128 +3376,7 @@ test('renders the DD-045 CourseCard action and status system without changing ac
     errorText: 'net::ERR_ABORTED',
   });
   assertClean.allowRequestFailure({ method: 'GET', path: '/cart', errorText: 'net::ERR_ABORTED' });
-  const mutationRequests: string[] = [];
-  let addCourse7ToCart = false;
-  let releaseAddRequest!: () => void;
-  const addRequestGate = new Promise<void>((resolve) => {
-    releaseAddRequest = resolve;
-  });
-  page.on('request', (request) => {
-    const path = new URL(request.url()).pathname;
-    if (request.method() === 'POST' || request.method() === 'DELETE')
-      mutationRequests.push(`${request.method()} ${path}`);
-  });
-  await page.addInitScript(() => localStorage.setItem('learnhub.access-token', 'student-token'));
-  await page.route('**/me', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        email: 'student@example.test',
-        name: 'Student',
-        surname: 'One',
-        role: 'student',
-        birthday: null,
-        phone_number: null,
-        created_at: '2026-01-01T00:00:00Z',
-      }),
-    });
-  });
-  await page.route('**/cart**', async (route) => {
-    const path = new URL(route.request().url()).pathname;
-    if (path === '/cart/items') {
-      await addRequestGate;
-      addCourse7ToCart = true;
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          id: 13,
-          course_id: 7,
-          added_at: '2026-01-01T00:00:00Z',
-          course: { id: 7, title: 'Add course', price: '9.99', currency: 'USD' },
-        }),
-      });
-      return;
-    }
-    if (path !== '/cart') {
-      await route.fallback();
-      return;
-    }
-    const items = [
-      {
-        id: 12,
-        course_id: 10,
-        added_at: '2026-01-01T00:00:00Z',
-        course: { id: 10, title: 'Remove course', price: '9.99', currency: 'USD' },
-      },
-      ...(addCourse7ToCart
-        ? [
-            {
-              id: 13,
-              course_id: 7,
-              added_at: '2026-01-01T00:00:00Z',
-              course: { id: 7, title: 'Add course', price: '9.99', currency: 'USD' },
-            },
-          ]
-        : []),
-    ];
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        id: 1,
-        items,
-        total_price: addCourse7ToCart ? '19.98' : '9.99',
-        currency: 'USD',
-        item_count: items.length,
-      }),
-    });
-  });
-  await page.route('**/enrollments/my**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        items: [
-          {
-            id: 22,
-            user_id: 1,
-            course_id: 9,
-            status: 'active',
-            created_at: '2026-01-01T00:00:00Z',
-            updated_at: '2026-01-01T00:00:00Z',
-            course: {
-              id: 9,
-              title: 'Enrolled course',
-              description: null,
-              price: '9.99',
-              currency: 'USD',
-            },
-          },
-        ],
-        page: 1,
-        page_size: 100,
-        total: 1,
-        pages: 1,
-        has_next: false,
-        has_previous: false,
-      }),
-    });
-  });
-  await page.route('**/courses**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: response([
-        { ...permittedCourse('Add course'), id: 7, price: '9.99' },
-        { ...permittedCourse('Free course'), id: 8, price: '0.00' },
-        { ...permittedCourse('Enrolled course'), id: 9, price: '9.99' },
-        { ...permittedCourse('Remove course'), id: 10, price: '9.99' },
-        { ...permittedCourse('Draft course'), id: 11, published_at: null },
-      ]),
-    });
-  });
+  const scenario = await installCatalogActionStateScenario(page);
 
   await page.goto('/');
   const cardFor = (title: string) =>
@@ -3811,7 +3557,7 @@ test('renders the DD-045 CourseCard action and status system without changing ac
     addWidthBefore,
     1,
   );
-  expect(mutationRequests).toEqual(['POST /cart/items']);
+  expect(scenario.mutationRequests).toEqual(['POST /cart/items']);
   for (const width of [320, 390, 768]) {
     await page.setViewportSize({ width, height: 900 });
     const pendingLabel = await adding.evaluate((element) => {
@@ -3829,7 +3575,7 @@ test('renders the DD-045 CourseCard action and status system without changing ac
     expect(pendingLabel.clientWidth).toBeGreaterThan(0);
     expect(pendingLabel.scrollWidth).toBeLessThanOrEqual(pendingLabel.clientWidth);
   }
-  releaseAddRequest();
+  scenario.releaseAddRequest();
   const added = cardFor('Add course').getByRole('button', { name: 'Remove' });
   await expect(added).toBeVisible();
   expect(await added.evaluate((element) => element.getBoundingClientRect().width)).toBeCloseTo(
@@ -3839,7 +3585,7 @@ test('renders the DD-045 CourseCard action and status system without changing ac
   await remove.hover();
   await expect(remove).toHaveCSS('background-color', 'rgb(227, 222, 248)');
   await enrolled.click({ force: true });
-  expect(mutationRequests).toEqual(['POST /cart/items']);
+  expect(scenario.mutationRequests).toEqual(['POST /cart/items']);
 
   for (const width of [320, 390, 768, 1280]) {
     await page.setViewportSize({ width, height: 900 });
@@ -4636,44 +4382,7 @@ test('renders the D20 Catalog vertical slice in Russian and Uzbek without changi
     },
     4,
   );
-  const mutationRequests: string[] = [];
-  page.on('request', (request) => {
-    if (request.method() === 'POST' || request.method() === 'DELETE') {
-      mutationRequests.push(`${request.method()} ${new URL(request.url()).pathname}`);
-    }
-  });
-  await page.route('**/courses**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: response([
-        {
-          ...permittedCourse('React Fundamentals: Components'),
-          id: 8,
-          price: '0.00',
-          currency: 'UZS',
-          instructor: { id: 1, name: 'Samira', surname: 'Karimova' },
-          lessons: [
-            { id: 1, title: 'Intro' },
-            { id: 2, title: 'State' },
-            { id: 3, title: 'Effects' },
-          ],
-        },
-        {
-          ...permittedCourse('FastAPI and Async SQLAlchemy'),
-          id: 11,
-          price: '349000.00',
-          currency: 'UZS',
-          instructor: { id: 2, name: 'Nodira', surname: 'Yuldasheva' },
-          lessons: [
-            { id: 4, title: 'Setup' },
-            { id: 5, title: 'Models' },
-            { id: 6, title: 'Routes' },
-          ],
-        },
-      ]),
-    });
-  });
+  const { mutationRequests } = await installCatalogLocalizedVerticalSliceScenario(page);
 
   const expectations: readonly CatalogLocaleExpectation[] = [
     {

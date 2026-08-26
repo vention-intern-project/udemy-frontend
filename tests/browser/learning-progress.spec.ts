@@ -1,6 +1,13 @@
 import { Buffer } from 'node:buffer';
 
-import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
+import {
+  fulfillLearningJson,
+  installLearningAdmissionRoutes,
+  installLearningCompletionScenario,
+  installLearningStudent,
+  learningEmptyCart,
+} from './fixtures/learning-progress-fixture';
 
 const student = {
   email: 'student@example.test',
@@ -26,7 +33,6 @@ const enrollment = {
     currency: 'USD',
   },
 };
-const emptyCart = { id: 1, items: [], total_price: '0.00', currency: 'USD', item_count: 0 };
 
 interface LearningResidualBrowserCopy {
   readonly absentDescription: string;
@@ -128,28 +134,12 @@ function createValidPdfFixture(): Buffer {
 
 const VALID_PDF = createValidPdfFixture();
 
-async function json(route: Route, value: unknown, status = 200) {
-  await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value) });
-}
-
 test.beforeEach(async ({ page }) => {
-  await page.route(
-    (url) => url.pathname === '/cart' && url.search === '',
-    async (route) => {
-      const request = route.request();
-      expect(request.method()).toBe('GET');
-      expect(request.headers().authorization).toBe('Bearer student-token');
-      await json(route, emptyCart);
-    },
-  );
+  await installLearningAdmissionRoutes(page, { cart: learningEmptyCart });
 });
 
-async function installStudent(page: Page) {
-  await page.addInitScript(() => {
-    if (window.top !== window) return;
-    localStorage.setItem('learnhub.access-token', 'student-token');
-  });
-}
+const json = fulfillLearningJson;
+const installStudent = installLearningStudent;
 
 interface LessonMediaLifecycleProbe {
   readonly createdObjectUrls: string[];
@@ -632,64 +622,7 @@ test('keeps aggregate progress separate from fresh lesson state, dedupes action,
     failedResourcePaths: new Set(['/courses/7/lessons/12/complete']),
     abortedRequests: [expectedGetAbort('/cart', 4), expectedGetAbort('/enrollments/4', 4)],
   });
-  const requests: string[] = [];
-  let completeRequests = 0;
-  await page.route('**/*', async (route) => {
-    const request = route.request();
-    const url = new URL(request.url());
-    if (url.origin !== 'http://127.0.0.1:4179') return route.fallback();
-    if (url.pathname.startsWith('/media/'))
-      throw new Error('Media must not be requested by FE-011');
-    const isLearningApi =
-      url.pathname === '/me' ||
-      url.pathname === '/enrollments/4' ||
-      url.pathname === '/courses/7/progress' ||
-      url.pathname === '/courses/7/lessons' ||
-      url.pathname === '/courses/7/lessons/12/complete' ||
-      url.pathname === '/courses/7/lessons/12/incomplete';
-    if (!isLearningApi) return route.fallback();
-    if (url.pathname === '/me') return json(route, student);
-    if (url.pathname === '/enrollments/4') return json(route, enrollment);
-    if (url.pathname === '/courses/7/progress')
-      return json(route, {
-        course_id: 7,
-        completed_lessons: 1,
-        total_lessons: 2,
-        progress_percentage: 50,
-      });
-    if (url.pathname === '/courses/7/lessons' && request.method() === 'GET')
-      return json(route, {
-        items: [
-          {
-            id: 12,
-            title: 'First browser lesson',
-            lesson_type: 'text',
-            download_url: null,
-            description: null,
-            is_published: true,
-            created_at: '2026-01-01T00:00:00Z',
-            updated_at: '2026-01-01T00:00:00Z',
-          },
-        ],
-        page: 1,
-        page_size: 100,
-        total: 1,
-        pages: 1,
-        has_next: false,
-        has_previous: false,
-      });
-    if (url.pathname === '/courses/7/lessons/12/complete') {
-      requests.push(url.pathname);
-      completeRequests += 1;
-      if (completeRequests === 2) return json(route, { detail: 'private mutation failure' }, 500);
-      return json(route, { lesson_id: 12, completed: true, completed_at: '2026-07-26T00:00:00Z' });
-    }
-    if (url.pathname === '/courses/7/lessons/12/incomplete') {
-      requests.push(url.pathname);
-      return json(route, { lesson_id: 12, completed: false, completed_at: null });
-    }
-    throw new Error(`Unexpected request ${request.method()} ${url.pathname}`);
-  });
+  const { requests } = await installLearningCompletionScenario(page);
   await page.goto('/learning/enrollments/4');
   await expect(page.getByRole('heading', { name: 'Browser learning course' })).toBeVisible();
   await expect(page.getByText('Not completed', { exact: true })).toBeVisible();

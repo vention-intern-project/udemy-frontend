@@ -1,116 +1,25 @@
 import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
-import { installCatalogFixture } from './support/catalog-fixture';
 import {
-  createHttpFailureAccounting,
-  createRequestFailureAccounting,
-  findUnexpectedConsoleErrors,
-  type ConsoleErrorEvidence,
-  type HttpFailureAccounting,
-  type HttpFailureIdentity,
-  type RequestFailureAccounting,
-  type RequestFailureIdentity,
-} from './support/visual-quality';
+  assertAuthWorkflowRuntime,
+  authAdmissionController,
+  authLocalizedResidualController,
+  authWorkflowRuntimeEvidence,
+  authWorkflowReflowController,
+  fulfillAuthJson,
+  installAuthAdmissionRoutes,
+  installAuthWorkflowRuntime,
+} from './fixtures/auth-workflows-fixture';
+import { type HttpFailureIdentity, type RequestFailureIdentity } from './support/visual-quality';
 
-interface RuntimeEvidence {
-  pageErrors: string[];
-  consoleErrors: ConsoleErrorEvidence[];
-  http: HttpFailureAccounting;
-  requests: RequestFailureAccounting;
-}
-
-const runtimeEvidence = new WeakMap<Page, RuntimeEvidence>();
-
-const emptyLearningEnrollments = {
-  items: [],
-  page: 1,
-  page_size: 20,
-  total: 0,
-  pages: 0,
-  has_next: false,
-  has_previous: false,
-};
-
-const emptyCart = {
-  id: 1,
-  items: [],
-  total_price: '0.00',
-  currency: 'USD',
-  item_count: 0,
-};
+const runtimeEvidence = authWorkflowRuntimeEvidence;
 
 test.beforeEach(async ({ page }) => {
-  const evidence: RuntimeEvidence = {
-    pageErrors: [],
-    consoleErrors: [],
-    http: createHttpFailureAccounting(),
-    requests: createRequestFailureAccounting(),
-  };
-  runtimeEvidence.set(page, evidence);
-  page.on('pageerror', (error) => evidence.pageErrors.push(error.stack ?? error.message));
-  page.on('console', (message) => {
-    if (message.type() === 'error')
-      evidence.consoleErrors.push({ text: message.text(), url: message.location().url });
-  });
-  page.on('response', (response) => {
-    evidence.http.observe(response.request().method(), response.url(), response.status());
-  });
-  page.on('requestfailed', (request) => {
-    evidence.requests.observe(
-      request.method(),
-      request.url(),
-      request.failure()?.errorText ?? 'unknown',
-    );
-  });
-  await page.route(
-    (url) => url.pathname === '/enrollments/my' && url.search === '?page=1&page_size=20',
-    async (route) => {
-      const request = route.request();
-      expect(request.method()).toBe('GET');
-      expect(request.headers().authorization).toMatch(/^Bearer\s+\S+$/);
-      await fulfillJson(route, 200, emptyLearningEnrollments);
-    },
-  );
-  await page.route(
-    (url) => url.pathname === '/cart' && url.search === '',
-    async (route) => {
-      const request = route.request();
-      expect(request.method()).toBe('GET');
-      expect(request.headers().authorization).toMatch(/^Bearer\s+\S+$/);
-      await fulfillJson(route, 200, emptyCart);
-    },
-  );
-  await installCatalogFixture(page);
+  await installAuthWorkflowRuntime(page);
+  await installAuthAdmissionRoutes(page);
 });
 
 test.afterEach(async ({ page }) => {
-  const evidence = runtimeEvidence.get(page);
-  expect.soft(evidence?.pageErrors ?? [], 'uncaught browser errors').toEqual([]);
-  const unexpected = evidence
-    ? findUnexpectedConsoleErrors(
-        evidence.consoleErrors,
-        evidence.http.acceptedFailures(),
-        evidence.requests.acceptedFailures(),
-      )
-    : [];
-  expect.soft(unexpected, 'unexpected browser console errors').toEqual([]);
-  expect
-    .soft(evidence?.http.violations().errorResponses ?? [], 'unexpected HTTP error responses')
-    .toEqual([]);
-  expect
-    .soft(
-      evidence?.http.violations().unconsumedExpectedResponses ?? [],
-      'expected HTTP errors not observed',
-    )
-    .toEqual([]);
-  expect
-    .soft(evidence?.requests.violations().requestFailures ?? [], 'unexpected failed requests')
-    .toEqual([]);
-  expect
-    .soft(
-      evidence?.requests.violations().unconsumedExpectedRequestFailures ?? [],
-      'expected failed requests not observed',
-    )
-    .toEqual([]);
+  assertAuthWorkflowRuntime(page);
 });
 
 function allowHttpFailures(
@@ -144,13 +53,11 @@ function allowRequestFailures(
   );
 }
 
-function allowOptionalRequestFailure(page: Page, failure: RequestFailureIdentity) {
+export function allowOptionalRequestFailure(page: Page, failure: RequestFailureIdentity) {
   runtimeEvidence.get(page)?.requests.allowOptional(failure);
 }
 
-async function fulfillJson(route: Route, status: number, body: unknown) {
-  await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
-}
+const fulfillJson = fulfillAuthJson;
 
 async function expectNoHorizontalOverflow(page: Page) {
   const geometry = await page.evaluate(() => {
@@ -196,7 +103,7 @@ async function dispatchSameTickSubmits(page: Page) {
   });
 }
 
-async function navigateWithinApp(page: Page, path: string) {
+export async function navigateWithinApp(page: Page, path: string) {
   await page.evaluate((nextPath) => {
     window.history.pushState(
       { ...(window.history.state as object), key: `auth-browser-${Date.now()}` },
@@ -241,7 +148,7 @@ interface AuthResidualLocaleCopy {
   readonly resetTokenHelp: string;
 }
 
-const authResidualCopy: Readonly<Record<AuthResidualLocale, AuthResidualLocaleCopy>> = {
+export const authResidualCopy: Readonly<Record<AuthResidualLocale, AuthResidualLocaleCopy>> = {
   en: {
     continueLabel: 'Continue',
     createAccount: 'Create account',
@@ -289,7 +196,7 @@ const authResidualCopy: Readonly<Record<AuthResidualLocale, AuthResidualLocaleCo
   },
 };
 
-const workflowUi = {
+export const workflowUi = {
   signup: {
     path: '/signup',
     idle: 'Create account',
@@ -316,7 +223,7 @@ const workflowUi = {
   },
 } as const;
 
-async function fillWorkflow(page: Page, workflow: AuthWorkflow) {
+export async function fillWorkflow(page: Page, workflow: AuthWorkflow) {
   if (workflow === 'signup') {
     await page.getByLabel(/^Email/).fill('learner@example.com');
     await page.getByLabel(/^First name/).fill('Ada');
@@ -393,7 +300,7 @@ async function expectFocusedControlInVisualViewport(page: Page) {
   expect(geometry.bottom).toBeLessThanOrEqual(geometry.visibleBottom);
 }
 
-async function expectAllMainControlsReachableInVisualViewport(page: Page) {
+export async function expectAllMainControlsReachableInVisualViewport(page: Page) {
   const controls = page.locator('main input, main select, main button, main a');
   const count = await controls.count();
   expect(count).toBeGreaterThan(0);
@@ -409,7 +316,10 @@ async function expectAllMainControlsReachableInVisualViewport(page: Page) {
   }
 }
 
-async function expectEffectivePageScaleViewportRelation(page: Page, pageScaleFactor: number) {
+export async function expectEffectivePageScaleViewportRelation(
+  page: Page,
+  pageScaleFactor: number,
+) {
   const geometry = await page.evaluate(() => {
     const root = document.documentElement;
     const viewport = window.visualViewport;
@@ -486,18 +396,7 @@ for (const width of [320, 390, 768, 1280]) {
 test('uses the primary violet treatment for Login and Create account navigation links', async ({
   page,
 }) => {
-  await page.goto('/login');
-
-  for (const name of ['Forgot your password?', 'Create an account']) {
-    await expectTokenCss(page.getByRole('link', { name }), 'color', '--action-primary-bg');
-  }
-
-  await page.goto('/signup');
-  await expectTokenCss(
-    page.getByRole('main').getByRole('link', { name: 'Log in' }),
-    'color',
-    '--action-primary-bg',
-  );
+  await authAdmissionController('primary-navigation').run(page);
 });
 
 test('keeps auth panels physically centered with RTL document direction', async ({ page }) => {
@@ -1076,127 +975,13 @@ test('login rejects an external returnTo and falls back to the role home', async
 test('forgot password covers safe 422, offline retry, pending double-submit lock, and neutral success', async ({
   page,
 }) => {
-  allowHttpFailures(page, { method: 'POST', path: '/forgot-password', status: 422 });
-  let attempts = 0;
-  const successGate = createDeferred();
-  await page.route('**/forgot-password', async (route) => {
-    if (route.request().method() !== 'POST') return route.fallback();
-    attempts += 1;
-    if (attempts === 1) {
-      await fulfillJson(route, 422, {
-        detail: [
-          { loc: ['body', 'email'], msg: 'HOSTILE_FORGOT_EMAIL_422', type: 'value_error.email' },
-        ],
-      });
-      return;
-    }
-    if (attempts === 2) {
-      allowRouteAbort(page, route, 'net::ERR_INTERNET_DISCONNECTED');
-      await route.abort('internetdisconnected');
-      return;
-    }
-    await successGate.promise;
-    await fulfillJson(route, 200, { message: 'HOSTILE_PRIVATE_DELIVERY_DETAIL' });
-  });
-
-  await page.goto('/forgot-password');
-  await page.getByRole('button', { name: 'Continue' }).press('Enter');
-  await expect(page.getByLabel(/^Email/)).toBeFocused();
-  await expect(page.getByRole('alert')).toHaveCount(0);
-  expect(attempts).toBe(0);
-  await page.getByLabel(/^Email/).fill('person@example.com');
-  await page.getByLabel(/^Email/).press('Enter');
-  await expect(page.getByLabel(/^Email/)).toBeFocused();
-  await expect(page.getByRole('alert')).toHaveCount(0);
-  await expect(page.locator('#email-error')).toContainText('Enter a valid email address');
-  await expect(page.locator('body')).not.toContainText('HOSTILE_FORGOT_EMAIL_422');
-  await page.getByRole('button', { name: 'Continue' }).press('Enter');
-  await expect(page.getByRole('alert')).toContainText('offline');
-  await dispatchSameTickSubmits(page);
-  await expect(page.getByRole('button', { name: 'Submitting request...' })).toBeDisabled();
-  await expect(page.getByLabel(/^Email/)).toBeDisabled();
-  await expect.poll(() => attempts).toBe(3);
-  successGate.resolve();
-  const status = page.getByRole('status');
-  await expect(status).toContainText('If the account can use password recovery');
-  await expect(status).not.toContainText(
-    /email sent|delivery succeeded|HOSTILE_PRIVATE_DELIVERY_DETAIL/i,
-  );
-  expect(attempts).toBe(3);
+  await authAdmissionController('forgot-password').run(page);
 });
 
 test('reset covers missing token, safe 400/422, offline retry, pending double-submit lock, and success', async ({
   page,
 }) => {
-  allowHttpFailures(
-    page,
-    { method: 'POST', path: '/reset-password', status: 400 },
-    { method: 'POST', path: '/reset-password', status: 422 },
-  );
-  await page.goto('/reset-password');
-  await expect(page).toHaveURL(/\/forgot-password\?reason=missing-token$/);
-
-  let attempts = 0;
-  const successGate = createDeferred();
-  await page.route('**/reset-password', async (route) => {
-    if (route.request().method() !== 'POST') return route.fallback();
-    attempts += 1;
-    if (attempts === 1) {
-      await fulfillJson(route, 400, { detail: 'HOSTILE_RAW_RESET_DETAIL' });
-      return;
-    }
-    if (attempts === 2) {
-      await fulfillJson(route, 422, {
-        detail: [
-          {
-            loc: ['body', 'new_password'],
-            msg: 'HOSTILE_RESET_PASSWORD_422',
-            type: 'vendor_private_rule',
-          },
-          {
-            loc: ['body', 'internal'],
-            msg: 'HOSTILE_RESET_INTERNAL_422',
-            type: 'vendor_private_rule',
-          },
-        ],
-      });
-      return;
-    }
-    if (attempts === 3) {
-      allowRouteAbort(page, route, 'net::ERR_INTERNET_DISCONNECTED');
-      await route.abort('internetdisconnected');
-      return;
-    }
-    await successGate.promise;
-    await fulfillJson(route, 200, { message: 'ok' });
-  });
-  await page.goto('/reset-password?token=private-reset-token');
-  await expect(page.getByRole('main')).not.toContainText('private-reset-token');
-  await page.getByRole('button', { name: 'Reset password' }).press('Enter');
-  await expect(page.getByLabel(/^New password/)).toBeFocused();
-  await expect(page.getByRole('alert')).toHaveCount(0);
-  expect(attempts).toBe(0);
-
-  await page.getByLabel(/^New password/).fill('new password');
-  await page.getByLabel(/^Confirm new password/).fill('new password');
-  await page.getByLabel(/^Confirm new password/).press('Enter');
-  await expect(page.getByRole('alert')).toContainText('invalid or has expired');
-  await expect(page.getByRole('main')).not.toContainText('HOSTILE_RAW_RESET_DETAIL');
-  await page.getByRole('button', { name: 'Reset password' }).press('Enter');
-  await expect(page.getByLabel(/^New password/)).toBeFocused();
-  await expect(page.getByRole('alert')).toHaveCount(0);
-  await expect(page.locator('#password-error')).toContainText('Check this field and submit again');
-  await expect(page.getByRole('main')).not.toContainText(/HOSTILE_RESET_(PASSWORD|INTERNAL)_422/);
-  await page.getByRole('button', { name: 'Reset password' }).press('Enter');
-  await expect(page.getByRole('alert')).toContainText('offline');
-  await dispatchSameTickSubmits(page);
-  await expect(page.getByRole('button', { name: 'Resetting password...' })).toBeDisabled();
-  await expect(page.getByLabel(/^New password/)).toBeDisabled();
-  await expect.poll(() => attempts).toBe(4);
-  successGate.resolve();
-  await expect(page.getByText('Password reset complete')).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Log in with your new password' })).toBeVisible();
-  expect(attempts).toBe(4);
+  await authAdmissionController('reset-password').run(page);
 });
 
 for (const locale of ['en', 'ru', 'uz'] as const) {
@@ -1204,115 +989,9 @@ for (const locale of ['en', 'ru', 'uz'] as const) {
     page,
   }) => {
     test.slow();
-    const copy = authResidualCopy[locale];
-    let forgotWrites = 0;
-    let resetWrites = 0;
-    await page.route('**/forgot-password', async (route) => {
-      if (route.request().method() !== 'POST') return route.fallback();
-      forgotWrites += 1;
-      await fulfillJson(route, 200, { message: 'ok' });
-    });
-    await page.route('**/reset-password', async (route) => {
-      if (route.request().method() !== 'POST') return route.fallback();
-      resetWrites += 1;
-      await fulfillJson(route, 200, { message: 'ok' });
-    });
-
-    await page.goto('/login');
-    if (locale !== 'en') {
-      const languageSelector = page.getByRole('button', { name: 'Change language' });
-      await languageSelector.press('Enter');
-      await page
-        .getByRole('button', { name: locale === 'ru' ? 'Русский' : "O'zbek", exact: true })
-        .press('Enter');
-    }
-
-    const residualScenarios: readonly AuthViewportScenario[] = [
-      { label: 'default scale', pageScaleFactor: 1, widths: [320, 390, 768, 1280] },
-      { label: 'effective 200% page scale', pageScaleFactor: 2, widths: [1280] },
-    ];
-    for (const { pageScaleFactor, widths } of residualScenarios) {
-      for (const width of widths) {
-        await page.setViewportSize({ width, height: 900 });
-        const cdp = pageScaleFactor === 1 ? null : await page.context().newCDPSession(page);
-
-        await navigateWithinApp(page, '/login');
-        if (cdp) {
-          await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor });
-          await expectEffectivePageScaleViewportRelation(page, pageScaleFactor);
-        }
-        const loginMain = page.getByRole('main');
-        const forgotLink = loginMain.getByRole('link', { name: copy.forgotPassword });
-        const loginButton = loginMain.getByRole('button', { name: copy.logIn });
-        const createAccountLink = loginMain.getByRole('link', { name: copy.createAnAccount });
-        await expect(forgotLink).toBeVisible();
-        await expect(createAccountLink).toBeVisible();
-        await forgotLink.focus();
-        await expect(forgotLink).toBeFocused();
-        await forgotLink.press('Tab');
-        await expect(loginButton).toBeFocused();
-        await loginButton.press('Tab');
-        await expect(createAccountLink).toBeFocused();
-        await expectNoHorizontalOverflow(page);
-
-        await createAccountLink.press('Enter');
-        await expect(page).toHaveURL(/\/signup$/);
-        const signupMain = page.getByRole('main');
-        const signupLoginLink = signupMain.getByRole('link', { name: copy.logIn });
-        await expect(signupLoginLink).toBeVisible();
-        await expect(signupMain.getByRole('button', { name: copy.createAccount })).toBeVisible();
-        await expectNoHorizontalOverflow(page);
-
-        await signupLoginLink.press('Enter');
-        await expect(page).toHaveURL(/\/login$/);
-        const returnedLoginMain = page.getByRole('main');
-        await expect(returnedLoginMain).toBeFocused();
-        const returnedForgotLink = returnedLoginMain.getByRole('link', {
-          name: copy.forgotPassword,
-        });
-        await expect(returnedForgotLink).toHaveAttribute('href', '/forgot-password');
-        await returnedForgotLink.focus();
-        await expect(returnedForgotLink).toBeFocused();
-        await returnedForgotLink.press('Enter');
-        await expect(page).toHaveURL(/\/forgot-password$/);
-        const forgotMain = page.getByRole('main');
-        await expect(forgotMain.getByRole('button', { name: copy.continueLabel })).toBeVisible();
-        await expectNoHorizontalOverflow(page);
-
-        await navigateWithinApp(page, '/reset-password?token=localized-browser-token');
-        const resetMain = page.getByRole('main');
-        await expect(resetMain.getByText(copy.resetTokenHelp, { exact: true })).toBeVisible();
-        await expect(resetMain.getByRole('button', { name: copy.resetPassword })).toBeVisible();
-        if (cdp) await expectAllMainControlsReachableInVisualViewport(page);
-        await expectNoHorizontalOverflow(page);
-
-        if (cdp) {
-          await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 });
-          await cdp.detach();
-        }
-      }
-    }
-
-    await page.setViewportSize({ width: 390, height: 900 });
-    await navigateWithinApp(page, '/forgot-password?reason=missing-token');
-    await expect(
-      page.getByRole('main').getByText(copy.recoveryLink, { exact: true }),
-    ).toBeVisible();
-    await navigateWithinApp(page, '/forgot-password');
-    await page.locator('#email').fill('learner@example.com');
-    await page.getByRole('button', { name: copy.continueLabel }).press('Enter');
-    await expect(page.getByRole('main').getByRole('status')).toContainText(copy.recoveryChannel);
-
-    await navigateWithinApp(page, '/reset-password?token=localized-browser-token');
-    await page.locator('#password').fill('new password');
-    await page.locator('#passwordConfirmation').fill('new password');
-    await page.getByRole('button', { name: copy.resetPassword }).press('Enter');
-    await expect(page.getByRole('main').getByRole('status')).toContainText(copy.passwordUpdated);
-    expect({ forgotWrites, resetWrites }).toEqual({ forgotWrites: 1, resetWrites: 1 });
-    await expectNoHorizontalOverflow(page);
+    await authLocalizedResidualController.run(page, locale);
   });
 }
-
 const authViewportScenarios: readonly AuthViewportScenario[] = [
   { label: 'default scale', pageScaleFactor: 1, widths: [320, 390, 640, 768, 1280] },
   { label: 'effective 200% page scale', pageScaleFactor: 2, widths: [1280] },
@@ -1323,141 +1002,7 @@ for (const { label, pageScaleFactor, widths } of authViewportScenarios) {
     test(`all auth workflow states reflow without clipping at ${width}px (${label})`, async ({
       page,
     }) => {
-      allowHttpFailures(
-        page,
-        { method: 'POST', path: '/signup', status: 400 },
-        { method: 'POST', path: '/login', status: 401 },
-        { method: 'POST', path: '/forgot-password', status: 422 },
-        { method: 'POST', path: '/reset-password', status: 400 },
-      );
-      allowRequestFailures(
-        page,
-        { method: 'GET', path: '/cart', errorText: 'net::ERR_ABORTED', occurrences: 2 },
-        {
-          method: 'GET',
-          path: '/enrollments/my?page=1&page_size=20',
-          errorText: 'net::ERR_ABORTED',
-          occurrences: 2,
-        },
-      );
-      if (width === 768 && pageScaleFactor === 1) {
-        // Deliberate navigation after the successful 768px/default-scale pass can abort the in-flight decorative Learning empty-state image.
-        allowOptionalRequestFailure(page, {
-          method: 'GET',
-          path: '/src/pages/learning-list-page/assets/my-learning-empty-state-ui022.png',
-          errorText: 'net::ERR_ABORTED',
-        });
-      }
-      await page.setViewportSize({ width, height: 800 });
-      const cdp = pageScaleFactor === 1 ? null : await page.context().newCDPSession(page);
-      const workflows: AuthWorkflow[] = ['signup', 'login', 'forgot', 'reset'];
-      const attempts: Record<AuthWorkflow, number> = { signup: 0, login: 0, forgot: 0, reset: 0 };
-      const errorGates: Record<AuthWorkflow, ReturnType<typeof createDeferred>> = {
-        signup: createDeferred(),
-        login: createDeferred(),
-        forgot: createDeferred(),
-        reset: createDeferred(),
-      };
-
-      await page.route('**/me', (route) => fulfillJson(route, 200, profile));
-      for (const workflow of workflows) {
-        const ui = workflowUi[workflow];
-        await page.route(`**${ui.operation}`, async (route) => {
-          if (route.request().method() !== 'POST') return route.fallback();
-          attempts[workflow] += 1;
-          if (attempts[workflow] === 1) {
-            await errorGates[workflow].promise;
-            if (workflow === 'login') {
-              await fulfillJson(route, 401, { detail: 'RESPONSIVE_LOGIN_ERROR' });
-            } else if (workflow === 'forgot') {
-              await fulfillJson(route, 422, {
-                detail: [
-                  {
-                    loc: ['body', 'email'],
-                    msg: 'RESPONSIVE_FORGOT_ERROR',
-                    type: 'value_error.email',
-                  },
-                ],
-              });
-            } else {
-              await fulfillJson(route, 400, {
-                detail: `RESPONSIVE_${workflow.toUpperCase()}_ERROR`,
-              });
-            }
-            return;
-          }
-          await fulfillJson(
-            route,
-            200,
-            workflow === 'signup'
-              ? signupResponse('responsive-signup-token')
-              : workflow === 'login'
-                ? { access_token: 'responsive-login-token' }
-                : { message: 'ok' },
-          );
-        });
-      }
-
-      for (const [index, workflow] of workflows.entries()) {
-        if (index > 0) await page.evaluate(() => localStorage.clear());
-        const ui = workflowUi[workflow];
-        await page.goto(ui.path);
-        if (cdp) {
-          await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor });
-          await expectEffectivePageScaleViewportRelation(page, pageScaleFactor);
-          await expectAllMainControlsReachableInVisualViewport(page);
-        }
-
-        const submit = page.getByRole('button', { name: ui.idle });
-        const submitBox = await requiredBoundingBox(submit);
-        expect(submitBox.width).toBeGreaterThanOrEqual(44);
-        expect(submitBox.height).toBeGreaterThanOrEqual(44);
-        await submit.press('Enter');
-        const firstInvalid =
-          workflow === 'signup' || workflow === 'login' || workflow === 'forgot'
-            ? page.getByLabel(/^Email/)
-            : page.getByLabel(/^New password/);
-        await expect(firstInvalid).toBeFocused();
-        if (cdp) {
-          await firstInvalid.evaluate((control) =>
-            control.scrollIntoView({ behavior: 'instant', block: 'center', inline: 'center' }),
-          );
-          await expectFocusedControlInVisualViewport(page);
-        }
-        await expect(page.getByRole('alert')).toHaveCount(0);
-        await expectNoHorizontalOverflow(page);
-
-        await fillWorkflow(page, workflow);
-        await dispatchSameTickSubmits(page);
-        await expect(page.getByRole('button', { name: ui.pending })).toBeDisabled();
-        await expect.poll(() => attempts[workflow]).toBe(1);
-        await expectNoHorizontalOverflow(page);
-
-        errorGates[workflow].resolve();
-        if (workflow === 'forgot') {
-          await expect(page.getByLabel(/^Email/)).toBeFocused();
-          await expect(page.getByRole('alert')).toHaveCount(0);
-        } else {
-          await expect(page.getByRole('alert')).toBeVisible();
-        }
-        await expect(page.locator('main')).not.toContainText('RESPONSIVE_');
-        if (cdp) await expectAllMainControlsReachableInVisualViewport(page);
-        await expectNoHorizontalOverflow(page);
-
-        await page.getByRole('button', { name: ui.idle }).press('Enter');
-        if (workflow === 'signup' || workflow === 'login') {
-          await expect(page.getByRole('heading', { name: 'My learning' })).toBeVisible();
-        } else if (workflow === 'forgot') {
-          await expect(page.getByRole('status')).toContainText(
-            'If the account can use password recovery',
-          );
-        } else {
-          await expect(page.getByText('Password reset complete')).toBeVisible();
-        }
-        expect(attempts[workflow]).toBe(2);
-        await expectNoHorizontalOverflow(page);
-      }
-      await cdp?.detach();
+      await authWorkflowReflowController.run(page, { label, pageScaleFactor, width });
     });
   }
 }
