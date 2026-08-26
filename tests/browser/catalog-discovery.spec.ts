@@ -2451,8 +2451,18 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   await headerSearch.press('Enter');
   await expect(page).toHaveURL(/search_query=JavaScript&min_price=5&sort=title/);
   await headerSearch.press('Enter');
+  const restoredTypeScriptResponse = page.waitForResponse(
+    (catalogResponse) =>
+      catalogResponse.request().method() === 'GET' &&
+      new URL(catalogResponse.url()).pathname === '/courses' &&
+      new URL(catalogResponse.url()).search ===
+        '?page=1&page_size=20&search_query=TypeScript&min_price=5&sort=title' &&
+      catalogResponse.status() >= 200 &&
+      catalogResponse.status() < 300,
+  );
   await page.goBack();
   await expect(headerSearch).toHaveValue('TypeScript');
+  await (await restoredTypeScriptResponse).finished();
   await page.goForward();
   await expect(headerSearch).toHaveValue('JavaScript');
   const minimum = filters.getByLabel('Min price');

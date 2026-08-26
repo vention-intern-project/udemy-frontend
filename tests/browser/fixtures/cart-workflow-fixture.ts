@@ -1,4 +1,4 @@
-import { type Page, type Request, type Route } from '@playwright/test';
+import { type Page, type Request, type Response, type Route } from '@playwright/test';
 
 const student = {
   email: 'student@example.test',
@@ -96,6 +96,17 @@ export function isCartApiPath(pathname: string): boolean {
   return pathname === '/cart' || pathname === '/cart/items/7';
 }
 
+export function isSuccessfulCartReadResponse(response: Response): boolean {
+  const request = response.request();
+  return (
+    request.method() === 'GET' &&
+    new URL(response.url()).pathname === '/cart' &&
+    response.status() >= 200 &&
+    response.status() < 300 &&
+    request.resourceType() !== 'document'
+  );
+}
+
 function cartApiRequest(request: Request): CartApiRequest | null {
   const url = new URL(request.url());
   if (request.resourceType() === 'document' || !isCartApiPath(url.pathname)) return null;
@@ -119,12 +130,7 @@ export async function installCartAdmissionRoutes(page: Page, handler: CartApiRou
 }
 
 async function navigateToCartAndAwaitReadySurface(page: Page, action: CartNavigationAction) {
-  const cartResponse = page.waitForResponse((response) =>
-    response.request().method() === 'GET' &&
-    new URL(response.url()).pathname === '/cart' &&
-    response.status() >= 200 &&
-    response.status() < 300,
-  );
+  const cartResponse = page.waitForResponse(isSuccessfulCartReadResponse);
   await action();
   const failure = await (await cartResponse).finished();
   if (failure !== null) throw new Error(`Cart read response did not finish: ${failure}`);
@@ -202,7 +208,9 @@ export function createCartD03Controller(
       });
     },
     async navigateToCart() {
-      await navigateToCartAndAwaitReadySurface(page, () => page.goto('/cart', { waitUntil: 'commit' }));
+      await navigateToCartAndAwaitReadySurface(page, () =>
+        page.goto('/cart', { waitUntil: 'commit' }),
+      );
       if (options.returnTo === undefined) return;
       await page.evaluate((returnTo) => {
         window.history.replaceState(

@@ -8,9 +8,11 @@ const publicCommandManifestPath = 'package.json';
 const publicCommandName = 'test:visual-admission';
 const publicCommandValue = 'node scripts/quality/visual-admission.mjs';
 function assertPublicCommandBinding(manifest) {
-  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) throw new Error('Malformed public command manifest.');
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest))
+    throw new Error('Malformed public command manifest.');
   const scripts = manifest.scripts;
-  if (!scripts || typeof scripts !== 'object' || Array.isArray(scripts)) throw new Error('Malformed public command manifest scripts.');
+  if (!scripts || typeof scripts !== 'object' || Array.isArray(scripts))
+    throw new Error('Malformed public command manifest scripts.');
   if (scripts[publicCommandName] !== publicCommandValue)
     throw new Error(`Public command mapping must be ${publicCommandName}=${publicCommandValue}.`);
 }
@@ -18,20 +20,55 @@ assertPublicCommandBinding(JSON.parse(readFileSync(join(root, publicCommandManif
 const widths = [320, 390, 617, 767, 768, 895, 1100, 1280, 1440];
 const locales = ['en', 'ru', 'uz'];
 const zoomWidths = [320, 768, 1280];
-const cartShards = ['root', 'course', 'signup', 'login', 'forgot', 'reset', 'learning', 'enrollment', 'enrollment-ai', 'ai', 'instructor', 'instructor-edit', 'instructor-enrollments', 'lesson-edit', 'malformed-empty', 'malformed-relative', 'external', 'self', 'clear'];
-const contexts = [
-  ['M01', 'completion-ready', locales], ['M02', 'anonymous-catalog', locales], ['M02', 'course-detail-success', locales],
-  ['M03', 'hero-price-sort', locales], ['M04', 'forgot-back-link', locales], ['M05', 'empty-email-safe-error', locales],
-  ['M06', 'full-page-actions', locales], ['M06', 'full-page-menu', locales], ['M06', 'mini-chat', ['en']],
-  ...cartShards.slice(0, -1).map((key) => ['M07', `return-${key}`, locales]),
-  ['M08', 'clear-confirmation', locales], ['M08', 'clear-pending', ['en']], ['M09', 'public-catalog-visibility', locales],
+const cartShards = [
+  'root',
+  'course',
+  'signup',
+  'login',
+  'forgot',
+  'reset',
+  'learning',
+  'enrollment',
+  'enrollment-ai',
+  'ai',
+  'instructor',
+  'instructor-edit',
+  'instructor-enrollments',
+  'lesson-edit',
+  'malformed-empty',
+  'malformed-relative',
+  'external',
+  'self',
+  'clear',
 ];
-const cells = contexts.flatMap(([matrix, scenario, supportedLocales]) => supportedLocales.flatMap((locale) => [
-  ...widths.map((width) => [matrix, scenario, locale, width, 100]),
-  ...zoomWidths.map((width) => [matrix, scenario, locale, width, 200]),
-].map((parts) => parts.join('--'))));
+const contexts = [
+  ['M01', 'completion-ready', locales],
+  ['M02', 'anonymous-catalog', locales],
+  ['M02', 'course-detail-success', locales],
+  ['M03', 'hero-price-sort', locales],
+  ['M04', 'forgot-back-link', locales],
+  ['M05', 'empty-email-safe-error', locales],
+  ['M06', 'full-page-actions', locales],
+  ['M06', 'full-page-menu', locales],
+  ['M06', 'mini-chat', ['en']],
+  ...cartShards.slice(0, -1).map((key) => ['M07', `return-${key}`, locales]),
+  ['M08', 'clear-confirmation', locales],
+  ['M08', 'clear-pending', ['en']],
+  ['M09', 'public-catalog-visibility', locales],
+];
+const cells = contexts.flatMap(([matrix, scenario, supportedLocales]) =>
+  supportedLocales.flatMap((locale) =>
+    [
+      ...widths.map((width) => [matrix, scenario, locale, width, 100]),
+      ...zoomWidths.map((width) => [matrix, scenario, locale, width, 200]),
+    ].map((parts) => parts.join('--')),
+  ),
+);
 const cellSet = new Set(cells);
-if (cellSet.size !== cells.length) throw new Error(`canonical screenshot inventory contains duplicates: total=${cells.length} unique=${cellSet.size}`);
+if (cellSet.size !== cells.length)
+  throw new Error(
+    `canonical screenshot inventory contains duplicates: total=${cells.length} unique=${cellSet.size}`,
+  );
 const configs = {
   M01: 'm01-learning.config.ts',
   M02: 'm02-catalog.config.ts',
@@ -44,7 +81,10 @@ const configs = {
   M09: 'm02-catalog.config.ts',
 };
 const declaredShards = [
-  { config: 'm01-learning.config.ts' }, { config: 'm02-catalog.config.ts' }, { config: 'm04-auth.config.ts' }, { config: 'm06-ai.config.ts' },
+  { config: 'm01-learning.config.ts' },
+  { config: 'm02-catalog.config.ts' },
+  { config: 'm04-auth.config.ts' },
+  { config: 'm06-ai.config.ts' },
   ...cartShards.map((cartShard) => ({ config: 'm07-cart.config.ts', cartShard })),
 ];
 
@@ -54,7 +94,12 @@ function fail(message) {
 }
 
 function parseArguments(argv) {
-  const parsed = { list: false, screenshot: undefined, runId: undefined, screenshotMode: 'canonical' };
+  const parsed = {
+    list: false,
+    screenshot: undefined,
+    runId: undefined,
+    screenshotMode: 'canonical',
+  };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === '--list') {
@@ -71,10 +116,16 @@ function parseArguments(argv) {
       parsed[key] = value;
     } else throw new Error(`unknown argument ${argument}`);
   }
-  if (parsed.list && (parsed.screenshot || parsed.runId || parsed.screenshotMode === 'full')) throw new Error('--list cannot be combined with run options');
-  if (parsed.screenshot && parsed.screenshotMode === 'full') throw new Error('--screenshot cannot be combined with --full-screenshots');
-  if (parsed.screenshot && !cellSet.has(parsed.screenshot)) throw new Error(`unknown or malformed canonical screenshot name: ${parsed.screenshot}`);
-  if (parsed.runId && !/^[A-Za-z0-9][A-Za-z0-9._-]{2,79}$/.test(parsed.runId)) throw new Error('--run-id must be 3-80 ASCII letters, digits, dots, underscores, or hyphens and begin with an alphanumeric character');
+  if (parsed.list && (parsed.screenshot || parsed.runId || parsed.screenshotMode === 'full'))
+    throw new Error('--list cannot be combined with run options');
+  if (parsed.screenshot && parsed.screenshotMode === 'full')
+    throw new Error('--screenshot cannot be combined with --full-screenshots');
+  if (parsed.screenshot && !cellSet.has(parsed.screenshot))
+    throw new Error(`unknown or malformed canonical screenshot name: ${parsed.screenshot}`);
+  if (parsed.runId && !/^[A-Za-z0-9][A-Za-z0-9._-]{2,79}$/.test(parsed.runId))
+    throw new Error(
+      '--run-id must be 3-80 ASCII letters, digits, dots, underscores, or hyphens and begin with an alphanumeric character',
+    );
   return parsed;
 }
 
@@ -86,12 +137,22 @@ function shardFor(cell) {
   const [matrix, scenario] = cell.split('--');
   const config = configs[matrix];
   if (!config) throw new Error(`no owning shard for ${cell}`);
-  return { config, cartShard: matrix === 'M07' ? scenario.replace(/^return-/, '') : matrix === 'M08' ? 'clear' : undefined };
+  return {
+    config,
+    cartShard:
+      matrix === 'M07' ? scenario.replace(/^return-/, '') : matrix === 'M08' ? 'clear' : undefined,
+  };
 }
 
 function run(command, args, environment) {
   return new Promise((resolveRun, rejectRun) => {
-    const child = spawn(command, args, { cwd: root, env: environment, stdio: 'inherit', shell: false, windowsHide: true });
+    const child = spawn(command, args, {
+      cwd: root,
+      env: environment,
+      stdio: 'inherit',
+      shell: false,
+      windowsHide: true,
+    });
     const stop = () => {
       // Only the exact child PID created by this command is signalled. We do
       // not adopt or terminate a process tree whose provenance is ambiguous.
@@ -104,7 +165,8 @@ function run(command, args, environment) {
       process.off('SIGINT', stop);
       process.off('SIGTERM', stop);
       if (code === 0 && !signal) resolveRun();
-      else rejectRun(new Error(`${command} exited code=${code ?? 'null'} signal=${signal ?? 'none'}`));
+      else
+        rejectRun(new Error(`${command} exited code=${code ?? 'null'} signal=${signal ?? 'none'}`));
     });
   });
 }
@@ -129,41 +191,108 @@ async function main() {
     for (let index = 0; index < declaredShards.length; index += 1) {
       const shard = declaredShards[index];
       try {
-        await run(process.execPath, ['-e', `process.exit(${index === 1 || index === declaredShards.length - 1 ? 1 : 0})`], process.env);
+        await run(
+          process.execPath,
+          ['-e', `process.exit(${index === 1 || index === declaredShards.length - 1 ? 1 : 0})`],
+          process.env,
+        );
       } catch (error) {
-        failures.push(`${shard.config}${shard.cartShard ? `:${shard.cartShard}` : ''}: ${error instanceof Error ? error.message : String(error)}`);
+        failures.push(
+          `${shard.config}${shard.cartShard ? `:${shard.cartShard}` : ''}: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     }
-    if (failures.length !== 2) throw new Error(`collect-all probe expected two failures, observed ${failures.length}`);
-    throw new Error(`shard failures (${failures.length}/${declaredShards.length}):\n${failures.join('\n')}`);
+    if (failures.length !== 2)
+      throw new Error(`collect-all probe expected two failures, observed ${failures.length}`);
+    throw new Error(
+      `shard failures (${failures.length}/${declaredShards.length}):\n${failures.join('\n')}`,
+    );
   }
   const runId = createRunId(options.runId);
   const runRoot = resolve(root, 'test-results', 'visual-admission', runId);
-  if (existsSync(runRoot)) throw new Error(`run id ${runId} already exists; refusing to reuse or delete output`);
+  if (existsSync(runRoot))
+    throw new Error(`run id ${runId} already exists; refusing to reuse or delete output`);
   mkdirSync(runRoot, { recursive: true });
-  const environment = { ...process.env, FE058_RUN_ID: runId, VISUAL_ADMISSION_SCREENSHOT_MODE: options.screenshotMode, ...(options.screenshot ? { VISUAL_ADMISSION_SCREENSHOT: options.screenshot } : {}) };
+  const environment = {
+    ...process.env,
+    FE058_RUN_ID: runId,
+    VISUAL_ADMISSION_SCREENSHOT_MODE: options.screenshotMode,
+    ...(options.screenshot ? { VISUAL_ADMISSION_SCREENSHOT: options.screenshot } : {}),
+  };
   if (options.screenshot) {
     const shard = shardFor(options.screenshot);
     if (shard.cartShard) environment.FE058_CART_SHARD = shard.cartShard;
-    await run(process.execPath, [join('node_modules', '@playwright', 'test', 'cli.js'), 'test', '--config', join('tests', 'browser', 'visual-admission', shard.config), '--workers=1', '--retries=0', '--reporter=line'], environment);
+    await run(
+      process.execPath,
+      [
+        join('node_modules', '@playwright', 'test', 'cli.js'),
+        'test',
+        '--config',
+        join('tests', 'browser', 'visual-admission', shard.config),
+        '--workers=1',
+        '--retries=0',
+        '--reporter=line',
+      ],
+      environment,
+    );
     const records = findNamedFiles(runRoot, `${options.screenshot}.json`);
-    if (records.length !== 1) throw new Error(`selected run must emit exactly one record for ${options.screenshot}; observed ${records.length}`);
+    if (records.length !== 1)
+      throw new Error(
+        `selected run must emit exactly one record for ${options.screenshot}; observed ${records.length}`,
+      );
     const record = JSON.parse(readFileSync(records[0], 'utf8'));
-    if (record.cellId !== options.screenshot || record.screenshot?.kind !== 'captured' || !record.screenshot.path || !record.screenshot.sha256) throw new Error(`selected record is malformed: ${options.screenshot}`);
+    if (
+      record.cellId !== options.screenshot ||
+      record.screenshot?.kind !== 'captured' ||
+      !record.screenshot.path ||
+      !record.screenshot.sha256
+    )
+      throw new Error(`selected record is malformed: ${options.screenshot}`);
     return;
   }
   const failures = [];
   for (const shard of declaredShards) {
-    const shardEnvironment = { ...environment, ...(shard.cartShard ? { FE058_CART_SHARD: shard.cartShard } : {}) };
+    const shardEnvironment = {
+      ...environment,
+      ...(shard.cartShard ? { FE058_CART_SHARD: shard.cartShard } : {}),
+    };
     try {
-      await run(process.execPath, [join('node_modules', '@playwright', 'test', 'cli.js'), 'test', '--config', join('tests', 'browser', 'visual-admission', shard.config), '--workers=1', '--retries=0', '--reporter=line'], shardEnvironment);
+      await run(
+        process.execPath,
+        [
+          join('node_modules', '@playwright', 'test', 'cli.js'),
+          'test',
+          '--config',
+          join('tests', 'browser', 'visual-admission', shard.config),
+          '--workers=1',
+          '--retries=0',
+          '--reporter=line',
+        ],
+        shardEnvironment,
+      );
     } catch (error) {
-      failures.push(`${shard.config}${shard.cartShard ? `:${shard.cartShard}` : ''}: ${error instanceof Error ? error.message : String(error)}`);
+      failures.push(
+        `${shard.config}${shard.cartShard ? `:${shard.cartShard}` : ''}: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
-  if (failures.length) throw new Error(`shard failures (${failures.length}/${declaredShards.length}):\n${failures.join('\n')}`);
-  const directories = ['m01', 'm02', 'm04', 'm06'].map((name) => join(runRoot, `${name}-${runId}`)).concat(cartShards.map((key) => join(runRoot, `m07-${key}-${runId}`)));
-  await run(process.execPath, [join('scripts', 'quality', 'visual-admission-aggregate.mjs'), ...directories], { ...environment, FE058_AGGREGATE_RUN_ID: runId, FE058_AGGREGATE_TERMINAL_PATH: join(runRoot, `runner-${runId}`, 'aggregate-terminal.json'), VISUAL_ADMISSION_SCREENSHOT_MODE: options.screenshotMode });
+  if (failures.length)
+    throw new Error(
+      `shard failures (${failures.length}/${declaredShards.length}):\n${failures.join('\n')}`,
+    );
+  const directories = ['m01', 'm02', 'm04', 'm06']
+    .map((name) => join(runRoot, `${name}-${runId}`))
+    .concat(cartShards.map((key) => join(runRoot, `m07-${key}-${runId}`)));
+  await run(
+    process.execPath,
+    [join('scripts', 'quality', 'visual-admission-aggregate.mjs'), ...directories],
+    {
+      ...environment,
+      FE058_AGGREGATE_RUN_ID: runId,
+      FE058_AGGREGATE_TERMINAL_PATH: join(runRoot, `runner-${runId}`, 'aggregate-terminal.json'),
+      VISUAL_ADMISSION_SCREENSHOT_MODE: options.screenshotMode,
+    },
+  );
 }
 
 main().catch((error) => fail(error instanceof Error ? error.message : String(error)));
