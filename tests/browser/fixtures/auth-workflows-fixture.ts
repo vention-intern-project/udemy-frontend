@@ -20,6 +20,12 @@ export interface AuthRuntimeEvidence {
 
 export const authWorkflowRuntimeEvidence = new WeakMap<Page, AuthRuntimeEvidence>();
 
+export function requireAuthWorkflowRuntimeEvidence(page: Page): AuthRuntimeEvidence {
+  const evidence = authWorkflowRuntimeEvidence.get(page);
+  if (!evidence) throw new Error('Auth workflow runtime evidence was not installed for this page.');
+  return evidence;
+}
+
 const emptyLearningEnrollments = {
   items: [],
   page: 1,
@@ -90,31 +96,29 @@ export async function installAuthAdmissionRoutes(page: Page) {
 }
 
 export function assertAuthWorkflowRuntime(page: Page) {
-  const evidence = authWorkflowRuntimeEvidence.get(page);
-  expect.soft(evidence?.pageErrors ?? [], 'uncaught browser errors').toEqual([]);
-  const unexpected = evidence
-    ? findUnexpectedConsoleErrors(
-        evidence.consoleErrors,
-        evidence.http.acceptedFailures(),
-        evidence.requests.acceptedFailures(),
-      )
-    : [];
+  const evidence = requireAuthWorkflowRuntimeEvidence(page);
+  expect.soft(evidence.pageErrors, 'uncaught browser errors').toEqual([]);
+  const unexpected = findUnexpectedConsoleErrors(
+    evidence.consoleErrors,
+    evidence.http.acceptedFailures(),
+    evidence.requests.acceptedFailures(),
+  );
   expect.soft(unexpected, 'unexpected browser console errors').toEqual([]);
   expect
-    .soft(evidence?.http.violations().errorResponses ?? [], 'unexpected HTTP error responses')
+    .soft(evidence.http.violations().errorResponses, 'unexpected HTTP error responses')
     .toEqual([]);
   expect
     .soft(
-      evidence?.http.violations().unconsumedExpectedResponses ?? [],
+      evidence.http.violations().unconsumedExpectedResponses,
       'expected HTTP errors not observed',
     )
     .toEqual([]);
   expect
-    .soft(evidence?.requests.violations().requestFailures ?? [], 'unexpected failed requests')
+    .soft(evidence.requests.violations().requestFailures, 'unexpected failed requests')
     .toEqual([]);
   expect
     .soft(
-      evidence?.requests.violations().unconsumedExpectedRequestFailures ?? [],
+      evidence.requests.violations().unconsumedExpectedRequestFailures,
       'expected failed requests not observed',
     )
     .toEqual([]);
@@ -180,18 +184,17 @@ function allowHttpFailures(
   page: Page,
   ...failures: Array<{ method: string; path: string; status: number }>
 ) {
-  failures.forEach((identity) => authWorkflowRuntimeEvidence.get(page)?.http.allow(identity, 1));
+  const evidence = requireAuthWorkflowRuntimeEvidence(page);
+  failures.forEach((identity) => evidence.http.allow(identity, 1));
 }
 
 function allowRouteAbort(page: Page, route: Route, errorText: string) {
   const request = route.request();
   const url = new URL(request.url());
-  authWorkflowRuntimeEvidence
-    .get(page)
-    ?.requests.allow(
-      { method: request.method(), path: `${url.pathname}${url.search}`, errorText },
-      1,
-    );
+  requireAuthWorkflowRuntimeEvidence(page).requests.allow(
+    { method: request.method(), path: `${url.pathname}${url.search}`, errorText },
+    1,
+  );
 }
 
 export const authAdmissionControllers: readonly AuthAdmissionScenarioController[] = [
@@ -356,7 +359,6 @@ interface AuthViewportScenario {
   readonly pageScaleFactor: number;
   readonly widths: readonly number[];
 }
-const runtimeEvidence = authWorkflowRuntimeEvidence;
 const fulfillJson = fulfillAuthJson;
 const expectNoHorizontalOverflow = expectAuthNoHorizontalOverflow;
 const requiredBoundingBox = requiredAuthBoundingBox;
@@ -559,13 +561,14 @@ function allowRequestFailures(
   page: Page,
   ...failures: Array<RequestFailureIdentity & { occurrences?: number }>
 ) {
+  const evidence = requireAuthWorkflowRuntimeEvidence(page);
   failures.forEach(({ occurrences = 1, ...identity }) =>
-    runtimeEvidence.get(page)?.requests.allow(identity, occurrences),
+    evidence.requests.allow(identity, occurrences),
   );
 }
 
 function allowOptionalRequestFailure(page: Page, failure: RequestFailureIdentity) {
-  runtimeEvidence.get(page)?.requests.allowOptional(failure);
+  requireAuthWorkflowRuntimeEvidence(page).requests.allowOptional(failure);
 }
 
 export async function runAuthLocalizedResidualScenario(page: Page, locale: AuthResidualLocale) {

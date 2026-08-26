@@ -82,9 +82,9 @@ export async function installLearningAdmissionRoutes(
     if (url.pathname === '/courses/7/progress') return fulfillLearningJson(route, options.progress);
     if (url.pathname === '/courses/7/lessons' && request.method() === 'GET')
       return fulfillLearningJson(route, options.lessons);
-    if (url.pathname === '/courses/7/lessons/12/complete')
+    if (url.pathname === '/courses/7/lessons/12/complete' && request.method() === 'POST')
       return fulfillLearningJson(route, options.completedLesson);
-    if (url.pathname === '/courses/7/lessons/12/incomplete')
+    if (url.pathname === '/courses/7/lessons/12/incomplete' && request.method() === 'POST')
       return fulfillLearningJson(route, options.incompleteLesson);
     throw new Error(`Unexpected Learning request ${request.method()} ${url.pathname}`);
   });
@@ -164,8 +164,8 @@ export async function installLearningCompletionScenario(
         has_next: false,
         has_previous: false,
       });
-    if (url.pathname === '/courses/7/lessons/12/complete') {
-      requests.push(url.pathname);
+    if (url.pathname === '/courses/7/lessons/12/complete' && request.method() === 'POST') {
+      requests.push(`${request.method()} ${url.pathname}`);
       completeRequests += 1;
       if (completeRequests === 2)
         return fulfillLearningJson(route, { detail: 'private mutation failure' }, 500);
@@ -175,8 +175,8 @@ export async function installLearningCompletionScenario(
         completed_at: '2026-07-26T00:00:00Z',
       });
     }
-    if (url.pathname === '/courses/7/lessons/12/incomplete') {
-      requests.push(url.pathname);
+    if (url.pathname === '/courses/7/lessons/12/incomplete' && request.method() === 'POST') {
+      requests.push(`${request.method()} ${url.pathname}`);
       return fulfillLearningJson(route, { lesson_id: 12, completed: false, completed_at: null });
     }
     throw new Error(`Unexpected request ${request.method()} ${url.pathname}`);

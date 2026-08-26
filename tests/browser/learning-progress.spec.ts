@@ -694,7 +694,7 @@ test('keeps aggregate progress separate from fresh lesson state, dedupes action,
     return lessonRowBox.y - (descriptionBox.y + descriptionBox.height);
   };
   const initialCourseFeedbackGap = await courseContentGap();
-  await expect.poll(() => requests).toEqual(['/courses/7/lessons/12/complete']);
+  await expect.poll(() => requests).toEqual(['POST /courses/7/lessons/12/complete']);
   await expect(page.getByText('Lesson marked complete.')).toHaveCount(0);
   const completedStatus = lessonRow.getByText('Completed', { exact: true });
   await expect(completedStatus).toBeVisible();
@@ -750,9 +750,9 @@ test('keeps aggregate progress separate from fresh lesson state, dedupes action,
   await expect(page.getByText('Not completed', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Complete lesson' })).toBeVisible();
   expect(requests).toEqual([
-    '/courses/7/lessons/12/complete',
-    '/courses/7/lessons/12/incomplete',
-    '/courses/7/lessons/12/complete',
+    'POST /courses/7/lessons/12/complete',
+    'POST /courses/7/lessons/12/incomplete',
+    'POST /courses/7/lessons/12/complete',
   ]);
   for (const width of [320, 390, 768, 1280]) {
     await page.setViewportSize({ width, height: 900 });

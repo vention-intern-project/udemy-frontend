@@ -71,16 +71,6 @@ test('opens a published Catalog course through a successful Course Detail respon
   page,
 }) => {
   const assertClean = await monitor(page);
-  assertClean.allowRequestFailure({
-    method: 'GET',
-    path: '/courses?page=1&page_size=20&sort=created_at',
-    errorText: 'net::ERR_ABORTED',
-  });
-  assertClean.allowRequestFailure({
-    method: 'GET',
-    path: '/courses/7',
-    errorText: 'net::ERR_ABORTED',
-  });
   const course = permittedCourse();
   await installCatalogAdmissionRoutes(page, { courses: [course] });
   const detail = await installCatalogCourseDetailScenario(page, course);

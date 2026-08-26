@@ -3,15 +3,13 @@ import {
   assertAuthWorkflowRuntime,
   authAdmissionController,
   authLocalizedResidualController,
-  authWorkflowRuntimeEvidence,
   authWorkflowReflowController,
   fulfillAuthJson,
   installAuthAdmissionRoutes,
   installAuthWorkflowRuntime,
+  requireAuthWorkflowRuntimeEvidence,
 } from './fixtures/auth-workflows-fixture';
 import { type HttpFailureIdentity, type RequestFailureIdentity } from './support/visual-quality';
-
-const runtimeEvidence = authWorkflowRuntimeEvidence;
 
 test.beforeEach(async ({ page }) => {
   await installAuthWorkflowRuntime(page);
@@ -26,15 +24,16 @@ function allowHttpFailures(
   page: Page,
   ...failures: Array<HttpFailureIdentity & { occurrences?: number }>
 ) {
+  const evidence = requireAuthWorkflowRuntimeEvidence(page);
   failures.forEach(({ occurrences = 1, ...identity }) =>
-    runtimeEvidence.get(page)?.http.allow(identity, occurrences),
+    evidence.http.allow(identity, occurrences),
   );
 }
 
 function allowRouteAbort(page: Page, route: Route, errorText: string) {
   const request = route.request();
   const url = new URL(request.url());
-  runtimeEvidence.get(page)?.requests.allow(
+  requireAuthWorkflowRuntimeEvidence(page).requests.allow(
     {
       method: request.method(),
       path: `${url.pathname}${url.search}`,
@@ -48,13 +47,14 @@ function allowRequestFailures(
   page: Page,
   ...failures: Array<RequestFailureIdentity & { occurrences?: number }>
 ) {
+  const evidence = requireAuthWorkflowRuntimeEvidence(page);
   failures.forEach(({ occurrences = 1, ...identity }) =>
-    runtimeEvidence.get(page)?.requests.allow(identity, occurrences),
+    evidence.requests.allow(identity, occurrences),
   );
 }
 
 export function allowOptionalRequestFailure(page: Page, failure: RequestFailureIdentity) {
-  runtimeEvidence.get(page)?.requests.allowOptional(failure);
+  requireAuthWorkflowRuntimeEvidence(page).requests.allowOptional(failure);
 }
 
 const fulfillJson = fulfillAuthJson;
