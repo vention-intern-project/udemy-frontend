@@ -255,7 +255,9 @@ describe('AppShell student cart query and presentation', () => {
         within(studentNavigation).getByRole('link', { name: catalog }).getAttribute('href'),
       ).toBe('/');
       expect(
-        within(studentNavigation).getByRole('link', { name: myLearning }).getAttribute('href'),
+        (await within(studentNavigation).findByRole('link', { name: myLearning })).getAttribute(
+          'href',
+        ),
       ).toBe('/learning');
       cleanup();
 
