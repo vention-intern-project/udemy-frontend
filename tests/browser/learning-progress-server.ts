@@ -10,7 +10,12 @@ export default async function startLearningProgressServer() {
     envFile: false,
     appType: 'spa',
     define: { 'import.meta.env.VITE_API_BASE_URL': learningProgressApiDefinition },
-    server: { host: '127.0.0.1', port: 4179, strictPort: true },
+    server: {
+      host: '127.0.0.1',
+      port: 4179,
+      strictPort: true,
+      watch: { ignored: ['**/plans/**', '**/test-results/**'] },
+    },
   });
   if (
     server.config.define?.['import.meta.env.VITE_API_BASE_URL'] !== learningProgressApiDefinition

@@ -1369,6 +1369,38 @@ test('keeps the Cart-style guarded completion action truthful and single-request
   expect(diagnostics.httpFailures).toEqual([]);
 });
 
+for (const activation of ['pointer', 'Enter', 'Space'] as const) {
+  test(`undoes a completed lesson by ${activation} as one API-018 write and retains focus`, async ({
+    page,
+  }) => {
+    await installLearningAdmissionRoutes(page, { cart: learningEmptyCart });
+    const controller = await installLearningCompletionScenario(page);
+    const diagnostics = captureRuntimeDiagnostics(page, {
+      abortedRequests: [expectedGetAbort('/enrollments/4', 1)],
+    });
+
+    await page.goto('/learning/enrollments/4');
+    const complete = page.getByRole('button', { name: 'Complete lesson' });
+    await complete.press('Enter');
+    const undo = page.getByRole('button', { name: 'Undo completion' });
+    await expect(undo).toBeFocused();
+
+    if (activation === 'pointer') await undo.click();
+    if (activation === 'Enter') await undo.press('Enter');
+    if (activation === 'Space') await undo.press('Space');
+
+    const restored = page.getByRole('button', { name: 'Complete lesson' });
+    await expect(restored).toBeFocused();
+    await expect(page.getByText('Lesson marked incomplete.')).toHaveCount(0);
+    expect(controller.requests).toEqual([
+      'POST /courses/7/lessons/12/complete',
+      'POST /courses/7/lessons/12/incomplete',
+    ]);
+    expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
+    expect(diagnostics.httpFailures).toEqual([]);
+  });
+}
+
 test('focuses the retry action after a retryable API-025 failure', async ({ page }) => {
   await installStudent(page);
   const diagnostics = captureRuntimeDiagnostics(page, {
