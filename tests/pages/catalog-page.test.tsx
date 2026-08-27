@@ -1975,7 +1975,9 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(priceChevron?.getAttribute('focusable')).toBeNull();
     expect(priceTrigger.getAttribute('aria-describedby')).toBeNull();
     expect(screen.queryByRole('group', { name: 'Price range' })).toBeNull();
-    await user.click(priceTrigger);
+    await act(async () => {
+      await user.click(priceTrigger);
+    });
     expect(priceTrigger.getAttribute('aria-expanded')).toBe('true');
     expect(priceTrigger.querySelector('[data-part="catalog-price-chevron"]')).toBe(priceChevron);
     const priceRange = screen.getByRole('group', { name: 'Price range' });
@@ -1988,12 +1990,16 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(screen.getByRole('spinbutton', { name: 'To' })).toBe(maximum);
     expect(minimum.labels?.[0]?.textContent).toBe('From');
     expect(maximum.labels?.[0]?.textContent).toBe('To');
-    fireEvent.change(minimum, { target: { value: '5' } });
-    fireEvent.change(maximum, { target: { value: '25' } });
+    await act(async () => {
+      fireEvent.change(minimum, { target: { value: '5' } });
+      fireEvent.change(maximum, { target: { value: '25' } });
+    });
     expect(screen.getByRole('button', { name: 'Done' })).toBeTruthy();
-    fireEvent.change(minimum, { target: { value: '' } });
-    fireEvent.change(maximum, { target: { value: '' } });
-    await user.click(priceTrigger);
+    await act(async () => {
+      fireEvent.change(minimum, { target: { value: '' } });
+      fireEvent.change(maximum, { target: { value: '' } });
+      await user.click(priceTrigger);
+    });
     await act(async () => {
       animationFrames.shift()?.(0);
     });
@@ -2119,12 +2125,16 @@ describe('CatalogPage public URL and pagination behavior', () => {
     await act(async () => {
       await user.click(screen.getByRole('button', { name: 'Back' }));
     });
-    await user.click(priceTrigger);
+    await act(async () => {
+      await user.click(priceTrigger);
+    });
     await waitFor(() => expect((screen.getByLabelText('From') as HTMLInputElement).value).toBe(''));
     await act(async () => {
       await user.click(screen.getByRole('button', { name: 'Forward' }));
     });
-    await user.click(priceTrigger);
+    await act(async () => {
+      await user.click(priceTrigger);
+    });
     await waitFor(() =>
       expect((screen.getByLabelText('From') as HTMLInputElement).value).toBe('5'),
     );
@@ -2152,7 +2162,9 @@ describe('CatalogPage public URL and pagination behavior', () => {
     const listbox = screen.getByRole('listbox', { name: 'Sort by options' });
     expect(sortTrigger.getAttribute('aria-expanded')).toBe('true');
 
-    fireEvent.click(within(listbox).getByRole('option', { name: 'Low to High' }));
+    await act(async () => {
+      fireEvent.click(within(listbox).getByRole('option', { name: 'Low to High' }));
+    });
     await waitFor(() =>
       expect(screen.getByLabelText('catalog location').textContent).toBe('/?sort=price'),
     );
@@ -2167,10 +2179,14 @@ describe('CatalogPage public URL and pagination behavior', () => {
       }),
     );
 
-    fireEvent.pointerEnter(sortTrigger, { pointerType: 'touch' });
-    fireEvent.click(sortTrigger);
+    await act(async () => {
+      fireEvent.pointerEnter(sortTrigger, { pointerType: 'touch' });
+      fireEvent.click(sortTrigger);
+    });
     expect(screen.getByRole('listbox', { name: 'Sort by options' })).toBeTruthy();
-    fireEvent.click(sortTrigger);
+    await act(async () => {
+      fireEvent.click(sortTrigger);
+    });
     expect(screen.queryByRole('listbox', { name: 'Sort by options' })).toBeNull();
   });
 
@@ -2271,7 +2287,9 @@ describe('CatalogPage public URL and pagination behavior', () => {
     renderCatalog(request, ['/'], 0, null, { withLocaleSwitchControl: true });
 
     await screen.findByRole('link', { name: 'React' });
-    await user.click(screen.getByRole('button', { name: 'Price' }));
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Price' }));
+    });
     const minimum = screen.getByLabelText('From');
     await act(async () => {
       await user.type(minimum, '-1');
@@ -2279,7 +2297,9 @@ describe('CatalogPage public URL and pagination behavior', () => {
     });
 
     expect(await screen.findByText('Enter a non-negative price.')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Use Russian catalog locale' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Use Russian catalog locale' }));
+    });
     expect(await screen.findByText('Введите неотрицательное значение цены.')).toBeTruthy();
     expect(screen.getByLabelText('От').getAttribute('aria-invalid')).toBe('true');
     expect(requests).toHaveLength(1);
@@ -2297,7 +2317,9 @@ describe('CatalogPage public URL and pagination behavior', () => {
     await screen.findByRole('link', { name: 'React' });
     const trigger = screen.getByRole('button', { name: 'Price' });
     expect(trigger.getAttribute('aria-describedby')).toBeNull();
-    await user.click(trigger);
+    await act(async () => {
+      await user.click(trigger);
+    });
     const minimum = screen.getByLabelText('From');
     const maximum = screen.getByLabelText('To');
     await act(async () => {
@@ -2320,10 +2342,16 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(screen.queryByRole('group', { name: 'Price range' })).toBeNull();
     await waitFor(() => expect(trigger).toBe(document.activeElement));
     expect(requests).toHaveLength(1);
-    await user.click(trigger);
-    await user.type(screen.getByLabelText('From'), '5');
-    await user.type(screen.getByLabelText('To'), '25');
-    await user.click(screen.getByRole('button', { name: 'Done' }));
+    await act(async () => {
+      await user.click(trigger);
+    });
+    const reopenedMinimum = await screen.findByLabelText('From');
+    const reopenedMaximum = screen.getByLabelText('To');
+    await act(async () => {
+      await user.type(reopenedMinimum, '5');
+      await user.type(reopenedMaximum, '25');
+      await user.click(screen.getByRole('button', { name: 'Done' }));
+    });
     await waitFor(() =>
       expect(screen.getByLabelText('catalog location').textContent).toBe(
         '/?min_price=5&max_price=25',
@@ -2342,7 +2370,9 @@ describe('CatalogPage public URL and pagination behavior', () => {
     renderCatalog(request, ['/']);
 
     await screen.findByRole('link', { name: 'React' });
-    await user.click(screen.getByRole('button', { name: 'Price' }));
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Price' }));
+    });
     const minimum = screen.getByLabelText('From') as HTMLInputElement;
     const maximum = screen.getByLabelText('To') as HTMLInputElement;
 
@@ -2411,7 +2441,9 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(document.getElementById(appliedDescriptionId ?? '')?.textContent).toBe(
       'From: 5, To: 10',
     );
-    await user.click(trigger);
+    await act(async () => {
+      await user.click(trigger);
+    });
     expect(requests).toHaveLength(1);
 
     await act(async () => {
@@ -2423,7 +2455,9 @@ describe('CatalogPage public URL and pagination behavior', () => {
       '/?search_query=React&min_price=5&max_price=10&sort=-price&page=3',
     );
 
-    await user.click(trigger);
+    await act(async () => {
+      await user.click(trigger);
+    });
     const reopenedMinimum = screen.getByLabelText('From');
     await act(async () => {
       await user.clear(reopenedMinimum);
@@ -2437,7 +2471,9 @@ describe('CatalogPage public URL and pagination behavior', () => {
     );
     await waitFor(() => expect(requests).toHaveLength(2));
 
-    await user.click(trigger);
+    await act(async () => {
+      await user.click(trigger);
+    });
     const reopenedMaximum = screen.getByLabelText('To');
     await act(async () => {
       await user.clear(reopenedMaximum);
@@ -2598,11 +2634,13 @@ describe('CatalogPage public URL and pagination behavior', () => {
     await act(async () => {
       await user.click(screen.getByRole('button', { name: 'Sort by: Oldest' }));
     });
-    fireEvent.click(
-      within(screen.getByRole('listbox', { name: 'Sort by options' })).getByRole('option', {
-        name: 'Low to High',
-      }),
-    );
+    await act(async () => {
+      fireEvent.click(
+        within(screen.getByRole('listbox', { name: 'Sort by options' })).getByRole('option', {
+          name: 'Low to High',
+        }),
+      );
+    });
 
     await waitFor(() =>
       expect(screen.getByLabelText('catalog location').textContent).toBe('/?sort=price'),
