@@ -149,10 +149,9 @@
     left: auto;
   }
   .legend {
-    position: absolute;
-    top: 50%;
-    left: 0;
-    transform: translateY(-50%);
+    position: static;
+    grid-column: 1 / -1;
+    transform: none;
   }
   .field {
     inline-size: 7.5rem;

@@ -301,8 +301,8 @@
     "translationUnits": 527,
     "sourceOccurrences": 750,
     "mergedDuplicateRows": 223,
-    "russianDrafts": 523,
-    "uzbekDrafts": 523,
+    "russianDrafts": 527,
+    "uzbekDrafts": 527,
     "draftStatus": "Draft",
     "englishPolicy": "Immutable source",
     "reviewProtocol": "Russian product owner + Uzbek native reviewer"

@@ -4214,6 +4214,22 @@ test('localizes the Price disclosure trigger and fields without changing respons
       await expect(minimum.locator('xpath=..').locator(':scope > label')).toBeVisible();
       await expect(maximum.locator('xpath=..').locator(':scope > label')).toBeVisible();
       await expect(page.getByRole('button', { name: expected.done })).toBeVisible();
+      if (width >= 768) {
+        const desktopDisclosureGeometry = await page
+          .getByRole('group', { name: expected.group })
+          .evaluate((fieldset) => {
+            const legend = fieldset.querySelector('legend');
+            const minimum = fieldset.querySelector('input[name="min_price"]');
+            if (!legend || !minimum) throw new Error('Price desktop layout targets are missing.');
+            return {
+              legend: legend.getBoundingClientRect().toJSON(),
+              minimum: minimum.getBoundingClientRect().toJSON(),
+            };
+          });
+        expect(desktopDisclosureGeometry.legend.bottom).toBeLessThanOrEqual(
+          desktopDisclosureGeometry.minimum.top + 1,
+        );
+      }
       const geometry = await page.evaluate<CatalogViewportGeometry>(() => ({
         width: window.innerWidth,
         documentWidth: document.documentElement.scrollWidth,

@@ -2577,6 +2577,7 @@ describe('canonical localization corpus engine', () => {
     next.namespace = 'catalog';
     next.key = 'priceTrigger';
     next.english = 'Price';
+    next.unitLifecycle = 'active';
     next.occurrences = [
       {
         id: 'MLUX-O0750',
