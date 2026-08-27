@@ -298,8 +298,8 @@
     }
   },
   "summary": {
-    "translationUnits": 527,
-    "sourceOccurrences": 750,
+    "translationUnits": 528,
+    "sourceOccurrences": 751,
     "mergedDuplicateRows": 223,
     "russianDrafts": 527,
     "uzbekDrafts": 527,
@@ -28793,6 +28793,54 @@
         "legacyReviewStatus": "Pending",
         "ownerTasks": ["FE-060"]
       }
+    },
+    {
+      "id": "MLUX-C0526",
+      "namespace": "cart",
+      "key": "clear",
+      "english": "Clear",
+      "sourceRevision": "sha256:0971eab6dfd9a69229a7a3ba1969e222b35a73f30261268a4fb5442de7624339",
+      "unitLifecycle": "active",
+      "occurrences": [
+        {
+          "id": "MLUX-O0754",
+          "context": "src/pages/cart-page/CartPage.tsx — populated Cart toolbar short visible clear label"
+        }
+      ],
+      "placeholdersByLocale": { "en": [], "ru": [], "uz": [] },
+      "renderingContract": null,
+      "pluralForms": null,
+      "locales": {
+        "ru": {
+          "candidate": "Очистить",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:0971eab6dfd9a69229a7a3ba1969e222b35a73f30261268a4fb5442de7624339",
+          "approvalAuthority": null
+        },
+        "uz": {
+          "candidate": "Tozalash",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:0971eab6dfd9a69229a7a3ba1969e222b35a73f30261268a4fb5442de7624339",
+          "approvalAuthority": null
+        }
+      },
+      "migrationProvenance": {
+        "legacyResourceStatus": "Draft",
+        "legacyReviewStatus": "Pending",
+        "ownerTasks": ["FE-065"]
+      }
     }
   ],
   "consumerGrammar": {
@@ -28820,13 +28868,13 @@
         "sourcePath": "pages/cart-page/CartPage.tsx",
         "functionName": "CartRecoveryAction",
         "bindingName": "t",
-        "sourceFingerprint": "sha256:5a488d119e2e3e626f252b12536a6b57c2a0bd4d965809f28105c676d53ddde3"
+        "sourceFingerprint": "sha256:76ee1a75e2b7c2eed6e2c76c6bfccd8a0a228f65cd09d83a52541848e6befa58"
       },
       {
         "sourcePath": "pages/cart-page/CartPage.tsx",
         "functionName": "mutationStatusMessage",
         "bindingName": "t",
-        "sourceFingerprint": "sha256:5a488d119e2e3e626f252b12536a6b57c2a0bd4d965809f28105c676d53ddde3"
+        "sourceFingerprint": "sha256:76ee1a75e2b7c2eed6e2c76c6bfccd8a0a228f65cd09d83a52541848e6befa58"
       },
       {
         "sourcePath": "pages/course-detail-page/CourseActionPanel.tsx",
@@ -28961,35 +29009,35 @@
             "functionName": "CartPage",
             "argument": "initialLoadFailure.messageKey",
             "occurrence": 1,
-            "sourceFingerprint": "sha256:5a488d119e2e3e626f252b12536a6b57c2a0bd4d965809f28105c676d53ddde3"
+            "sourceFingerprint": "sha256:76ee1a75e2b7c2eed6e2c76c6bfccd8a0a228f65cd09d83a52541848e6befa58"
           },
           {
             "sourcePath": "pages/cart-page/CartPage.tsx",
             "functionName": "CartPage",
             "argument": "loadFailure.messageKey",
             "occurrence": 1,
-            "sourceFingerprint": "sha256:5a488d119e2e3e626f252b12536a6b57c2a0bd4d965809f28105c676d53ddde3"
+            "sourceFingerprint": "sha256:76ee1a75e2b7c2eed6e2c76c6bfccd8a0a228f65cd09d83a52541848e6befa58"
           },
           {
             "sourcePath": "pages/cart-page/CartPage.tsx",
             "functionName": "CartPage",
             "argument": "removeFailure.messageKey",
             "occurrence": 1,
-            "sourceFingerprint": "sha256:5a488d119e2e3e626f252b12536a6b57c2a0bd4d965809f28105c676d53ddde3"
+            "sourceFingerprint": "sha256:76ee1a75e2b7c2eed6e2c76c6bfccd8a0a228f65cd09d83a52541848e6befa58"
           },
           {
             "sourcePath": "pages/cart-page/CartPage.tsx",
             "functionName": "CartPage",
             "argument": "clearFailure.messageKey",
             "occurrence": 1,
-            "sourceFingerprint": "sha256:5a488d119e2e3e626f252b12536a6b57c2a0bd4d965809f28105c676d53ddde3"
+            "sourceFingerprint": "sha256:76ee1a75e2b7c2eed6e2c76c6bfccd8a0a228f65cd09d83a52541848e6befa58"
           },
           {
             "sourcePath": "pages/cart-page/CartPage.tsx",
             "functionName": "CartPage",
             "argument": "clearFailure.messageKey",
             "occurrence": 2,
-            "sourceFingerprint": "sha256:5a488d119e2e3e626f252b12536a6b57c2a0bd4d965809f28105c676d53ddde3"
+            "sourceFingerprint": "sha256:76ee1a75e2b7c2eed6e2c76c6bfccd8a0a228f65cd09d83a52541848e6befa58"
           }
         ]
       },
@@ -29011,28 +29059,28 @@
             "functionName": "CartPage",
             "argument": "initialLoadFailure.titleKey",
             "occurrence": 1,
-            "sourceFingerprint": "sha256:5a488d119e2e3e626f252b12536a6b57c2a0bd4d965809f28105c676d53ddde3"
+            "sourceFingerprint": "sha256:76ee1a75e2b7c2eed6e2c76c6bfccd8a0a228f65cd09d83a52541848e6befa58"
           },
           {
             "sourcePath": "pages/cart-page/CartPage.tsx",
             "functionName": "CartPage",
             "argument": "loadFailure.titleKey",
             "occurrence": 1,
-            "sourceFingerprint": "sha256:5a488d119e2e3e626f252b12536a6b57c2a0bd4d965809f28105c676d53ddde3"
+            "sourceFingerprint": "sha256:76ee1a75e2b7c2eed6e2c76c6bfccd8a0a228f65cd09d83a52541848e6befa58"
           },
           {
             "sourcePath": "pages/cart-page/CartPage.tsx",
             "functionName": "CartPage",
             "argument": "removeFailure.titleKey",
             "occurrence": 1,
-            "sourceFingerprint": "sha256:5a488d119e2e3e626f252b12536a6b57c2a0bd4d965809f28105c676d53ddde3"
+            "sourceFingerprint": "sha256:76ee1a75e2b7c2eed6e2c76c6bfccd8a0a228f65cd09d83a52541848e6befa58"
           },
           {
             "sourcePath": "pages/cart-page/CartPage.tsx",
             "functionName": "CartPage",
             "argument": "clearFailure.titleKey",
             "occurrence": 1,
-            "sourceFingerprint": "sha256:5a488d119e2e3e626f252b12536a6b57c2a0bd4d965809f28105c676d53ddde3"
+            "sourceFingerprint": "sha256:76ee1a75e2b7c2eed6e2c76c6bfccd8a0a228f65cd09d83a52541848e6befa58"
           }
         ]
       },
@@ -29060,7 +29108,7 @@
             "functionName": "CartPage",
             "argument": "returnTarget.labelKey",
             "occurrence": 1,
-            "sourceFingerprint": "sha256:5a488d119e2e3e626f252b12536a6b57c2a0bd4d965809f28105c676d53ddde3"
+            "sourceFingerprint": "sha256:76ee1a75e2b7c2eed6e2c76c6bfccd8a0a228f65cd09d83a52541848e6befa58"
           }
         ]
       },

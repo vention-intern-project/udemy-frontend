@@ -140,6 +140,7 @@ const CART_RESIDUAL_COPY = {
 const CART_MAPPED_CONSUMER_COPY = {
   en: {
     clearAction: 'Clear cart',
+    clearVisible: 'Clear',
     clearDialog: 'Clear cart?',
     clearStatus: 'Cart cleared.',
     learningReturn: 'My learning',
@@ -147,6 +148,7 @@ const CART_MAPPED_CONSUMER_COPY = {
   },
   ru: {
     clearAction: 'Очистить корзину',
+    clearVisible: 'Очистить',
     clearDialog: 'Очистить корзину?',
     clearStatus: 'Корзина очищена.',
     learningReturn: 'Моё обучение',
@@ -154,6 +156,7 @@ const CART_MAPPED_CONSUMER_COPY = {
   },
   uz: {
     clearAction: 'Savatni tozalash',
+    clearVisible: 'Tozalash',
     clearDialog: 'Savat tozalansinmi?',
     clearStatus: 'Savat tozalandi.',
     learningReturn: 'Ta’limim',
@@ -1393,6 +1396,7 @@ describe('CartPage', () => {
       const user = userEvent.setup();
       const copy = CART_MAPPED_CONSUMER_COPY[locale];
       const clear = await screen.findByRole('button', { name: copy.clearAction });
+      expect(clear.textContent).toContain(copy.clearVisible);
 
       await interact(() => user.click(clear));
       await interact(() =>

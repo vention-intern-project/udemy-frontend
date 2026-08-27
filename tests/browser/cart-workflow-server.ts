@@ -34,6 +34,8 @@ export default async function startCartWorkflowServer() {
   }
   try {
     await server.listen();
+    await server.environments.client.warmupRequest('/src/main.tsx');
+    await server.environments.client.waitForRequestsIdle('/src/main.tsx');
   } catch (error) {
     await server.close();
     throw error;

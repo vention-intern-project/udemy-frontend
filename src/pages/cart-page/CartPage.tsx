@@ -584,12 +584,13 @@ export function CartPage() {
           <Button
             variant="secondary"
             className={styles.clearCartButton}
+            aria-label={t('cart:clearCart', { defaultValue: 'Clear cart' })}
             onClick={() => setClearOpen(true)}
             disabled={isBusy || checkout.pending}
           >
             <span className={styles.clearCartLabel}>
               <Trash2 size={20} aria-hidden="true" />
-              <span>{t('cart:clearCart', { defaultValue: 'Clear cart' })}</span>
+              <span>{t('cart:clear', { defaultValue: 'Clear' })}</span>
             </span>
           </Button>
         </div>
