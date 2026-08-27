@@ -552,7 +552,8 @@ describe('CourseDetailPage', () => {
       };
       renderPage(request, 'token');
 
-      const action = await screen.findByRole('button', { name: label });
+      const action = (await screen.findByRole('button', { name: label })) as HTMLButtonElement;
+      await waitFor(() => expect(action.disabled).toBe(false));
       await act(async () => {
         await userEvent.setup().click(action);
       });
