@@ -1,25 +1,91 @@
 .root {
+  position: relative;
   display: flex;
   flex: 1 1 auto;
   align-items: center;
   min-width: 0;
 }
 
+.trigger {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-height-md);
+  padding: var(--spacing-2) calc(var(--input-padding-h) + 1rem) var(--spacing-2)
+    var(--input-padding-h);
+  color: var(--text-primary);
+  background: var(--color-surface);
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-md);
+  font: inherit;
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+}
+
+.trigger:hover {
+  background: var(--color-canvas);
+}
+
+.trigger:focus-visible {
+  border-color: var(--action-primary-bg);
+  outline: var(--focus-ring-width) solid var(--action-primary-bg);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.chevron {
+  position: absolute;
+  top: 50%;
+  right: var(--spacing-3);
+  box-sizing: border-box;
+  width: 0.5rem;
+  height: 0.5rem;
+  color: var(--text-muted);
+  pointer-events: none;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-50%) rotate(45deg);
+  transform-origin: center;
+  transition:
+    color var(--duration-fast) var(--easing-standard),
+    transform var(--duration-fast) var(--easing-standard);
+}
+
+.trigger:hover .chevron,
+.trigger:focus-visible .chevron,
+.triggerOpen .chevron {
+  color: var(--action-primary-bg);
+}
+
+.triggerOpen .chevron {
+  transform: translateY(-50%) rotate(225deg);
+}
+
 .priceRange {
+  position: absolute;
+  z-index: var(--z-dropdown);
+  top: calc(100% + var(--spacing-2));
+  left: 0;
   display: grid;
-  grid-template-columns: auto repeat(2, minmax(8rem, 1fr));
+  grid-template-columns: repeat(2, minmax(8rem, 1fr));
   align-items: center;
   gap: var(--spacing-2);
-  inline-size: 100%;
+  min-inline-size: min(20rem, calc(100vw - (2 * var(--spacing-4))));
   min-width: 0;
   margin: 0;
-  padding: 0;
-  border: 0;
+  padding: var(--spacing-3);
+  background: var(--color-surface-elevated);
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-2);
 }
 
 .field {
   display: block;
   min-width: 0;
+}
+
+.priceRange [data-part='button-wrapper'] {
+  grid-column: 1 / -1;
 }
 
 .legend {
@@ -34,31 +100,13 @@
   content: ':';
 }
 
-.priceLabel {
-  display: none;
-  color: var(--text-muted);
-  font-size: var(--type-label-size);
-  font-weight: var(--type-label-weight);
-  line-height: var(--type-label-lh);
-  white-space: nowrap;
-}
-
-.field [data-part='label'] {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-}
-
 .field [data-part='control'] {
   width: 100%;
 }
 
 @media (max-width: 767px) {
   .priceRange {
-    grid-template-columns: auto repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .legend {
@@ -69,9 +117,11 @@
     clip: rect(0 0 0 0);
     white-space: nowrap;
   }
+}
 
-  .priceLabel {
-    display: block;
+@media (prefers-reduced-motion: reduce) {
+  .chevron {
+    transition: none;
   }
 }
 
@@ -81,8 +131,7 @@
   }
 
   .priceRange {
-    grid-template-columns: auto repeat(2, 7.5rem);
-    inline-size: auto;
+    grid-template-columns: repeat(2, 7.5rem);
   }
 
   .field {
@@ -95,16 +144,14 @@
     flex: 0 0 auto;
   }
   .priceRange {
-    position: relative;
     grid-template-columns: repeat(2, 7.5rem);
-    inline-size: auto;
-    padding-inline-start: 5.25rem;
+    right: 0;
+    left: auto;
   }
   .legend {
-    position: absolute;
-    top: 50%;
-    left: 0;
-    transform: translateY(-50%);
+    position: static;
+    grid-column: 1 / -1;
+    transform: none;
   }
   .field {
     inline-size: 7.5rem;

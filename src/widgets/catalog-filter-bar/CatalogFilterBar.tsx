@@ -1,18 +1,16 @@
-import { useEffect, useRef, useState, type FocusEvent } from 'react';
-import type { TFunction } from 'i18next';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import {
   draftFromCatalogQuery,
   validateCatalogDraft,
   type CatalogFilterValidationErrors,
-  type CatalogFilterValidationErrorKey,
   type CatalogPriceField,
   type CatalogPriceRange,
   type CatalogPriceRangeDraft,
   type CatalogQuery,
 } from '@features/catalog-discovery';
-import { Input, VisuallyHidden } from '@shared/ui/primitives';
+import { Button, Input, VisuallyHidden } from '@shared/ui/primitives';
 
 import styles from './CatalogFilterBar.module.css';
 
@@ -43,22 +41,18 @@ function hasInvertedPriceRange(draft: CatalogPriceRangeDraft): boolean {
   );
 }
 
-function validationErrorMessage(
-  t: TFunction,
-  error: CatalogFilterValidationErrorKey | undefined,
-): string | undefined {
-  return error ? t(`catalog:${error}`) : undefined;
-}
-
 export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
   const { t } = useTranslation();
+  const rangeDescriptionId = `catalog-price-range-description-${useId()}`;
   const [draft, setDraft] = useState<CatalogPriceRangeDraft>(() =>
     priceDraftFromCatalogQuery(query),
   );
   const [errors, setErrors] = useState<CatalogFilterValidationErrors>({});
+  const [open, setOpen] = useState(false);
   const draftRef = useRef(draft);
   const queryRef = useRef(query);
-  const priceRangeRef = useRef<HTMLFieldSetElement | null>(null);
+  const rootRef = useRef<HTMLFormElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
   const lastAppliedRangeRef = useRef<CatalogPriceRange>({
     min_price: query.min_price,
     max_price: query.max_price,
@@ -79,10 +73,10 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
     setDraft(next);
   };
 
-  const applyDraft = (draftToApply = draftRef.current) => {
+  const applyDraft = (draftToApply = draftRef.current): boolean => {
     if (hasInvertedPriceRange(draftToApply)) {
       setErrors({ max_price: 'maximumPriceMustBeAtLeast' });
-      return;
+      return false;
     }
     const currentQuery = queryRef.current;
     const validation = validateCatalogDraft({
@@ -92,7 +86,7 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
       sort: currentQuery.sort,
     });
     setErrors(validation.errors);
-    if (!validation.value) return;
+    if (!validation.value) return false;
 
     const nextRange: CatalogPriceRange = {
       min_price: validation.value.min_price,
@@ -106,7 +100,7 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
       priceRangeMatches(nextRange, currentRange) ||
       priceRangeMatches(nextRange, lastAppliedRangeRef.current)
     )
-      return;
+      return true;
 
     lastAppliedRangeRef.current = nextRange;
     onApply({
@@ -114,91 +108,121 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
       search_query: currentQuery.search_query,
       sort: currentQuery.sort,
     });
+    return true;
   };
-
-  const applyOnBlur = (event: FocusEvent<HTMLInputElement>) => {
-    const nextTarget = event.relatedTarget;
-    if (nextTarget instanceof Node && priceRangeRef.current?.contains(nextTarget)) return;
-    applyDraft({ ...draftRef.current });
+  const close = (restoreApplied = false) => {
+    if (restoreApplied) {
+      const restored = priceDraftFromCatalogQuery(queryRef.current);
+      draftRef.current = restored;
+      setDraft(restored);
+      setErrors({});
+    }
+    setOpen(false);
+    globalThis.setTimeout(() => triggerRef.current?.focus(), 0);
   };
-
-  const applyOnEnter = () => {
-    applyDraft();
-  };
-  const minimumError = validationErrorMessage(t, errors.min_price);
-  const maximumError = validationErrorMessage(t, errors.max_price);
+  useEffect(() => {
+    if (!open) return undefined;
+    const cancel = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) close(true);
+    };
+    document.addEventListener('pointerdown', cancel, true);
+    return () => document.removeEventListener('pointerdown', cancel, true);
+  }, [open]);
+  const minimumError =
+    errors.min_price === 'nonNegativePrice' ? t('catalog:nonNegativePrice') : undefined;
+  const maximumError =
+    errors.max_price === 'nonNegativePrice'
+      ? t('catalog:nonNegativePrice')
+      : errors.max_price === 'maximumPriceMustBeAtLeast'
+        ? t('catalog:maximumPriceMustBeAtLeast')
+        : undefined;
+  const appliedRangeDescription = [
+    query.min_price === undefined
+      ? null
+      : `${t('catalog:priceFrom', { defaultValue: 'From' })}: ${query.min_price}`,
+    query.max_price === undefined
+      ? null
+      : `${t('catalog:priceTo', { defaultValue: 'To' })}: ${query.max_price}`,
+  ]
+    .filter((description): description is string => description !== null)
+    .join(', ');
 
   return (
     <form
+      ref={rootRef}
       className={styles.root}
       data-part="catalog-filter-form"
       aria-label={t('catalog:courseFilters', { defaultValue: 'Course filters' })}
       noValidate
       onSubmit={(event) => {
         event.preventDefault();
-        applyDraft();
+        if (applyDraft()) close();
       }}
     >
-      <fieldset ref={priceRangeRef} className={styles.priceRange}>
-        <legend className={styles.legend}>
-          {t('catalog:priceRange', { defaultValue: 'Price range' })}
-        </legend>
-        <span
-          className={styles.priceLabel}
-          data-part="catalog-filter-price-label"
-          aria-hidden="true"
+      <button
+        ref={triggerRef}
+        className={`${styles.trigger} ${open ? styles.triggerOpen : ''}`}
+        data-part="catalog-price-trigger"
+        type="button"
+        aria-describedby={appliedRangeDescription ? rangeDescriptionId : undefined}
+        aria-expanded={open}
+        aria-controls={open ? 'catalog-price-disclosure' : undefined}
+        onClick={() => {
+          if (open) close(true);
+          else setOpen(true);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            close(true);
+          }
+        }}
+      >
+        <span>{t('catalog:priceTrigger', { defaultValue: 'Price' })}</span>
+        <span className={styles.chevron} data-part="catalog-price-chevron" aria-hidden="true" />
+      </button>
+      {appliedRangeDescription ? (
+        <VisuallyHidden id={rangeDescriptionId}>{appliedRangeDescription}</VisuallyHidden>
+      ) : null}
+      {open ? (
+        <fieldset
+          id="catalog-price-disclosure"
+          className={styles.priceRange}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              close(true);
+            }
+          }}
         >
-          {t('catalog:priceLabel', { defaultValue: 'Price:' })}
-        </span>
-        <Input
-          label={
-            <>
-              <span>{t('catalog:min', { defaultValue: 'Min' })}</span>
-              <VisuallyHidden> {t('catalog:price', { defaultValue: 'price' })}</VisuallyHidden>
-            </>
-          }
-          name="min_price"
-          type="number"
-          placeholder={t('catalog:minPrice', { defaultValue: 'Min price' })}
-          inputMode="decimal"
-          min="0"
-          fieldClassName={styles.field}
-          value={draft.min_price}
-          error={minimumError}
-          onChange={(event) => update('min_price', event.target.value)}
-          onBlur={applyOnBlur}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              event.preventDefault();
-              applyOnEnter();
-            }
-          }}
-        />
-        <Input
-          label={
-            <>
-              <span>{t('catalog:max', { defaultValue: 'Max' })}</span>
-              <VisuallyHidden> {t('catalog:price', { defaultValue: 'price' })}</VisuallyHidden>
-            </>
-          }
-          name="max_price"
-          type="number"
-          placeholder={t('catalog:maxPrice', { defaultValue: 'Max price' })}
-          inputMode="decimal"
-          min="0"
-          fieldClassName={styles.field}
-          value={draft.max_price}
-          error={maximumError}
-          onChange={(event) => update('max_price', event.target.value)}
-          onBlur={applyOnBlur}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              event.preventDefault();
-              applyOnEnter();
-            }
-          }}
-        />
-      </fieldset>
+          <legend className={styles.legend}>
+            {t('catalog:priceRange', { defaultValue: 'Price range' })}
+          </legend>
+          <Input
+            label={t('catalog:priceFrom', { defaultValue: 'From' })}
+            name="min_price"
+            type="number"
+            inputMode="decimal"
+            min="0"
+            fieldClassName={styles.field}
+            value={draft.min_price}
+            error={minimumError}
+            onChange={(event) => update('min_price', event.target.value)}
+          />
+          <Input
+            label={t('catalog:priceTo', { defaultValue: 'To' })}
+            name="max_price"
+            type="number"
+            inputMode="decimal"
+            min="0"
+            fieldClassName={styles.field}
+            value={draft.max_price}
+            error={maximumError}
+            onChange={(event) => update('max_price', event.target.value)}
+          />
+          <Button type="submit">{t('catalog:priceDone', { defaultValue: 'Done' })}</Button>
+        </fieldset>
+      ) : null}
     </form>
   );
 }

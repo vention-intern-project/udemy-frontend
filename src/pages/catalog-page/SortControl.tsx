@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { ArrowDownUp } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { CATALOG_SORT_VALUES, type CatalogSort } from '@features/catalog-discovery';
@@ -149,6 +150,7 @@ export function SortControl({ value, onChange, onPointerOptionCommit }: SortCont
           }
         }}
       >
+        <ArrowDownUp className={styles.sortIcon} aria-hidden="true" focusable="false" />
         <span>{labelFor(value)}</span>
         <span className={styles.chevron} data-part="catalog-sort-chevron" aria-hidden="true" />
       </button>

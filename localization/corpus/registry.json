@@ -298,11 +298,11 @@
     }
   },
   "summary": {
-    "translationUnits": 523,
-    "sourceOccurrences": 746,
+    "translationUnits": 527,
+    "sourceOccurrences": 750,
     "mergedDuplicateRows": 223,
-    "russianDrafts": 523,
-    "uzbekDrafts": 523,
+    "russianDrafts": 527,
+    "uzbekDrafts": 527,
     "draftStatus": "Draft",
     "englishPolicy": "Immutable source",
     "reviewProtocol": "Russian product owner + Uzbek native reviewer"
@@ -28601,6 +28601,198 @@
         "legacyReviewStatus": "Pending",
         "ownerTasks": ["MLUX-006-FOLLOWUP"]
       }
+    },
+    {
+      "id": "MLUX-C0522",
+      "namespace": "catalog",
+      "key": "priceTrigger",
+      "english": "Price",
+      "sourceRevision": "sha256:3e8ca0069ce3faa9a81bbb9c1f458a57299ac073884fcf0461b1b6b63f28ca7a",
+      "unitLifecycle": "active",
+      "occurrences": [
+        {
+          "id": "MLUX-O0750",
+          "context": "src/widgets/catalog-filter-bar/CatalogFilterBar.tsx — Price disclosure trigger"
+        }
+      ],
+      "placeholdersByLocale": { "en": [], "ru": [], "uz": [] },
+      "renderingContract": null,
+      "pluralForms": null,
+      "locales": {
+        "ru": {
+          "candidate": "Цена",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:3e8ca0069ce3faa9a81bbb9c1f458a57299ac073884fcf0461b1b6b63f28ca7a",
+          "approvalAuthority": null
+        },
+        "uz": {
+          "candidate": "Narx",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:3e8ca0069ce3faa9a81bbb9c1f458a57299ac073884fcf0461b1b6b63f28ca7a",
+          "approvalAuthority": null
+        }
+      },
+      "migrationProvenance": {
+        "legacyResourceStatus": "Draft",
+        "legacyReviewStatus": "Pending",
+        "ownerTasks": ["FE-060"]
+      }
+    },
+    {
+      "id": "MLUX-C0523",
+      "namespace": "catalog",
+      "key": "priceFrom",
+      "english": "From",
+      "sourceRevision": "sha256:2825d4cc2bf8f8ad56b774bfa727acae642f61e368b41df8f60bdaedb8691be1",
+      "unitLifecycle": "active",
+      "occurrences": [
+        {
+          "id": "MLUX-O0751",
+          "context": "src/widgets/catalog-filter-bar/CatalogFilterBar.tsx — Price disclosure From label"
+        }
+      ],
+      "placeholdersByLocale": { "en": [], "ru": [], "uz": [] },
+      "renderingContract": null,
+      "pluralForms": null,
+      "locales": {
+        "ru": {
+          "candidate": "От",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:2825d4cc2bf8f8ad56b774bfa727acae642f61e368b41df8f60bdaedb8691be1",
+          "approvalAuthority": null
+        },
+        "uz": {
+          "candidate": "Dan",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:2825d4cc2bf8f8ad56b774bfa727acae642f61e368b41df8f60bdaedb8691be1",
+          "approvalAuthority": null
+        }
+      },
+      "migrationProvenance": {
+        "legacyResourceStatus": "Draft",
+        "legacyReviewStatus": "Pending",
+        "ownerTasks": ["FE-060"]
+      }
+    },
+    {
+      "id": "MLUX-C0524",
+      "namespace": "catalog",
+      "key": "priceTo",
+      "english": "To",
+      "sourceRevision": "sha256:7b53d3edd254da7b286a5583f36f82c93e67968eadae1865dcdbc1881df48650",
+      "unitLifecycle": "active",
+      "occurrences": [
+        {
+          "id": "MLUX-O0752",
+          "context": "src/widgets/catalog-filter-bar/CatalogFilterBar.tsx — Price disclosure To label"
+        }
+      ],
+      "placeholdersByLocale": { "en": [], "ru": [], "uz": [] },
+      "renderingContract": null,
+      "pluralForms": null,
+      "locales": {
+        "ru": {
+          "candidate": "До",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:7b53d3edd254da7b286a5583f36f82c93e67968eadae1865dcdbc1881df48650",
+          "approvalAuthority": null
+        },
+        "uz": {
+          "candidate": "Gacha",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:7b53d3edd254da7b286a5583f36f82c93e67968eadae1865dcdbc1881df48650",
+          "approvalAuthority": null
+        }
+      },
+      "migrationProvenance": {
+        "legacyResourceStatus": "Draft",
+        "legacyReviewStatus": "Pending",
+        "ownerTasks": ["FE-060"]
+      }
+    },
+    {
+      "id": "MLUX-C0525",
+      "namespace": "catalog",
+      "key": "priceDone",
+      "english": "Done",
+      "sourceRevision": "sha256:4d46c8c43cd3aa5dce8e2076174a3ec5674a62a2e6ddf21931d4399e9aa18786",
+      "unitLifecycle": "active",
+      "occurrences": [
+        {
+          "id": "MLUX-O0753",
+          "context": "src/widgets/catalog-filter-bar/CatalogFilterBar.tsx — Price disclosure Done action"
+        }
+      ],
+      "placeholdersByLocale": { "en": [], "ru": [], "uz": [] },
+      "renderingContract": null,
+      "pluralForms": null,
+      "locales": {
+        "ru": {
+          "candidate": "Готово",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:4d46c8c43cd3aa5dce8e2076174a3ec5674a62a2e6ddf21931d4399e9aa18786",
+          "approvalAuthority": null
+        },
+        "uz": {
+          "candidate": "Tayyor",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:4d46c8c43cd3aa5dce8e2076174a3ec5674a62a2e6ddf21931d4399e9aa18786",
+          "approvalAuthority": null
+        }
+      },
+      "migrationProvenance": {
+        "legacyResourceStatus": "Draft",
+        "legacyReviewStatus": "Pending",
+        "ownerTasks": ["FE-060"]
+      }
     }
   ],
   "consumerGrammar": {
@@ -28677,12 +28869,6 @@
         "functionName": "enrollmentStatusLabel",
         "bindingName": "t",
         "sourceFingerprint": "sha256:d87d03af782f2f55ba5b53db270ec96a2345edb0a736c4a90ab2a5195126bfd1"
-      },
-      {
-        "sourcePath": "widgets/catalog-filter-bar/CatalogFilterBar.tsx",
-        "functionName": "validationErrorMessage",
-        "bindingName": "t",
-        "sourceFingerprint": "sha256:46b07340a5125d0ef127e860840524e49a0f91326f8beacee52990233d972217"
       },
       {
         "sourcePath": "widgets/course-chat/CourseChatPanel.tsx",
@@ -28887,7 +29073,7 @@
             "functionName": "CatalogPage",
             "argument": "discovery.failure.messageKey",
             "occurrence": 1,
-            "sourceFingerprint": "sha256:6f447fb927849bb8a6e2e8e2ea63197ff3c59a5a1fbdb8c61c6c5a2d10b26c1a"
+            "sourceFingerprint": "sha256:ca9280e6a42e6c5b29b9eb35900cefe62d8997dfcb8d15174d800421d31e6b90"
           }
         ]
       },
@@ -28900,20 +29086,7 @@
             "functionName": "CatalogPage",
             "argument": "discovery.failure.titleKey",
             "occurrence": 1,
-            "sourceFingerprint": "sha256:6f447fb927849bb8a6e2e8e2ea63197ff3c59a5a1fbdb8c61c6c5a2d10b26c1a"
-          }
-        ]
-      },
-      {
-        "id": "catalog-filter-validation",
-        "unitIds": ["MLUX-C0315", "MLUX-C0486"],
-        "consumers": [
-          {
-            "sourcePath": "widgets/catalog-filter-bar/CatalogFilterBar.tsx",
-            "functionName": "validationErrorMessage",
-            "argument": "`catalog:${error}`",
-            "occurrence": 1,
-            "sourceFingerprint": "sha256:46b07340a5125d0ef127e860840524e49a0f91326f8beacee52990233d972217"
+            "sourceFingerprint": "sha256:ca9280e6a42e6c5b29b9eb35900cefe62d8997dfcb8d15174d800421d31e6b90"
           }
         ]
       },
@@ -28926,7 +29099,7 @@
             "functionName": "CatalogPage",
             "argument": "`catalog:${refreshAnnouncement}`",
             "occurrence": 1,
-            "sourceFingerprint": "sha256:6f447fb927849bb8a6e2e8e2ea63197ff3c59a5a1fbdb8c61c6c5a2d10b26c1a"
+            "sourceFingerprint": "sha256:ca9280e6a42e6c5b29b9eb35900cefe62d8997dfcb8d15174d800421d31e6b90"
           }
         ]
       },
@@ -29341,7 +29514,7 @@
             "functionName": "labelFor",
             "argument": "label.key",
             "occurrence": 1,
-            "sourceFingerprint": "sha256:7ed37f4d9228da03f35ee4db0e0e2702396b23b66506148732be5767ae2bf59c"
+            "sourceFingerprint": "sha256:d2e004fcb1858009b54f44c5e07a3a4e5ad323aef8bdded34f29c0b624fc92f2"
           }
         ]
       }

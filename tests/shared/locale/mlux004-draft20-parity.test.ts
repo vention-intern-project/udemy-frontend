@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 type GeneratedResources = Record<string, Record<string, Record<string, string>>>;
 
 const generatedResources = GENERATED_LOCALE_RESOURCES as GeneratedResources;
+const CURRENT_CORPUS_OCCURRENCE_COUNT = 750;
 
 function placeholders(value: string): readonly string[] {
   return [...value.matchAll(/\{\{?\s*([A-Za-z][A-Za-z0-9_]*)\s*}}?/g)]
@@ -21,7 +22,7 @@ describe('canonical registry source parity', () => {
     );
     expect(
       new Set(registry.units.flatMap((unit) => unit.occurrences.map(({ id }) => id))).size,
-    ).toBe(746);
+    ).toBe(CURRENT_CORPUS_OCCURRENCE_COUNT);
   });
 
   it('keeps every source occurrence attached to one canonical unit and current revision', () => {

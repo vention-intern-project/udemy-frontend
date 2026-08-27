@@ -8,16 +8,18 @@ import { describe, expect, it } from 'vitest';
 type GeneratedResources = Record<string, Record<string, Record<string, string>>>;
 
 const resources = GENERATED_LOCALE_RESOURCES as GeneratedResources;
+const CURRENT_CORPUS_UNIT_COUNT = 527;
+const CURRENT_CORPUS_OCCURRENCE_COUNT = 750;
 
 describe('canonical DRAFT-37 corpus parity', () => {
   it('keeps the exact canonical migration identity and one source-to-runtime owner', () => {
     expect(registry).toMatchObject({
       corpusVersion: 'MLUX-001-DRAFT-37',
       source: { sha256: 'C9E208FC5F1AEF55E709290C67270B79E1CBCE4831E7FBCB20555AB5CF8A73AE' },
-      summary: { translationUnits: 523, sourceOccurrences: 746, mergedDuplicateRows: 223 },
+      summary: { translationUnits: 527, sourceOccurrences: 750, mergedDuplicateRows: 223 },
     });
     expect(registry.exclusions).toHaveLength(12);
-    expect(registry.units).toHaveLength(523);
+    expect(registry.units).toHaveLength(CURRENT_CORPUS_UNIT_COUNT);
   });
 
   it('binds every active canonical source and plural form to generated EN/RU/UZ resources', () => {
@@ -39,7 +41,7 @@ describe('canonical DRAFT-37 corpus parity', () => {
 
   it('preserves occurrence/source associations and conditional draft provenance', () => {
     const occurrenceIds = registry.units.flatMap((unit) => unit.occurrences.map(({ id }) => id));
-    expect(new Set(occurrenceIds).size).toBe(746);
+    expect(new Set(occurrenceIds).size).toBe(CURRENT_CORPUS_OCCURRENCE_COUNT);
     expect(
       registry.units.every(
         (unit) =>

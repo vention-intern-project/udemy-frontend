@@ -23,6 +23,9 @@ import type {
 
 import draft37Registry from '../../../localization/corpus/registry.json';
 
+const CURRENT_CORPUS_UNIT_COUNT = 527;
+const CURRENT_CORPUS_OCCURRENCE_COUNT = 750;
+
 const {
   SUPPLIED_REVIEW_ARTIFACT,
   protectedSourceFingerprint,
@@ -2561,6 +2564,71 @@ describe('canonical localization corpus engine', () => {
     );
   });
 
+  it('admits a post-DRAFT-37 draft unit without relaxing historical identity or approval validation', () => {
+    const extended = structuredClone(draft37Registry);
+    extended.units = extended.units.filter(
+      (unit) => unit.migrationProvenance.ownerTasks[0] !== 'FE-060',
+    );
+    extended.summary.translationUnits = 523;
+    extended.summary.sourceOccurrences = 746;
+    const next = structuredClone(extended.units[extended.units.length - 1]);
+    if (!next) throw new Error('canonical registry must contain a unit');
+    next.id = 'MLUX-C0522';
+    next.namespace = 'catalog';
+    next.key = 'priceTrigger';
+    next.english = 'Price';
+    next.unitLifecycle = 'active';
+    next.occurrences = [
+      {
+        id: 'MLUX-O0750',
+        context: 'src/widgets/catalog-filter-bar/CatalogFilterBar.tsx — Price trigger',
+      },
+    ];
+    next.placeholdersByLocale = { en: [], ru: [], uz: [] };
+    next.renderingContract = null;
+    next.pluralForms = null;
+    next.locales.ru = {
+      candidate: 'Цена',
+      status: 'draft',
+      reviewerId: null,
+      verdict: null,
+      requestedAt: null,
+      reviewedAt: null,
+      approvalRecordedAt: null,
+      history: [],
+      sourceRevision: '',
+      approvalAuthority: null,
+    };
+    next.locales.uz = {
+      candidate: 'Narx',
+      status: 'draft',
+      reviewerId: null,
+      verdict: null,
+      requestedAt: null,
+      reviewedAt: null,
+      approvalRecordedAt: null,
+      history: [],
+      sourceRevision: '',
+      approvalAuthority: null,
+    };
+    next.migrationProvenance.ownerTasks = ['FE-060'];
+    next.sourceRevision = protectedSourceFingerprint(next);
+    next.locales.ru.sourceRevision = next.sourceRevision;
+    next.locales.uz.sourceRevision = next.sourceRevision;
+    extended.units.push(next);
+    extended.summary.translationUnits += 1;
+    extended.summary.sourceOccurrences += 1;
+
+    expect(validateCorpus(extended)).toEqual([]);
+    expect(generateResources(extended).en.catalog.priceTrigger).toBe('Price');
+
+    extended.units[0].english = `${extended.units[0].english} changed`;
+    extended.units[0].sourceRevision = protectedSourceFingerprint(extended.units[0]);
+    extended.units[0].locales.ru.sourceRevision = extended.units[0].sourceRevision;
+    extended.units[0].locales.uz.sourceRevision = extended.units[0].sourceRevision;
+    expect(validateCorpus(extended)).toContain('DRAFT-37 semantic identity mismatch');
+  });
+
   it('validates DRAFT-37 exclusion identity, uniqueness, provenance, and supported status semantics', () => {
     const malformed = structuredClone(draft37Registry);
     malformed.exclusions[0] = {} as (typeof malformed.exclusions)[number];
@@ -3500,9 +3568,13 @@ describe('canonical localization corpus engine', () => {
 
   it('pins the ordered DRAFT-37 semantic identity while retaining legal compatibility leaves', () => {
     expect(validateCorpus(draft37Registry)).toEqual([]);
-    expect(semanticIdentityDigest(draft37Registry.units)).toBe(
-      draft37Registry.migration.semanticIdentitySha256,
-    );
+    expect(
+      semanticIdentityDigest(
+        draft37Registry.units.filter((unit) =>
+          unit.migrationProvenance.ownerTasks.every((ownerTask) => ownerTask.startsWith('MLUX-')),
+        ),
+      ),
+    ).toBe(draft37Registry.migration.semanticIdentitySha256);
     const unitKeys = new Set(draft37Registry.units.map((unit) => `${unit.namespace}:${unit.key}`));
     const compatibilityLeaves = Object.entries(draft37Registry.baselineResources.en).flatMap(
       ([namespace, resources]) =>
@@ -3517,12 +3589,20 @@ describe('canonical localization corpus engine', () => {
     supportedNovel.units[0].sourceRevision = protectedSourceFingerprint(supportedNovel.units[0]);
     supportedNovel.units[0].locales.ru.sourceRevision = supportedNovel.units[0].sourceRevision;
     supportedNovel.units[0].locales.uz.sourceRevision = supportedNovel.units[0].sourceRevision;
-    supportedNovel.migration.semanticIdentitySha256 = semanticIdentityDigest(supportedNovel.units);
+    supportedNovel.migration.semanticIdentitySha256 = semanticIdentityDigest(
+      supportedNovel.units.filter((unit) =>
+        unit.migrationProvenance.ownerTasks.every((ownerTask) => ownerTask.startsWith('MLUX-')),
+      ),
+    );
     expect(validateCorpus(supportedNovel)).toContain('DRAFT-37 semantic identity mismatch');
 
     const reordered = structuredClone(draft37Registry);
     reordered.units.reverse();
-    reordered.migration.semanticIdentitySha256 = semanticIdentityDigest(reordered.units);
+    reordered.migration.semanticIdentitySha256 = semanticIdentityDigest(
+      reordered.units.filter((unit) =>
+        unit.migrationProvenance.ownerTasks.every((ownerTask) => ownerTask.startsWith('MLUX-')),
+      ),
+    );
     expect(validateCorpus(reordered)).toContain('DRAFT-37 semantic identity mismatch');
 
     const duplicate = structuredClone(draft37Registry);
@@ -3531,7 +3611,11 @@ describe('canonical localization corpus engine', () => {
     duplicate.units[1].sourceRevision = protectedSourceFingerprint(duplicate.units[1]);
     duplicate.units[1].locales.ru.sourceRevision = duplicate.units[1].sourceRevision;
     duplicate.units[1].locales.uz.sourceRevision = duplicate.units[1].sourceRevision;
-    duplicate.migration.semanticIdentitySha256 = semanticIdentityDigest(duplicate.units);
+    duplicate.migration.semanticIdentitySha256 = semanticIdentityDigest(
+      duplicate.units.filter((unit) =>
+        unit.migrationProvenance.ownerTasks.every((ownerTask) => ownerTask.startsWith('MLUX-')),
+      ),
+    );
     expect(validateCorpus(duplicate)).toEqual(
       expect.arrayContaining([
         `${duplicate.units[1].id}: duplicate namespace/key`,
@@ -3540,22 +3624,26 @@ describe('canonical localization corpus engine', () => {
     );
 
     const retired = structuredClone(draft37Registry);
-    retired.units[0].unitLifecycle = 'retired';
-    retired.units[0].occurrences = [];
+    const postMigrationUnit = retired.units.find(
+      (unit) => unit.migrationProvenance.ownerTasks[0] === 'FE-060',
+    );
+    if (!postMigrationUnit) throw new Error('post-DRAFT-37 fixture unit is missing');
+    postMigrationUnit.unitLifecycle = 'retired';
+    postMigrationUnit.occurrences = [];
     retired.summary.sourceOccurrences -= 1;
-    retired.units[0].sourceRevision = protectedSourceFingerprint(retired.units[0]);
-    retired.units[0].locales.ru.sourceRevision = retired.units[0].sourceRevision;
-    retired.units[0].locales.uz.sourceRevision = retired.units[0].sourceRevision;
+    postMigrationUnit.sourceRevision = protectedSourceFingerprint(postMigrationUnit);
+    postMigrationUnit.locales.ru.sourceRevision = postMigrationUnit.sourceRevision;
+    postMigrationUnit.locales.uz.sourceRevision = postMigrationUnit.sourceRevision;
     (
-      retired.units[0] as (typeof retired.units)[number] & {
+      postMigrationUnit as (typeof retired.units)[number] & {
         retirement: { reason: string; sourceRevision: string };
       }
     ).retirement = {
       reason: 'legal identity-preserving retirement',
-      sourceRevision: retired.units[0].sourceRevision,
+      sourceRevision: postMigrationUnit.sourceRevision,
     };
     expect(retired.migration.sourceOccurrences).toBe(746);
-    expect(retired.summary.sourceOccurrences).toBe(745);
+    expect(retired.summary.sourceOccurrences).toBe(CURRENT_CORPUS_OCCURRENCE_COUNT - 1);
     expect(validateCorpus(retired)).toEqual([]);
 
     const rewrittenImportCount = structuredClone(retired);
@@ -3624,7 +3712,7 @@ describe('canonical localization corpus engine', () => {
 
   it('closes migration ownership to non-empty unique verified task literals', () => {
     expect(validateCorpus(draft37Registry)).toEqual([]);
-    expect(draft37Registry.units).toHaveLength(523);
+    expect(draft37Registry.units).toHaveLength(CURRENT_CORPUS_UNIT_COUNT);
     expect(draft37Registry.units.flatMap((unit) => [unit.locales.ru, unit.locales.uz])).toSatisfy(
       (candidates: Array<{ status: string; approvalAuthority: unknown }>) =>
         candidates.every(
@@ -3644,19 +3732,19 @@ describe('canonical localization corpus engine', () => {
     }
   });
 
-  it('indexes the full current source once for the complete 523-unit retirement batch', async () => {
+  it(`indexes the full current source once for the complete ${CURRENT_CORPUS_UNIT_COUNT}-unit retirement batch`, async () => {
     const corpus = structuredClone(draft37Registry);
     const activeStartedAt = performance.now();
     expect(await retiredConsumerViolations(corpus, 'src')).toEqual([]);
     expect(performance.now() - activeStartedAt).toBeLessThan(10_000);
     expect(corpus.consumerGrammar.version).toBe(1);
-    expect(corpus.consumerGrammar.translatorWrappers).toHaveLength(17);
+    expect(corpus.consumerGrammar.translatorWrappers).toHaveLength(16);
     expect(corpus.consumerGrammar.translatorForwarders).toHaveLength(2);
     expect(corpus.consumerGrammar.translatorDependencies).toHaveLength(1);
-    expect(corpus.consumerGrammar.dynamicKeyFamilies).toHaveLength(24);
+    expect(corpus.consumerGrammar.dynamicKeyFamilies).toHaveLength(23);
     expect(
       corpus.consumerGrammar.dynamicKeyFamilies.flatMap((family) => family.consumers),
-    ).toHaveLength(50);
+    ).toHaveLength(49);
     for (const unit of corpus.units) {
       unit.unitLifecycle = 'retired';
       unit.occurrences = [];

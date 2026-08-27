@@ -8,7 +8,12 @@ export default async function startCatalogServer() {
     logLevel: 'warn',
     envFile: false,
     appType: 'spa',
-    server: { host: '127.0.0.1', port: 4178, strictPort: true },
+    server: {
+      host: '127.0.0.1',
+      port: 4178,
+      strictPort: true,
+      watch: { ignored: ['**/plans/**', '**/test-results/**'] },
+    },
   });
   try {
     await server.listen();

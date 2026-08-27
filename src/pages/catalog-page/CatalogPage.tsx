@@ -394,14 +394,6 @@ export function CatalogPage() {
                   <CatalogFilterBar query={query} onApply={navigate} />
                   <div className={styles.sortToolbar} data-part="catalog-sort-toolbar">
                     <div className={styles.sortField}>
-                      <span className={styles.sortLabel} aria-hidden="true">
-                        <span className={styles.sortBy} aria-hidden="true">
-                          {t('catalog:sortByLabel')}
-                        </span>
-                        <span className={styles.sortCompact} aria-hidden="true">
-                          {t('catalog:sort')}
-                        </span>
-                      </span>
                       <SortControl
                         value={query.sort}
                         onChange={(sort) => navigate({ ...query, sort, page: 1 })}
