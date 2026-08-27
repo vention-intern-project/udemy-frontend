@@ -22,7 +22,11 @@ export function ForgotPasswordPage() {
     <AuthFormShell
       title={t('routes:forgotPasswordTitle')}
       description={t('routes:forgotPasswordDescription')}
-      footer={<AuthLink to="/login">{t('auth:backToLogin')}</AuthLink>}
+      footer={
+        <AuthLink to="/login" tone="primary">
+          {t('auth:backToLogin')}
+        </AuthLink>
+      }
     >
       {searchParams.get('reason') === 'missing-token' ? (
         <Notice tone="warning" title={t('auth:useYourResetLink')}>

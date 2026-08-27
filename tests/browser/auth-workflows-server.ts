@@ -14,6 +14,8 @@ export default async function startAuthWorkflowsServer() {
   });
   try {
     await server.listen();
+    await server.warmupRequest('/src/main.tsx');
+    await server.environments.client.waitForRequestsIdle('/src/main.tsx');
   } catch (error) {
     await server.close();
     throw error;
