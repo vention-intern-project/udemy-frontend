@@ -11,6 +11,7 @@ import styles from './CourseChatLauncher.module.css';
 
 interface CourseChatLauncherInteractionProps {
   readonly assistant: CourseAssistantContext;
+  readonly footerClearance: number;
   readonly open: boolean;
   readonly returnTo: string;
   readonly widgetId: string;
@@ -29,6 +30,7 @@ const ACTION_MENU_VIEWPORT_GUTTER = 4;
 
 export function CourseChatLauncherInteraction({
   assistant,
+  footerClearance,
   open,
   returnTo,
   widgetId,
@@ -111,16 +113,29 @@ export function CourseChatLauncherInteraction({
     };
 
     updateActionMenuPlacement();
+    const observer =
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updateActionMenuPlacement);
+    const menu = actionMenuRef.current?.querySelector<HTMLElement>(
+      '[data-part="mini-chat-action-menu"]',
+    );
+    const trigger = actionMenuRef.current?.querySelector<HTMLButtonElement>(
+      ':scope > [data-part="button-wrapper"] > button',
+    );
+    if (menu != null) observer?.observe(menu);
+    if (trigger != null) observer?.observe(trigger);
     const visualViewport = window.visualViewport;
     window.addEventListener('resize', updateActionMenuPlacement);
     visualViewport?.addEventListener('resize', updateActionMenuPlacement);
     visualViewport?.addEventListener('scroll', updateActionMenuPlacement);
+    document.addEventListener('scroll', updateActionMenuPlacement, true);
     return () => {
+      observer?.disconnect();
       window.removeEventListener('resize', updateActionMenuPlacement);
       visualViewport?.removeEventListener('resize', updateActionMenuPlacement);
       visualViewport?.removeEventListener('scroll', updateActionMenuPlacement);
+      document.removeEventListener('scroll', updateActionMenuPlacement, true);
     };
-  }, [isActionMenuOpen]);
+  }, [footerClearance, isActionMenuOpen]);
 
   useEffect(() => {
     if (!isActionMenuOpen || !open) return;

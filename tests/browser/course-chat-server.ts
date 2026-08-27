@@ -18,7 +18,7 @@ export default async function startCourseChatServer() {
   });
   try {
     await server.listen();
-    await server.warmupRequest('/src/main.tsx');
+    await server.environments.client.transformRequest('/src/main.tsx');
   } catch (error) {
     await server.close();
     throw error;

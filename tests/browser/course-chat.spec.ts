@@ -31,8 +31,14 @@ interface LauncherFooterGeometry {
 interface MiniActionMenuViewportGeometry {
   readonly menuLeft: number;
   readonly menuRight: number;
+  readonly menuTop: number;
+  readonly menuWidth: number;
+  readonly expectedBlockStart: number;
+  readonly triggerTop: number;
   readonly viewportLeft: number;
+  readonly viewportTop: number;
   readonly viewportRight: number;
+  readonly viewportBottom: number;
 }
 
 interface MiniActionMenuNativeScaleLocale {
@@ -101,13 +107,33 @@ async function getMiniActionMenuViewportGeometry(
 ): Promise<MiniActionMenuViewportGeometry> {
   return page.locator('[data-part="mini-chat-action-menu"]').evaluate((menu) => {
     const rect = menu.getBoundingClientRect();
+    const trigger = menu.parentElement?.querySelector<HTMLButtonElement>(
+      ':scope > [data-part="button-wrapper"] > button',
+    );
+    if (trigger == null) throw new Error('Mini action-menu trigger is unavailable.');
+    const triggerRect = trigger.getBoundingClientRect();
     const viewport = window.visualViewport;
     const viewportLeft = viewport?.offsetLeft ?? 0;
+    const viewportTop = viewport?.offsetTop ?? 0;
+    const viewportWidth = viewport?.width ?? document.documentElement.clientWidth;
+    const viewportHeight = viewport?.height ?? document.documentElement.clientHeight;
+    const viewportRight = viewportLeft + viewportWidth;
+    const viewportBottom = viewportTop + viewportHeight;
+    const maximumBlockStart = Math.max(viewportTop + 4, viewportBottom - rect.height - 4);
     return {
       menuLeft: rect.left,
       menuRight: rect.right,
+      menuTop: rect.top,
+      menuWidth: rect.width,
+      expectedBlockStart: Math.min(
+        Math.max(triggerRect.bottom + 8, viewportTop + 4),
+        maximumBlockStart,
+      ),
+      triggerTop: triggerRect.top,
       viewportLeft,
-      viewportRight: viewportLeft + (viewport?.width ?? document.documentElement.clientWidth),
+      viewportTop,
+      viewportRight,
+      viewportBottom,
     };
   });
 }
@@ -631,6 +657,87 @@ for (const locale of miniActionMenuNativeScaleLocales) {
     expect(diagnostics.httpFailures).toEqual([]);
   });
 }
+
+test('repositions the open mini clear menu after footer-clearance scroll and menu-width changes', async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  const chatRequests: ChatRequestEvidence[] = [];
+  const diagnostics = captureRuntimeDiagnostics(page);
+  await installCourseChatFixture(page, chatRequests);
+  await page.route('**/courses/7/lessons**', async (route) => {
+    await json(route, {
+      items: Array.from({ length: 24 }, (_, index) => ({
+        id: index + 1,
+        title: `Footer clearance lesson ${index + 1}`,
+        lesson_type: 'text',
+        download_url: null,
+        description: null,
+        is_published: true,
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      })),
+      page: 1,
+      page_size: 100,
+      total: 24,
+      pages: 1,
+      has_next: false,
+      has_previous: false,
+    });
+  });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/learning/enrollments/4', { waitUntil: 'commit' });
+  const launcher = page.getByRole('button', { name: 'Open AI assistant' });
+  await expect(launcher).toBeVisible({ timeout: 120_000 });
+  const launcherRoot = page.locator('aside[aria-label="Course assistant"]');
+  await expect(launcherRoot).not.toHaveAttribute('style', /inset-block-end/);
+  const initialFooterTop = await page
+    .getByRole('contentinfo')
+    .evaluate((footer) => footer.getBoundingClientRect().top);
+  expect(initialFooterTop).toBeGreaterThan(900);
+  await launcher.click();
+  const actionTrigger = page.getByRole('button', { name: 'Conversation actions' });
+  await actionTrigger.click();
+  const menu = page.locator('[data-part="mini-chat-action-menu"]');
+  await expect(menu).toBeVisible();
+  const initialGeometry = await getMiniActionMenuViewportGeometry(page);
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await expect(launcherRoot).toHaveAttribute('style', /inset-block-end/);
+  await expect
+    .poll(async () => {
+      const geometry = await getMiniActionMenuViewportGeometry(page);
+      return (
+        geometry.triggerTop < initialGeometry.triggerTop &&
+        Math.abs(geometry.menuTop - geometry.expectedBlockStart) <= 1
+      );
+    })
+    .toBe(true);
+  const footerClearanceGeometry = await getMiniActionMenuViewportGeometry(page);
+  expect(footerClearanceGeometry.menuTop).toBeCloseTo(
+    footerClearanceGeometry.expectedBlockStart,
+    0,
+  );
+
+  await menu.evaluate((element) => {
+    element.style.width = '24rem';
+  });
+  await expect
+    .poll(async () => {
+      const geometry = await getMiniActionMenuViewportGeometry(page);
+      return (
+        geometry.menuWidth > footerClearanceGeometry.menuWidth &&
+        geometry.menuLeft < footerClearanceGeometry.menuLeft &&
+        Math.abs(geometry.menuTop - geometry.expectedBlockStart) <= 1
+      );
+    })
+    .toBe(true);
+  const resizedGeometry = await getMiniActionMenuViewportGeometry(page);
+  expect(resizedGeometry.menuRight).toBeLessThanOrEqual(resizedGeometry.viewportRight);
+  await expectNoOverflow(page);
+  expect(chatRequests).toEqual([]);
+  expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
+  expect(diagnostics.httpFailures).toEqual([]);
+});
 
 test('resets Catalog footer clearance before My learning and Cart geometry without another scroll', async ({
   page,
