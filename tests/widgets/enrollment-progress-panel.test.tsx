@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { LessonOutline } from '../../src/entities/course';
@@ -43,6 +44,8 @@ function renderPanel(
   progress: CourseProgress | undefined,
   currentOutline = outline,
   currentCompletionState: () => LessonCompletionState = completionState,
+  onSetCompletion = vi.fn(),
+  isPending: (lessonId: number) => boolean = () => false,
 ) {
   return render(
     <LocaleProvider initialLocale={locale}>
@@ -55,8 +58,8 @@ function renderPanel(
         outlineError={null}
         outlineLoading={false}
         completionState={currentCompletionState}
-        isPending={() => false}
-        onSetCompletion={vi.fn()}
+        isPending={isPending}
+        onSetCompletion={onSetCompletion}
         onRetry={vi.fn()}
       />
     </LocaleProvider>,
@@ -66,6 +69,47 @@ function renderPanel(
 afterEach(async () => {
   cleanup();
   await localeRuntime.changeLanguage('en');
+});
+
+describe('EnrollmentProgressPanel lesson completion activation', () => {
+  const completedLessonState = (): LessonCompletionState => ({ status: 'known', completed: true });
+  const lessonOutline = outlineWithLessonType('text');
+
+  it.each(['pointer', 'Enter', 'Space'] as const)(
+    'requests the existing incomplete transition from Undo completion by %s',
+    async (activation) => {
+      const onSetCompletion = vi.fn();
+      const user = userEvent.setup();
+      renderPanel('en', undefined, lessonOutline, completedLessonState, onSetCompletion);
+
+      const undo = screen.getByRole('button', { name: 'Undo completion' });
+      undo.focus();
+      if (activation === 'pointer') await user.click(undo);
+      if (activation === 'Enter') await user.keyboard('{Enter}');
+      if (activation === 'Space') await user.keyboard(' ');
+
+      expect(onSetCompletion).toHaveBeenCalledTimes(1);
+      expect(onSetCompletion).toHaveBeenCalledWith(42, false);
+    },
+  );
+
+  it('keeps a pending Undo completion focusable but does not delegate duplicate input', async () => {
+    const onSetCompletion = vi.fn();
+    const user = userEvent.setup();
+    renderPanel('en', undefined, lessonOutline, completedLessonState, onSetCompletion, () => true);
+
+    const undo = screen.getByRole('button', { name: 'Undo completion' });
+    undo.focus();
+    await user.click(undo);
+    await user.keyboard('{Enter}');
+    await user.keyboard(' ');
+
+    expect(undo.getAttribute('aria-disabled')).toBe('true');
+    expect(undo.getAttribute('aria-busy')).toBe('true');
+    expect((undo as HTMLButtonElement).disabled).toBe(false);
+    expect(document.activeElement).toBe(undo);
+    expect(onSetCompletion).not.toHaveBeenCalled();
+  });
 });
 
 describe('EnrollmentProgressPanel DRAFT-21 lesson-count noun localization', () => {
