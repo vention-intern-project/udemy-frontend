@@ -2561,6 +2561,70 @@ describe('canonical localization corpus engine', () => {
     );
   });
 
+  it('admits a post-DRAFT-37 draft unit without relaxing historical identity or approval validation', () => {
+    const extended = structuredClone(draft37Registry);
+    extended.units = extended.units.filter(
+      (unit) => unit.migrationProvenance.ownerTasks[0] !== 'FE-060',
+    );
+    extended.summary.translationUnits = 523;
+    extended.summary.sourceOccurrences = 746;
+    const next = structuredClone(extended.units[extended.units.length - 1]);
+    if (!next) throw new Error('canonical registry must contain a unit');
+    next.id = 'MLUX-C0522';
+    next.namespace = 'catalog';
+    next.key = 'priceTrigger';
+    next.english = 'Price';
+    next.occurrences = [
+      {
+        id: 'MLUX-O0750',
+        context: 'src/widgets/catalog-filter-bar/CatalogFilterBar.tsx — Price trigger',
+      },
+    ];
+    next.placeholdersByLocale = { en: [], ru: [], uz: [] };
+    next.renderingContract = null;
+    next.pluralForms = null;
+    next.locales.ru = {
+      candidate: 'Цена',
+      status: 'draft',
+      reviewerId: null,
+      verdict: null,
+      requestedAt: null,
+      reviewedAt: null,
+      approvalRecordedAt: null,
+      history: [],
+      sourceRevision: '',
+      approvalAuthority: null,
+    };
+    next.locales.uz = {
+      candidate: 'Narx',
+      status: 'draft',
+      reviewerId: null,
+      verdict: null,
+      requestedAt: null,
+      reviewedAt: null,
+      approvalRecordedAt: null,
+      history: [],
+      sourceRevision: '',
+      approvalAuthority: null,
+    };
+    next.migrationProvenance.ownerTasks = ['FE-060'];
+    next.sourceRevision = protectedSourceFingerprint(next);
+    next.locales.ru.sourceRevision = next.sourceRevision;
+    next.locales.uz.sourceRevision = next.sourceRevision;
+    extended.units.push(next);
+    extended.summary.translationUnits += 1;
+    extended.summary.sourceOccurrences += 1;
+
+    expect(validateCorpus(extended)).toEqual([]);
+    expect(generateResources(extended).en.catalog.priceTrigger).toBe('Price');
+
+    extended.units[0].english = `${extended.units[0].english} changed`;
+    extended.units[0].sourceRevision = protectedSourceFingerprint(extended.units[0]);
+    extended.units[0].locales.ru.sourceRevision = extended.units[0].sourceRevision;
+    extended.units[0].locales.uz.sourceRevision = extended.units[0].sourceRevision;
+    expect(validateCorpus(extended)).toContain('DRAFT-37 semantic identity mismatch');
+  });
+
   it('validates DRAFT-37 exclusion identity, uniqueness, provenance, and supported status semantics', () => {
     const malformed = structuredClone(draft37Registry);
     malformed.exclusions[0] = {} as (typeof malformed.exclusions)[number];

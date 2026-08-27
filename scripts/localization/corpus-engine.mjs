@@ -68,6 +68,7 @@ const MIGRATION_OWNER_TASKS = new Set([
   'MLUX-005',
   'MLUX-006-FOLLOWUP',
 ]);
+const POST_MIGRATION_OWNER_TASK = /^FE-\d{3}$/;
 const HISTORIC_GENERATED_PLURAL_SUFFIXES = new Map([
   ['catalog:lessonAvailability', new Set(['custom'])],
 ]);
@@ -766,20 +767,27 @@ function validateTopLevel(corpus, violations) {
     corpus.migration.importedAt !== null
   )
     violations.push('invalid migration provenance');
+  const historicUnits = Array.isArray(corpus.units)
+    ? corpus.units.filter(isHistoricDraft37Unit)
+    : [];
+  const historicOccurrenceCount = historicUnits.reduce(
+    (count, unit) => count + (Array.isArray(unit.occurrences) ? unit.occurrences.length : 0),
+    0,
+  );
   if (
     corpus.source?.sha256 !== DRAFT_37_SOURCE_SHA256 ||
     corpus.migration?.sourceSha256 !== DRAFT_37_SOURCE_SHA256 ||
-    corpus.units?.length !== 523 ||
-    corpus.summary?.translationUnits !== 523 ||
+    historicUnits.length !== 523 ||
     corpus.summary?.mergedDuplicateRows !== 223 ||
     corpus.exclusions?.length !== 12 ||
-    corpus.migration?.sourceOccurrences !== 746
+    corpus.migration?.sourceOccurrences !== 746 ||
+    historicOccurrenceCount !== 746
   )
     violations.push('DRAFT-37 identity/count mismatch');
   if (
     corpus.migration?.semanticIdentityVersion !== SEMANTIC_IDENTITY_VERSION ||
     !SOURCE_HASH.test(corpus.migration?.semanticIdentitySha256 ?? '') ||
-    corpus.migration?.semanticIdentitySha256 !== semanticIdentityDigest(corpus.units) ||
+    corpus.migration?.semanticIdentitySha256 !== semanticIdentityDigest(historicUnits) ||
     corpus.migration?.semanticIdentitySha256 !== DRAFT_37_SEMANTIC_IDENTITY_SHA256
   )
     violations.push('DRAFT-37 semantic identity mismatch');
@@ -791,6 +799,31 @@ function validateTopLevel(corpus, violations) {
     corpus.exclusions.some((exclusion) => !DRAFT_37_EXCLUSION_IDS.has(exclusion?.id))
   )
     violations.push('DRAFT-37 exclusion identity mismatch');
+}
+
+function isHistoricDraft37Unit(unit) {
+  return (
+    Array.isArray(unit?.migrationProvenance?.ownerTasks) &&
+    unit.migrationProvenance.ownerTasks.length > 0 &&
+    unit.migrationProvenance.ownerTasks.every((ownerTask) => MIGRATION_OWNER_TASKS.has(ownerTask))
+  );
+}
+
+function validUnitProvenance(unit) {
+  const provenance = unit?.migrationProvenance;
+  if (
+    !provenance ||
+    provenance.legacyResourceStatus !== 'Draft' ||
+    provenance.legacyReviewStatus !== 'Pending' ||
+    !Array.isArray(provenance.ownerTasks) ||
+    provenance.ownerTasks.length === 0 ||
+    new Set(provenance.ownerTasks).size !== provenance.ownerTasks.length
+  )
+    return false;
+  return (
+    provenance.ownerTasks.every((ownerTask) => MIGRATION_OWNER_TASKS.has(ownerTask)) ||
+    (provenance.ownerTasks.length === 1 && POST_MIGRATION_OWNER_TASK.test(provenance.ownerTasks[0]))
+  );
 }
 
 function validateExclusions(exclusions, violations) {
@@ -957,19 +990,7 @@ export function validateCorpus(corpus) {
       baselineEnglish !== unit.english
     )
       violations.push(`${unit.id}: baseline semantic identity mismatch`);
-    if (
-      !unit.migrationProvenance ||
-      unit.migrationProvenance.legacyResourceStatus !== 'Draft' ||
-      unit.migrationProvenance.legacyReviewStatus !== 'Pending' ||
-      !Array.isArray(unit.migrationProvenance.ownerTasks) ||
-      unit.migrationProvenance.ownerTasks.length === 0 ||
-      new Set(unit.migrationProvenance.ownerTasks).size !==
-        unit.migrationProvenance.ownerTasks.length ||
-      !unit.migrationProvenance.ownerTasks.every((ownerTask) =>
-        MIGRATION_OWNER_TASKS.has(ownerTask),
-      )
-    )
-      violations.push(`${unit.id}: invalid migration provenance`);
+    if (!validUnitProvenance(unit)) violations.push(`${unit.id}: invalid migration provenance`);
     if (!['active', 'retired'].includes(unit.unitLifecycle))
       violations.push(`${unit.id}: invalid unit lifecycle`);
     if (!Array.isArray(unit.occurrences)) violations.push(`${unit.id}: invalid occurrences`);

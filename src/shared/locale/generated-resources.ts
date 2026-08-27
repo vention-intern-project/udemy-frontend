@@ -413,7 +413,11 @@ export const GENERATED_LOCALE_RESOURCES = {
       "nonNegativePrice": "Enter a non-negative price.",
       "catalogDataUnavailable": "Catalog data is unavailable",
       "tryAgainShortly": "Please try again shortly.",
-      "catalogLoadFailed": "We could not load courses"
+      "catalogLoadFailed": "We could not load courses",
+      "priceTrigger": "Price",
+      "priceFrom": "From",
+      "priceTo": "To",
+      "priceDone": "Done"
     },
     "course": {
       "pleaseWait": "Please wait…",
@@ -982,7 +986,11 @@ export const GENERATED_LOCALE_RESOURCES = {
       "nonNegativePrice": "Введите неотрицательное значение цены.",
       "catalogDataUnavailable": "Данные каталога недоступны",
       "tryAgainShortly": "Попробуйте ещё раз чуть позже.",
-      "catalogLoadFailed": "Не удалось загрузить курсы"
+      "catalogLoadFailed": "Не удалось загрузить курсы",
+      "priceTrigger": "Цена",
+      "priceFrom": "От",
+      "priceTo": "До",
+      "priceDone": "Готово"
     },
     "course": {
       "pleaseWait": "Подождите…",
@@ -1547,7 +1555,11 @@ export const GENERATED_LOCALE_RESOURCES = {
       "nonNegativePrice": "Narx manfiy bo‘lmasligi kerak.",
       "catalogDataUnavailable": "Katalog ma’lumotlari mavjud emas",
       "tryAgainShortly": "Birozdan keyin qayta urinib ko‘ring.",
-      "catalogLoadFailed": "Kurslarni yuklab bo‘lmadi"
+      "catalogLoadFailed": "Kurslarni yuklab bo‘lmadi",
+      "priceTrigger": "Narx",
+      "priceFrom": "Dan",
+      "priceTo": "Gacha",
+      "priceDone": "Tayyor"
     },
     "course": {
       "pleaseWait": "Kuting…",

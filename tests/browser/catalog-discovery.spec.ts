@@ -21,8 +21,7 @@ interface CatalogLocaleExpectation {
   readonly locale: 'ru' | 'uz';
   readonly heroTitle: string;
   readonly resultCount: string;
-  readonly sortBy: string;
-  readonly sortCompact: string;
+  readonly sortAccessibleName: string;
   readonly free: string;
   readonly details: string;
   readonly detailsAccessibleName: string;
@@ -1501,8 +1500,7 @@ test('keeps Catalog result geometry stable while changed Sort and price requests
   await page.goto('/?sort=-created_at&page=2');
   await expect(page.locator('[data-part="course-card"]')).toHaveCount(20);
   const trigger = page.locator('[data-part="catalog-sort-trigger"]');
-  const minimum = page.getByLabel('Min price');
-  const maximum = page.getByLabel('Max price');
+  const priceTrigger = page.getByRole('button', { name: 'Price' });
   const initialRequestCount = requests.length;
   const records: Array<{
     after: Awaited<ReturnType<typeof capture>>;
@@ -1550,37 +1548,37 @@ test('keeps Catalog result geometry stable while changed Sort and price requests
   before = await prepareRefresh('top');
   const priceUrlBeforeApply = before.url;
   const requestCountBeforePriceApply = requests.length;
+  await priceTrigger.click();
+  const minimum = page.getByRole('spinbutton', { name: 'From' });
   await minimum.fill('10');
-  await maximum.focus();
-  await expect(maximum).toBeFocused();
   await expect(page).toHaveURL(priceUrlBeforeApply);
   expect(requests).toHaveLength(requestCountBeforePriceApply);
   expect(refreshScenario.hasDeferredResponse()).toBe(false);
-
-  await trigger.focus();
-  await expect(trigger).toBeFocused();
+  await page.getByRole('button', { name: 'Done' }).click();
   during = await captureDeferredRefresh();
   after = await settleRefresh();
   records.push({
     after,
     before,
     during,
-    focusTarget: { dataPart: 'catalog-sort-trigger' },
-    name: 'Min price fieldset exit at top',
+    focusTarget: { dataPart: 'catalog-price-trigger' },
+    name: 'Price Done at top',
     requestCount: requests.length,
   });
 
   before = await prepareRefresh('mid');
-  await maximum.fill('20');
-  await maximum.press('Enter');
+  await priceTrigger.click();
+  const currentMaximum = page.getByRole('spinbutton', { name: 'To' });
+  await currentMaximum.fill('20');
+  await currentMaximum.press('Enter');
   during = await captureDeferredRefresh();
   after = await settleRefresh();
   records.push({
     after,
     before,
     during,
-    focusTarget: { id: 'main-content' },
-    name: 'Max price Enter mid-page',
+    focusTarget: { dataPart: 'catalog-price-trigger' },
+    name: 'Price Enter mid-page',
     requestCount: requests.length,
   });
 
@@ -1998,6 +1996,9 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
 
   const filters = page.getByRole('form', { name: 'Course filters' });
   await expect(filters.getByRole('heading', { name: 'Filters' })).toHaveCount(0);
+  const priceTrigger = filters.getByRole('button', { name: 'Price' });
+  await expect(priceTrigger).toHaveAttribute('data-part', 'catalog-price-trigger');
+  await priceTrigger.click();
   const priceRange = filters.getByRole('group', { name: 'Price range' });
   await expect(priceRange).toBeVisible();
   const semanticPriceLegend = priceRange.locator(':scope > legend');
@@ -2005,8 +2006,8 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   expect(await semanticPriceLegend.evaluate((legend) => getComputedStyle(legend).display)).not.toBe(
     'contents',
   );
-  const initialMinimum = filters.getByLabel('Min price');
-  const initialMaximum = filters.getByLabel('Max price');
+  const initialMinimum = filters.getByRole('spinbutton', { name: 'From' });
+  const initialMaximum = filters.getByRole('spinbutton', { name: 'To' });
   await expect(initialMinimum).toHaveValue('5');
   await expect(initialMaximum).toHaveValue('');
   for (const input of [initialMinimum, initialMaximum]) {
@@ -2037,15 +2038,13 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   await expect(resultHeading).toHaveText('Found 1 course');
   await expect(resultHeading.locator('strong')).toHaveText('1');
   await expect(resultHeading.locator('strong')).not.toContainText('course');
-  await expect(
-    page.locator('[data-part="catalog-sort-toolbar"] .sortBy, [class*="sortBy"]'),
-  ).toHaveText('Sort by:');
+  await expect(page.getByText('Sort by:', { exact: true })).toHaveCount(0);
+  await expect(sortTrigger).toContainText('Newest');
+  await expect(sortTrigger.locator('svg[aria-hidden="true"]')).toHaveCount(1);
   const resultTypography = await resultHeading.evaluate((heading) => {
     const total = heading.querySelector<HTMLElement>('strong');
     const suffix = heading.lastElementChild as HTMLElement | null;
-    const sortLabel = document.querySelector<HTMLElement>(
-      '[data-part="catalog-sort-toolbar"] > div > span:first-child',
-    );
+    const sortLabel = document.querySelector<HTMLElement>('[data-part="catalog-sort-toolbar"]');
     if (!total || !suffix || !sortLabel)
       throw new Error('Result-toolbar typography targets are missing.');
     const resolveColor = (token: string) => {
@@ -2221,17 +2220,8 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
     (await lowToHighOption.getAttribute('id')) ?? '',
   );
   const purple = 'rgb(91, 63, 214)';
-  for (const { target, expectsBorder } of [
-    { target: filters.getByLabel('Min price'), expectsBorder: false },
-    { target: filters.getByLabel('Max price'), expectsBorder: false },
-    { target: sortTrigger, expectsBorder: true },
-    { target: focusedCourseLink, expectsBorder: false },
-  ]) {
-    await target.focus();
-    expect(await target.evaluate((element) => element.matches(':focus-visible'))).toBe(true);
-    await expect(target).toHaveCSS('outline-color', purple);
-    if (expectsBorder) await expect(target).toHaveCSS('border-color', purple);
-  }
+  await page.mouse.move(0, 0);
+  await expect(sortListbox).toHaveCount(0);
   await sortTrigger.focus();
   await page.keyboard.press('Enter');
   await expect(sortListbox).toBeFocused();
@@ -2309,6 +2299,8 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   expect(optionGeometry.selected.radio.background).toContain('3px');
   expect(optionGeometry.activeBackground).toBe(optionGeometry.expected.highlight);
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.keyboard.press('Escape');
+  await expect(sortTrigger).toBeFocused();
   await page.mouse.move(0, 0);
   await expect(sortListbox).toHaveCount(0);
   await sortTrigger.hover();
@@ -2332,7 +2324,7 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   await expect(sortListbox).toHaveCount(0);
   await expect(sortTrigger).toHaveAttribute('aria-expanded', 'false');
   await sortTrigger.focus();
-  await page.keyboard.press('Enter');
+  await sortTrigger.press('Enter');
   await expect(sortListbox).toBeFocused();
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('Enter');
@@ -2340,36 +2332,13 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   expect(requests[requests.length - 1]).toContain('sort=price');
   expect(requests[requests.length - 1]).toContain('page=1');
   await expect(sortTrigger).toBeFocused();
-  const sortLabel = page.locator('[data-part="catalog-sort-toolbar"] > div > span:first-child');
-  const priceLabel = filters.locator('legend');
-  const labelParity = await Promise.all([
-    priceLabel.evaluate((label) => {
-      const style = getComputedStyle(label);
-      return {
-        color: style.color,
-        fontSize: style.fontSize,
-        fontWeight: style.fontWeight,
-        lineHeight: style.lineHeight,
-      };
-    }),
-    sortLabel.evaluate((label) => {
-      const style = getComputedStyle(label);
-      return {
-        color: style.color,
-        fontSize: style.fontSize,
-        fontWeight: style.fontWeight,
-        lineHeight: style.lineHeight,
-      };
-    }),
-  ]);
-  expect(labelParity[0]).toEqual(labelParity[1]);
   const toolbarGeometry = await Promise.all([
     resultHeading.boundingBox(),
     toolbarControls.boundingBox(),
     filters.boundingBox(),
     page.locator('[data-part="catalog-sort-toolbar"]').boundingBox(),
-    sortLabel.boundingBox(),
     sortTrigger.boundingBox(),
+    priceTrigger.boundingBox(),
     page.locator('[data-part="catalog-result-list"]').boundingBox(),
   ]);
   expect(toolbarGeometry.every(Boolean)).toBe(true);
@@ -2390,28 +2359,10 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
         (toolbarGeometry[3]!.y + toolbarGeometry[3]!.height / 2),
     ),
   ).toBeLessThanOrEqual(1);
-  expect(toolbarGeometry[4]!.x + toolbarGeometry[4]!.width).toBeLessThanOrEqual(
-    toolbarGeometry[5]!.x,
-  );
-  expect(
-    Math.abs(
-      toolbarGeometry[4]!.y +
-        toolbarGeometry[4]!.height / 2 -
-        (toolbarGeometry[5]!.y + toolbarGeometry[5]!.height / 2),
-    ),
-  ).toBeLessThanOrEqual(1);
-  const desktopPriceControls = await Promise.all([
-    filters.getByLabel('Min price').boundingBox(),
-    filters.getByLabel('Max price').boundingBox(),
-  ]);
-  expect(desktopPriceControls.every(Boolean)).toBe(true);
-  expect(Math.abs(desktopPriceControls[0]!.width - 120)).toBeLessThanOrEqual(1);
-  expect(Math.abs(desktopPriceControls[1]!.width - 120)).toBeLessThanOrEqual(1);
-  expect(Math.abs(desktopPriceControls[0]!.height - 44)).toBeLessThanOrEqual(1);
-  expect(Math.abs(desktopPriceControls[1]!.height - 44)).toBeLessThanOrEqual(1);
+  expect(Math.abs(toolbarGeometry[4]!.height - 44)).toBeLessThanOrEqual(1);
+  expect(Math.abs(toolbarGeometry[4]!.width - 148)).toBeLessThanOrEqual(1);
   expect(Math.abs(toolbarGeometry[5]!.height - 44)).toBeLessThanOrEqual(1);
-  expect(Math.abs(toolbarGeometry[5]!.width - 148)).toBeLessThanOrEqual(1);
-  expect(toolbarGeometry[5]!.y + toolbarGeometry[5]!.height).toBeLessThanOrEqual(
+  expect(toolbarGeometry[4]!.y + toolbarGeometry[4]!.height).toBeLessThanOrEqual(
     toolbarGeometry[6]!.y,
   );
   expect(
@@ -2465,20 +2416,22 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   await (await restoredTypeScriptResponse).finished();
   await page.goForward();
   await expect(headerSearch).toHaveValue('JavaScript');
-  const minimum = filters.getByLabel('Min price');
-  const maximum = filters.getByLabel('Max price');
+  await priceTrigger.focus();
+  await page.keyboard.press('Escape');
+  await expect(priceRange).toHaveCount(0);
+  await priceTrigger.click();
+  const minimum = filters.getByRole('spinbutton', { name: 'From' });
+  const maximum = filters.getByRole('spinbutton', { name: 'To' });
   const priceUrlBeforeApply = page.url();
   const requestCountBeforePriceApply = requests.length;
   await minimum.fill('10');
-  await minimum.press('Tab');
-  await expect(maximum).toBeFocused();
   await expect(page).toHaveURL(priceUrlBeforeApply);
   expect(requests).toHaveLength(requestCountBeforePriceApply);
 
   await maximum.fill('20');
-  await maximum.press('Tab');
+  await page.getByRole('button', { name: 'Done' }).click();
   await expect(page).toHaveURL(/search_query=JavaScript&min_price=10&max_price=20&sort=title/);
-  await expect(sortTrigger).toBeFocused();
+  await expect(priceTrigger).toBeFocused();
   await expect.poll(() => requests.length).toBe(requestCountBeforePriceApply + 1);
   await expect
     .poll(
@@ -2502,29 +2455,8 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
         document.body.scrollWidth <= document.documentElement.clientWidth,
     ),
   ).toBe(true);
-  const compactPriceLabel = filters.locator('[data-part="catalog-filter-price-label"]');
-  const compactSortLabel = sortLabel.locator('[class*="sortCompact"]');
-  await expect(compactPriceLabel).toBeHidden();
-  await expect(compactPriceLabel).toHaveAttribute('aria-hidden', 'true');
-  await expect(compactSortLabel).toHaveText('Sort:');
-  const mobilePriceLabels = await Promise.all(
-    [filters.getByText('Min', { exact: true }), filters.getByText('Max', { exact: true })].map(
-      async (label) => {
-        const box = await label.boundingBox();
-        return {
-          box,
-          clip: await label.evaluate((element) => getComputedStyle(element).clip),
-          position: await label.evaluate((element) => getComputedStyle(element).position),
-        };
-      },
-    ),
-  );
-  for (const label of mobilePriceLabels) {
-    expect(label.box?.width).toBeGreaterThan(1);
-    expect(label.box?.height).toBeGreaterThan(1);
-    expect(label.clip).toBe('auto');
-    expect(label.position).not.toBe('absolute');
-  }
+  await expect(page.getByText('Sort:', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Price:', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Open navigation' })).toHaveCount(0);
   const anonymousNavigation = page.getByRole('navigation', { name: 'Anonymous navigation' });
@@ -2538,8 +2470,7 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
     toolbarControls.boundingBox(),
     filters.boundingBox(),
     page.locator('[data-part="catalog-sort-toolbar"]').boundingBox(),
-    priceLabel.boundingBox(),
-    sortLabel.boundingBox(),
+    priceTrigger.boundingBox(),
     sortTrigger.boundingBox(),
     page.locator('[data-part="catalog-result-list"]').boundingBox(),
   ]);
@@ -2610,43 +2541,15 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
       first.y < second.y ||
       (Math.abs(first.y - second.y) <= 1 && first.x + first.width <= second.x + 1);
     expect(comesBefore(responsiveToolbarGeometry[1]!, responsiveToolbarGeometry[2]!)).toBe(true);
-    const responsiveCompactPriceLabel = filters.locator('[data-part="catalog-filter-price-label"]');
-    if (width < 768) await expect(responsiveCompactPriceLabel).toBeHidden();
     const responsivePriceGeometry = await Promise.all([
-      (width === 768 ? priceLabel : responsiveCompactPriceLabel).boundingBox(),
-      filters.getByLabel('Min price').boundingBox(),
-      filters.getByLabel('Max price').boundingBox(),
+      priceTrigger.boundingBox(),
       sortTrigger.boundingBox(),
     ]);
-    expect(responsivePriceGeometry.slice(1).every(Boolean)).toBe(true);
-    if (width === 768) {
-      expect(
-        Math.abs(
-          responsivePriceGeometry[0]!.y +
-            responsivePriceGeometry[0]!.height / 2 -
-            (responsivePriceGeometry[1]!.y + responsivePriceGeometry[1]!.height / 2),
-        ),
-      ).toBeLessThanOrEqual(1);
-      expect(
-        Math.abs(responsivePriceGeometry[1]!.width - responsivePriceGeometry[2]!.width),
-      ).toBeLessThanOrEqual(5);
-      expect(Math.abs(responsivePriceGeometry[1]!.width - 120)).toBeLessThanOrEqual(1);
-      expect(Math.abs(responsivePriceGeometry[3]!.width - 148)).toBeLessThanOrEqual(1);
-    } else {
-      expect(responsivePriceGeometry[0]).toBeNull();
-      expect(
-        Math.abs(responsivePriceGeometry[1]!.y - responsivePriceGeometry[2]!.y),
-      ).toBeLessThanOrEqual(1);
-      expect(responsivePriceGeometry[1]!.x).toBeLessThan(responsivePriceGeometry[2]!.x);
-      expect(responsivePriceGeometry[1]!.width).toBeGreaterThanOrEqual(128);
-      expect(responsivePriceGeometry[2]!.width).toBeGreaterThanOrEqual(128);
-    }
-    for (const input of [filters.getByLabel('Min price'), filters.getByLabel('Max price')]) {
-      await input.focus();
-      await expect(input).toBeFocused();
-      expect(await input.evaluate((element) => element.matches(':focus-visible'))).toBe(true);
-      await expect(input).toHaveCSS('outline-color', purple);
-    }
+    expect(responsivePriceGeometry.every(Boolean)).toBe(true);
+    expect(Math.abs(responsivePriceGeometry[0]!.height - 44)).toBeLessThanOrEqual(1);
+    expect(Math.abs(responsivePriceGeometry[1]!.height - 44)).toBeLessThanOrEqual(1);
+    await priceTrigger.focus();
+    await expect(priceTrigger).toBeFocused();
     expect(
       await page.evaluate(
         () =>
@@ -2659,9 +2562,9 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   await page.goto('/login');
   await expect(page.getByRole('heading', { level: 1, name: 'Log in' })).toBeVisible();
   await expect(page.getByRole('search', { name: 'Course catalog search' })).toHaveCount(0);
-  expect(mobileToolbarGeometry[6]!.x + mobileToolbarGeometry[6]!.width).toBeLessThanOrEqual(320);
-  expect(mobileToolbarGeometry[6]!.y + mobileToolbarGeometry[6]!.height).toBeLessThanOrEqual(
-    mobileToolbarGeometry[7]!.y,
+  expect(mobileToolbarGeometry[5]!.x + mobileToolbarGeometry[5]!.width).toBeLessThanOrEqual(320);
+  expect(mobileToolbarGeometry[5]!.y + mobileToolbarGeometry[5]!.height).toBeLessThanOrEqual(
+    mobileToolbarGeometry[6]!.y,
   );
   assertClean();
 });
@@ -2881,36 +2784,22 @@ test('keeps an inverted price range invalid, then submits a corrected value with
   expect(await page.evaluate(() => window.innerWidth)).toBe(320);
   await expect(page.getByRole('link', { name: 'React' })).toBeVisible();
   const requestCountBeforeInvalidSubmit = requests.length;
-  const minimum = page.getByLabel('Min price');
-  const maximum = page.getByLabel('Max price');
+  const priceTrigger = page.getByRole('button', { name: 'Price' });
+  await priceTrigger.click();
+  const minimum = page.getByRole('spinbutton', { name: 'From' });
+  const maximum = page.getByRole('spinbutton', { name: 'To' });
   await expect(page.getByRole('group', { name: 'Price range' })).toBeVisible();
-  await expect(minimum).toHaveAccessibleName('Min price');
-  await expect(maximum).toHaveAccessibleName('Max price');
+  await expect(minimum).toHaveAccessibleName('From');
+  await expect(maximum).toHaveAccessibleName('To');
   await minimum.fill('-1');
-  await page.keyboard.press('Tab');
-  await expect(maximum).toBeFocused();
 
   await expect(page).toHaveURL('/');
   expect(requests).toHaveLength(requestCountBeforeInvalidSubmit);
-
-  await page.keyboard.press('Shift+Tab');
-  await expect(minimum).toBeFocused();
-  await expect(page).toHaveURL('/');
-  expect(requests).toHaveLength(requestCountBeforeInvalidSubmit);
-
   await minimum.press('Enter');
 
   await expect(page.getByText('Enter a non-negative price.')).toBeVisible();
   await expect(minimum).toHaveAttribute('aria-invalid', 'true');
   await expect(minimum).toHaveAttribute('aria-describedby', /-error/);
-  await page.getByRole('button', { name: 'Change language' }).click();
-  await page.getByRole('button', { name: 'Русский', exact: true }).click();
-  await expect(page.getByText('Введите неотрицательное значение цены.')).toBeVisible();
-  await page.getByRole('button', { name: 'Язык' }).click();
-  await page.getByRole('button', { name: "O'zbek", exact: true }).click();
-  await expect(page.getByText('Narx manfiy bo‘lmasligi kerak.')).toBeVisible();
-  await page.getByRole('button', { name: 'Til' }).click();
-  await page.getByRole('button', { name: 'English', exact: true }).press('Enter');
   await expect(page).toHaveURL('/');
   expect(requests).toHaveLength(requestCountBeforeInvalidSubmit);
 
@@ -2918,7 +2807,7 @@ test('keeps an inverted price range invalid, then submits a corrected value with
   await minimum.press('Enter');
   await expect(page).toHaveURL('/?min_price=5');
   await expect.poll(() => requests.length).toBe(requestCountBeforeInvalidSubmit + 1);
-  await maximum.focus();
+  await expect(priceTrigger).toBeFocused();
   await page.waitForTimeout(20);
   expect(requests).toHaveLength(requestCountBeforeInvalidSubmit + 1);
   const correctedRequest = requests[requests.length - 1];
@@ -2926,6 +2815,7 @@ test('keeps an inverted price range invalid, then submits a corrected value with
   expect(correctedRequest).toContain('page_size=20');
 
   const requestCountBeforeNegativeMaximum = requests.length;
+  await priceTrigger.click();
   await maximum.fill('-1');
   await maximum.press('Enter');
   await expect(page.getByText('Enter a non-negative price.')).toBeVisible();
@@ -2937,13 +2827,7 @@ test('keeps an inverted price range invalid, then submits a corrected value with
 
   const requestCountBeforeInvertedSubmit = requests.length;
   await maximum.fill('3');
-  await page.keyboard.press('Shift+Tab');
-  await expect(minimum).toBeFocused();
-
-  await expect(page).toHaveURL('/?min_price=5');
-  expect(requests).toHaveLength(requestCountBeforeInvertedSubmit);
-
-  await minimum.press('Enter');
+  await maximum.press('Enter');
   await expect(page.getByText('Maximum price must be at least the minimum price.')).toBeVisible();
   await expect(maximum).toHaveAttribute('aria-invalid', 'true');
   await expect(maximum).toHaveAttribute('aria-describedby', /-error/);
@@ -4199,34 +4083,27 @@ test('Keeps the labelled whole-card route and omits Details for compact or coars
   const intermediateGeometry = await page.evaluate(() => {
     const hero = document.querySelector<HTMLElement>('[data-part="catalog-hero"]');
     const copy = hero?.querySelector<HTMLElement>('div');
-    const min = document.querySelector<HTMLInputElement>('input[name="min_price"]');
-    const max = document.querySelector<HTMLInputElement>('input[name="max_price"]');
+    const price = document.querySelector<HTMLElement>('[data-part="catalog-price-trigger"]');
     const sort = document.querySelector<HTMLElement>('[data-part="catalog-sort-trigger"]');
-    if (!hero || !copy || !min || !max || !sort)
+    if (!hero || !copy || !price || !sort)
       throw new Error('Intermediate Catalog geometry targets are missing.');
     const heroRect = hero.getBoundingClientRect();
     const copyRect = copy.getBoundingClientRect();
-    const minRect = min.getBoundingClientRect();
-    const maxRect = max.getBoundingClientRect();
+    const priceRect = price.getBoundingClientRect();
     const sortRect = sort.getBoundingClientRect();
     return {
       heroCentreDelta: Math.abs(
         heroRect.top + heroRect.height / 2 - (copyRect.top + copyRect.height / 2),
       ),
-      min: minRect.toJSON(),
-      max: maxRect.toJSON(),
+      price: priceRect.toJSON(),
       sort: sortRect.toJSON(),
     };
   });
   expect(intermediateGeometry.heroCentreDelta).toBeLessThanOrEqual(1);
-  expect(Math.abs(intermediateGeometry.min.width - 120)).toBeLessThanOrEqual(1);
-  expect(Math.abs(intermediateGeometry.max.width - 120)).toBeLessThanOrEqual(1);
+  expect(Math.abs(intermediateGeometry.price.height - 44)).toBeLessThanOrEqual(1);
   expect(Math.abs(intermediateGeometry.sort.width - 148)).toBeLessThanOrEqual(1);
   expect(
-    Math.abs(intermediateGeometry.min.top - intermediateGeometry.sort.top),
-  ).toBeLessThanOrEqual(1);
-  expect(
-    Math.abs(intermediateGeometry.max.top - intermediateGeometry.sort.top),
+    Math.abs(intermediateGeometry.price.top - intermediateGeometry.sort.top),
   ).toBeLessThanOrEqual(1);
   assertClean();
 });
@@ -4260,7 +4137,7 @@ test('Keeps compact fine-pointer hover and focus free of dangling disclosure ARI
   assertClean();
 });
 
-test('localizes the D05 price filter fieldset and accessible names without changing responsive behavior', async ({
+test('localizes the Price disclosure trigger and fields without changing responsive containment', async ({
   page,
 }) => {
   const assertClean = await monitor(page);
@@ -4284,28 +4161,30 @@ test('localizes the D05 price filter fieldset and accessible names without chang
     {
       locale: 'en',
       group: 'Price range',
-      minimum: 'Min price',
-      maximum: 'Max price',
-      label: 'Price:',
+      trigger: 'Price',
+      minimum: 'From',
+      maximum: 'To',
+      done: 'Done',
     },
     {
       locale: 'ru',
       group: 'Диапазон цен',
-      minimum: 'Мин. цена',
-      maximum: 'Макс. цена',
-      label: 'Цена:',
+      trigger: 'Цена',
+      minimum: 'От',
+      maximum: 'До',
+      done: 'Готово',
     },
     {
       locale: 'uz',
       group: 'Narx oralig‘i',
-      minimum: 'Min. narx',
-      maximum: 'Maks. narx',
-      label: 'Narx:',
+      trigger: 'Narx',
+      minimum: 'Dan',
+      maximum: 'Gacha',
+      done: 'Tayyor',
     },
   ] as const;
 
-  const compactWidths = [320, 390, 617, 767];
-  const desktopWidths = [768, 1280];
+  const widths = [320, 390, 768, 1280];
 
   for (const expected of expectations) {
     await page.goto('/');
@@ -4315,12 +4194,26 @@ test('localizes the D05 price filter fieldset and accessible names without chang
     );
     await page.reload();
 
-    for (const width of compactWidths) {
+    const trigger = page.getByRole('button', { name: expected.trigger });
+    const chevron = trigger.locator('[data-part="catalog-price-chevron"]');
+    await expect(trigger).toHaveAttribute('data-part', 'catalog-price-trigger');
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    await expect(trigger).not.toHaveAttribute('aria-describedby');
+    await expect(chevron).toBeVisible();
+    await expect(chevron).toHaveAttribute('aria-hidden', 'true');
+    for (const width of widths) {
       await page.setViewportSize({ width, height: 900 });
+      await trigger.click();
+      await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+      await expect(chevron).toHaveCSS('transform', /matrix/);
       await expect(page.getByRole('group', { name: expected.group })).toBeVisible();
-      await expect(page.getByLabel(expected.minimum)).toHaveAccessibleName(expected.minimum);
-      await expect(page.getByLabel(expected.maximum)).toHaveAccessibleName(expected.maximum);
-      await expect(page.locator('[data-part="catalog-filter-price-label"]')).toBeHidden();
+      const minimum = page.getByRole('spinbutton', { name: expected.minimum, exact: true });
+      const maximum = page.getByRole('spinbutton', { name: expected.maximum, exact: true });
+      await expect(minimum).toHaveAccessibleName(expected.minimum);
+      await expect(maximum).toHaveAccessibleName(expected.maximum);
+      await expect(minimum.locator('xpath=..').locator(':scope > label')).toBeVisible();
+      await expect(maximum.locator('xpath=..').locator(':scope > label')).toBeVisible();
+      await expect(page.getByRole('button', { name: expected.done })).toBeVisible();
       const geometry = await page.evaluate<CatalogViewportGeometry>(() => ({
         width: window.innerWidth,
         documentWidth: document.documentElement.scrollWidth,
@@ -4333,23 +4226,41 @@ test('localizes the D05 price filter fieldset and accessible names without chang
       expect(geometry.bodyWidth, JSON.stringify(geometry)).toBeLessThanOrEqual(
         geometry.clientWidth,
       );
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('group', { name: expected.group })).toHaveCount(0);
+      await expect(trigger).toBeFocused();
     }
-
-    for (const width of desktopWidths) {
-      await page.setViewportSize({ width, height: 900 });
-      await expect(page.getByRole('group', { name: expected.group })).toBeVisible();
-      await expect(page.getByLabel(expected.minimum)).toHaveAccessibleName(expected.minimum);
-      await expect(page.getByLabel(expected.maximum)).toHaveAccessibleName(expected.maximum);
-      await expect(page.locator('[data-part="catalog-filter-price-label"]')).toHaveText(
-        expected.label,
-      );
-    }
+    await trigger.click();
+    await page.getByRole('spinbutton', { name: expected.minimum, exact: true }).fill('5');
+    await page.getByRole('spinbutton', { name: expected.maximum, exact: true }).fill('20');
+    await page.getByRole('button', { name: expected.done }).click();
+    await expect(page).toHaveURL(/min_price=5&max_price=20/);
+    const appliedDescriptionId = await trigger.getAttribute('aria-describedby');
+    expect(appliedDescriptionId).toBeTruthy();
+    await expect(page.locator(`[id="${appliedDescriptionId}"]`)).toHaveText(
+      `${expected.minimum}: 5, ${expected.maximum}: 20`,
+    );
   }
+
+  const reducedMotionTrigger = page.getByRole('button', { name: 'Narx' });
+  const reducedMotionChevron = reducedMotionTrigger.locator('[data-part="catalog-price-chevron"]');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(reducedMotionChevron).toHaveCSS('transition-duration', '0s');
+  await reducedMotionTrigger.click();
+  await expect(reducedMotionTrigger).toHaveAttribute('aria-expanded', 'true');
+  const reducedMotionChevronGeometry = await reducedMotionChevron.evaluate((element) => {
+    const transform = new DOMMatrixReadOnly(getComputedStyle(element).transform);
+    return ((Math.atan2(transform.b, transform.a) * 180) / Math.PI + 360) % 360;
+  });
+  expect(reducedMotionChevronGeometry).toBeCloseTo(225, 1);
+  await page.keyboard.press('Escape');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
 
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.evaluate(() => {
     document.documentElement.style.zoom = '200%';
   });
+  await page.getByRole('button', { name: 'Narx' }).click();
   const zoomedPriceRange = await page
     .getByRole('group', { name: 'Narx oralig‘i' })
     .evaluate((fieldset) => {
@@ -4399,8 +4310,7 @@ test('renders the D20 Catalog vertical slice in Russian and Uzbek without changi
       locale: 'ru',
       heroTitle: 'Освойте навыки, которые формируют будущее',
       resultCount: 'Найдено 2 курса',
-      sortBy: 'Сортировать по:',
-      sortCompact: 'Сортировка:',
+      sortAccessibleName: 'Сортировка: Сначала старые',
       free: 'БЕСПЛАТНО',
       details: 'Подробнее',
       detailsAccessibleName: 'Открыть сведения о курсе',
@@ -4412,8 +4322,7 @@ test('renders the D20 Catalog vertical slice in Russian and Uzbek without changi
       locale: 'uz',
       heroTitle: 'Kelajakni shakllantiruvchi ko‘nikmalarni egallang',
       resultCount: 'Topildi 2 ta kurs',
-      sortBy: 'Saralash:',
-      sortCompact: 'Saralash:',
+      sortAccessibleName: 'Saralash: Avval eskilari',
       free: 'BEPUL',
       details: 'Batafsil',
       detailsAccessibleName: 'Kurs tafsilotlarini ko‘rish',
@@ -4467,14 +4376,11 @@ test('renders the D20 Catalog vertical slice in Russian and Uzbek without changi
             .locator('[data-part="course-card-disclosure-pill"]'),
         ).toHaveText(expected.details);
       }
-      const visibleSortLabels = await page
-        .locator('[data-part="catalog-sort-toolbar"] span[aria-hidden="true"]')
-        .evaluateAll((labels) =>
-          labels
-            .filter((label) => getComputedStyle(label).display !== 'none')
-            .map((label) => label.textContent?.trim()),
-        );
-      expect(visibleSortLabels).toContain(width < 768 ? expected.sortCompact : expected.sortBy);
+      const sortTrigger = page.locator('[data-part="catalog-sort-trigger"]');
+      await expect(sortTrigger).toHaveAccessibleName(expected.sortAccessibleName);
+      await expect(page.getByText('Сортировать по:', { exact: true })).toHaveCount(0);
+      await expect(page.getByText('Сортировка:', { exact: true })).toHaveCount(0);
+      await expect(page.getByText('Saralash:', { exact: true })).toHaveCount(0);
       const viewportGeometry = await page.evaluate<CatalogViewportGeometry>(() => ({
         width: window.innerWidth,
         documentWidth: document.documentElement.scrollWidth,
