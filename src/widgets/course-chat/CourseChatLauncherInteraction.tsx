@@ -1,5 +1,5 @@
 import { MoreVertical, Square, Trash2, X } from 'lucide-react';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
@@ -11,6 +11,7 @@ import styles from './CourseChatLauncher.module.css';
 
 interface CourseChatLauncherInteractionProps {
   readonly assistant: CourseAssistantContext;
+  readonly footerClearance: number;
   readonly open: boolean;
   readonly returnTo: string;
   readonly widgetId: string;
@@ -18,8 +19,18 @@ interface CourseChatLauncherInteractionProps {
   onExpand(): void;
 }
 
+interface ActionMenuViewportPlacement {
+  readonly inlineStart: number;
+  readonly blockStart: number;
+}
+
+type ActionMenuViewportStyle = Pick<CSSProperties, 'left' | 'top'>;
+
+const ACTION_MENU_VIEWPORT_GUTTER = 4;
+
 export function CourseChatLauncherInteraction({
   assistant,
+  footerClearance,
   open,
   returnTo,
   widgetId,
@@ -32,6 +43,8 @@ export function CourseChatLauncherInteraction({
   const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
   const [isActionTooltipSuppressed, setIsActionTooltipSuppressed] = useState(false);
   const [isClearConfirmationOpen, setIsClearConfirmationOpen] = useState(false);
+  const [actionMenuPlacement, setActionMenuPlacement] =
+    useState<ActionMenuViewportPlacement | null>(null);
   const actionTriggerId = useId();
   const actionMenuId = useId();
   const actionMenuRef = useRef<HTMLSpanElement>(null);
@@ -45,6 +58,84 @@ export function CourseChatLauncherInteraction({
         ?.focus({ preventScroll: true }),
     );
   };
+
+  useLayoutEffect(() => {
+    if (!isActionMenuOpen) {
+      setActionMenuPlacement(null);
+      return undefined;
+    }
+
+    const updateActionMenuPlacement = () => {
+      const menu = actionMenuRef.current?.querySelector<HTMLElement>(
+        '[data-part="mini-chat-action-menu"]',
+      );
+      const trigger = actionMenuRef.current?.querySelector<HTMLButtonElement>(
+        ':scope > [data-part="button-wrapper"] > button',
+      );
+      if (menu == null || trigger == null) return;
+
+      const visualViewport = window.visualViewport;
+      const viewportLeft = visualViewport?.offsetLeft ?? 0;
+      const viewportTop = visualViewport?.offsetTop ?? 0;
+      const viewportWidth = visualViewport?.width ?? document.documentElement.clientWidth;
+      const viewportHeight = visualViewport?.height ?? document.documentElement.clientHeight;
+      const viewportRight = viewportLeft + viewportWidth;
+      const viewportBottom = viewportTop + viewportHeight;
+      const menuRect = menu.getBoundingClientRect();
+      const triggerRect = trigger.getBoundingClientRect();
+      const maximumInlineStart = Math.max(
+        viewportLeft + ACTION_MENU_VIEWPORT_GUTTER,
+        viewportRight - menuRect.width - ACTION_MENU_VIEWPORT_GUTTER,
+      );
+      const maximumBlockStart = Math.max(
+        viewportTop + ACTION_MENU_VIEWPORT_GUTTER,
+        viewportBottom - menuRect.height - ACTION_MENU_VIEWPORT_GUTTER,
+      );
+      const nextPlacement: ActionMenuViewportPlacement = {
+        inlineStart: Math.min(
+          Math.max(
+            triggerRect.left + triggerRect.width / 2 - menuRect.width / 2,
+            viewportLeft + ACTION_MENU_VIEWPORT_GUTTER,
+          ),
+          maximumInlineStart,
+        ),
+        blockStart: Math.min(
+          Math.max(triggerRect.bottom + 8, viewportTop + ACTION_MENU_VIEWPORT_GUTTER),
+          maximumBlockStart,
+        ),
+      };
+      setActionMenuPlacement((current) =>
+        current?.inlineStart === nextPlacement.inlineStart &&
+        current.blockStart === nextPlacement.blockStart
+          ? current
+          : nextPlacement,
+      );
+    };
+
+    updateActionMenuPlacement();
+    const observer =
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updateActionMenuPlacement);
+    const menu = actionMenuRef.current?.querySelector<HTMLElement>(
+      '[data-part="mini-chat-action-menu"]',
+    );
+    const trigger = actionMenuRef.current?.querySelector<HTMLButtonElement>(
+      ':scope > [data-part="button-wrapper"] > button',
+    );
+    if (menu != null) observer?.observe(menu);
+    if (trigger != null) observer?.observe(trigger);
+    const visualViewport = window.visualViewport;
+    window.addEventListener('resize', updateActionMenuPlacement);
+    visualViewport?.addEventListener('resize', updateActionMenuPlacement);
+    visualViewport?.addEventListener('scroll', updateActionMenuPlacement);
+    document.addEventListener('scroll', updateActionMenuPlacement, true);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', updateActionMenuPlacement);
+      visualViewport?.removeEventListener('resize', updateActionMenuPlacement);
+      visualViewport?.removeEventListener('scroll', updateActionMenuPlacement);
+      document.removeEventListener('scroll', updateActionMenuPlacement, true);
+    };
+  }, [footerClearance, isActionMenuOpen]);
 
   useEffect(() => {
     if (!isActionMenuOpen || !open) return;
@@ -63,6 +154,14 @@ export function CourseChatLauncherInteraction({
     setIsActionMenuOpen(false);
     setIsActionTooltipSuppressed(false);
   }, [open]);
+
+  const actionMenuStyle: ActionMenuViewportStyle | undefined =
+    actionMenuPlacement === null
+      ? undefined
+      : {
+          left: actionMenuPlacement.inlineStart,
+          top: actionMenuPlacement.blockStart,
+        };
 
   return (
     <section
@@ -143,6 +242,7 @@ export function CourseChatLauncherInteraction({
                 id={actionMenuId}
                 aria-label={t('ai:conversationActions', { defaultValue: 'Conversation actions' })}
                 data-part="mini-chat-action-menu"
+                style={actionMenuStyle}
                 onKeyDown={(event) => {
                   if (event.key !== 'Escape') return;
                   event.preventDefault();

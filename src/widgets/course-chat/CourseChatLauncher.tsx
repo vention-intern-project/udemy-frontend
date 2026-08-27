@@ -135,6 +135,7 @@ export function CourseChatLauncher({ assistant }: CourseChatLauncherProps) {
       {interactionMounted ? (
         <CourseChatLauncherInteraction
           assistant={assistant}
+          footerClearance={footerClearance}
           open={open}
           widgetId={widgetId}
           returnTo={`${location.pathname}${location.search}${location.hash}`}

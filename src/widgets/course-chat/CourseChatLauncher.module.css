@@ -157,17 +157,14 @@
   visibility: hidden;
 }
 .actionMenuList {
-  position: absolute;
+  position: fixed;
   z-index: var(--z-dropdown);
-  inset-block-start: calc(100% + var(--spacing-2));
-  inset-inline-start: 50%;
   min-inline-size: 8.5rem;
   padding: var(--spacing-1);
   background: var(--color-surface);
   border: var(--border-width) solid var(--border-default);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-2);
-  transform: translateX(-50%);
 }
 .actionMenuItem {
   display: inline-flex;
