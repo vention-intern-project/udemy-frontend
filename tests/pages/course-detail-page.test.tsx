@@ -552,9 +552,13 @@ describe('CourseDetailPage', () => {
       };
       renderPage(request, 'token');
 
-      const action = await screen.findByRole('button', { name: label });
+      await waitFor(() =>
+        expect((screen.getByRole('button', { name: label }) as HTMLButtonElement).disabled).toBe(
+          false,
+        ),
+      );
       await act(async () => {
-        await userEvent.setup().click(action);
+        await userEvent.setup().click(screen.getByRole('button', { name: label }));
       });
       await waitFor(() => expect(mutationRequests).toBe(1));
     },
