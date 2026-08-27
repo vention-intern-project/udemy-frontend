@@ -34,6 +34,10 @@ const REQUESTED_AT = '2026-08-25T00:00:00.000Z';
 const REVIEWED_AT = '2026-08-25T00:01:00.000Z';
 const IMPORTED_AT = '2026-08-25T00:02:00.000Z';
 const TASK_ID = 'FE-067';
+// DRAFT-37 remains an engine-owned 523-unit historical subset. This suite imports
+// the current canonical corpus, which also contains the four admitted FE-060 drafts.
+const CURRENT_CORPUS_UNIT_COUNT = 527;
+const LEGACY_ARTIFACT_ABSENT_UNIT_COUNT = 181;
 const ARTIFACT_FIXTURE = join(
   process.cwd(),
   'tests/shared/locale/fixtures/review-exchange/learnhub-multilingual-review-readable.md',
@@ -381,7 +385,9 @@ function expectOneAffectedUnitInState(result: ReturnType<typeof preflight>, expe
     if (state !== expectedState) expect(result.report.counts[state]).toBe(0);
 
   const corpusReport = createCorpusReviewReport(result.corpus);
-  expect(corpusReport.counts[expectedState]).toBe(expectedState === 'unreviewed' ? 523 : 1);
+  expect(corpusReport.counts[expectedState]).toBe(
+    expectedState === 'unreviewed' ? CURRENT_CORPUS_UNIT_COUNT : 1,
+  );
 }
 
 function expectArtifactMalformedReport(report: ReviewReport) {
@@ -389,13 +395,15 @@ function expectArtifactMalformedReport(report: ReviewReport) {
     'approved-effective': 25,
     'unchanged-approved': 221,
     'stale-source': 99,
-    unreviewed: 177,
+    unreviewed: LEGACY_ARTIFACT_ABSENT_UNIT_COUNT,
     malformed: 1,
     rejected: 0,
   });
-  expect(Object.values(report.counts).reduce((sum, count) => sum + count, 0)).toBe(523);
+  expect(Object.values(report.counts).reduce((sum, count) => sum + count, 0)).toBe(
+    CURRENT_CORPUS_UNIT_COUNT,
+  );
   expect(report.currentTaskRequiredReview.total).toBe(100);
-  expect(report.inheritedPendingDebt.total).toBe(177);
+  expect(report.inheritedPendingDebt.total).toBe(LEGACY_ARTIFACT_ABSENT_UNIT_COUNT);
   expect(report.globalViolations).toEqual([...report.globalViolations].sort());
 }
 
@@ -980,7 +988,7 @@ describe('localization review exchange', () => {
       artifactRows: 346,
       exactRows: 247,
       staleRows: 99,
-      absentUnits: 177,
+      absentUnits: LEGACY_ARTIFACT_ABSENT_UNIT_COUNT,
       ruReplacements: 33,
       uzReplacements: 8,
       replacementRows: 40,
@@ -1014,7 +1022,7 @@ describe('localization review exchange', () => {
       'approved-effective': 25,
       'unchanged-approved': 221,
       'stale-source': 99,
-      unreviewed: 177,
+      unreviewed: LEGACY_ARTIFACT_ABSENT_UNIT_COUNT,
       malformed: 0,
       rejected: 1,
     });
@@ -1022,7 +1030,10 @@ describe('localization review exchange', () => {
       total: 100,
       byState: { 'stale-source': 99, malformed: 0, rejected: 1 },
     });
-    expect(report.inheritedPendingDebt).toEqual({ total: 177, byState: { unreviewed: 177 } });
+    expect(report.inheritedPendingDebt).toEqual({
+      total: LEGACY_ARTIFACT_ABSENT_UNIT_COUNT,
+      byState: { unreviewed: LEGACY_ARTIFACT_ABSENT_UNIT_COUNT },
+    });
     expect(corpus).toEqual(before);
   });
 
@@ -1043,7 +1054,7 @@ describe('localization review exchange', () => {
       'approved-effective': 25,
       'unchanged-approved': 221,
       'stale-source': 99,
-      unreviewed: 177,
+      unreviewed: LEGACY_ARTIFACT_ABSENT_UNIT_COUNT,
       malformed: 1,
       rejected: 0,
     });
@@ -1051,7 +1062,10 @@ describe('localization review exchange', () => {
       total: 100,
       byState: { 'stale-source': 99, malformed: 1, rejected: 0 },
     });
-    expect(report.inheritedPendingDebt).toEqual({ total: 177, byState: { unreviewed: 177 } });
+    expect(report.inheritedPendingDebt).toEqual({
+      total: LEGACY_ARTIFACT_ABSENT_UNIT_COUNT,
+      byState: { unreviewed: LEGACY_ARTIFACT_ABSENT_UNIT_COUNT },
+    });
     expect(report.globalViolations).toContain('summary translation unit count mismatch');
     expect(report.globalViolations).toEqual([...report.globalViolations].sort());
     expect(report.globalViolations).not.toEqual(
@@ -1188,16 +1202,20 @@ describe('localization review exchange', () => {
 
       expect(report.counts.rejected).toBe(1);
       expect(report.counts[admission === 'stale' ? 'stale-source' : 'unreviewed']).toBe(
-        admission === 'stale' ? 98 : 176,
+        admission === 'stale' ? 98 : LEGACY_ARTIFACT_ABSENT_UNIT_COUNT - 1,
       );
       expect(
         Object.values(report.counts).reduce(
           (sum: number, count: unknown) => sum + Number(count),
           0,
         ),
-      ).toBe(523);
+      ).toBe(CURRENT_CORPUS_UNIT_COUNT);
       expect(report.currentTaskRequiredReview.total).toBe(admission === 'stale' ? 99 : 100);
-      expect(report.inheritedPendingDebt.total).toBe(admission === 'stale' ? 177 : 176);
+      expect(report.inheritedPendingDebt.total).toBe(
+        admission === 'stale'
+          ? LEGACY_ARTIFACT_ABSENT_UNIT_COUNT
+          : LEGACY_ARTIFACT_ABSENT_UNIT_COUNT - 1,
+      );
     },
   );
 
@@ -1253,7 +1271,7 @@ describe('localization review exchange', () => {
       'approved-effective': 25,
       'unchanged-approved': 222,
       'stale-source': 99,
-      unreviewed: 177,
+      unreviewed: LEGACY_ARTIFACT_ABSENT_UNIT_COUNT,
       malformed: 0,
       rejected: 0,
     });
@@ -1404,7 +1422,10 @@ describe('localization review exchange', () => {
       total: 0,
       byState: { 'stale-source': 0, malformed: 0, rejected: 0 },
     });
-    expect(report.inheritedPendingDebt).toEqual({ total: 523, byState: { unreviewed: 523 } });
+    expect(report.inheritedPendingDebt).toEqual({
+      total: CURRENT_CORPUS_UNIT_COUNT,
+      byState: { unreviewed: CURRENT_CORPUS_UNIT_COUNT },
+    });
     expect(reportReviewStatus({ unreviewed: 1 }).counts.unreviewed).toBe(1);
   });
 
@@ -1473,8 +1494,8 @@ describe('localization review exchange', () => {
         (sum: number, count: unknown) => sum + Number(count),
         0,
       );
-      expect(classifiedTotal).toBe(523);
-      expect(report.counts).toMatchObject({ unreviewed: 523, malformed: 0 });
+      expect(classifiedTotal).toBe(CURRENT_CORPUS_UNIT_COUNT);
+      expect(report.counts).toMatchObject({ unreviewed: CURRENT_CORPUS_UNIT_COUNT, malformed: 0 });
       expect(report.globalViolations).toEqual([...report.globalViolations].sort());
       expect(
         report.globalViolations.filter((violation: string) => violation.startsWith('MLUX-C0001:')),
@@ -1507,8 +1528,8 @@ describe('localization review exchange', () => {
         (sum: number, count: unknown) => sum + Number(count),
         0,
       );
-      expect(classifiedTotal).toBe(523);
-      expect(report.counts).toMatchObject({ unreviewed: 523, malformed: 0 });
+      expect(classifiedTotal).toBe(CURRENT_CORPUS_UNIT_COUNT);
+      expect(report.counts).toMatchObject({ unreviewed: CURRENT_CORPUS_UNIT_COUNT, malformed: 0 });
       expect(report.globalViolations).toEqual([...report.globalViolations].sort());
       expect(
         report.globalViolations.filter((violation: string) => violation.startsWith('MLUX-C0001:')),
@@ -1532,8 +1553,11 @@ describe('localization review exchange', () => {
       0,
     );
 
-    expect(classifiedTotal).toBe(523);
-    expect(report.counts).toMatchObject({ unreviewed: 522, malformed: 1 });
+    expect(classifiedTotal).toBe(CURRENT_CORPUS_UNIT_COUNT);
+    expect(report.counts).toMatchObject({
+      unreviewed: CURRENT_CORPUS_UNIT_COUNT - 1,
+      malformed: 1,
+    });
     expect(report.globalViolations).toEqual([...report.globalViolations].sort());
     expect(report.globalViolations).toEqual(
       expect.arrayContaining([

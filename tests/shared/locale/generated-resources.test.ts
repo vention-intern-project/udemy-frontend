@@ -7,16 +7,17 @@ const generated = GENERATED_LOCALE_RESOURCES as Record<
   string,
   Record<string, Record<string, string>>
 >;
+const CURRENT_CORPUS_UNIT_COUNT = 527;
 
 describe('generated canonical localization resources', () => {
   it('binds the committed canonical registry to exact DRAFT-37 migration facts', () => {
     expect(registry).toMatchObject({
       corpusVersion: 'MLUX-001-DRAFT-37',
       source: { sha256: 'C9E208FC5F1AEF55E709290C67270B79E1CBCE4831E7FBCB20555AB5CF8A73AE' },
-      summary: { translationUnits: 523, sourceOccurrences: 746, mergedDuplicateRows: 223 },
+      summary: { translationUnits: 527, sourceOccurrences: 750, mergedDuplicateRows: 223 },
     });
     expect(registry.exclusions).toHaveLength(12);
-    expect(registry.units).toHaveLength(523);
+    expect(registry.units).toHaveLength(CURRENT_CORPUS_UNIT_COUNT);
     for (const { locales } of registry.units) {
       for (const locale of [locales.ru, locales.uz]) {
         if (locale.status !== 'draft') continue;
