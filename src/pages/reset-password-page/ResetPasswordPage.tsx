@@ -29,7 +29,11 @@ function ResetPasswordForm({ ownerKey, token, onSuccess }: ResetPasswordFormProp
     <AuthFormShell
       title={t('routes:resetPasswordTitle')}
       description={t('routes:resetPasswordDescription')}
-      footer={<AuthLink to="/login">{t('auth:backToLogin')}</AuthLink>}
+      footer={
+        <AuthLink to="/login" tone="primary">
+          {t('auth:backToLogin')}
+        </AuthLink>
+      }
     >
       <form noValidate onSubmit={workflow.submit}>
         <p className={styles.tokenHelp}>{t('auth:resetTokenHelp')}</p>
@@ -81,7 +85,11 @@ export function ResetPasswordPage() {
       <AuthFormShell
         title={t('routes:resetPasswordTitle')}
         description={t('routes:resetPasswordDescription')}
-        footer={<AuthLink to="/login">{t('auth:backToLogin')}</AuthLink>}
+        footer={
+          <AuthLink to="/login" tone="primary">
+            {t('auth:backToLogin')}
+          </AuthLink>
+        }
       >
         <Notice tone="success" title={t('auth:passwordResetComplete')}>
           {t('auth:passwordUpdated')}{' '}

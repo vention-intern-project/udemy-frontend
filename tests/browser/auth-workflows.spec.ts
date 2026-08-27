@@ -148,6 +148,30 @@ interface AuthResidualLocaleCopy {
   readonly resetTokenHelp: string;
 }
 
+interface AuthBackToLoginCopy {
+  readonly backToLogin: string;
+  readonly logInWithNewPassword: string;
+  readonly resetPassword: string;
+}
+
+const AUTH_BACK_TO_LOGIN_COPY: Readonly<Record<AuthResidualLocale, AuthBackToLoginCopy>> = {
+  en: {
+    backToLogin: 'Back to login',
+    logInWithNewPassword: 'Log in with your new password',
+    resetPassword: 'Reset password',
+  },
+  ru: {
+    backToLogin: 'Вернуться ко входу',
+    logInWithNewPassword: 'Войти с новым паролем',
+    resetPassword: 'Сбросить пароль',
+  },
+  uz: {
+    backToLogin: 'Kirishga qaytish',
+    logInWithNewPassword: 'Yangi parol bilan kirish',
+    resetPassword: 'Parolni tiklash',
+  },
+};
+
 export const authResidualCopy: Readonly<Record<AuthResidualLocale, AuthResidualLocaleCopy>> = {
   en: {
     continueLabel: 'Continue',
@@ -262,7 +286,7 @@ function signupResponse(accessToken: string) {
 async function expectTokenCss(
   locator: Locator,
   property: TokenCssProperty,
-  token: '--action-primary-bg',
+  token: '--action-primary-bg' | '--action-link',
 ) {
   const expectedValue = await locator.evaluate(
     (_element, expectation) => {
@@ -985,6 +1009,43 @@ test('reset covers missing token, safe 400/422, offline retry, pending double-su
 });
 
 for (const locale of ['en', 'ru', 'uz'] as const) {
+  test(`uses the primary-violet Back-to-login footer treatment in ${locale}`, async ({ page }) => {
+    test.slow();
+    const copy = AUTH_BACK_TO_LOGIN_COPY[locale];
+    await page.addInitScript((initialLocale) => {
+      localStorage.setItem('learnhub.locale', initialLocale);
+    }, locale);
+
+    await page.goto('/forgot-password', { waitUntil: 'domcontentloaded' });
+    const forgotFooter = page.getByRole('main').getByRole('link', { name: copy.backToLogin });
+    await expect(forgotFooter).toHaveAttribute('href', '/login');
+    await expectTokenCss(forgotFooter, 'color', '--action-primary-bg');
+    await forgotFooter.focus();
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(/\/login$/);
+
+    await page.route('**/reset-password', async (route) => {
+      if (route.request().method() !== 'POST') return route.fallback();
+      await fulfillJson(route, 200, { message: 'ok' });
+    });
+    await page.goto('/reset-password?token=footer-tone-token', { waitUntil: 'domcontentloaded' });
+    const resetFormFooter = page.getByRole('main').getByRole('link', { name: copy.backToLogin });
+    await expect(resetFormFooter).toHaveAttribute('href', '/login');
+    await expectTokenCss(resetFormFooter, 'color', '--action-primary-bg');
+    await page.locator('#password').fill('new password');
+    await page.locator('#passwordConfirmation').fill('new password');
+    await page.getByRole('button', { name: copy.resetPassword }).press('Enter');
+
+    const resetSuccessFooter = page.getByRole('main').getByRole('link', { name: copy.backToLogin });
+    const inlineSuccessLink = page
+      .getByRole('main')
+      .getByRole('link', { name: copy.logInWithNewPassword });
+    await expect(resetSuccessFooter).toHaveAttribute('href', '/login');
+    await expectTokenCss(resetSuccessFooter, 'color', '--action-primary-bg');
+    await expect(inlineSuccessLink).toHaveAttribute('href', '/login');
+    await expectTokenCss(inlineSuccessLink, 'color', '--action-link');
+  });
+
   test(`DRAFT-21 auth residual copy reflows and preserves keyboard focus in ${locale}`, async ({
     page,
   }) => {

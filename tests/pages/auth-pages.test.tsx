@@ -19,6 +19,7 @@ import { AppRouter } from '../../src/app/router';
 import type { UserProfileDto } from '../../src/entities/user';
 import {
   AuthFormShell,
+  AuthLink,
   mapAuthFailure,
   useLoginWorkflow,
   useResetPasswordWorkflow,
@@ -303,6 +304,51 @@ beforeEach(async () => {
 });
 
 describe('authentication pages', () => {
+  it.each(['en', 'ru', 'uz'] as const)(
+    'uses the existing primary AuthLink contract for every admitted Back-to-login footer in %s',
+    async (locale) => {
+      await localeRuntime.changeLanguage(locale);
+      const backToLogin = localeRuntime.t('auth:backToLogin');
+      const primaryClassName = render(
+        <MemoryRouter>
+          <AuthLink to="/login" tone="primary">
+            Primary reference
+          </AuthLink>
+        </MemoryRouter>,
+      ).getByRole('link', { name: 'Primary reference' }).className;
+
+      cleanup();
+      renderAuth('/forgot-password', async () => ({}));
+      const forgotFooter = await screen.findByRole('link', { name: backToLogin });
+      expect(forgotFooter.getAttribute('href')).toBe('/login');
+      expect(forgotFooter.className).toBe(primaryClassName);
+
+      cleanup();
+      renderAuth('/reset-password?token=footer-tone-token', async () => ({ message: 'ok' }));
+      const resetFormFooter = await screen.findByRole('link', { name: backToLogin });
+      expect(resetFormFooter.getAttribute('href')).toBe('/login');
+      expect(resetFormFooter.className).toBe(primaryClassName);
+
+      const newPassword = document.getElementById('password') as HTMLInputElement;
+      const confirmation = document.getElementById('passwordConfirmation') as HTMLInputElement;
+      const submit = document.querySelector<HTMLButtonElement>('main form button[type="submit"]');
+      expect(submit).not.toBe(null);
+      const user = userEvent.setup();
+      await interact(() => user.type(newPassword, 'new password'));
+      await interact(() => user.type(confirmation, 'new password'));
+      await interact(() => user.click(submit as HTMLButtonElement));
+
+      const resetSuccessFooter = await screen.findByRole('link', { name: backToLogin });
+      const inlineSuccessLink = screen.getByRole('link', {
+        name: localeRuntime.t('auth:logInWithYourNewPassword'),
+      });
+      expect(resetSuccessFooter.getAttribute('href')).toBe('/login');
+      expect(resetSuccessFooter.className).toBe(primaryClassName);
+      expect(inlineSuccessLink.getAttribute('href')).toBe('/login');
+      expect(inlineSuccessLink.className).not.toBe(primaryClassName);
+    },
+  );
+
   it('gives each AuthFormShell a unique accessible heading relationship', () => {
     render(
       <>
