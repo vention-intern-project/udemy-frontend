@@ -1,26 +1,14 @@
-import { expect, test, type Page, type Request, type Route } from '@playwright/test';
+import { expect, test, type Page, type Request } from '@playwright/test';
 
-const student = {
-  email: 'student@example.test',
-  name: 'Sam',
-  surname: 'Student',
-  role: 'student',
-  birthday: null,
-  phone_number: null,
-  created_at: '2026-01-01T00:00:00Z',
-};
-const cartItem = {
-  id: 10,
-  course_id: 7,
-  added_at: '2026-01-01T00:00:00Z',
-  course: {
-    id: 7,
-    title:
-      'A deliberately long cart course title that must remain operable at every required viewport width',
-    price: '19.990',
-    currency: 'USD',
-  },
-};
+import {
+  cartAdmissionItem as cartItem,
+  createCartD03Controller,
+  fulfillCartJson as json,
+  installCartAdmissionRoutes,
+  installCartStudent as installStudent,
+  isCartApiPath,
+  type CartApiRequest,
+} from './fixtures/cart-workflow-fixture';
 const exactLongTotal = '1000000000000000000000019.0001';
 const exactLongTotalEnglish = '$1,000,000,000,000,000,000,000,019.0001';
 
@@ -84,25 +72,6 @@ const cartMappedConsumerCopy = {
     removeStatus: 'Kurs savatdan olib tashlandi.',
   },
 } as const;
-
-async function json(route: Route, body: unknown, status = 200) {
-  await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
-}
-
-async function installStudent(page: Page) {
-  await page.addInitScript(() => localStorage.setItem('learnhub.access-token', 'student-token'));
-}
-
-function isCartApiPath(pathname: string): boolean {
-  return pathname === '/cart' || pathname === '/cart/items/7';
-}
-
-interface CartApiRequest {
-  method: string;
-  pathname: string;
-}
-
-type CartApiRouteHandler = (route: Route, request: CartApiRequest) => Promise<void>;
 
 interface CartRequestLifecycle {
   initiated: string[];
@@ -208,17 +177,6 @@ async function expectSuccessfulDeleteLifecycle(
   expect(lifecycle.unexpectedFailures).toEqual([]);
 }
 
-async function routeCartApi(page: Page, handler: CartApiRouteHandler) {
-  await page.route('**/*', async (route) => {
-    const request = cartApiRequest(route.request());
-    if (!request) {
-      await route.fallback();
-      return;
-    }
-    await handler(route, request);
-  });
-}
-
 async function expectNoHorizontalOverflow(page: Page): Promise<void> {
   const widths = await page.evaluate(() => ({
     client: document.documentElement.clientWidth,
@@ -278,8 +236,7 @@ test.describe('FE-009 cart workflow QA harness', () => {
     page.on('console', (message) => {
       if (message.type() === 'error') consoleErrors.push(message.text());
     });
-    await page.route('**/me', (route) => json(route, student));
-    await routeCartApi(page, async (route, request) => {
+    await installCartAdmissionRoutes(page, async (route, request) => {
       if (request.method === 'GET' && request.pathname === '/cart') return json(route, longCart());
       throw new Error(`Unexpected cart request ${request.method} ${request.pathname}`);
     });
@@ -303,8 +260,7 @@ test.describe('FE-009 cart workflow QA harness', () => {
     page.on('console', (message) => {
       if (message.type() === 'error') consoleErrors.push(message.text());
     });
-    await page.route('**/me', (route) => json(route, student));
-    await routeCartApi(page, async (route, request) => {
+    await installCartAdmissionRoutes(page, async (route, request) => {
       if (request.method === 'GET' && request.pathname === '/cart') return json(route, longCart());
       if (request.method === 'POST' && request.pathname === '/cart/checkout') {
         checkoutPosts += 1;
@@ -446,8 +402,7 @@ test.describe('FE-009 cart workflow QA harness', () => {
       page.on('console', (message) => {
         if (message.type() === 'error') consoleErrors.push(message.text());
       });
-      await page.route('**/me', (route) => json(route, student));
-      await routeCartApi(page, async (route, request) => {
+      await installCartAdmissionRoutes(page, async (route, request) => {
         if (request.method === 'GET' && request.pathname === '/cart')
           return json(route, longCart());
         throw new Error(`Unexpected cart request ${request.method} ${request.pathname}`);
@@ -475,8 +430,7 @@ test.describe('FE-009 cart workflow QA harness', () => {
     const lifecycle = trackCartRequestLifecycle(page);
     let currentCart = cart();
     expect(currentCart).toMatchObject({ total_price: exactLongTotal, currency: 'USD' });
-    await page.route('**/me', (route) => json(route, student));
-    await routeCartApi(page, async (route, request) => {
+    await installCartAdmissionRoutes(page, async (route, request) => {
       const requestLabel = cartRequestLabel(request);
       if (requestLabel === 'GET /cart') return json(route, currentCart);
       if (requestLabel === 'DELETE /cart/items/7') {
@@ -539,8 +493,7 @@ test.describe('FE-009 cart workflow QA harness', () => {
       resolveDelete = resolve;
     });
     let currentCart = cart();
-    await page.route('**/me', (route) => json(route, student));
-    await routeCartApi(page, async (route, request) => {
+    await installCartAdmissionRoutes(page, async (route, request) => {
       const requestLabel = cartRequestLabel(request);
       if (requestLabel === 'GET /cart') return json(route, currentCart);
       if (requestLabel === 'DELETE /cart/items/7') {
@@ -583,8 +536,7 @@ test.describe('FE-009 cart workflow QA harness', () => {
     page,
   }) => {
     await installStudent(page);
-    await page.route('**/me', (route) => json(route, student));
-    await routeCartApi(page, async (route, request) => {
+    await installCartAdmissionRoutes(page, async (route, request) => {
       if (request.method === 'GET' && request.pathname === '/cart') {
         await json(route, { detail: 'private' }, 403);
         return;
@@ -598,19 +550,9 @@ test.describe('FE-009 cart workflow QA harness', () => {
   });
 
   test('uses the exact API-003 clear request and revalidates the cart', async ({ page }) => {
-    await installStudent(page);
     const lifecycle = trackCartRequestLifecycle(page);
-    let currentCart = cart();
-    await page.route('**/me', (route) => json(route, student));
-    await routeCartApi(page, async (route, request) => {
-      const requestLabel = cartRequestLabel(request);
-      if (requestLabel === 'GET /cart') return json(route, currentCart);
-      if (requestLabel === 'DELETE /cart') {
-        currentCart = cart([]);
-        return route.fulfill({ status: 204 });
-      }
-      throw new Error(`Unexpected cart request ${requestLabel}`);
-    });
+    const controller = createCartD03Controller(page, 'clear-success');
+    await controller.install();
 
     await page.goto('/cart');
     await page.getByRole('button', { name: 'Clear cart' }).first().click();
@@ -625,7 +567,6 @@ test.describe('FE-009 cart workflow QA harness', () => {
   test('announces one pending clear across required reflow widths and prevents duplicate confirmation', async ({
     page,
   }) => {
-    await installStudent(page);
     await page.emulateMedia({ reducedMotion: 'reduce' });
     const lifecycle = trackCartRequestLifecycle(page);
     const runtimeErrors: string[] = [];
@@ -633,24 +574,8 @@ test.describe('FE-009 cart workflow QA harness', () => {
     page.on('console', (message) => {
       if (message.type() === 'error') runtimeErrors.push(message.text());
     });
-    let resolveClear: (() => void) | undefined;
-    const pendingClear = new Promise<void>((resolve) => {
-      resolveClear = resolve;
-    });
-    let currentCart = cart();
-    let clearRequests = 0;
-    await page.route('**/me', (route) => json(route, student));
-    await routeCartApi(page, async (route, request) => {
-      const requestLabel = cartRequestLabel(request);
-      if (requestLabel === 'GET /cart') return json(route, currentCart);
-      if (requestLabel === 'DELETE /cart') {
-        clearRequests += 1;
-        await pendingClear;
-        currentCart = cart([]);
-        return route.fulfill({ status: 204 });
-      }
-      throw new Error(`Unexpected cart request ${requestLabel}`);
-    });
+    const controller = createCartD03Controller(page, 'clear-pending');
+    await controller.install();
 
     await page.goto('/cart');
     const clearInvoker = page.getByRole('button', { name: 'Clear cart' }).first();
@@ -665,7 +590,7 @@ test.describe('FE-009 cart workflow QA harness', () => {
     await expect(pendingConfirmation).toBeDisabled();
     await expect(pendingConfirmation).toHaveAttribute('aria-busy', 'true');
     await expect(dialog.getByRole('status')).toHaveText('Clearing cart...');
-    await expect.poll(() => clearRequests).toBe(1);
+    await expect.poll(() => controller.getClearRequestCount()).toBe(1);
     await page.keyboard.press('Enter');
     const pendingBox = await pendingConfirmation.boundingBox();
     if (!pendingBox) throw new Error('Pending clear confirmation geometry is unavailable.');
@@ -673,7 +598,7 @@ test.describe('FE-009 cart workflow QA harness', () => {
       pendingBox.x + pendingBox.width / 2,
       pendingBox.y + pendingBox.height / 2,
     );
-    await expect.poll(() => clearRequests).toBe(1);
+    await expect.poll(() => controller.getClearRequestCount()).toBe(1);
 
     for (const width of [320, 390, 768, 1280] as const) {
       await page.setViewportSize({ width, height: 900 });
@@ -693,7 +618,7 @@ test.describe('FE-009 cart workflow QA harness', () => {
       document.documentElement.style.zoom = '';
     });
 
-    resolveClear?.();
+    controller.completePendingClear();
     await expect(page.getByRole('heading', { name: 'Your cart is empty' })).toBeFocused();
     await expectSuccessfulDeleteLifecycle(lifecycle, {
       deleteLabel: 'DELETE /cart',
@@ -718,21 +643,8 @@ for (const locale of ['en', 'ru', 'uz'] as const) {
     page.on('request', (request) => {
       if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method())) writes += 1;
     });
-    await installStudent(page);
-    await page.route('**/me', (route) => json(route, student));
-    await routeCartApi(page, async (route, request) => {
-      if (cartRequestLabel(request) === 'GET /cart') {
-        await json(route, {
-          id: 1,
-          items: [cartItem],
-          total_price: cartItem.course.price,
-          currency: cartItem.course.currency,
-          item_count: 1,
-        });
-        return;
-      }
-      throw new Error(`Unexpected Cart locale request ${cartRequestLabel(request)}`);
-    });
+    const controller = createCartD03Controller(page, 'admitted-surface');
+    await controller.install();
 
     await page.goto('/cart');
     if (locale !== 'en') {
@@ -784,38 +696,12 @@ for (const locale of ['ru', 'uz'] as const) {
     page.on('console', (message) => {
       if (message.type() === 'error') diagnostics.push(message.text());
     });
-    const secondItem = {
-      ...cartItem,
-      id: 11,
-      course_id: 8,
-      course: { ...cartItem.course, id: 8, title: 'Second browser cart course' },
-    };
-    let currentItems = [cartItem, secondItem];
-    await installStudent(page);
-    await page.route('**/me', (route) => json(route, student));
-    await routeCartApi(page, async (route, request) => {
-      const requestLabel = cartRequestLabel(request);
-      if (requestLabel === 'GET /cart') return json(route, cart(currentItems));
-      if (requestLabel === 'DELETE /cart/items/7') {
-        currentItems = [secondItem];
-        return route.fulfill({ status: 204 });
-      }
-      if (requestLabel === 'DELETE /cart') {
-        currentItems = [];
-        return route.fulfill({ status: 204 });
-      }
-      throw new Error(`Unexpected localized Cart request ${requestLabel}`);
+    const controller = createCartD03Controller(page, 'localized-return-mutations', {
+      returnTo: '/learning?page=2#courses',
     });
+    await controller.install();
 
-    await page.goto('/cart');
-    await page.evaluate(() => {
-      window.history.replaceState(
-        { ...window.history.state, usr: { returnTo: '/learning?page=2#courses' } },
-        '',
-        window.location.href,
-      );
-    });
-    await page.reload();
+    await controller.navigateToCart();
     await page.getByRole('button', { name: 'Change language' }).press('Enter');
     await page
       .getByRole('button', { name: locale === 'ru' ? 'Русский' : "O'zbek", exact: true })
