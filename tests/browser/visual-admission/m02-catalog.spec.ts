@@ -30,6 +30,18 @@ test('M02/M03 catalog action, hero, price and sort admission matrix', async ({
       locale,
     );
     await page.goto('/');
+    await recorder.beginCaptureWindow(
+      {
+        matrix: 'M02',
+        scenario: 'anonymous-catalog',
+        route: '/',
+        state: 'permitted-free-and-paid',
+        session: 'anonymous',
+        disposition: 'observed',
+      },
+      locale,
+      'locale-reload',
+    );
     await selectLocale(recorder, page, locale);
     await expect(page.getByRole('link', { name: 'Anonymous free' })).toHaveCount(1);
     await expect(page.getByRole('link', { name: 'Anonymous paid' })).toHaveCount(1);
@@ -132,6 +144,18 @@ test('M02/M03 catalog action, hero, price and sort admission matrix', async ({
       locale,
     );
     await page.goto('/');
+    await recorder.beginCaptureWindow(
+      {
+        matrix: 'M02',
+        scenario: 'course-detail-success',
+        route: '/courses/7',
+        state: 'permitted-detail',
+        session: 'anonymous',
+        disposition: 'observed',
+      },
+      locale,
+      'locale-reload',
+    );
     await selectLocale(recorder, page, locale);
     await page.getByRole('link', { name: 'React' }).click();
     await expect(page).toHaveURL(/\/courses\/7$/);

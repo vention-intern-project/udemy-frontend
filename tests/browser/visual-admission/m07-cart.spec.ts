@@ -159,19 +159,18 @@ test('M08 clear states and M09 report-only visibility', async ({ page }, testInf
   await expect(clearButton).toBeVisible();
   await recorder.expectInteractive(clearButton);
   for (const locale of selectedAdmissionLocales) {
-    if (locale !== 'en')
-      await recorder.beginCaptureWindow(
-        {
-          matrix: 'M08',
-          scenario: 'clear-confirmation',
-          route: '/cart',
-          state: 'clear-ready',
-          session: 'authenticated',
-          disposition: 'observed',
-        },
-        locale,
-        'locale-reload',
-      );
+    await recorder.beginCaptureWindow(
+      {
+        matrix: 'M08',
+        scenario: 'clear-confirmation',
+        route: '/cart',
+        state: 'clear-ready',
+        session: 'authenticated',
+        disposition: 'observed',
+      },
+      locale,
+      'locale-reload',
+    );
     await selectLocale(recorder, page, locale);
     await captureDeclaredMatrix(
       recorder,
@@ -237,6 +236,18 @@ test('M08 pending clear retains one DELETE and no checkout transition', async ({
     'en',
   );
   await pending.navigateToCart();
+  await recorder.beginCaptureWindow(
+    {
+      matrix: 'M08',
+      scenario: 'clear-pending',
+      route: '/cart',
+      state: 'clear-pending',
+      session: 'authenticated',
+      disposition: 'observed',
+    },
+    'en',
+    'locale-reload',
+  );
   await selectLocale(recorder, page, 'en');
   const clearButton = page.getByRole('button', {
     name: /clear cart|очистить корзину|savatni tozalash/i,

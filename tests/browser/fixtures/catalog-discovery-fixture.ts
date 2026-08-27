@@ -145,6 +145,11 @@ export async function installCatalogBrowserMonitor(page: Page): Promise<CatalogB
     responses.observe(response.request().method(), response.url(), response.status());
   });
   page.on('requestfailed', (request) => {
+    // Route-driven document navigations may be intentionally superseded by
+    // React Router. Page URL assertions cover those navigation outcomes;
+    // API accounting remains fail-closed for fetch/XHR and every other
+    // resource type that can represent a catalog data request.
+    if (request.resourceType() === 'document') return;
     requests.observe(request.method(), request.url(), request.failure()?.errorText ?? 'unknown');
   });
   const assertClean = (() => {
