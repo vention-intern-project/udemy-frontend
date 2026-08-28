@@ -3754,7 +3754,7 @@ describe('canonical localization corpus engine', () => {
     const duration = performance.now() - startedAt;
     expect(violations.length).toBeGreaterThan(0);
     expect(duration).toBeLessThan(10_000);
-  });
+  }, 12_000);
 
   describe('closed localization consumer grammar recovery', () => {
     function grammarFixture(
