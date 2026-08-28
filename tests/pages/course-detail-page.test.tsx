@@ -797,11 +797,11 @@ describe('CourseDetailPage', () => {
 
   it('clears a genuine invalid bearer after 401 before rendering public redacted metadata', async () => {
     const tokenStore = store('invalid-bearer');
-    const authPolicies: Array<string | undefined> = [];
+    const requestPolicies: Array<{ path: string; policy: string | undefined }> = [];
     const request: ApiClient['request'] = async <TResponse, TBody>(
       options: ApiRequestOptions<TBody, TResponse>,
     ) => {
-      authPolicies.push(options.authPolicy);
+      requestPolicies.push({ path: options.path, policy: options.authPolicy });
       if (options.path === '/me')
         throw new ApiError({
           kind: 'unauthorized',
@@ -826,8 +826,8 @@ describe('CourseDetailPage', () => {
 
     expect(await screen.findByRole('link', { name: 'Sign in' })).toBeTruthy();
     expect(tokenStore.get()).toBeNull();
-    expect(authPolicies).toContain(undefined);
-    expect(authPolicies.filter((policy) => policy === 'optional')).toHaveLength(3);
+    expect(requestPolicies).toContainEqual({ path: '/courses/7/reviews', policy: 'public' });
+    expect(requestPolicies.filter(({ policy }) => policy === 'optional')).toHaveLength(2);
     expect(document.body.textContent).not.toContain('/media/lessons/');
     expect(document.querySelector('audio, video, source, [download]')).toBeNull();
   });
