@@ -16,6 +16,8 @@ const cartResidualCopy = {
   en: {
     breadcrumb: 'Breadcrumb',
     cart: 'Cart',
+    clearAction: 'Clear cart',
+    clearVisible: 'Clear',
     cartCourses: 'Cart courses',
     cartTotal: 'Cart total',
     courseCount: '1 course',
@@ -29,6 +31,8 @@ const cartResidualCopy = {
   ru: {
     breadcrumb: 'Хлебные крошки',
     cart: 'Корзина',
+    clearAction: 'Очистить корзину',
+    clearVisible: 'Очистить',
     cartCourses: 'Курсы в корзине',
     cartTotal: 'Итог корзины',
     courseCount: '1 курс',
@@ -42,6 +46,8 @@ const cartResidualCopy = {
   uz: {
     breadcrumb: 'Yo‘l ko‘rsatkich',
     cart: 'Savat',
+    clearAction: 'Savatni tozalash',
+    clearVisible: 'Tozalash',
     cartCourses: 'Savatdagi kurslar',
     cartTotal: 'Savat jami',
     courseCount: '1 ta kurs',
@@ -57,6 +63,7 @@ const cartResidualCopy = {
 const cartMappedConsumerCopy = {
   ru: {
     clearAction: 'Очистить корзину',
+    clearVisible: 'Очистить',
     clearDialog: 'Очистить корзину?',
     clearStatus: 'Корзина очищена.',
     empty: 'Ваша корзина пуста',
@@ -65,6 +72,7 @@ const cartMappedConsumerCopy = {
   },
   uz: {
     clearAction: 'Savatni tozalash',
+    clearVisible: 'Tozalash',
     clearDialog: 'Savat tozalansinmi?',
     clearStatus: 'Savat tozalandi.',
     empty: 'Savatingiz bo‘sh',
@@ -657,6 +665,9 @@ for (const locale of ['en', 'ru', 'uz'] as const) {
     for (const width of [320, 390, 768, 1280] as const) {
       await page.setViewportSize({ width, height: 900 });
       await expect(page.getByRole('heading', { level: 1, name: copy.cart })).toBeVisible();
+      const clearToolbarAction = page.getByRole('button', { name: copy.clearAction }).first();
+      await expect(clearToolbarAction).toHaveText(copy.clearVisible);
+      await expect(clearToolbarAction.locator('svg[aria-hidden="true"]')).toHaveCount(1);
       await expect(page.getByRole('navigation', { name: copy.breadcrumb })).toBeVisible();
       const courses = page.getByRole('list', { name: copy.cartCourses });
       await expect(courses.getByText(copy.courseLabel, { exact: true })).toBeVisible();
@@ -721,7 +732,9 @@ for (const locale of ['ru', 'uz'] as const) {
     await expect(status).not.toContainText('Course removed from cart.');
     await expect(page.getByRole('button', { name: /Second browser cart course/ })).toBeFocused();
 
-    await page.getByRole('button', { name: copy.clearAction }).first().click();
+    const clearInvoker = page.getByRole('button', { name: copy.clearAction }).first();
+    await expect(clearInvoker).toHaveText(copy.clearVisible);
+    await clearInvoker.click();
     const dialog = page.getByRole('dialog', { name: copy.clearDialog });
     await dialog.getByRole('button', { name: copy.clearAction }).press('Enter');
     await expect(page.getByRole('heading', { name: copy.empty })).toBeFocused();

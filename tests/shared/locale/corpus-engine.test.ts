@@ -23,8 +23,8 @@ import type {
 
 import draft37Registry from '../../../localization/corpus/registry.json';
 
-const CURRENT_CORPUS_UNIT_COUNT = 527;
-const CURRENT_CORPUS_OCCURRENCE_COUNT = 750;
+const CURRENT_CORPUS_UNIT_COUNT = 528;
+const CURRENT_CORPUS_OCCURRENCE_COUNT = 751;
 
 const {
   SUPPLIED_REVIEW_ARTIFACT,
@@ -2566,8 +2566,8 @@ describe('canonical localization corpus engine', () => {
 
   it('admits a post-DRAFT-37 draft unit without relaxing historical identity or approval validation', () => {
     const extended = structuredClone(draft37Registry);
-    extended.units = extended.units.filter(
-      (unit) => unit.migrationProvenance.ownerTasks[0] !== 'FE-060',
+    extended.units = extended.units.filter((unit) =>
+      unit.migrationProvenance.ownerTasks.every((ownerTask) => ownerTask.startsWith('MLUX-')),
     );
     extended.summary.translationUnits = 523;
     extended.summary.sourceOccurrences = 746;
@@ -3625,7 +3625,7 @@ describe('canonical localization corpus engine', () => {
 
     const retired = structuredClone(draft37Registry);
     const postMigrationUnit = retired.units.find(
-      (unit) => unit.migrationProvenance.ownerTasks[0] === 'FE-060',
+      (unit) => unit.id === 'MLUX-C0522' && unit.migrationProvenance.ownerTasks.includes('FE-060'),
     );
     if (!postMigrationUnit) throw new Error('post-DRAFT-37 fixture unit is missing');
     postMigrationUnit.unitLifecycle = 'retired';

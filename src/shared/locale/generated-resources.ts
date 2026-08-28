@@ -356,7 +356,8 @@ export const GENERATED_LOCALE_RESOURCES = {
       "cartUpdateNeedsRefresh": "Cart update needs a refresh",
       "cartChangedLatestCouldNotLoad": "Your cart changed, but the latest cart could not be loaded. Refresh to see the current cart.",
       "cartLoadFailed": "We could not load your cart",
-      "unableToUpdateCart": "Unable to update cart"
+      "unableToUpdateCart": "Unable to update cart",
+      "clear": "Clear"
     },
     "catalog": {
       "courseResultsUpdated": "Course results updated.",
@@ -925,7 +926,8 @@ export const GENERATED_LOCALE_RESOURCES = {
       "cartUpdateNeedsRefresh": "Корзину нужно обновить",
       "cartChangedLatestCouldNotLoad": "Корзина изменилась, но не удалось загрузить последние данные. Обновите страницу, чтобы увидеть текущую корзину.",
       "cartLoadFailed": "Не удалось загрузить корзину",
-      "unableToUpdateCart": "Не удалось обновить корзину"
+      "unableToUpdateCart": "Не удалось обновить корзину",
+      "clear": "Очистить"
     },
     "catalog": {
       "courseResultsUpdated": "Результаты поиска курсов обновлены.",
@@ -1498,7 +1500,8 @@ export const GENERATED_LOCALE_RESOURCES = {
       "cartUpdateNeedsRefresh": "Savatni yangilash kerak",
       "cartChangedLatestCouldNotLoad": "Savatingiz o‘zgardi, ammo yangilangan savatni yuklab bo‘lmadi. Joriy savatni ko‘rish uchun sahifani yangilang.",
       "cartLoadFailed": "Savatni yuklab bo‘lmadi",
-      "unableToUpdateCart": "Savatni yangilab bo‘lmadi"
+      "unableToUpdateCart": "Savatni yangilab bo‘lmadi",
+      "clear": "Tozalash"
     },
     "catalog": {
       "courseResultsUpdated": "Kurs natijalari yangilandi.",
