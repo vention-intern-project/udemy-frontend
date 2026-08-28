@@ -4,6 +4,36 @@ These public Node commands read only explicit paths and never load local-only or
 registry remains the sole corpus source of truth; generated resources are always rendered by the
 corpus engine and committed together with the registry only after full-pack preflight succeeds.
 
+## Rebind one stale consumer grammar wrapper
+
+```powershell
+npm run localization:consumer:rebind -- <registryPath> <generatedOutputPath> <taskId> <sourcePath> <functionName> <bindingName>
+```
+
+This command accepts an exact `FE-NNN` task and one existing canonical translator-wrapper
+identity. It computes the current source fingerprint with the corpus engine, allows only that
+wrapper's known stale source-graph state during preflight, validates the full next corpus and source
+graph, renders generated resources, and commits both targets transactionally. The registry patch is
+limited to the selected wrapper's fingerprint. Exact current-fingerprint replay returns `rebound:
+false` without writing. Registry/output aliases, missing or ambiguous wrappers, malformed source,
+and any unrelated source-graph violation fail before a write. It does not create, review, export,
+import, approve, or alter locale candidate metadata.
+
+## Register authorized draft units
+
+```powershell
+npm run localization:draft:register -- <registryPath> <generatedOutputPath> <taskId> <unitsJsonPath>
+```
+
+The JSON input is a non-empty array of exact-shape `{ namespace, key, english, ru, uz, context }`
+objects. The command accepts only an exact `FE-NNN` task ID; all text is non-empty and trimmed,
+contexts must name a `src/` consumer, and placeholders are rejected. It validates the current
+corpus, rejects duplicate keys, generated-shape collisions, and lexical/normalized/hard-link target
+aliases, assigns the next stable `MLUX-C####` and `MLUX-O####` IDs, then validates and renders the
+complete next corpus before one paired atomic commit. Exact replays return `reused` IDs without a
+write; non-exact collisions fail closed. New RU and UZ candidates are always `draft` with null
+review, verdict, request, approval, and authority metadata.
+
 ## Export a standard CSV pack
 
 ```powershell

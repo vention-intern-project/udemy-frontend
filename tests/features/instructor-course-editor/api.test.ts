@@ -1,10 +1,12 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   createInstructorLesson,
+  createInstructorLessonUploadStatusObserver,
   deleteInstructorLesson,
   mapInstructorEditorFormFailure,
   requestInstructorEditorCourse,
+  requestInstructorLessonUploadStatus,
   updateInstructorCourse,
   uploadInstructorLessonFile,
 } from '../../../src/features/instructor-course-editor';
@@ -45,12 +47,24 @@ const lesson = {
   created_at: '2026-08-08T00:00:00Z',
   updated_at: '2026-08-08T00:00:00Z',
 };
+const UPLOAD_ID = '0123456789abcdef0123456789abcdef';
 const uploadAcknowledgement = {
   lesson_id: 8,
-  upload_id: 'backend-upload-8',
+  upload_id: UPLOAD_ID,
   status: 'queued',
   detail: 'File accepted for processing.',
 };
+const uploadStatus = {
+  upload_id: UPLOAD_ID,
+  lesson_id: 8,
+  status: 'processing',
+  failure_reason: null,
+  updated_at: '2026-08-28T12:00:00Z',
+};
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 function sessionWith(requestRequired: SessionContextValue['requestRequired']): SessionContextValue {
   return {
@@ -178,7 +192,7 @@ describe('instructor course editor API', () => {
     const file = new File(['lesson'], 'lesson.mp4', { type: 'video/mp4' });
     await expect(uploadInstructorLessonFile(session, 8, file)).resolves.toEqual({
       lessonId: 8,
-      uploadId: 'backend-upload-8',
+      uploadId: UPLOAD_ID,
       status: 'queued',
       detail: 'File accepted for processing.',
     });
@@ -190,10 +204,243 @@ describe('instructor course editor API', () => {
     expect(options.query).toBeUndefined();
   });
 
+  it('reads and validates API-036 only for the acknowledged upload and lesson', async () => {
+    const request = vi.fn(async (options: ApiRequestOptions) => decode(options, uploadStatus));
+    const signal = new AbortController().signal;
+    await expect(
+      requestInstructorLessonUploadStatus(
+        sessionWith(asSessionRequest(request)),
+        { lessonId: 8, uploadId: UPLOAD_ID },
+        signal,
+      ),
+    ).resolves.toBe('processing');
+    expect(request.mock.calls[0]?.[0]).toMatchObject({
+      method: 'GET',
+      path: `/lessons/uploads/${UPLOAD_ID}/status`,
+      authPolicy: 'required',
+      signal,
+    });
+  });
+
+  it('correlates a valid backend-producer upload ID without path rewriting', async () => {
+    const request = vi.fn(async (options: ApiRequestOptions) => decode(options, uploadStatus));
+
+    await expect(
+      requestInstructorLessonUploadStatus(
+        sessionWith(asSessionRequest(request)),
+        { lessonId: 8, uploadId: UPLOAD_ID },
+        new AbortController().signal,
+      ),
+    ).resolves.toBe('processing');
+    expect(request.mock.calls[0]?.[0]).toMatchObject({
+      path: `/lessons/uploads/${UPLOAD_ID}/status`,
+    });
+  });
+
+  it.each([
+    '.',
+    '..',
+    'upload/segment',
+    'upload?query',
+    'upload#fragment',
+    'upload%2Fsegment',
+    '0123456789abcdef0123456789abcdeg',
+    '0123456789abcdef0123456789abcdef0',
+    '0123456789abcdef0123456789abcdeF',
+  ])('rejects invalid producer upload IDs before an API-036 transport request: %s', (uploadId) => {
+    const request = vi.fn();
+
+    expect(() =>
+      requestInstructorLessonUploadStatus(
+        sessionWith(asSessionRequest(request)),
+        { lessonId: 8, uploadId },
+        new AbortController().signal,
+      ),
+    ).toThrow('Invalid upload status upload id');
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it('observes one acknowledged upload at a fixed logical cadence and stops after the fifteenth GET', async () => {
+    vi.useFakeTimers();
+    const receivedStatuses: string[] = [];
+    const request = vi.fn(async (options: ApiRequestOptions) => decode(options, uploadStatus));
+    const observer = createInstructorLessonUploadStatusObserver({
+      session: sessionWith(asSessionRequest(request)),
+      reference: { lessonId: 8, uploadId: UPLOAD_ID },
+      onStatus: (status) => receivedStatuses.push(status),
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+    for (let index = 1; index < 15; index += 1) {
+      await vi.advanceTimersByTimeAsync(2_000);
+    }
+
+    expect(request).toHaveBeenCalledTimes(15);
+    expect(receivedStatuses).toEqual([
+      'processing',
+      'processing',
+      'processing',
+      'processing',
+      'processing',
+      'processing',
+      'processing',
+      'processing',
+      'processing',
+      'processing',
+      'processing',
+      'processing',
+      'processing',
+      'processing',
+      'processing',
+      'unavailable',
+    ]);
+    observer.dispose();
+  });
+
+  it('stops on a terminal result and ignores a late result after disposal', async () => {
+    vi.useFakeTimers();
+    let resolveStatus: (value: typeof uploadStatus) => void = () => undefined;
+    const deferredStatus = new Promise<typeof uploadStatus>((resolve) => {
+      resolveStatus = resolve;
+    });
+    const observed: string[] = [];
+    const request = vi.fn(async (options: ApiRequestOptions) =>
+      decode(options, await deferredStatus),
+    );
+    const observer = createInstructorLessonUploadStatusObserver({
+      session: sessionWith(asSessionRequest(request)),
+      reference: { lessonId: 8, uploadId: UPLOAD_ID },
+      onStatus: (status) => observed.push(status),
+    });
+
+    observer.dispose();
+    resolveStatus({ ...uploadStatus, status: 'ready' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(observed).toEqual([]);
+
+    const terminalRequest = vi.fn(async (options: ApiRequestOptions) =>
+      decode(options, { ...uploadStatus, status: 'failed', failure_reason: 'PRIVATE_REASON' }),
+    );
+    createInstructorLessonUploadStatusObserver({
+      session: sessionWith(asSessionRequest(terminalRequest)),
+      reference: { lessonId: 8, uploadId: UPLOAD_ID },
+      onStatus: (status) => observed.push(status),
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(observed).toEqual(['failed']);
+    expect(JSON.stringify(observed)).not.toContain('PRIVATE_REASON');
+    expect(terminalRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    new ApiError({ kind: 'forbidden', status: 403, message: 'PRIVATE_FORBIDDEN' }),
+    new ApiError({ kind: 'not_found', status: 404, message: 'PRIVATE_NOT_FOUND' }),
+    new ApiError({ kind: 'server', status: 500, message: 'PRIVATE_SERVER' }),
+    new TypeError('PRIVATE_MALFORMED'),
+  ])('maps non-authenticated status errors to the neutral stopped observation', async (error) => {
+    vi.useFakeTimers();
+    const observed: string[] = [];
+    const request = vi.fn(async () => Promise.reject(error));
+    createInstructorLessonUploadStatusObserver({
+      session: sessionWith(asSessionRequest(request)),
+      reference: { lessonId: 8, uploadId: UPLOAD_ID },
+      onStatus: (status) => observed.push(status),
+    });
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(observed).toEqual(['unavailable']);
+    expect(JSON.stringify(observed)).not.toContain('PRIVATE_');
+  });
+
+  it('leaves a 401 response to the required-session owner without a local status projection', async () => {
+    vi.useFakeTimers();
+    const observed: string[] = [];
+    const request = vi.fn(async () =>
+      Promise.reject(
+        new ApiError({ kind: 'unauthorized', status: 401, message: 'PRIVATE_UNAUTHORIZED' }),
+      ),
+    );
+    createInstructorLessonUploadStatusObserver({
+      session: sessionWith(asSessionRequest(request)),
+      reference: { lessonId: 8, uploadId: UPLOAD_ID },
+      onStatus: (status) => observed.push(status),
+    });
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(observed).toEqual([]);
+  });
+
+  it('aborts an in-flight logical GET at the thirty-second observation deadline', async () => {
+    vi.useFakeTimers();
+    const observed: string[] = [];
+    let signal: AbortSignal | undefined;
+    const request = vi.fn((options: ApiRequestOptions) => {
+      signal = options.signal;
+      return new Promise<never>(() => undefined);
+    });
+    createInstructorLessonUploadStatusObserver({
+      session: sessionWith(asSessionRequest(request)),
+      reference: { lessonId: 8, uploadId: UPLOAD_ID },
+      onStatus: (status) => observed.push(status),
+    });
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(signal?.aborted).toBe(true);
+    expect(observed).toEqual(['unavailable']);
+  });
+
+  it.each([
+    [{ ...uploadStatus, upload_id: '' }, 'upload status upload id'],
+    [{ ...uploadStatus, lesson_id: 0 }, 'upload status lesson id'],
+    [{ ...uploadStatus, lesson_id: 9 }, 'upload status lesson id'],
+    [{ ...uploadStatus, status: 'complete' }, 'upload status status'],
+    [{ ...uploadStatus, failure_reason: 42 }, 'upload status failure reason'],
+    [{ ...uploadStatus, updated_at: 'not-a-date' }, 'upload status updated at'],
+    [{ ...uploadStatus, updated_at: '2026-08-28' }, 'upload status updated at'],
+    [{ ...uploadStatus, updated_at: '2026-02-29T12:00:00Z' }, 'upload status updated at'],
+    [{ ...uploadStatus, updated_at: '2026-02-30T12:00:00Z' }, 'upload status updated at'],
+  ])('rejects malformed or mismatched API-036 payloads', async (response, message) => {
+    const request = vi.fn(async (options: ApiRequestOptions) => decode(options, response));
+    await expect(
+      requestInstructorLessonUploadStatus(
+        sessionWith(asSessionRequest(request)),
+        { lessonId: 8, uploadId: UPLOAD_ID },
+        new AbortController().signal,
+      ),
+    ).rejects.toThrow(message);
+  });
+
+  it.each(['2028-02-29T12:00:00Z', '2026-08-28T12:00:00.123Z', '2026-08-28T17:30:00+05:30'])(
+    'accepts calendar-valid RFC3339 API-036 timestamps: %s',
+    async (updatedAt) => {
+      const request = vi.fn(async (options: ApiRequestOptions) =>
+        decode(options, { ...uploadStatus, updated_at: updatedAt }),
+      );
+
+      await expect(
+        requestInstructorLessonUploadStatus(
+          sessionWith(asSessionRequest(request)),
+          { lessonId: 8, uploadId: UPLOAD_ID },
+          new AbortController().signal,
+        ),
+      ).resolves.toBe('processing');
+    },
+  );
+
   it.each([
     [{ ...uploadAcknowledgement, lesson_id: 0 }, 'upload acknowledgement lesson id'],
     [{ ...uploadAcknowledgement, lesson_id: 9 }, 'upload acknowledgement lesson id'],
     [{ ...uploadAcknowledgement, upload_id: '' }, 'upload acknowledgement upload id'],
+    [
+      { ...uploadAcknowledgement, upload_id: '0123456789abcdef0123456789abcdeg' },
+      'upload acknowledgement upload id',
+    ],
+    [
+      { ...uploadAcknowledgement, upload_id: '0123456789abcdef0123456789abcdeF' },
+      'upload acknowledgement upload id',
+    ],
     [{ ...uploadAcknowledgement, status: 'processing' }, 'Invalid upload acknowledgement status'],
     [{ ...uploadAcknowledgement, detail: null }, 'upload acknowledgement detail'],
     [lesson, 'upload acknowledgement upload id'],

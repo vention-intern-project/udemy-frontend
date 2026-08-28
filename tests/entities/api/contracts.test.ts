@@ -17,6 +17,7 @@ import type {
   PathEnrollment,
   PathFilename,
   PathLesson,
+  PathUpload,
   SelectedApiContractMap,
 } from '../../../src/entities/api';
 import type {
@@ -40,6 +41,7 @@ import type {
   ForgotPasswordRequestDto,
   LessonDto,
   LessonFileUploadAcknowledgementDto,
+  LessonUploadStatusDto,
   LessonListDto,
   LessonPageQueryDto,
   LessonProgressDto,
@@ -93,6 +95,7 @@ type ExpectedContractMap = {
   'API-033': { input: { body: UserRegisterDto }; response: RegisterResponseDto };
   'API-034': { input: { body: MockPaymentCompletionRequestDto }; response: MockPaymentCompleteDto };
   'API-035': { input: { query: PageQueryDto }; response: CourseListDto };
+  'API-036': { input: { path: PathUpload }; response: LessonUploadStatusDto };
 };
 
 type IsExact<TLeft, TRight> =
@@ -120,6 +123,9 @@ const MULTIPART_OPTIONS: ApiOperationRequestOptions<'API-032'> = {
   path: '/lessons/1/upload-file',
   body: new FormData(),
   dedupeKey: 'lesson:1:upload',
+};
+const SAFE_READ_OPTIONS: ApiOperationRequestOptions<'API-036'> = {
+  path: '/lessons/uploads/upload-1/status',
 };
 const JSON_QUERY_OPTIONS: ApiOperationRequestOptions<'API-024'> = {
   path: '/login',
@@ -329,6 +335,13 @@ const AUDITED_OPERATION_TABLE = [
     requestMode: 'query',
     responseMode: 'json',
   },
+  {
+    id: 'API-036',
+    method: 'GET',
+    path: '/lessons/uploads/:uploadId/status',
+    requestMode: 'none',
+    responseMode: 'json',
+  },
 ] as const satisfies readonly AuditedOperation[];
 
 describe('selected backend operation contracts', () => {
@@ -337,6 +350,7 @@ describe('selected backend operation contracts', () => {
     expect(JSON_OPTIONS.dedupeKey).toBe('login:learner');
     expect(BINARY_OPTIONS.responseType).toBe('blob');
     expect(MULTIPART_OPTIONS.body).toBeInstanceOf(FormData);
+    expect(SAFE_READ_OPTIONS.path).toBe('/lessons/uploads/upload-1/status');
     expect(JSON_QUERY_OPTIONS).toBeDefined();
     expect(MULTIPART_JSON_OPTIONS).toBeDefined();
     expect(BINARY_JSON_OPTIONS).toBeDefined();

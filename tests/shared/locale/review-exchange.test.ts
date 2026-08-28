@@ -35,9 +35,9 @@ const REVIEWED_AT = '2026-08-25T00:01:00.000Z';
 const IMPORTED_AT = '2026-08-25T00:02:00.000Z';
 const TASK_ID = 'FE-067';
 // DRAFT-37 remains an engine-owned 523-unit historical subset. This suite imports
-// the current canonical corpus, which also contains four FE-060 and one FE-065 admitted drafts.
-const CURRENT_CORPUS_UNIT_COUNT = 528;
-const LEGACY_ARTIFACT_ABSENT_UNIT_COUNT = 182;
+// the current canonical corpus, which also contains four FE-060, one FE-065, and six FE-015 drafts.
+const CURRENT_CORPUS_UNIT_COUNT = 534;
+const LEGACY_ARTIFACT_ABSENT_UNIT_COUNT = 188;
 const ARTIFACT_FIXTURE = join(
   process.cwd(),
   'tests/shared/locale/fixtures/review-exchange/learnhub-multilingual-review-readable.md',

@@ -14,6 +14,8 @@
     "test:all": "npm run typecheck && npm run lint && npm test && npm run test:browser",
     "localization:sync": "node scripts/localization/sync.mjs",
     "localization:check": "node scripts/localization/check.mjs",
+    "localization:consumer:rebind": "node scripts/localization/consumer-rebind.mjs",
+    "localization:draft:register": "node scripts/localization/draft-register.mjs",
     "localization:review:export": "node scripts/localization/review-export.mjs",
     "localization:review:import": "node scripts/localization/review-import.mjs",
     "localization:review:report": "node scripts/localization/review-report.mjs",

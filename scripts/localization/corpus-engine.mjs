@@ -1445,6 +1445,41 @@ function closedConsumerSourceFingerprint(sourcePath, source) {
   });
 }
 
+export function consumerSourceFingerprint(sourcePath, source) {
+  if (!validConsumerSourcePath(sourcePath))
+    throw new Error('consumer source path must be a normalized relative source path');
+  if (typeof source !== 'string') throw new Error('consumer source must be text');
+  return closedConsumerSourceFingerprint(sourcePath, source);
+}
+
+export function rebindTranslatorWrapper(corpus, { sourcePath, functionName, bindingName, source }) {
+  if (!nonEmptyString(functionName) || !nonEmptyString(bindingName))
+    throw new Error('consumer function and binding names must be non-empty text');
+  const wrappers = corpus?.consumerGrammar?.translatorWrappers;
+  if (!Array.isArray(wrappers)) throw new Error('consumer grammar has no translator wrappers');
+  const matches = wrappers.filter(
+    (wrapper) =>
+      wrapper?.sourcePath === sourcePath &&
+      wrapper?.functionName === functionName &&
+      wrapper?.bindingName === bindingName,
+  );
+  if (matches.length !== 1)
+    throw new Error('consumer rebinding requires exactly one existing translator wrapper');
+  const sourceFingerprint = consumerSourceFingerprint(sourcePath, source);
+  if (matches[0].sourceFingerprint === sourceFingerprint)
+    return { corpus, rebound: false, sourceFingerprint };
+  const next = structuredClone(corpus);
+  const nextWrapper = next.consumerGrammar.translatorWrappers.find(
+    (wrapper) =>
+      wrapper.sourcePath === sourcePath &&
+      wrapper.functionName === functionName &&
+      wrapper.bindingName === bindingName,
+  );
+  if (!nextWrapper) throw new Error('consumer rebinding lost the selected translator wrapper');
+  nextWrapper.sourceFingerprint = sourceFingerprint;
+  return { corpus: next, rebound: true, sourceFingerprint };
+}
+
 function closedJsxTag(node) {
   const opening = node.parent?.parent?.parent?.parent;
   if (opening && (ts.isJsxOpeningElement(opening) || ts.isJsxSelfClosingElement(opening)))

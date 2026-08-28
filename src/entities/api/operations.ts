@@ -34,7 +34,8 @@ export type SelectedApiOperationId =
   | 'API-032'
   | 'API-033'
   | 'API-034'
-  | 'API-035';
+  | 'API-035'
+  | 'API-036';
 
 export type ApiOperationRequestMode = 'none' | 'query' | 'json' | 'multipart';
 export type ApiOperationResponseMode = 'json' | 'binary' | 'void';
@@ -376,6 +377,16 @@ export const API_OPERATION_BY_ID = {
     retry: 'safe_read',
     mutationDedupe: 'not_applicable',
     requestMode: 'query',
+    responseMode: 'json',
+    assumptionTags: [],
+  },
+  'API-036': {
+    id: 'API-036',
+    method: 'GET',
+    path: '/lessons/uploads/:uploadId/status',
+    retry: 'safe_read',
+    mutationDedupe: 'not_applicable',
+    requestMode: 'none',
     responseMode: 'json',
     assumptionTags: [],
   },

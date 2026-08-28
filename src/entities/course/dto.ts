@@ -52,6 +52,14 @@ export interface LessonFileUploadAcknowledgementDto {
   status: 'queued';
   detail: string;
 }
+export type LessonUploadStatusTypeDto = 'queued' | 'processing' | 'ready' | 'failed';
+export interface LessonUploadStatusDto {
+  upload_id: string;
+  lesson_id: number;
+  status: LessonUploadStatusTypeDto;
+  failure_reason: string | null;
+  updated_at: string;
+}
 
 export type LessonDetailDto = Omit<LessonDto, 'course_id'>;
 
