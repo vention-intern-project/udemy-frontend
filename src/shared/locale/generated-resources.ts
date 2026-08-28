@@ -470,7 +470,18 @@ export const GENERATED_LOCALE_RESOURCES = {
       "unavailableForAccount": "Not available for this account",
       "checkingAvailability": "Checking availability",
       "alreadyEnrolled": "Already enrolled",
-      "alreadyInCart": "Already in cart"
+      "alreadyInCart": "Already in cart",
+      "reviewsHeading": "Reviews",
+      "noReviews": "No reviews yet.",
+      "writeReview": "Write a review",
+      "editReview": "Edit your review",
+      "ratingLabel": "Rating",
+      "commentLabel": "Comment (optional)",
+      "saveReview": "Save review",
+      "deleteReview": "Delete review",
+      "deleteReviewTitle": "Delete your review?",
+      "deleteReviewDescription": "This action cannot be undone.",
+      "reviewsLoadFailed": "Reviews could not be loaded."
     },
     "instructor": {
       "courseEditorSaveThisCourse": "save this course",
@@ -1050,7 +1061,18 @@ export const GENERATED_LOCALE_RESOURCES = {
       "unavailableForAccount": "Недоступно для этого аккаунта",
       "checkingAvailability": "Проверяем доступность",
       "alreadyEnrolled": "Вы уже записаны",
-      "alreadyInCart": "Уже в корзине"
+      "alreadyInCart": "Уже в корзине",
+      "reviewsHeading": "Отзывы",
+      "noReviews": "Отзывов пока нет.",
+      "writeReview": "Написать отзыв",
+      "editReview": "Изменить свой отзыв",
+      "ratingLabel": "Оценка",
+      "commentLabel": "Комментарий (необязательно)",
+      "saveReview": "Сохранить отзыв",
+      "deleteReview": "Удалить отзыв",
+      "deleteReviewTitle": "Удалить свой отзыв?",
+      "deleteReviewDescription": "Это действие нельзя отменить.",
+      "reviewsLoadFailed": "Не удалось загрузить отзывы."
     },
     "instructor": {
       "courseEditorSaveThisCourse": "сохранить этот курс",
@@ -1626,7 +1648,18 @@ export const GENERATED_LOCALE_RESOURCES = {
       "unavailableForAccount": "Bu akkaunt uchun mavjud emas",
       "checkingAvailability": "Mavjudligi tekshirilmoqda",
       "alreadyEnrolled": "Siz allaqachon yozilgansiz",
-      "alreadyInCart": "Savatda allaqachon bor"
+      "alreadyInCart": "Savatda allaqachon bor",
+      "reviewsHeading": "Sharhlar",
+      "noReviews": "Hozircha sharhlar yo‘q.",
+      "writeReview": "Sharh yozish",
+      "editReview": "Sharhingizni tahrirlash",
+      "ratingLabel": "Baho",
+      "commentLabel": "Izoh (ixtiyoriy)",
+      "saveReview": "Sharhni saqlash",
+      "deleteReview": "Sharhni o‘chirish",
+      "deleteReviewTitle": "Sharhingiz o‘chirilsinmi?",
+      "deleteReviewDescription": "Bu amalni bekor qilib bo‘lmaydi.",
+      "reviewsLoadFailed": "Sharhlarni yuklab bo‘lmadi."
     },
     "instructor": {
       "courseEditorSaveThisCourse": "bu kursni saqlash",

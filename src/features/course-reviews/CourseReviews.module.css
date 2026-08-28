@@ -1,0 +1,35 @@
+.section,
+.form {
+  display: grid;
+  gap: var(--spacing-4);
+  min-width: 0;
+}
+.section {
+  padding: var(--spacing-4);
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+.section h2,
+.section h3,
+.review p {
+  margin: 0;
+}
+.section h2:focus {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+.review {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--spacing-3);
+  padding-block: var(--spacing-3);
+  border-block-start: var(--border-width) solid var(--border-default);
+  overflow-wrap: anywhere;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-3);
+}

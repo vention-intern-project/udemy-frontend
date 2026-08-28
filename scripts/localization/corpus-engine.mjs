@@ -1480,6 +1480,39 @@ export function rebindTranslatorWrapper(corpus, { sourcePath, functionName, bind
   return { corpus: next, rebound: true, sourceFingerprint };
 }
 
+export function rebindConsumerSource(corpus, { sourcePath, source }) {
+  const sourceFingerprint = consumerSourceFingerprint(sourcePath, source);
+  const grammar = corpus?.consumerGrammar;
+  const categories = [
+    grammar?.translatorWrappers,
+    grammar?.translatorForwarders,
+    grammar?.translatorDependencies,
+    ...(grammar?.dynamicKeyFamilies ?? []).map((family) => family?.consumers),
+  ];
+  const matches = categories.flatMap((entries) =>
+    Array.isArray(entries) ? entries.filter((entry) => entry?.sourcePath === sourcePath) : [],
+  );
+  if (matches.length === 0)
+    throw new Error('consumer source rebinding requires at least one existing grammar entry');
+  if (matches.every((entry) => entry.sourceFingerprint === sourceFingerprint))
+    return { corpus, rebound: false, sourceFingerprint, updatedEntries: matches.length };
+  const next = structuredClone(corpus);
+  const nextGrammar = next.consumerGrammar;
+  const nextCategories = [
+    nextGrammar.translatorWrappers,
+    nextGrammar.translatorForwarders,
+    nextGrammar.translatorDependencies,
+    ...nextGrammar.dynamicKeyFamilies.map((family) => family.consumers),
+  ];
+  const updatedEntries = nextCategories.flatMap((entries) =>
+    entries.filter((entry) => entry.sourcePath === sourcePath),
+  );
+  if (updatedEntries.length !== matches.length)
+    throw new Error('consumer source rebinding lost selected grammar entries');
+  for (const entry of updatedEntries) entry.sourceFingerprint = sourceFingerprint;
+  return { corpus: next, rebound: true, sourceFingerprint, updatedEntries: updatedEntries.length };
+}
+
 function closedJsxTag(node) {
   const opening = node.parent?.parent?.parent?.parent;
   if (opening && (ts.isJsxOpeningElement(opening) || ts.isJsxSelfClosingElement(opening)))

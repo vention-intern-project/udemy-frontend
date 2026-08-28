@@ -56,6 +56,26 @@ const cartItemMutation = {
   course: { id: 7, title: detail.title, price: '19.99', currency: detail.currency },
 };
 
+const emptyReviewPage = {
+  items: [],
+  page: 1,
+  page_size: 20,
+  total: 0,
+  pages: 0,
+  has_next: false,
+  has_previous: false,
+};
+
+const ownedReview = {
+  id: 31,
+  course_id: 7,
+  user_id: 9,
+  rating: 5,
+  comment: 'Clear and useful.',
+  created_at: '2026-07-01T00:00:00Z',
+  updated_at: '2026-07-01T00:00:00Z',
+};
+
 function outline(downloadUrl: string | null, items = 1) {
   return {
     items:
@@ -94,7 +114,7 @@ function isRootApiPath(url: URL) {
   return /^\/(?:me|courses(?:\/|$)|cart(?:\/|$)|enrollments(?:\/|$))/.test(url.pathname);
 }
 
-type HttpMethod = 'GET' | 'POST';
+type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE';
 
 interface ExpectedHttpFailure {
   readonly method: HttpMethod;
@@ -113,9 +133,22 @@ interface ResourceStatusConsoleEntry {
   readonly url: string;
 }
 
+interface PendingResourceStatusConsoleEntry {
+  readonly entry: ResourceStatusConsoleEntry;
+  readonly text: string;
+}
+
 interface DiagnosticAssertions {
   expectHttpFailure(failure: ExpectedHttpFailure): void;
   assertClean(): void;
+}
+
+function expectMissingCurrentReview(diagnostics: DiagnosticAssertions) {
+  diagnostics.expectHttpFailure({
+    method: 'GET',
+    pathname: '/courses/7/reviews/me',
+    status: 404,
+  });
 }
 
 interface CourseResidualBrowserCopy {
@@ -196,7 +229,7 @@ function parseResourceStatusConsoleEntry(
   const statusMatch = /Failed to load resource: the server responded with a status of (\d+)/.exec(
     text,
   );
-  if (!statusMatch || locationUrl.length === 0) return undefined;
+  if (!statusMatch) return undefined;
   return { status: Number(statusMatch[1]), url: locationUrl };
 }
 
@@ -204,13 +237,27 @@ function findExpectedFailureForConsole(
   expectedFailures: readonly ObservedHttpFailure[],
   entry: ResourceStatusConsoleEntry,
 ): ObservedHttpFailure | undefined {
+  if (entry.url.length === 0) return undefined;
+  const pathname = new URL(entry.url).pathname;
   return expectedFailures.find(
     (failure) =>
-      !failure.consoleObserved &&
-      failure.observed &&
-      failure.status === entry.status &&
-      failure.observedResponseUrl === entry.url,
+      !failure.consoleObserved && failure.status === entry.status && failure.pathname === pathname,
   );
+}
+
+function pairExpectedFailuresWithPendingConsole(
+  expectedFailures: readonly ObservedHttpFailure[],
+  pendingConsoleErrors: PendingResourceStatusConsoleEntry[],
+) {
+  for (const failure of expectedFailures) {
+    if (!failure.observed || failure.consoleObserved) continue;
+    const index = pendingConsoleErrors.findIndex(
+      (pending) => pending.entry.status === failure.status,
+    );
+    if (index < 0) continue;
+    failure.consoleObserved = true;
+    pendingConsoleErrors.splice(index, 1);
+  }
 }
 
 async function installDiagnostics(page: Page) {
@@ -218,6 +265,7 @@ async function installDiagnostics(page: Page) {
   const mediaRequests: string[] = [];
   const unexpectedApiRequests: string[] = [];
   const expectedFailures: ObservedHttpFailure[] = [];
+  const pendingResourceConsoleErrors: PendingResourceStatusConsoleEntry[] = [];
   await page.route(isRootApiPath, async (route) => {
     if (isDocumentNavigation(route)) {
       await route.fallback();
@@ -241,11 +289,17 @@ async function installDiagnostics(page: Page) {
     if (expected) {
       expected.observed = true;
       expected.observedResponseUrl = response.url();
+      pairExpectedFailuresWithPendingConsole(expectedFailures, pendingResourceConsoleErrors);
     }
   });
   page.on('console', (message) => {
     if (message.type() !== 'error') return;
     const entry = parseResourceStatusConsoleEntry(message.text(), message.location().url);
+    if (entry?.url.length === 0) {
+      pendingResourceConsoleErrors.push({ entry, text: message.text() });
+      pairExpectedFailuresWithPendingConsole(expectedFailures, pendingResourceConsoleErrors);
+      return;
+    }
     const expected = entry ? findExpectedFailureForConsole(expectedFailures, entry) : undefined;
     if (expected) {
       expected.consoleObserved = true;
@@ -276,7 +330,10 @@ async function installDiagnostics(page: Page) {
         expectedFailures.filter((failure) => !failure.consoleObserved),
         'expected resource-status console errors were not observed',
       ).toEqual([]);
-      expect(errors, 'unexpected console/page errors').toEqual([]);
+      expect(
+        [...errors, ...pendingResourceConsoleErrors.map((pending) => pending.text)],
+        'unexpected console/page errors',
+      ).toEqual([]);
       expect(mediaRequests, 'lesson-file requests are forbidden on course detail').toEqual([]);
       expect(unexpectedApiRequests, 'unexpected API requests').toEqual([]);
     },
@@ -297,30 +354,61 @@ async function expectNoHorizontalOverflow(page: Page) {
   return geometry;
 }
 
-test('binds a resource-status console allowance to the exact observed response URL', () => {
+test('matches a resource-status console allowance by status and pathname before its response event', () => {
   const expectedResponseUrl = 'http://127.0.0.1:4176/courses/7';
-  const observedFailure: ObservedHttpFailure = {
+  const expectedFailure: ObservedHttpFailure = {
     method: 'GET',
     pathname: '/courses/7',
     status: 500,
-    observed: true,
-    observedResponseUrl: expectedResponseUrl,
+    observed: false,
+    observedResponseUrl: null,
     consoleObserved: false,
   };
 
   expect(
-    findExpectedFailureForConsole([observedFailure], {
+    findExpectedFailureForConsole([expectedFailure], {
       status: 500,
       url: 'http://127.0.0.1:4176/unrelated-resource.js',
     }),
   ).toBeUndefined();
-  expect(observedFailure.consoleObserved).toBe(false);
+  expect(expectedFailure.consoleObserved).toBe(false);
   expect(
-    findExpectedFailureForConsole([observedFailure], {
+    findExpectedFailureForConsole([expectedFailure], {
       status: 500,
       url: expectedResponseUrl,
     }),
-  ).toBe(observedFailure);
+  ).toBe(expectedFailure);
+  expect(expectedFailure.observed).toBe(false);
+});
+
+test('pairs one empty-location resource console error only after its expected response', () => {
+  const expectedFailure: ObservedHttpFailure = {
+    method: 'GET',
+    pathname: '/courses/7/reviews',
+    status: 500,
+    observed: false,
+    observedResponseUrl: null,
+    consoleObserved: false,
+  };
+  const pendingConsoleErrors: PendingResourceStatusConsoleEntry[] = [
+    {
+      entry: { status: 500, url: '' },
+      text: 'Failed to load resource: the server responded with a status of 500',
+    },
+    {
+      entry: { status: 500, url: '' },
+      text: 'Failed to load resource: the server responded with a status of 500',
+    },
+  ];
+
+  pairExpectedFailuresWithPendingConsole([expectedFailure], pendingConsoleErrors);
+  expect(expectedFailure.consoleObserved).toBe(false);
+  expect(pendingConsoleErrors).toHaveLength(2);
+
+  expectedFailure.observed = true;
+  pairExpectedFailuresWithPendingConsole([expectedFailure], pendingConsoleErrors);
+  expect(expectedFailure.consoleObserved).toBe(true);
+  expect(pendingConsoleErrors).toHaveLength(1);
 });
 
 async function installStudentToken(page: Page, token = 'student-token') {
@@ -329,10 +417,12 @@ async function installStudentToken(page: Page, token = 'student-token') {
 
 async function routeStudentReads(page: Page, price = '0.00') {
   await page.route('**/me', (route) => json(route, studentProfile));
-  await page.route('**/courses/7**', (route) => {
+  await page.route('**/courses/7**', async (route) => {
     if (isDocumentNavigation(route)) return route.fallback();
     const path = new URL(route.request().url()).pathname;
-    return json(route, path.endsWith('/lessons') ? outline(null) : { ...detail, price });
+    if (path === '/courses/7/reviews') return json(route, emptyReviewPage);
+    if (path === '/courses/7/reviews/me') return json(route, { detail: 'Review not found' }, 404);
+    await json(route, path.endsWith('/lessons') ? outline(null) : { ...detail, price });
   });
   await page.route('**/cart', (route) => json(route, emptyCart));
   await page.route('**/enrollments/my**', (route) => json(route, emptyEnrollments));
@@ -349,6 +439,8 @@ test('renders populated/redacted/null API-014 fixtures as metadata only with no 
       return;
     }
     const path = new URL(route.request().url()).pathname;
+    if (path === '/courses/7/reviews') return json(route, emptyReviewPage);
+    if (path === '/courses/7/reviews/me') return json(route, { detail: 'Review not found' }, 404);
     await json(route, path.endsWith('/lessons') ? outline(link) : detail);
   });
 
@@ -389,13 +481,22 @@ test('clears a genuine invalid bearer after 401 and performs public metadata rea
     expect(route.request().headers().authorization).toBeUndefined();
     const path = new URL(route.request().url()).pathname;
     publicCoursePaths.push(path);
+    if (path === '/courses/7/reviews') return json(route, emptyReviewPage);
+    if (path === '/courses/7/reviews/me') return json(route, { detail: 'Review not found' }, 404);
     await json(route, path.endsWith('/lessons') ? outline(null) : detail);
   });
 
+  const reviewRequest = page.waitForRequest(
+    (request) =>
+      request.method() === 'GET' && new URL(request.url()).pathname === '/courses/7/reviews',
+  );
   await page.goto('/courses/7?fixture=invalid-bearer-redacted');
   await expect(page.getByRole('link', { name: 'Sign in' })).toBeVisible();
+  await reviewRequest;
   expect(bootstrap401).toBe(1);
-  expect([...new Set(publicCoursePaths)]).toEqual(['/courses/7', '/courses/7/lessons']);
+  expect(new Set(publicCoursePaths)).toEqual(
+    new Set(['/courses/7', '/courses/7/lessons', '/courses/7/reviews']),
+  );
   expect(await page.evaluate(() => localStorage.getItem('learnhub.access-token'))).toBeNull();
   diagnostics.assertClean();
 });
@@ -467,6 +568,8 @@ test('recovers detail and outline independently with keyboard focus and polite s
       return;
     }
     const path = new URL(route.request().url()).pathname;
+    if (path === '/courses/7/reviews') return json(route, emptyReviewPage);
+    if (path === '/courses/7/reviews/me') return json(route, { detail: 'Review not found' }, 404);
     if (path.endsWith('/lessons')) {
       await json(
         route,
@@ -559,6 +662,7 @@ test('renders Draft as unavailable and sends no student mutation or preflight re
   page,
 }) => {
   const diagnostics = await installDiagnostics(page);
+  expectMissingCurrentReview(diagnostics);
   await installStudentToken(page);
   await page.route('**/me', (route) => json(route, studentProfile));
   await page.route(
@@ -573,6 +677,8 @@ test('renders Draft as unavailable and sends no student mutation or preflight re
   await page.route('**/courses/7**', (route) => {
     if (isDocumentNavigation(route)) return route.fallback();
     const path = new URL(route.request().url()).pathname;
+    if (path === '/courses/7/reviews') return json(route, emptyReviewPage);
+    if (path === '/courses/7/reviews/me') return json(route, { detail: 'Review not found' }, 404);
     return json(
       route,
       path.endsWith('/lessons') ? outline(null) : { ...detail, published_at: null },
@@ -588,6 +694,7 @@ test('retries a failed student preflight and refetches its exact cart/enrollment
   page,
 }) => {
   const diagnostics = await installDiagnostics(page);
+  expectMissingCurrentReview(diagnostics);
   await installStudentToken(page);
   let cartRequests = 0;
   let enrollmentRequests = 0;
@@ -598,6 +705,8 @@ test('retries a failed student preflight and refetches its exact cart/enrollment
   await page.route('**/courses/7**', (route) => {
     if (isDocumentNavigation(route)) return route.fallback();
     const path = new URL(route.request().url()).pathname;
+    if (path === '/courses/7/reviews') return json(route, emptyReviewPage);
+    if (path === '/courses/7/reviews/me') return json(route, { detail: 'Review not found' }, 404);
     return json(route, path.endsWith('/lessons') ? outline(null) : { ...detail, price: '0.00' });
   });
   await page.route('**/cart', async (route) => {
@@ -629,6 +738,7 @@ test('deduplicates pending free enrollment and reports enrollment-specific succe
   page,
 }) => {
   const diagnostics = await installDiagnostics(page);
+  expectMissingCurrentReview(diagnostics);
   await installStudentToken(page);
   await routeStudentReads(page);
   let mutations = 0;
@@ -650,6 +760,7 @@ test('deduplicates pending free enrollment and reports enrollment-specific succe
 
 test('sends the paid cart request once and reports cart-specific success', async ({ page }) => {
   const diagnostics = await installDiagnostics(page);
+  expectMissingCurrentReview(diagnostics);
   await installStudentToken(page);
   await routeStudentReads(page, '19.99');
   let mutations = 0;
@@ -687,6 +798,7 @@ for (const scenario of [
     page,
   }) => {
     const diagnostics = await installDiagnostics(page);
+    expectMissingCurrentReview(diagnostics);
     await installStudentToken(page);
     await routeStudentReads(page, scenario.price);
     let mutations = 0;
@@ -748,12 +860,16 @@ for (const scenario of [
     page,
   }) => {
     const diagnostics = await installDiagnostics(page);
+    expectMissingCurrentReview(diagnostics);
+    expectMissingCurrentReview(diagnostics);
     let price = '0.00';
     await installStudentToken(page);
     await page.route('**/me', (route) => json(route, studentProfile));
     await page.route('**/courses/7**', (route) => {
       if (isDocumentNavigation(route)) return route.fallback();
       const path = new URL(route.request().url()).pathname;
+      if (path === '/courses/7/reviews') return json(route, emptyReviewPage);
+      if (path === '/courses/7/reviews/me') return json(route, { detail: 'Review not found' }, 404);
       return json(route, path.endsWith('/lessons') ? outline(null) : { ...detail, price });
     });
     await page.route('**/cart', (route) => json(route, emptyCart));
@@ -803,6 +919,7 @@ for (const scenario of [
 ]) {
   test(`fails closed for malformed ${scenario.name} mutation success`, async ({ page }) => {
     const diagnostics = await installDiagnostics(page);
+    expectMissingCurrentReview(diagnostics);
     await installStudentToken(page);
     await routeStudentReads(page, scenario.price);
     let mutations = 0;
@@ -825,12 +942,15 @@ test('fails enrollment preflight closed for a mismatched response cursor without
   page,
 }) => {
   const diagnostics = await installDiagnostics(page);
+  expectMissingCurrentReview(diagnostics);
   await installStudentToken(page);
   let mutations = 0;
   await page.route('**/me', (route) => json(route, studentProfile));
   await page.route('**/courses/7**', (route) => {
     if (isDocumentNavigation(route)) return route.fallback();
     const path = new URL(route.request().url()).pathname;
+    if (path === '/courses/7/reviews') return json(route, emptyReviewPage);
+    if (path === '/courses/7/reviews/me') return json(route, { detail: 'Review not found' }, 404);
     return json(route, path.endsWith('/lessons') ? outline(null) : { ...detail, price: '0.00' });
   });
   await page.route('**/cart', (route) => json(route, emptyCart));
@@ -865,6 +985,7 @@ test('keeps non-refresh terminal failures disabled while refreshed conflict trut
   ];
   for (const [index, scenario] of cases.entries()) {
     await page.context().clearCookies();
+    expectMissingCurrentReview(diagnostics);
     await installStudentToken(page);
     await routeStudentReads(page);
     let mutations = 0;
@@ -887,6 +1008,8 @@ test('keeps non-refresh terminal failures disabled while refreshed conflict trut
         return;
       }
       const path = new URL(route.request().url()).pathname;
+      if (path === '/courses/7/reviews') return json(route, emptyReviewPage);
+      if (path === '/courses/7/reviews/me') return json(route, { detail: 'Review not found' }, 404);
       await json(route, path.endsWith('/lessons') ? outline(null) : { ...detail, price: '0.00' });
     });
     await page.route('**/enrollments', async (route) => {
@@ -964,6 +1087,7 @@ for (const scenario of [
     page,
   }) => {
     const diagnostics = await installDiagnostics(page);
+    expectMissingCurrentReview(diagnostics);
     await installStudentToken(page);
     await routeStudentReads(page, scenario.price);
     let mutations = 0;
@@ -1056,12 +1180,15 @@ for (const scenario of [
 ]) {
   test(`blocks ${scenario.name} before any mutation with diagnostics`, async ({ page }) => {
     const diagnostics = await installDiagnostics(page);
+    expectMissingCurrentReview(diagnostics);
     await installStudentToken(page);
     let mutations = 0;
     await page.route('**/me', (route) => json(route, scenario.profile));
     await page.route('**/courses/7**', (route) => {
       if (isDocumentNavigation(route)) return route.fallback();
       const path = new URL(route.request().url()).pathname;
+      if (path === '/courses/7/reviews') return json(route, emptyReviewPage);
+      if (path === '/courses/7/reviews/me') return json(route, { detail: 'Review not found' }, 404);
       return json(
         route,
         path.endsWith('/lessons') ? outline(null) : { ...detail, price: scenario.price },
@@ -1083,6 +1210,7 @@ for (const scenario of [
 
 test('keeps only offline/server mutation failure retryable', async ({ page }) => {
   const diagnostics = await installDiagnostics(page);
+  expectMissingCurrentReview(diagnostics);
   await installStudentToken(page);
   await routeStudentReads(page);
   let mutations = 0;
@@ -1130,6 +1258,8 @@ test('renders the free guest unavailable action in the neutral disabled CTA fami
       return;
     }
     const path = new URL(route.request().url()).pathname;
+    if (path === '/courses/7/reviews') return json(route, emptyReviewPage);
+    if (path === '/courses/7/reviews/me') return json(route, { detail: 'Review not found' }, 404);
     await json(route, path.endsWith('/lessons') ? outline(null) : { ...detail, price: '0.00' });
   });
 
@@ -1160,6 +1290,8 @@ test('preserves keyboard access and reflow without horizontal overflow', async (
       return;
     }
     const path = new URL(route.request().url()).pathname;
+    if (path === '/courses/7/reviews') return json(route, emptyReviewPage);
+    if (path === '/courses/7/reviews/me') return json(route, { detail: 'Review not found' }, 404);
     await json(route, path.endsWith('/lessons') ? outline(null) : detail);
   });
   await page.goto('/courses/7');
@@ -1228,6 +1360,214 @@ test('preserves keyboard access and reflow without horizontal overflow', async (
   diagnostics.assertClean();
 });
 
+test('renders public review pagination, retry recovery, locale copy, focus, and reflow without authorization', async ({
+  page,
+}) => {
+  const diagnostics = await installDiagnostics(page);
+  diagnostics.expectHttpFailure({ method: 'GET', pathname: '/courses/7/reviews', status: 500 });
+  diagnostics.expectHttpFailure({ method: 'GET', pathname: '/courses/7/reviews', status: 500 });
+  let allowListSuccess = false;
+  let failedPageOneRequests = 0;
+  const successfulReviewPages: string[] = [];
+  await page.route('**/courses/7**', async (route) => {
+    if (isDocumentNavigation(route)) return route.fallback();
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.pathname === '/courses/7/reviews') {
+      expect(request.headers().authorization).toBeUndefined();
+      expect(url.searchParams.get('page_size')).toBe('20');
+      if (!allowListSuccess) {
+        if (url.searchParams.get('page') === '1') failedPageOneRequests += 1;
+        await json(route, { detail: 'raw list failure' }, 500);
+        return;
+      }
+      const requestedPage = url.searchParams.get('page');
+      successfulReviewPages.push(requestedPage ?? '');
+      const pageNumber = Number(requestedPage);
+      await json(
+        route,
+        pageNumber === 2
+          ? {
+              ...emptyReviewPage,
+              items: [{ ...ownedReview, id: 32, comment: 'Second page review.' }],
+              page: 2,
+              total: 21,
+              pages: 2,
+              has_previous: true,
+            }
+          : {
+              ...emptyReviewPage,
+              items: [ownedReview, { ...ownedReview, id: 33, comment: 'Another public review.' }],
+              total: 21,
+              pages: 2,
+              has_next: true,
+            },
+      );
+      return;
+    }
+    if (url.pathname === '/courses/7/reviews/me') {
+      await json(route, { detail: 'Review not found' }, 404);
+      return;
+    }
+    if (url.pathname.endsWith('/lessons')) {
+      await json(route, outline(null));
+      return;
+    }
+    await json(route, detail);
+  });
+
+  await page.goto('/courses/7?reviews=public');
+  await expect(page.getByText('Reviews could not be loaded.')).toBeVisible();
+  await expect(page.locator('body')).not.toContainText('raw list failure');
+  expect(failedPageOneRequests).toBeGreaterThan(0);
+  allowListSuccess = true;
+  await page.getByRole('button', { name: 'Reviews' }).click();
+  await expect(page.getByText('Clear and useful.')).toBeVisible();
+  const pageTwo = page.getByRole('button', { name: 'Go to page 2' });
+  const next = page.getByRole('button', { name: 'Go to next page' });
+  await pageTwo.focus();
+  await expect(pageTwo).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(next).toBeFocused();
+  expect(await next.evaluate((control) => control.matches(':focus-visible'))).toBe(true);
+  await next.press('Enter');
+  await expect(page.getByText('Second page review.')).toBeVisible();
+  expect(successfulReviewPages).toContain('1');
+  expect(successfulReviewPages).toContain('2');
+
+  for (const [localeButton, heading, empty] of [
+    ['Русский', 'Отзывы', 'Отзывов пока нет.'],
+    ["O'zbek", 'Sharhlar', 'Hozircha sharhlar yo‘q.'],
+    ['English', 'Reviews', 'No reviews yet.'],
+  ] as const) {
+    await page
+      .getByRole('button', {
+        name: /^(Change language|Изменить язык|Tilni o‘zgartirish)$/,
+      })
+      .click();
+    await page.getByRole('button', { name: localeButton, exact: true }).click();
+    await expect(page.getByRole('heading', { level: 2, name: heading })).toBeVisible();
+    await page.route('**/courses/7/reviews?page=1&page_size=20', (route) =>
+      json(route, emptyReviewPage),
+    );
+    await page.reload();
+    await expect(page.getByText(empty, { exact: true })).toBeVisible();
+  }
+  for (const width of [1280, 768, 640, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expectNoHorizontalOverflow(page);
+  }
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 2 });
+  await expectNoHorizontalOverflow(page);
+  await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 });
+  await cdp.detach();
+  diagnostics.assertClean();
+});
+
+test('keeps authenticated review CRUD recoverable without raw server detail and preserves destructive-dialog keyboard flow', async ({
+  page,
+}) => {
+  const diagnostics = await installDiagnostics(page);
+  diagnostics.expectHttpFailure({ method: 'GET', pathname: '/courses/7/reviews/me', status: 404 });
+  diagnostics.expectHttpFailure({ method: 'POST', pathname: '/courses/7/reviews', status: 500 });
+  diagnostics.expectHttpFailure({ method: 'PATCH', pathname: '/courses/7/reviews', status: 500 });
+  diagnostics.expectHttpFailure({ method: 'DELETE', pathname: '/courses/7/reviews', status: 500 });
+  await installStudentToken(page);
+  let current = false;
+  let createFailures = 0;
+  let updateFailures = 0;
+  let deleteFailures = 0;
+  await page.route('**/me', (route) => json(route, studentProfile));
+  await page.route('**/courses/7**', async (route) => {
+    if (isDocumentNavigation(route)) return route.fallback();
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (path === '/courses/7/reviews' && request.method() === 'GET') {
+      expect(request.headers().authorization).toBeUndefined();
+      await json(route, { ...emptyReviewPage, items: current ? [ownedReview] : [] });
+      return;
+    }
+    if (path === '/courses/7/reviews/me' && request.method() === 'GET') {
+      expect(request.headers().authorization).toBe('Bearer student-token');
+      await json(
+        route,
+        current ? ownedReview : { detail: 'Review not found' },
+        current ? 200 : 404,
+      );
+      return;
+    }
+    if (path === '/courses/7/reviews' && request.method() === 'POST') {
+      expect(request.headers().authorization).toBe('Bearer student-token');
+      createFailures += 1;
+      if (createFailures === 1) {
+        await json(route, { detail: 'distinctive create detail' }, 500);
+      } else {
+        current = true;
+        await json(route, ownedReview, 201);
+      }
+      return;
+    }
+    if (path === '/courses/7/reviews' && request.method() === 'PATCH') {
+      expect(request.headers().authorization).toBe('Bearer student-token');
+      updateFailures += 1;
+      await json(route, { detail: 'distinctive update detail' }, updateFailures === 1 ? 500 : 200);
+      return;
+    }
+    if (path === '/courses/7/reviews' && request.method() === 'DELETE') {
+      expect(request.headers().authorization).toBe('Bearer student-token');
+      deleteFailures += 1;
+      await json(
+        route,
+        deleteFailures === 1
+          ? { detail: 'distinctive delete detail' }
+          : { message: 'Review deleted' },
+        deleteFailures === 1 ? 500 : 200,
+      );
+      return;
+    }
+    if (path.endsWith('/lessons')) {
+      await json(route, outline(null));
+      return;
+    }
+    await json(route, detail);
+  });
+  await page.route('**/cart', (route) => json(route, emptyCart));
+  await page.route('**/enrollments/my**', (route) => json(route, emptyEnrollments));
+
+  await page.goto('/courses/7?reviews=owned');
+  await expect(page.getByRole('heading', { level: 3, name: 'Write a review' })).toBeVisible();
+  await page.getByRole('button', { name: 'Save review' }).click();
+  await expect(page.getByText('Unable to complete action')).toBeVisible();
+  await expect(page.locator('body')).not.toContainText('distinctive create detail');
+  await page.getByRole('button', { name: 'Save review' }).click();
+  await expect(page.getByRole('heading', { level: 3, name: 'Edit your review' })).toBeVisible();
+  await page.getByRole('button', { name: 'Save review' }).click();
+  await expect(page.locator('body')).not.toContainText('distinctive update detail');
+  await page.getByRole('button', { name: 'Delete review' }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Delete review' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByRole('button', { name: 'Delete review' })).toBeVisible();
+  await dialog.getByRole('button', { name: 'Delete review' }).focus();
+  expect(
+    await dialog
+      .getByRole('button', { name: 'Delete review' })
+      .evaluate((control) => control.matches(':focus-visible')),
+  ).toBe(true);
+  await dialog.getByRole('button', { name: 'Delete review' }).click();
+  await expect(dialog.getByText('Unable to complete action')).toBeVisible();
+  await expect(page.locator('body')).not.toContainText('distinctive delete detail');
+  await dialog.getByRole('button', { name: 'Delete review' }).click();
+  await expect(page.getByRole('heading', { level: 2, name: 'Reviews' })).toBeFocused();
+  expect(createFailures).toBe(2);
+  expect(updateFailures).toBe(1);
+  expect(deleteFailures).toBe(2);
+  diagnostics.assertClean();
+});
+
 for (const locale of ['en', 'ru', 'uz'] as const) {
   test(`resolves the complete admitted course residual family without overflow or writes in ${locale}`, async ({
     page,
@@ -1257,6 +1597,8 @@ for (const locale of ['en', 'ru', 'uz'] as const) {
         return;
       }
       const path = new URL(route.request().url()).pathname;
+      if (path === '/courses/7/reviews') return json(route, emptyReviewPage);
+      if (path === '/courses/7/reviews/me') return json(route, { detail: 'Review not found' }, 404);
       if (path.endsWith('/lessons')) {
         if (outlinePending) await outlineGate;
         await json(route, outline(null, outlineItems));

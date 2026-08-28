@@ -40,6 +40,13 @@ import type {
   UserProfileDto,
   UserRegisterDto,
 } from '../user';
+import type {
+  ReviewCreateDto,
+  ReviewDto,
+  ReviewListDto,
+  ReviewPageQueryDto,
+  ReviewUpdateDto,
+} from '../review';
 
 export interface PathCourse {
   courseId: number;
@@ -98,4 +105,9 @@ export interface SelectedApiContractMap {
   'API-034': { input: { body: MockPaymentCompletionRequestDto }; response: MockPaymentCompleteDto };
   'API-035': { input: { query: PageQueryDto }; response: CourseListDto };
   'API-036': { input: { path: PathUpload }; response: LessonUploadStatusDto };
+  'API-037': { input: { path: PathCourse; query: ReviewPageQueryDto }; response: ReviewListDto };
+  'API-038': { input: { path: PathCourse }; response: ReviewDto };
+  'API-039': { input: { path: PathCourse; body: ReviewCreateDto }; response: ReviewDto };
+  'API-040': { input: { path: PathCourse; body: ReviewUpdateDto }; response: ReviewDto };
+  'API-041': { input: { path: PathCourse }; response: { message: string } };
 }

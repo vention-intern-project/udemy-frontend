@@ -3,6 +3,7 @@ import { relative, resolve } from 'node:path';
 
 import {
   rebindTranslatorWrapper,
+  rebindConsumerSource as rebindConsumerSourceCorpus,
   retiredConsumerViolations,
   serializeGeneratedResources,
   validateCorpus,
@@ -254,6 +255,129 @@ function sourceFilePath(sourceRoot, sourcePath) {
   if (relativePath !== sourcePath || relativePath.startsWith('../'))
     throw new Error('sourcePath must stay within sourceRoot');
   return path;
+}
+
+function sourceFingerprintNodesForPath(source, sourcePath) {
+  const { root, value } = parsedRegistrySource(source);
+  const grammarNode = directProperty(root, 'consumerGrammar', 'top-level');
+  const grammar = value.consumerGrammar;
+  if (grammarNode.type !== 'object' || !grammar || typeof grammar !== 'object')
+    throw new Error('consumer source rebinding registry source requires consumerGrammar');
+  const candidates = [];
+  const collect = (arrayNode, values) => {
+    if (arrayNode.type !== 'array' || !Array.isArray(values))
+      throw new Error('consumer source rebinding registry source has malformed grammar entries');
+    arrayNode.values.forEach((node, index) => {
+      if (node.type !== 'object')
+        throw new Error('consumer source rebinding registry source has malformed grammar entry');
+      if (values[index]?.sourcePath !== sourcePath) return;
+      const fingerprint = directProperty(node, 'sourceFingerprint', 'selected grammar entry');
+      if (fingerprint.type !== 'string')
+        throw new Error('consumer source rebinding registry source has invalid fingerprint');
+      candidates.push(fingerprint);
+    });
+  };
+  for (const property of ['translatorWrappers', 'translatorForwarders', 'translatorDependencies'])
+    collect(directProperty(grammarNode, property, 'consumerGrammar'), grammar[property]);
+  const familiesNode = directProperty(grammarNode, 'dynamicKeyFamilies', 'consumerGrammar');
+  if (familiesNode.type !== 'array' || !Array.isArray(grammar.dynamicKeyFamilies))
+    throw new Error('consumer source rebinding registry source has malformed dynamic families');
+  familiesNode.values.forEach((familyNode, index) => {
+    if (familyNode.type !== 'object')
+      throw new Error('consumer source rebinding registry source has malformed dynamic family');
+    collect(
+      directProperty(familyNode, 'consumers', 'dynamic family'),
+      grammar.dynamicKeyFamilies[index]?.consumers,
+    );
+  });
+  return candidates;
+}
+
+function serializeConsumerSourceRebindingRegistry({ source, next, sourcePath }) {
+  const targets = sourceFingerprintNodesForPath(source, sourcePath);
+  if (targets.length === 0)
+    throw new Error('consumer source rebinding registry serializer has no selected entries');
+  const replacement = JSON.stringify(
+    next.consumerGrammar.dynamicKeyFamilies
+      .flatMap((family) => family.consumers)
+      .concat(
+        next.consumerGrammar.translatorWrappers,
+        next.consumerGrammar.translatorForwarders,
+        next.consumerGrammar.translatorDependencies,
+      )
+      .find((entry) => entry.sourcePath === sourcePath)?.sourceFingerprint,
+  );
+  let serialized = source;
+  for (const target of [...targets].sort((left, right) => right.start - left.start))
+    serialized = `${serialized.slice(0, target.start)}${replacement}${serialized.slice(target.end)}`;
+  if (!sameJsonValue(JSON.parse(serialized), next))
+    throw new Error(
+      'consumer source rebinding registry serializer structurally drifted from the validated next corpus',
+    );
+  return serialized;
+}
+
+function recoverableSourceGraphViolations(sourcePath, violations) {
+  return violations.every((violation) => violation.includes(` ${sourcePath}`));
+}
+
+export async function rebindConsumerSource({
+  registryPath,
+  outputPath,
+  taskId,
+  sourcePath,
+  sourceRoot = resolve('src'),
+  fileSystem,
+}) {
+  validateTaskId(taskId);
+  await assertDistinctFileTargets({ registryPath, outputPath, fileSystem });
+  const registrySource = await readFile(registryPath, 'utf8');
+  const corpus = JSON.parse(registrySource);
+  const currentCorpusViolations = validateCorpus(corpus);
+  if (currentCorpusViolations.length)
+    throw new Error(`current corpus validation failed:\n${currentCorpusViolations.join('\n')}`);
+  const source = await readFile(sourceFilePath(sourceRoot, sourcePath), 'utf8');
+  const rebind = rebindConsumerSourceCorpus(corpus, { sourcePath, source });
+  sourceFingerprintNodesForPath(registrySource, sourcePath);
+  const currentGraphViolations = await retiredConsumerViolations(corpus, sourceRoot);
+  if (
+    currentGraphViolations.length &&
+    (!rebind.rebound || !recoverableSourceGraphViolations(sourcePath, currentGraphViolations))
+  )
+    throw new Error(
+      `current source graph validation failed:\n${currentGraphViolations.join('\n')}`,
+    );
+  if (!rebind.rebound) {
+    if ((await readFile(outputPath, 'utf8')) !== serializeGeneratedResources(corpus))
+      throw new Error('consumer rebinding generated output is out of date');
+    return {
+      rebound: false,
+      sourceFingerprint: rebind.sourceFingerprint,
+      updatedEntries: rebind.updatedEntries,
+    };
+  }
+  const nextViolations = validateCorpus(rebind.corpus);
+  if (nextViolations.length)
+    throw new Error(`next corpus validation failed:\n${nextViolations.join('\n')}`);
+  const nextGraphViolations = await retiredConsumerViolations(rebind.corpus, sourceRoot);
+  if (nextGraphViolations.length)
+    throw new Error(`next source graph validation failed:\n${nextGraphViolations.join('\n')}`);
+  await commitReviewTransaction({
+    registryPath,
+    outputPath,
+    registryContent: serializeConsumerSourceRebindingRegistry({
+      source: registrySource,
+      next: rebind.corpus,
+      sourcePath,
+    }),
+    generatedContent: serializeGeneratedResources(rebind.corpus),
+    fileSystem,
+  });
+  return {
+    rebound: true,
+    sourceFingerprint: rebind.sourceFingerprint,
+    updatedEntries: rebind.updatedEntries,
+  };
 }
 
 export async function rebindConsumerGrammar({

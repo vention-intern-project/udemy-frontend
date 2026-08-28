@@ -8,6 +8,7 @@ import registry from '../../../localization/corpus/registry.json';
 
 const {
   rebindConsumerGrammar,
+  rebindConsumerSource,
   // @ts-expect-error The dependency-free Node localization module has no TypeScript declaration.
 } = await import('../../../scripts/localization/consumer-rebinding.mjs');
 const {
@@ -21,6 +22,7 @@ const SOURCE_PATH = 'pages/instructor-lesson-editor-page/InstructorLessonEditorP
 const FUNCTION_NAME = 'uploadRule';
 const BINDING_NAME = 't';
 const TASK_ID = 'FE-015';
+const COURSE_DETAIL_SOURCE_PATH = 'pages/course-detail-page/CourseDetailPage.tsx';
 
 function staleCorpus() {
   const corpus = structuredClone(registry);
@@ -67,6 +69,67 @@ afterEach(async () => {
 });
 
 describe('consumer grammar rebinding', () => {
+  it('rebinds every existing CourseDetailPage dynamic-family fingerprint transactionally', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'learnhub-consumer-source-rebind-'));
+    temporaryDirectories.push(directory);
+    const registryPath = join(directory, 'registry.json');
+    const outputPath = join(directory, 'generated-resources.ts');
+    const corpus = structuredClone(registry);
+    const dynamicConsumers = corpus.consumerGrammar.dynamicKeyFamilies.flatMap(
+      (family) => family.consumers,
+    );
+    const selectedConsumers = dynamicConsumers.filter(
+      (consumer) => consumer.sourcePath === COURSE_DETAIL_SOURCE_PATH,
+    );
+    expect(selectedConsumers).toHaveLength(4);
+    for (const consumer of selectedConsumers)
+      consumer.sourceFingerprint = `sha256:${'0'.repeat(64)}`;
+    await writeFile(registryPath, `${JSON.stringify(corpus, null, 2)}\n`, 'utf8');
+    await writeFile(outputPath, '// prior generated output\n', 'utf8');
+    const source = await readFile(resolve('src', COURSE_DETAIL_SOURCE_PATH), 'utf8');
+    const sourceFingerprint = consumerSourceFingerprint(COURSE_DETAIL_SOURCE_PATH, source);
+    const before = JSON.parse(await readFile(registryPath, 'utf8'));
+
+    await expect(
+      rebindConsumerSource({
+        registryPath,
+        outputPath,
+        taskId: 'FE-026',
+        sourceRoot: resolve('src'),
+        sourcePath: COURSE_DETAIL_SOURCE_PATH,
+      }),
+    ).resolves.toEqual({ rebound: true, sourceFingerprint, updatedEntries: 4 });
+    const rebound = JSON.parse(await readFile(registryPath, 'utf8'));
+    const consumers = rebound.consumerGrammar.dynamicKeyFamilies
+      .flatMap((family: { consumers: unknown[] }) => family.consumers)
+      .filter(
+        (consumer: { sourcePath: string }) => consumer.sourcePath === COURSE_DETAIL_SOURCE_PATH,
+      );
+    expect(consumers).toHaveLength(4);
+    expect(
+      consumers.every(
+        (consumer: { sourceFingerprint: string }) =>
+          consumer.sourceFingerprint === sourceFingerprint,
+      ),
+    ).toBe(true);
+    expect(rebound.units).toEqual(before.units);
+    expect(rebound.baselineResources).toEqual(before.baselineResources);
+    expect(await readFile(outputPath, 'utf8')).toBe(serializeGeneratedResources(rebound));
+    const replayRegistry = await readFile(registryPath, 'utf8');
+    const replayOutput = await readFile(outputPath, 'utf8');
+    await expect(
+      rebindConsumerSource({
+        registryPath,
+        outputPath,
+        taskId: 'FE-026',
+        sourceRoot: resolve('src'),
+        sourcePath: COURSE_DETAIL_SOURCE_PATH,
+      }),
+    ).resolves.toEqual({ rebound: false, sourceFingerprint, updatedEntries: 4 });
+    expect(await readFile(registryPath, 'utf8')).toBe(replayRegistry);
+    expect(await readFile(outputPath, 'utf8')).toBe(replayOutput);
+  }, 20_000);
+
   it('rebinds one existing translator wrapper transactionally and exactly replays without writes', async () => {
     const { outputPath, registryPath } = await temporaryTargets();
     const source = await readFile(resolve('src', SOURCE_PATH), 'utf8');

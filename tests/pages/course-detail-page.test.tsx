@@ -383,6 +383,31 @@ afterEach(() => {
 });
 
 describe('CourseDetailPage', () => {
+  it('mounts the public reviews seam only after course detail succeeds', async () => {
+    const reviews = {
+      items: [],
+      page: 1,
+      page_size: 20,
+      total: 0,
+      pages: 0,
+      has_next: false,
+      has_previous: false,
+    };
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/courses/7') return decode(options, course);
+      if (options.path === '/courses/7/lessons') return decode(options, outline(null));
+      if (options.path === '/courses/7/reviews') return decode(options, reviews);
+      throw new Error(`Unexpected request ${options.path}`);
+    };
+
+    renderPage(request);
+
+    expect(await screen.findByRole('heading', { level: 1, name: course.title })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 2, name: 'Reviews' })).toBeTruthy();
+  });
+
   it.each(localizedCourseActionScenarios)(
     'renders every guest and disabled Course Action descriptor in $locale',
     async ({ locale, guestGuidance, guestLabel, disabled }) => {
@@ -725,6 +750,16 @@ describe('CourseDetailPage', () => {
       paths.push(options.path);
       if (options.path === '/courses/7') return decode(options, { ...course, price: '19.99' });
       if (options.path === '/courses/7/lessons') return decode(options, outline(null));
+      if (options.path === '/courses/7/reviews')
+        return decode(options, {
+          items: [],
+          page: 1,
+          page_size: 20,
+          total: 0,
+          pages: 0,
+          has_next: false,
+          has_previous: false,
+        });
       throw new Error(`Unexpected request ${options.path}`);
     };
     renderPage(request);
@@ -735,7 +770,7 @@ describe('CourseDetailPage', () => {
     const button = screen.getByRole('button', { name: 'Add to cart' }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
     fireEvent.click(button);
-    expect(paths).toEqual(['/courses/7', '/courses/7/lessons']);
+    expect(paths).toEqual(['/courses/7', '/courses/7/reviews', '/courses/7/lessons']);
   });
 
   it.each([
@@ -775,6 +810,16 @@ describe('CourseDetailPage', () => {
         });
       if (options.path === '/courses/7') return decode(options, course);
       if (options.path === '/courses/7/lessons') return decode(options, outline(null));
+      if (options.path === '/courses/7/reviews')
+        return decode(options, {
+          items: [],
+          page: 1,
+          page_size: 20,
+          total: 0,
+          pages: 0,
+          has_next: false,
+          has_previous: false,
+        });
       throw new Error(`Unexpected request ${options.path}`);
     };
     renderPage(request, 'invalid-bearer', '/courses/7', { tokenStore });
@@ -782,7 +827,7 @@ describe('CourseDetailPage', () => {
     expect(await screen.findByRole('link', { name: 'Sign in' })).toBeTruthy();
     expect(tokenStore.get()).toBeNull();
     expect(authPolicies).toContain(undefined);
-    expect(authPolicies.filter((policy) => policy === 'optional')).toHaveLength(2);
+    expect(authPolicies.filter((policy) => policy === 'optional')).toHaveLength(3);
     expect(document.body.textContent).not.toContain('/media/lessons/');
     expect(document.querySelector('audio, video, source, [download]')).toBeNull();
   });
@@ -1077,6 +1122,16 @@ describe('CourseDetailPage', () => {
       if (options.path === '/me') return decode(options, studentProfile);
       if (options.path === '/courses/7') return decode(options, course);
       if (options.path === '/courses/7/lessons') return decode(options, outline(null));
+      if (options.path === '/courses/7/reviews')
+        return decode(options, {
+          items: [],
+          page: 1,
+          page_size: 20,
+          total: 0,
+          pages: 0,
+          has_next: false,
+          has_previous: false,
+        });
       if (options.path === '/cart') return decode(options, emptyCart);
       if (options.path === '/enrollments/my') return decode(options, emptyEnrollments);
       if (options.path === '/enrollments') {
@@ -1429,6 +1484,16 @@ describe('CourseDetailPage', () => {
       if (options.path === '/me') return decode(options, studentProfile);
       if (options.path === '/courses/7') return decode(options, course);
       if (options.path === '/courses/7/lessons') return decode(options, outline(null));
+      if (options.path === '/courses/7/reviews')
+        return decode(options, {
+          items: [],
+          page: 1,
+          page_size: 20,
+          total: 0,
+          pages: 0,
+          has_next: false,
+          has_previous: false,
+        });
       if (options.path === '/cart') return decode(options, emptyCart);
       if (options.path === '/enrollments/my') return decode(options, emptyEnrollments);
       if (options.path === '/enrollments')

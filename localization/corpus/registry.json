@@ -298,11 +298,11 @@
     }
   },
   "summary": {
-    "translationUnits": 534,
-    "sourceOccurrences": 757,
+    "translationUnits": 545,
+    "sourceOccurrences": 768,
     "mergedDuplicateRows": 223,
-    "russianDrafts": 533,
-    "uzbekDrafts": 533,
+    "russianDrafts": 544,
+    "uzbekDrafts": 544,
     "draftStatus": "Draft",
     "englishPolicy": "Immutable source",
     "reviewProtocol": "Russian product owner + Uzbek native reviewer"
@@ -29153,6 +29153,578 @@
         "legacyReviewStatus": "Pending",
         "ownerTasks": ["FE-015"]
       }
+    },
+    {
+      "id": "MLUX-C0533",
+      "namespace": "course",
+      "key": "reviewsHeading",
+      "english": "Reviews",
+      "sourceRevision": "sha256:b8aae45914369ce17f1a8c63a2c89f910a1752656278e13898cbbc7b0308b65a",
+      "unitLifecycle": "active",
+      "occurrences": [
+        {
+          "id": "MLUX-O0761",
+          "context": "src/features/course-reviews/CourseReviews.tsx — reviews section heading"
+        }
+      ],
+      "placeholdersByLocale": {
+        "en": [],
+        "ru": [],
+        "uz": []
+      },
+      "renderingContract": null,
+      "pluralForms": null,
+      "locales": {
+        "ru": {
+          "candidate": "Отзывы",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:b8aae45914369ce17f1a8c63a2c89f910a1752656278e13898cbbc7b0308b65a",
+          "approvalAuthority": null
+        },
+        "uz": {
+          "candidate": "Sharhlar",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:b8aae45914369ce17f1a8c63a2c89f910a1752656278e13898cbbc7b0308b65a",
+          "approvalAuthority": null
+        }
+      },
+      "migrationProvenance": {
+        "legacyResourceStatus": "Draft",
+        "legacyReviewStatus": "Pending",
+        "ownerTasks": ["FE-026"]
+      }
+    },
+    {
+      "id": "MLUX-C0534",
+      "namespace": "course",
+      "key": "noReviews",
+      "english": "No reviews yet.",
+      "sourceRevision": "sha256:9edda0fbf587280deb31bbb06ed30f219868ef8b9982bc5819977d90df5bdc1b",
+      "unitLifecycle": "active",
+      "occurrences": [
+        {
+          "id": "MLUX-O0762",
+          "context": "src/features/course-reviews/CourseReviews.tsx — resolved empty state"
+        }
+      ],
+      "placeholdersByLocale": {
+        "en": [],
+        "ru": [],
+        "uz": []
+      },
+      "renderingContract": null,
+      "pluralForms": null,
+      "locales": {
+        "ru": {
+          "candidate": "Отзывов пока нет.",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:9edda0fbf587280deb31bbb06ed30f219868ef8b9982bc5819977d90df5bdc1b",
+          "approvalAuthority": null
+        },
+        "uz": {
+          "candidate": "Hozircha sharhlar yo‘q.",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:9edda0fbf587280deb31bbb06ed30f219868ef8b9982bc5819977d90df5bdc1b",
+          "approvalAuthority": null
+        }
+      },
+      "migrationProvenance": {
+        "legacyResourceStatus": "Draft",
+        "legacyReviewStatus": "Pending",
+        "ownerTasks": ["FE-026"]
+      }
+    },
+    {
+      "id": "MLUX-C0535",
+      "namespace": "course",
+      "key": "writeReview",
+      "english": "Write a review",
+      "sourceRevision": "sha256:585daca1070c7cbe0273bb1354b6be22d4fcf653c54f4dbe6b64c990f44cd640",
+      "unitLifecycle": "active",
+      "occurrences": [
+        {
+          "id": "MLUX-O0763",
+          "context": "src/features/course-reviews/CourseReviews.tsx — create review form heading"
+        }
+      ],
+      "placeholdersByLocale": {
+        "en": [],
+        "ru": [],
+        "uz": []
+      },
+      "renderingContract": null,
+      "pluralForms": null,
+      "locales": {
+        "ru": {
+          "candidate": "Написать отзыв",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:585daca1070c7cbe0273bb1354b6be22d4fcf653c54f4dbe6b64c990f44cd640",
+          "approvalAuthority": null
+        },
+        "uz": {
+          "candidate": "Sharh yozish",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:585daca1070c7cbe0273bb1354b6be22d4fcf653c54f4dbe6b64c990f44cd640",
+          "approvalAuthority": null
+        }
+      },
+      "migrationProvenance": {
+        "legacyResourceStatus": "Draft",
+        "legacyReviewStatus": "Pending",
+        "ownerTasks": ["FE-026"]
+      }
+    },
+    {
+      "id": "MLUX-C0536",
+      "namespace": "course",
+      "key": "editReview",
+      "english": "Edit your review",
+      "sourceRevision": "sha256:d4393f5df8aeb4490c452463113548359188d0282c10880df9ae05551e92c102",
+      "unitLifecycle": "active",
+      "occurrences": [
+        {
+          "id": "MLUX-O0764",
+          "context": "src/features/course-reviews/CourseReviews.tsx — edit review form heading"
+        }
+      ],
+      "placeholdersByLocale": {
+        "en": [],
+        "ru": [],
+        "uz": []
+      },
+      "renderingContract": null,
+      "pluralForms": null,
+      "locales": {
+        "ru": {
+          "candidate": "Изменить свой отзыв",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:d4393f5df8aeb4490c452463113548359188d0282c10880df9ae05551e92c102",
+          "approvalAuthority": null
+        },
+        "uz": {
+          "candidate": "Sharhingizni tahrirlash",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:d4393f5df8aeb4490c452463113548359188d0282c10880df9ae05551e92c102",
+          "approvalAuthority": null
+        }
+      },
+      "migrationProvenance": {
+        "legacyResourceStatus": "Draft",
+        "legacyReviewStatus": "Pending",
+        "ownerTasks": ["FE-026"]
+      }
+    },
+    {
+      "id": "MLUX-C0537",
+      "namespace": "course",
+      "key": "ratingLabel",
+      "english": "Rating",
+      "sourceRevision": "sha256:854ca1f94848abbe8804f4892ec7b7e012816064a43ccca96bf1dbfa0a87d76e",
+      "unitLifecycle": "active",
+      "occurrences": [
+        {
+          "id": "MLUX-O0765",
+          "context": "src/features/course-reviews/CourseReviews.tsx — rating field label"
+        }
+      ],
+      "placeholdersByLocale": {
+        "en": [],
+        "ru": [],
+        "uz": []
+      },
+      "renderingContract": null,
+      "pluralForms": null,
+      "locales": {
+        "ru": {
+          "candidate": "Оценка",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:854ca1f94848abbe8804f4892ec7b7e012816064a43ccca96bf1dbfa0a87d76e",
+          "approvalAuthority": null
+        },
+        "uz": {
+          "candidate": "Baho",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:854ca1f94848abbe8804f4892ec7b7e012816064a43ccca96bf1dbfa0a87d76e",
+          "approvalAuthority": null
+        }
+      },
+      "migrationProvenance": {
+        "legacyResourceStatus": "Draft",
+        "legacyReviewStatus": "Pending",
+        "ownerTasks": ["FE-026"]
+      }
+    },
+    {
+      "id": "MLUX-C0538",
+      "namespace": "course",
+      "key": "commentLabel",
+      "english": "Comment (optional)",
+      "sourceRevision": "sha256:a38361e7802c2ff7c44ef76611301ab3bdb10a0de11f98d8dd9709145d043eca",
+      "unitLifecycle": "active",
+      "occurrences": [
+        {
+          "id": "MLUX-O0766",
+          "context": "src/features/course-reviews/CourseReviews.tsx — comment field label"
+        }
+      ],
+      "placeholdersByLocale": {
+        "en": [],
+        "ru": [],
+        "uz": []
+      },
+      "renderingContract": null,
+      "pluralForms": null,
+      "locales": {
+        "ru": {
+          "candidate": "Комментарий (необязательно)",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:a38361e7802c2ff7c44ef76611301ab3bdb10a0de11f98d8dd9709145d043eca",
+          "approvalAuthority": null
+        },
+        "uz": {
+          "candidate": "Izoh (ixtiyoriy)",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:a38361e7802c2ff7c44ef76611301ab3bdb10a0de11f98d8dd9709145d043eca",
+          "approvalAuthority": null
+        }
+      },
+      "migrationProvenance": {
+        "legacyResourceStatus": "Draft",
+        "legacyReviewStatus": "Pending",
+        "ownerTasks": ["FE-026"]
+      }
+    },
+    {
+      "id": "MLUX-C0539",
+      "namespace": "course",
+      "key": "saveReview",
+      "english": "Save review",
+      "sourceRevision": "sha256:bbc617c1fb7499bb4a6cd7a491888cff93de1ab4ff40d2621f9fed68bcba6497",
+      "unitLifecycle": "active",
+      "occurrences": [
+        {
+          "id": "MLUX-O0767",
+          "context": "src/features/course-reviews/CourseReviews.tsx — review form submit action"
+        }
+      ],
+      "placeholdersByLocale": {
+        "en": [],
+        "ru": [],
+        "uz": []
+      },
+      "renderingContract": null,
+      "pluralForms": null,
+      "locales": {
+        "ru": {
+          "candidate": "Сохранить отзыв",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:bbc617c1fb7499bb4a6cd7a491888cff93de1ab4ff40d2621f9fed68bcba6497",
+          "approvalAuthority": null
+        },
+        "uz": {
+          "candidate": "Sharhni saqlash",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:bbc617c1fb7499bb4a6cd7a491888cff93de1ab4ff40d2621f9fed68bcba6497",
+          "approvalAuthority": null
+        }
+      },
+      "migrationProvenance": {
+        "legacyResourceStatus": "Draft",
+        "legacyReviewStatus": "Pending",
+        "ownerTasks": ["FE-026"]
+      }
+    },
+    {
+      "id": "MLUX-C0540",
+      "namespace": "course",
+      "key": "deleteReview",
+      "english": "Delete review",
+      "sourceRevision": "sha256:55d834493c0922a63aad5b2b606d4233cac83fd4858b223bc7dd34f4260e61c4",
+      "unitLifecycle": "active",
+      "occurrences": [
+        {
+          "id": "MLUX-O0768",
+          "context": "src/features/course-reviews/CourseReviews.tsx — owned review destructive action"
+        }
+      ],
+      "placeholdersByLocale": {
+        "en": [],
+        "ru": [],
+        "uz": []
+      },
+      "renderingContract": null,
+      "pluralForms": null,
+      "locales": {
+        "ru": {
+          "candidate": "Удалить отзыв",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:55d834493c0922a63aad5b2b606d4233cac83fd4858b223bc7dd34f4260e61c4",
+          "approvalAuthority": null
+        },
+        "uz": {
+          "candidate": "Sharhni o‘chirish",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:55d834493c0922a63aad5b2b606d4233cac83fd4858b223bc7dd34f4260e61c4",
+          "approvalAuthority": null
+        }
+      },
+      "migrationProvenance": {
+        "legacyResourceStatus": "Draft",
+        "legacyReviewStatus": "Pending",
+        "ownerTasks": ["FE-026"]
+      }
+    },
+    {
+      "id": "MLUX-C0541",
+      "namespace": "course",
+      "key": "deleteReviewTitle",
+      "english": "Delete your review?",
+      "sourceRevision": "sha256:f39b7c2feec0537e4fb39ea8463cf4d275521c7e62aedf9d78ae6073432f32f2",
+      "unitLifecycle": "active",
+      "occurrences": [
+        {
+          "id": "MLUX-O0769",
+          "context": "src/features/course-reviews/CourseReviews.tsx — destructive confirmation title"
+        }
+      ],
+      "placeholdersByLocale": {
+        "en": [],
+        "ru": [],
+        "uz": []
+      },
+      "renderingContract": null,
+      "pluralForms": null,
+      "locales": {
+        "ru": {
+          "candidate": "Удалить свой отзыв?",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:f39b7c2feec0537e4fb39ea8463cf4d275521c7e62aedf9d78ae6073432f32f2",
+          "approvalAuthority": null
+        },
+        "uz": {
+          "candidate": "Sharhingiz o‘chirilsinmi?",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:f39b7c2feec0537e4fb39ea8463cf4d275521c7e62aedf9d78ae6073432f32f2",
+          "approvalAuthority": null
+        }
+      },
+      "migrationProvenance": {
+        "legacyResourceStatus": "Draft",
+        "legacyReviewStatus": "Pending",
+        "ownerTasks": ["FE-026"]
+      }
+    },
+    {
+      "id": "MLUX-C0542",
+      "namespace": "course",
+      "key": "deleteReviewDescription",
+      "english": "This action cannot be undone.",
+      "sourceRevision": "sha256:fc02046035bb204f50488967f54b598a2371e1cb91c4a02eed2b7c6ca753b89a",
+      "unitLifecycle": "active",
+      "occurrences": [
+        {
+          "id": "MLUX-O0770",
+          "context": "src/features/course-reviews/CourseReviews.tsx — destructive confirmation description"
+        }
+      ],
+      "placeholdersByLocale": {
+        "en": [],
+        "ru": [],
+        "uz": []
+      },
+      "renderingContract": null,
+      "pluralForms": null,
+      "locales": {
+        "ru": {
+          "candidate": "Это действие нельзя отменить.",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:fc02046035bb204f50488967f54b598a2371e1cb91c4a02eed2b7c6ca753b89a",
+          "approvalAuthority": null
+        },
+        "uz": {
+          "candidate": "Bu amalni bekor qilib bo‘lmaydi.",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:fc02046035bb204f50488967f54b598a2371e1cb91c4a02eed2b7c6ca753b89a",
+          "approvalAuthority": null
+        }
+      },
+      "migrationProvenance": {
+        "legacyResourceStatus": "Draft",
+        "legacyReviewStatus": "Pending",
+        "ownerTasks": ["FE-026"]
+      }
+    },
+    {
+      "id": "MLUX-C0543",
+      "namespace": "course",
+      "key": "reviewsLoadFailed",
+      "english": "Reviews could not be loaded.",
+      "sourceRevision": "sha256:0f14f9182ec47504338c67a19a2fb5cabe7aad667fd1ac1ee25bdcd501afae96",
+      "unitLifecycle": "active",
+      "occurrences": [
+        {
+          "id": "MLUX-O0771",
+          "context": "src/features/course-reviews/CourseReviews.tsx — review list error state"
+        }
+      ],
+      "placeholdersByLocale": {
+        "en": [],
+        "ru": [],
+        "uz": []
+      },
+      "renderingContract": null,
+      "pluralForms": null,
+      "locales": {
+        "ru": {
+          "candidate": "Не удалось загрузить отзывы.",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:0f14f9182ec47504338c67a19a2fb5cabe7aad667fd1ac1ee25bdcd501afae96",
+          "approvalAuthority": null
+        },
+        "uz": {
+          "candidate": "Sharhlarni yuklab bo‘lmadi.",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:0f14f9182ec47504338c67a19a2fb5cabe7aad667fd1ac1ee25bdcd501afae96",
+          "approvalAuthority": null
+        }
+      },
+      "migrationProvenance": {
+        "legacyResourceStatus": "Draft",
+        "legacyReviewStatus": "Pending",
+        "ownerTasks": ["FE-026"]
+      }
     }
   ],
   "consumerGrammar": {
@@ -29587,7 +30159,7 @@
             "functionName": "CourseDetailPage",
             "argument": "failure.messageKey",
             "occurrence": 1,
-            "sourceFingerprint": "sha256:326add90e2529f6449ec7131d78ed6fe4df6c617c9a05d41686119f77a008275"
+            "sourceFingerprint": "sha256:051ea1bdbdd1c11bc771c821b789db07fa2b76778256edef5fdaefe46987125b"
           }
         ]
       },
@@ -29607,14 +30179,14 @@
             "functionName": "CourseDetailPage",
             "argument": "failure.titleKey",
             "occurrence": 1,
-            "sourceFingerprint": "sha256:326add90e2529f6449ec7131d78ed6fe4df6c617c9a05d41686119f77a008275"
+            "sourceFingerprint": "sha256:051ea1bdbdd1c11bc771c821b789db07fa2b76778256edef5fdaefe46987125b"
           },
           {
             "sourcePath": "pages/course-detail-page/CourseDetailPage.tsx",
             "functionName": "CourseDetailPage",
             "argument": "failure.titleKey",
             "occurrence": 2,
-            "sourceFingerprint": "sha256:326add90e2529f6449ec7131d78ed6fe4df6c617c9a05d41686119f77a008275"
+            "sourceFingerprint": "sha256:051ea1bdbdd1c11bc771c821b789db07fa2b76778256edef5fdaefe46987125b"
           }
         ]
       },
@@ -29627,7 +30199,7 @@
             "functionName": "CourseDetailPage",
             "argument": "`course:${recoveryMessage}`",
             "occurrence": 1,
-            "sourceFingerprint": "sha256:326add90e2529f6449ec7131d78ed6fe4df6c617c9a05d41686119f77a008275"
+            "sourceFingerprint": "sha256:051ea1bdbdd1c11bc771c821b789db07fa2b76778256edef5fdaefe46987125b"
           }
         ]
       },
