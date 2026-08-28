@@ -109,5 +109,5 @@ export interface SelectedApiContractMap {
   'API-038': { input: { path: PathCourse }; response: ReviewDto };
   'API-039': { input: { path: PathCourse; body: ReviewCreateDto }; response: ReviewDto };
   'API-040': { input: { path: PathCourse; body: ReviewUpdateDto }; response: ReviewDto };
-  'API-041': { input: { path: PathCourse }; response: { message: string } };
+  'API-041': { input: { path: PathCourse }; response: DeleteMessageDto };
 }

@@ -30159,7 +30159,7 @@
             "functionName": "CourseDetailPage",
             "argument": "failure.messageKey",
             "occurrence": 1,
-            "sourceFingerprint": "sha256:051ea1bdbdd1c11bc771c821b789db07fa2b76778256edef5fdaefe46987125b"
+            "sourceFingerprint": "sha256:5f4cd50b1b983dfaf387914588b076d4c009cccc22396b8def74a52246f27702"
           }
         ]
       },
@@ -30179,14 +30179,14 @@
             "functionName": "CourseDetailPage",
             "argument": "failure.titleKey",
             "occurrence": 1,
-            "sourceFingerprint": "sha256:051ea1bdbdd1c11bc771c821b789db07fa2b76778256edef5fdaefe46987125b"
+            "sourceFingerprint": "sha256:5f4cd50b1b983dfaf387914588b076d4c009cccc22396b8def74a52246f27702"
           },
           {
             "sourcePath": "pages/course-detail-page/CourseDetailPage.tsx",
             "functionName": "CourseDetailPage",
             "argument": "failure.titleKey",
             "occurrence": 2,
-            "sourceFingerprint": "sha256:051ea1bdbdd1c11bc771c821b789db07fa2b76778256edef5fdaefe46987125b"
+            "sourceFingerprint": "sha256:5f4cd50b1b983dfaf387914588b076d4c009cccc22396b8def74a52246f27702"
           }
         ]
       },
@@ -30199,7 +30199,7 @@
             "functionName": "CourseDetailPage",
             "argument": "`course:${recoveryMessage}`",
             "occurrence": 1,
-            "sourceFingerprint": "sha256:051ea1bdbdd1c11bc771c821b789db07fa2b76778256edef5fdaefe46987125b"
+            "sourceFingerprint": "sha256:5f4cd50b1b983dfaf387914588b076d4c009cccc22396b8def74a52246f27702"
           }
         ]
       },

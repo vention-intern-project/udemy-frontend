@@ -1,5 +1,6 @@
 import type { ReviewCreateDto, ReviewDto, ReviewListDto, ReviewUpdateDto } from '@entities/review';
 import { decodeReviewDto, decodeReviewListDto } from '@entities/review';
+import type { DeleteMessageDto } from '@entities/course';
 import { requestOperation, type SessionContextValue } from '@features/auth-session';
 import { ApiError } from '@shared/api';
 
@@ -80,7 +81,7 @@ export function updateCourseReview(
 export function deleteCourseReview(
   session: SessionContextValue,
   courseId: number,
-): Promise<{ message: string }> {
+): Promise<DeleteMessageDto> {
   return requestOperation(session, 'API-041', {
     path: `/courses/${courseId}/reviews`,
     dedupeKey: `course:${courseId}:review:delete`,

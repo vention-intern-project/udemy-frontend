@@ -408,6 +408,69 @@ describe('CourseDetailPage', () => {
     expect(await screen.findByRole('heading', { level: 2, name: 'Reviews' })).toBeTruthy();
   });
 
+  it('resets review pagination to the first page when navigating to another course', async () => {
+    const reviewRequests: Array<{
+      readonly path: string;
+      readonly page: number;
+      readonly pageSize: number;
+    }> = [];
+    const courseEight = { ...course, id: 8, title: 'Course eight' };
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/courses/7') return decode(options, course);
+      if (options.path === '/courses/8') return decode(options, courseEight);
+      if (options.path === '/courses/7/lessons' || options.path === '/courses/8/lessons')
+        return decode(options, outline(null));
+      if (options.path === '/courses/7/reviews' || options.path === '/courses/8/reviews') {
+        const query = options.query as { readonly page: number; readonly page_size: number };
+        reviewRequests.push({ path: options.path, page: query.page, pageSize: query.page_size });
+        return decode(options, {
+          items: [],
+          page: query.page,
+          page_size: 20,
+          total: 40,
+          pages: 2,
+          has_next: query.page < 2,
+          has_previous: query.page > 1,
+        });
+      }
+      throw new Error(`Unexpected request ${options.path}`);
+    };
+
+    renderPage(request, null, '/courses/8', { routeControls: true });
+    const user = userEvent.setup();
+
+    await screen.findByRole('heading', { level: 1, name: 'Course eight' });
+    await waitFor(() =>
+      expect(reviewRequests).toContainEqual({ path: '/courses/8/reviews', page: 1, pageSize: 20 }),
+    );
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Return to course 7' }));
+    });
+    await screen.findByRole('heading', { level: 1, name: course.title });
+    await screen.findByRole('button', { name: 'Go to page 2' });
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Go to page 2' }));
+    });
+    await waitFor(() =>
+      expect(reviewRequests).toContainEqual({ path: '/courses/7/reviews', page: 2, pageSize: 20 }),
+    );
+
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Open course 8' }));
+    });
+    await screen.findByRole('heading', { level: 1, name: 'Course eight' });
+    await waitFor(() =>
+      expect(reviewRequests).toContainEqual({ path: '/courses/8/reviews', page: 1, pageSize: 20 }),
+    );
+    expect(reviewRequests).not.toContainEqual({
+      path: '/courses/8/reviews',
+      page: 2,
+      pageSize: 20,
+    });
+  });
+
   it.each(localizedCourseActionScenarios)(
     'renders every guest and disabled Course Action descriptor in $locale',
     async ({ locale, guestGuidance, guestLabel, disabled }) => {

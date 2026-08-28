@@ -195,7 +195,7 @@ export function CourseDetailPage() {
         items={outline.data?.items}
         onRetry={retryOutline}
       />
-      <CourseReviews courseId={courseId} />
+      <CourseReviews key={courseId} courseId={courseId} />
     </article>
   );
 }
