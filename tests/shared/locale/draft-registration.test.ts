@@ -377,17 +377,19 @@ describe('draft registration', () => {
     const symbolicLinkPath = join(directory, 'registry-symbolic-link.json');
     try {
       await symlink(registryPath, symbolicLinkPath, 'file');
-      await expect(
-        registerDraftUnits({
-          registryPath,
-          outputPath: symbolicLinkPath,
-          taskId: TASK_ID,
-          units: INPUT_UNITS,
-        }),
-      ).rejects.toThrow(/distinct file targets/);
     } catch (error) {
       expect((error as NodeJS.ErrnoException).code).toBe('EPERM');
+      expect(await readFile(registryPath)).toEqual(before);
+      return;
     }
+    await expect(
+      registerDraftUnits({
+        registryPath,
+        outputPath: symbolicLinkPath,
+        taskId: TASK_ID,
+        units: INPUT_UNITS,
+      }),
+    ).rejects.toThrow(/distinct file targets/);
     expect(await readFile(registryPath)).toEqual(before);
   });
 

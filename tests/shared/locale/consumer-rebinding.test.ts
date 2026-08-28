@@ -181,6 +181,9 @@ describe('consumer grammar rebinding', () => {
     const selectedWrapper = validRegistry.indexOf(`"sourcePath": "${SOURCE_PATH}"`);
     const selectedFingerprint = validRegistry.indexOf('"sourceFingerprint"', selectedWrapper);
     const selectedLineEnd = validRegistry.indexOf('\n', selectedFingerprint);
+    expect(selectedWrapper).toBeGreaterThan(-1);
+    expect(selectedFingerprint).toBeGreaterThan(-1);
+    expect(selectedLineEnd).toBeGreaterThan(selectedFingerprint);
     const duplicateSelectedWrapperProperty = `${validRegistry.slice(0, selectedFingerprint)}${validRegistry.slice(selectedFingerprint, selectedLineEnd)},\n        ${validRegistry.slice(selectedFingerprint)}`;
     const duplicateConsumerGrammar = validRegistry.replace(
       '"consumerGrammar": {',
