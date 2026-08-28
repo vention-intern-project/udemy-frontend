@@ -17,6 +17,7 @@ import type {
   DeleteMessageDto,
   LessonDto,
   LessonFileUploadAcknowledgementDto,
+  LessonUploadStatusDto,
   LessonListDto,
   LessonPageQueryDto,
   LessonWriteDto,
@@ -52,6 +53,9 @@ export interface PathEnrollment {
 }
 export interface PathFilename {
   filename: string;
+}
+export interface PathUpload {
+  uploadId: string;
 }
 
 export interface SelectedApiContractMap {
@@ -93,4 +97,5 @@ export interface SelectedApiContractMap {
   'API-033': { input: { body: UserRegisterDto }; response: RegisterResponseDto };
   'API-034': { input: { body: MockPaymentCompletionRequestDto }; response: MockPaymentCompleteDto };
   'API-035': { input: { query: PageQueryDto }; response: CourseListDto };
+  'API-036': { input: { path: PathUpload }; response: LessonUploadStatusDto };
 }

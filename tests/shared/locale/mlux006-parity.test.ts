@@ -8,15 +8,15 @@ import { describe, expect, it } from 'vitest';
 type GeneratedResources = Record<string, Record<string, Record<string, string>>>;
 
 const resources = GENERATED_LOCALE_RESOURCES as GeneratedResources;
-const CURRENT_CORPUS_UNIT_COUNT = 528;
-const CURRENT_CORPUS_OCCURRENCE_COUNT = 751;
+const CURRENT_CORPUS_UNIT_COUNT = 534;
+const CURRENT_CORPUS_OCCURRENCE_COUNT = 757;
 
 describe('canonical DRAFT-37 corpus parity', () => {
   it('keeps the exact canonical migration identity and one source-to-runtime owner', () => {
     expect(registry).toMatchObject({
       corpusVersion: 'MLUX-001-DRAFT-37',
       source: { sha256: 'C9E208FC5F1AEF55E709290C67270B79E1CBCE4831E7FBCB20555AB5CF8A73AE' },
-      summary: { translationUnits: 528, sourceOccurrences: 751, mergedDuplicateRows: 223 },
+      summary: { translationUnits: 534, sourceOccurrences: 757, mergedDuplicateRows: 223 },
     });
     expect(registry.exclusions).toHaveLength(12);
     expect(registry.units).toHaveLength(CURRENT_CORPUS_UNIT_COUNT);

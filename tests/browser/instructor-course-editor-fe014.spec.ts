@@ -5,6 +5,7 @@ const courseId = 7;
 const lessonId = 101;
 
 type FixtureLocale = 'en' | 'ru' | 'uz';
+type UploadStatusFixture = 'queued' | 'processing' | 'ready' | 'failed';
 
 const FIXTURE_LOCALE_OPTION: Readonly<Record<FixtureLocale, string>> = {
   en: 'English',
@@ -54,6 +55,9 @@ interface FixtureState {
   lessonPatchStatus: number;
   lessonCreateStatus: number;
   uploadStatus: number;
+  uploadObservationStatus: UploadStatusFixture;
+  uploadObservationResponseStatus: number;
+  uploadObservationLessonId: number;
   courseDeleteStatus: number;
   lessonDeleteStatus: number;
   coursePatchGate?: Promise<void>;
@@ -61,6 +65,7 @@ interface FixtureState {
   courseDeleteGate?: Promise<void>;
   lessonDeleteGate?: Promise<void>;
   readonly requests: Request[];
+  readonly uploadStatusRequests: Request[];
 }
 
 interface DeferredAction {
@@ -121,9 +126,13 @@ function createFixtureState(): FixtureState {
     lessonPatchStatus: 200,
     lessonCreateStatus: 200,
     uploadStatus: 200,
+    uploadObservationStatus: 'processing',
+    uploadObservationResponseStatus: 200,
+    uploadObservationLessonId: lesson.id,
     courseDeleteStatus: 200,
     lessonDeleteStatus: 200,
     requests: [],
+    uploadStatusRequests: [],
   };
 }
 
@@ -161,12 +170,30 @@ function updatedCourse(course: CourseFixture) {
   };
 }
 
+function uploadId(lesson: LessonFixture) {
+  return lesson.id.toString(16).padStart(32, '0');
+}
+
 function uploadAcknowledgement(lesson: LessonFixture) {
   return {
     lesson_id: lesson.id,
-    upload_id: `browser-upload-${lesson.id}`,
+    upload_id: uploadId(lesson),
     status: 'queued',
     detail: 'File accepted for processing.',
+  };
+}
+
+function uploadObservation(
+  lesson: LessonFixture,
+  status: UploadStatusFixture,
+  observedLessonId: number,
+) {
+  return {
+    upload_id: uploadId(lesson),
+    lesson_id: observedLessonId,
+    status,
+    failure_reason: status === 'failed' ? 'PRIVATE_BACKEND_FAILURE_REASON' : null,
+    updated_at: '2026-08-28T12:00:00Z',
   };
 }
 
@@ -249,6 +276,31 @@ async function installInstructorFixture(page: Page, state: FixtureState): Promis
     if (path === `/lessons/${lessonId}` && method === 'GET') {
       await expectAuthorized(request);
       await fulfillJson(route, 200, state.lesson);
+      return;
+    }
+    if (
+      path === `/lessons/uploads/${lessonId.toString(16).padStart(32, '0')}/status` &&
+      method === 'GET'
+    ) {
+      await expectAuthorized(request);
+      state.uploadStatusRequests.push(request);
+      if (state.uploadObservationResponseStatus !== 200) {
+        await fulfillJson(
+          route,
+          state.uploadObservationResponseStatus,
+          failure(state.uploadObservationResponseStatus),
+        );
+        return;
+      }
+      await fulfillJson(
+        route,
+        200,
+        uploadObservation(
+          state.lesson,
+          state.uploadObservationStatus,
+          state.uploadObservationLessonId,
+        ),
+      );
       return;
     }
     if (path === '/courses/my' && method === 'GET') {
@@ -389,6 +441,21 @@ async function expectNoHorizontalOverflow(page: Page): Promise<void> {
   }));
   expect(widths.document).toBeLessThanOrEqual(widths.client);
   expect(widths.body).toBeLessThanOrEqual(widths.client);
+}
+
+async function uploadFixtureFile(page: Page): Promise<void> {
+  const lessonFile = page.locator('input[name="file"]');
+  await lessonFile.setInputFiles({
+    name: 'browser-video.mp4',
+    mimeType: 'video/mp4',
+    buffer: Buffer.from('video'),
+  });
+  const uploadButton = page.getByRole('button', {
+    name: /Upload file|Загрузить файл|Faylni yuklash/,
+  });
+  await uploadButton.focus();
+  await expect(uploadButton).toBeFocused();
+  await uploadButton.click();
 }
 
 const browserErrors = new WeakMap<Page, string[]>();
@@ -662,14 +729,129 @@ test('uses lesson PATCH and contract-faithful multipart upload without terminal 
   });
   await expect(page.getByRole('button', { name: 'Upload file' })).toBeEnabled();
   await page.getByRole('button', { name: 'Upload file' }).click();
-  await expect(page.getByText('File accepted and queued')).toBeVisible();
-  await expect(page.getByText('Processing status is unavailable.')).toBeVisible();
+  await expect(page.getByText('Processing')).toBeVisible();
+  await expect(page.getByText('File accepted and queued')).toHaveCount(0);
+  await expect(page.getByText('Processing status is unavailable.')).toHaveCount(0);
   await expect(page.locator('input[name="file"]')).toHaveCount(0);
   await expect(
     page.getByRole('button', { name: /upload|retry|cancel|download|play/i }),
   ).toHaveCount(0);
   await expect(page.getByText(/progress|ready|complete|replacement/i)).toHaveCount(0);
   expect(api032RequestCount(state.requests)).toBe(uploadRequestsBeforeTypeChanges + 1);
+});
+
+test('renders every correlated upload observation state safely across English, Russian, and Uzbek', async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  const state = createFixtureState();
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await installInstructorFixture(page, state);
+
+  const cases: ReadonlyArray<{
+    readonly locale: FixtureLocale;
+    readonly observationStatus: UploadStatusFixture | 'unavailable';
+    readonly responseStatus: number;
+    readonly expectedCopy: string;
+    readonly expectedDetail?: string;
+    readonly stopsPolling: boolean;
+  }> = [
+    {
+      locale: 'en',
+      observationStatus: 'queued',
+      responseStatus: 200,
+      expectedCopy: 'Queued',
+      stopsPolling: false,
+    },
+    {
+      locale: 'ru',
+      observationStatus: 'processing',
+      responseStatus: 200,
+      expectedCopy: 'Обрабатывается',
+      stopsPolling: false,
+    },
+    {
+      locale: 'uz',
+      observationStatus: 'ready',
+      responseStatus: 200,
+      expectedCopy: 'Yuklangan manba fayli tayyor',
+      expectedDetail: 'Subtitrlar va yaratilgan media holati mavjud emas.',
+      stopsPolling: true,
+    },
+    {
+      locale: 'ru',
+      observationStatus: 'failed',
+      responseStatus: 200,
+      expectedCopy: 'Не удалось загрузить исходный файл.',
+      stopsPolling: true,
+    },
+    {
+      locale: 'en',
+      observationStatus: 'unavailable',
+      responseStatus: 200,
+      expectedCopy: 'Upload status is unavailable. Check the lesson later.',
+      stopsPolling: true,
+    },
+  ];
+
+  for (const fixture of cases) {
+    state.uploadObservationStatus =
+      fixture.observationStatus === 'unavailable' ? 'processing' : fixture.observationStatus;
+    state.uploadObservationResponseStatus = fixture.responseStatus;
+    state.uploadObservationLessonId =
+      fixture.observationStatus === 'unavailable' ? lessonId + 1 : lessonId;
+    state.uploadStatusRequests.length = 0;
+    await page.goto(`/instructor/lessons/${lessonId}/edit`, { waitUntil: 'commit' });
+    await expect(
+      page.getByRole('heading', { name: /Edit lesson|Редактировать урок|Darsni tahrirlash/ }),
+    ).toBeVisible();
+    await selectFixtureLocale(page, fixture.locale);
+
+    const failedObservation =
+      fixture.responseStatus === 200
+        ? null
+        : page.waitForResponse(
+            (response) =>
+              new URL(response.url()).pathname ===
+                `/lessons/uploads/${uploadId(state.lesson)}/status` &&
+              response.status() === fixture.responseStatus,
+          );
+    await uploadFixtureFile(page);
+    if (failedObservation) await failedObservation;
+    await expect(page.getByText(fixture.expectedCopy, { exact: true })).toBeVisible();
+    if (fixture.expectedDetail) {
+      await expect(page.getByText(fixture.expectedDetail, { exact: true })).toBeVisible();
+    }
+    await expect(page.getByText('PRIVATE_BACKEND_FAILURE_REASON')).toHaveCount(0);
+    await expect(page.locator('input[name="file"]')).toHaveCount(0);
+    await expect(
+      page.getByRole('button', {
+        name: /upload|загрузить|yuklash|retry|повтор|qayta|cancel|отмен|bekor|download|скач|yuklab|play|воспроиз|ijro/i,
+      }),
+    ).toHaveCount(0);
+    await expect.poll(() => state.uploadStatusRequests.length).toBeGreaterThanOrEqual(1);
+    expect(new URL(state.uploadStatusRequests[0]?.url() ?? '').pathname).toBe(
+      `/lessons/uploads/${uploadId(state.lesson)}/status`,
+    );
+
+    for (const width of [320, 768, 1024, 1440] as const) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(page.getByText(fixture.expectedCopy, { exact: true })).toBeVisible();
+      await expectNoHorizontalOverflow(page);
+    }
+    if (fixture.stopsPolling) {
+      await page.waitForTimeout(2_200);
+      expect(state.uploadStatusRequests).toHaveLength(1);
+    } else {
+      const requestCountBeforeNavigation = state.uploadStatusRequests.length;
+      await page.goto(`/instructor/courses/${courseId}/edit`, { waitUntil: 'commit' });
+      await expect(
+        page.getByRole('heading', { name: /Edit course|Редактировать курс|Kursni tahrirlash/ }),
+      ).toBeVisible();
+      await page.waitForTimeout(2_200);
+      expect(state.uploadStatusRequests).toHaveLength(requestCountBeforeNavigation);
+    }
+  }
 });
 
 test('renders safe upload errors and keeps controls responsive under reduced motion', async ({

@@ -298,11 +298,11 @@
     }
   },
   "summary": {
-    "translationUnits": 528,
-    "sourceOccurrences": 751,
+    "translationUnits": 534,
+    "sourceOccurrences": 757,
     "mergedDuplicateRows": 223,
-    "russianDrafts": 527,
-    "uzbekDrafts": 527,
+    "russianDrafts": 533,
+    "uzbekDrafts": 533,
     "draftStatus": "Draft",
     "englishPolicy": "Immutable source",
     "reviewProtocol": "Russian product owner + Uzbek native reviewer"
@@ -28841,6 +28841,318 @@
         "legacyReviewStatus": "Pending",
         "ownerTasks": ["FE-065"]
       }
+    },
+    {
+      "id": "MLUX-C0527",
+      "namespace": "instructor",
+      "key": "lessonEditorUploadStatusQueued",
+      "english": "Queued",
+      "sourceRevision": "sha256:de51cffe87457de4b2dd5bb6c7040213a6004f883d8ea116a18272c1ddaedfec",
+      "unitLifecycle": "active",
+      "occurrences": [
+        {
+          "id": "MLUX-O0755",
+          "context": "src/pages/instructor-lesson-editor-page/InstructorLessonEditorPage.tsx — upload status queued label"
+        }
+      ],
+      "placeholdersByLocale": {
+        "en": [],
+        "ru": [],
+        "uz": []
+      },
+      "renderingContract": null,
+      "pluralForms": null,
+      "locales": {
+        "ru": {
+          "candidate": "В очереди",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:de51cffe87457de4b2dd5bb6c7040213a6004f883d8ea116a18272c1ddaedfec",
+          "approvalAuthority": null
+        },
+        "uz": {
+          "candidate": "Navbatda",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:de51cffe87457de4b2dd5bb6c7040213a6004f883d8ea116a18272c1ddaedfec",
+          "approvalAuthority": null
+        }
+      },
+      "migrationProvenance": {
+        "legacyResourceStatus": "Draft",
+        "legacyReviewStatus": "Pending",
+        "ownerTasks": ["FE-015"]
+      }
+    },
+    {
+      "id": "MLUX-C0528",
+      "namespace": "instructor",
+      "key": "lessonEditorUploadStatusProcessing",
+      "english": "Processing",
+      "sourceRevision": "sha256:80bf7afbbcc0ef10711fbda81e0b99328f275d5464da27d3bb8418b736d4ceac",
+      "unitLifecycle": "active",
+      "occurrences": [
+        {
+          "id": "MLUX-O0756",
+          "context": "src/pages/instructor-lesson-editor-page/InstructorLessonEditorPage.tsx — upload status processing label"
+        }
+      ],
+      "placeholdersByLocale": {
+        "en": [],
+        "ru": [],
+        "uz": []
+      },
+      "renderingContract": null,
+      "pluralForms": null,
+      "locales": {
+        "ru": {
+          "candidate": "Обрабатывается",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:80bf7afbbcc0ef10711fbda81e0b99328f275d5464da27d3bb8418b736d4ceac",
+          "approvalAuthority": null
+        },
+        "uz": {
+          "candidate": "Qayta ishlanmoqda",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:80bf7afbbcc0ef10711fbda81e0b99328f275d5464da27d3bb8418b736d4ceac",
+          "approvalAuthority": null
+        }
+      },
+      "migrationProvenance": {
+        "legacyResourceStatus": "Draft",
+        "legacyReviewStatus": "Pending",
+        "ownerTasks": ["FE-015"]
+      }
+    },
+    {
+      "id": "MLUX-C0529",
+      "namespace": "instructor",
+      "key": "lessonEditorUploadedSourceFileReady",
+      "english": "Uploaded source file ready",
+      "sourceRevision": "sha256:7245918cbea14209370dbf3d539e12bcb67d563fb4a96270ff65ab149f9913d6",
+      "unitLifecycle": "active",
+      "occurrences": [
+        {
+          "id": "MLUX-O0757",
+          "context": "src/pages/instructor-lesson-editor-page/InstructorLessonEditorPage.tsx — source file ready status"
+        }
+      ],
+      "placeholdersByLocale": {
+        "en": [],
+        "ru": [],
+        "uz": []
+      },
+      "renderingContract": null,
+      "pluralForms": null,
+      "locales": {
+        "ru": {
+          "candidate": "Загруженный исходный файл готов",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:7245918cbea14209370dbf3d539e12bcb67d563fb4a96270ff65ab149f9913d6",
+          "approvalAuthority": null
+        },
+        "uz": {
+          "candidate": "Yuklangan manba fayli tayyor",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:7245918cbea14209370dbf3d539e12bcb67d563fb4a96270ff65ab149f9913d6",
+          "approvalAuthority": null
+        }
+      },
+      "migrationProvenance": {
+        "legacyResourceStatus": "Draft",
+        "legacyReviewStatus": "Pending",
+        "ownerTasks": ["FE-015"]
+      }
+    },
+    {
+      "id": "MLUX-C0530",
+      "namespace": "instructor",
+      "key": "lessonEditorUploadStatusUnavailableCheckLater",
+      "english": "Upload status is unavailable. Check the lesson later.",
+      "sourceRevision": "sha256:0f809932500bf161e653045dc4ac2d85d48fcae4b808eace69b4d09765622453",
+      "unitLifecycle": "active",
+      "occurrences": [
+        {
+          "id": "MLUX-O0758",
+          "context": "src/pages/instructor-lesson-editor-page/InstructorLessonEditorPage.tsx — neutral unavailable upload-status notice"
+        }
+      ],
+      "placeholdersByLocale": {
+        "en": [],
+        "ru": [],
+        "uz": []
+      },
+      "renderingContract": null,
+      "pluralForms": null,
+      "locales": {
+        "ru": {
+          "candidate": "Статус загрузки недоступен. Проверьте урок позже.",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:0f809932500bf161e653045dc4ac2d85d48fcae4b808eace69b4d09765622453",
+          "approvalAuthority": null
+        },
+        "uz": {
+          "candidate": "Yuklash holati mavjud emas. Darsni keyinroq tekshiring.",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:0f809932500bf161e653045dc4ac2d85d48fcae4b808eace69b4d09765622453",
+          "approvalAuthority": null
+        }
+      },
+      "migrationProvenance": {
+        "legacyResourceStatus": "Draft",
+        "legacyReviewStatus": "Pending",
+        "ownerTasks": ["FE-015"]
+      }
+    },
+    {
+      "id": "MLUX-C0531",
+      "namespace": "instructor",
+      "key": "lessonEditorSourceFileUploadFailed",
+      "english": "Source file upload failed.",
+      "sourceRevision": "sha256:c0c7b1aeec8f67b94de6baba83a017ff6cd375f641d40f76e176533800e4ded4",
+      "unitLifecycle": "active",
+      "occurrences": [
+        {
+          "id": "MLUX-O0759",
+          "context": "src/pages/instructor-lesson-editor-page/InstructorLessonEditorPage.tsx — generic source file upload failure notice"
+        }
+      ],
+      "placeholdersByLocale": {
+        "en": [],
+        "ru": [],
+        "uz": []
+      },
+      "renderingContract": null,
+      "pluralForms": null,
+      "locales": {
+        "ru": {
+          "candidate": "Не удалось загрузить исходный файл.",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:c0c7b1aeec8f67b94de6baba83a017ff6cd375f641d40f76e176533800e4ded4",
+          "approvalAuthority": null
+        },
+        "uz": {
+          "candidate": "Manba faylini yuklab bo‘lmadi.",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:c0c7b1aeec8f67b94de6baba83a017ff6cd375f641d40f76e176533800e4ded4",
+          "approvalAuthority": null
+        }
+      },
+      "migrationProvenance": {
+        "legacyResourceStatus": "Draft",
+        "legacyReviewStatus": "Pending",
+        "ownerTasks": ["FE-015"]
+      }
+    },
+    {
+      "id": "MLUX-C0532",
+      "namespace": "instructor",
+      "key": "lessonEditorSubtitleAndGeneratedMediaStatusUnavailable",
+      "english": "Subtitle and generated media status is unavailable.",
+      "sourceRevision": "sha256:20ea4523c6dc0c74d0bcd33350167f53d0d88039fdb402a776d5f6cb4a638ee1",
+      "unitLifecycle": "active",
+      "occurrences": [
+        {
+          "id": "MLUX-O0760",
+          "context": "src/pages/instructor-lesson-editor-page/InstructorLessonEditorPage.tsx — source-ready subtitle and generated-media boundary notice"
+        }
+      ],
+      "placeholdersByLocale": {
+        "en": [],
+        "ru": [],
+        "uz": []
+      },
+      "renderingContract": null,
+      "pluralForms": null,
+      "locales": {
+        "ru": {
+          "candidate": "Статус субтитров и созданных медиа недоступен.",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:20ea4523c6dc0c74d0bcd33350167f53d0d88039fdb402a776d5f6cb4a638ee1",
+          "approvalAuthority": null
+        },
+        "uz": {
+          "candidate": "Subtitrlar va yaratilgan media holati mavjud emas.",
+          "status": "draft",
+          "reviewerId": null,
+          "verdict": null,
+          "requestedAt": null,
+          "reviewedAt": null,
+          "approvalRecordedAt": null,
+          "history": [],
+          "sourceRevision": "sha256:20ea4523c6dc0c74d0bcd33350167f53d0d88039fdb402a776d5f6cb4a638ee1",
+          "approvalAuthority": null
+        }
+      },
+      "migrationProvenance": {
+        "legacyResourceStatus": "Draft",
+        "legacyReviewStatus": "Pending",
+        "ownerTasks": ["FE-015"]
+      }
     }
   ],
   "consumerGrammar": {
@@ -28910,7 +29222,7 @@
         "sourcePath": "pages/instructor-lesson-editor-page/InstructorLessonEditorPage.tsx",
         "functionName": "uploadRule",
         "bindingName": "t",
-        "sourceFingerprint": "sha256:54eede1b1826fc1c45b8ef22317a601df14a32c3e7501d97dc8beceee2b7fee1"
+        "sourceFingerprint": "sha256:749923dbddbf6fba6f412d0c3ba296295ad3fdab067b9ca62c8f4019206c20b6"
       },
       {
         "sourcePath": "pages/learning-list-page/LearningListPage.tsx",

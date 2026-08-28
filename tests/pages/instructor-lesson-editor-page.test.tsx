@@ -33,7 +33,7 @@ const lesson = {
 };
 const uploadAcknowledgement = {
   lesson_id: 8,
-  upload_id: 'backend-upload-8',
+  upload_id: '0123456789abcdef0123456789abcdef',
   status: 'queued',
   detail: 'File accepted for processing.',
 };
@@ -175,7 +175,7 @@ describe('InstructorLessonEditorPage', () => {
     expect(await screen.findByText(invalidAddress)).toBeTruthy();
   });
 
-  it('submits a contract-valid multipart upload and acknowledges only its non-terminal outcome', async () => {
+  it('starts status observation from the accepted acknowledgement without rendering unsupported media controls', async () => {
     const uploadRequests: ApiRequestOptions[] = [];
     const queryClient = createAppQueryClient();
     const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
@@ -185,6 +185,15 @@ describe('InstructorLessonEditorPage', () => {
       if (options.path === '/lessons/8/upload-file') {
         uploadRequests.push(options);
         return decode(options, uploadAcknowledgement);
+      }
+      if (options.path === '/lessons/uploads/0123456789abcdef0123456789abcdef/status') {
+        return decode(options, {
+          upload_id: '0123456789abcdef0123456789abcdef',
+          lesson_id: 8,
+          status: 'processing',
+          failure_reason: null,
+          updated_at: '2026-08-28T12:00:00Z',
+        });
       }
       throw new Error(`Unexpected request: ${options.method} ${options.path}`);
     };
@@ -199,8 +208,9 @@ describe('InstructorLessonEditorPage', () => {
     await waitFor(() => expect(uploadRequests).toHaveLength(1));
     expect(uploadRequests[0]?.body).toBeInstanceOf(FormData);
     expect((uploadRequests[0]?.body as FormData).get('file')).toBe(file);
-    expect(await screen.findByText('File accepted and queued')).toBeTruthy();
-    expect(screen.getByText('Processing status is unavailable.')).toBeTruthy();
+    expect(await screen.findByText('Processing')).toBeTruthy();
+    expect(screen.queryByText('File accepted and queued')).toBeNull();
+    expect(screen.queryByText('Processing status is unavailable.')).toBeNull();
     expect(screen.queryByText(/download/i)).toBeNull();
     expect(screen.queryByText(/ready|complete|progress/i)).toBeNull();
     expect(screen.queryByLabelText('Lesson file')).toBeNull();
@@ -213,18 +223,57 @@ describe('InstructorLessonEditorPage', () => {
     });
   });
 
+  it('renders ready as source-file-only and never exposes a raw failure reason', async () => {
+    const request: ApiClient['request'] = async (options) => {
+      if (options.path === '/me') return decode(options, instructor);
+      if (options.path === '/lessons/8' && options.method === 'GET') return decode(options, lesson);
+      if (options.path === '/lessons/8/upload-file') return decode(options, uploadAcknowledgement);
+      if (options.path === '/lessons/uploads/0123456789abcdef0123456789abcdef/status') {
+        return decode(options, {
+          upload_id: '0123456789abcdef0123456789abcdef',
+          lesson_id: 8,
+          status: 'ready',
+          failure_reason: 'PRIVATE_SOURCE_FAILURE_REASON',
+          updated_at: '2026-08-28T12:00:00Z',
+        });
+      }
+      throw new Error(`Unexpected request: ${options.method} ${options.path}`);
+    };
+    await renderPage({ request });
+    const file = new File(['video'], 'lesson.mp4', { type: 'video/mp4' });
+    fireEvent.change(await screen.findByLabelText('Lesson file'), { target: { files: [file] } });
+    await act(async () => {
+      await userEvent.setup().click(screen.getByRole('button', { name: 'Upload file' }));
+    });
+
+    expect(await screen.findByText('Uploaded source file ready')).toBeTruthy();
+    expect(screen.getByText('Subtitle and generated media status is unavailable.')).toBeTruthy();
+    expect(screen.queryByText('PRIVATE_SOURCE_FAILURE_REASON')).toBeNull();
+    expect(screen.queryByRole('link', { name: /download/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /retry|cancel|play/i })).toBeNull();
+  });
+
   it.each([
-    ['ru', 'Загрузить файл', 'Статус обработки недоступен.'],
-    ['uz', 'Faylni yuklash', 'Qayta ishlash holati mavjud emas.'],
+    ['ru', 'Загрузить файл', 'В очереди'],
+    ['uz', 'Faylni yuklash', 'Navbatda'],
   ] as const)(
-    'localizes the queued upload control and processing-status notice in %s',
-    async (locale, uploadFile, processingUnavailable) => {
+    'localizes the queued upload observation in %s',
+    async (locale, uploadFile, queued) => {
       const request: ApiClient['request'] = async (options) => {
         if (options.path === '/me') return decode(options, instructor);
         if (options.path === '/lessons/8' && options.method === 'GET')
           return decode(options, lesson);
         if (options.path === '/lessons/8/upload-file') {
           return decode(options, uploadAcknowledgement);
+        }
+        if (options.path === '/lessons/uploads/0123456789abcdef0123456789abcdef/status') {
+          return decode(options, {
+            upload_id: '0123456789abcdef0123456789abcdef',
+            lesson_id: 8,
+            status: 'queued',
+            failure_reason: null,
+            updated_at: '2026-08-28T12:00:00Z',
+          });
         }
         throw new Error(`Unexpected request: ${options.method} ${options.path}`);
       };
@@ -239,7 +288,7 @@ describe('InstructorLessonEditorPage', () => {
       await act(async () => {
         await userEvent.setup().click(screen.getByRole('button', { name: uploadFile }));
       });
-      expect(await screen.findByText(processingUnavailable)).toBeTruthy();
+      expect(await screen.findByText(queued)).toBeTruthy();
     },
   );
 

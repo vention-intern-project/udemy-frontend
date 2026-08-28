@@ -567,7 +567,13 @@ export const GENERATED_LOCALE_RESOURCES = {
       "lessonEditorSaveLesson": "Save lesson",
       "lessonEditorProcessingStatusUnavailable": "Processing status is unavailable.",
       "lessonEditorUploadFile": "Upload file",
-      "coursesCourseActions": "{{courseTitle}} actions"
+      "coursesCourseActions": "{{courseTitle}} actions",
+      "lessonEditorUploadStatusQueued": "Queued",
+      "lessonEditorUploadStatusProcessing": "Processing",
+      "lessonEditorUploadedSourceFileReady": "Uploaded source file ready",
+      "lessonEditorUploadStatusUnavailableCheckLater": "Upload status is unavailable. Check the lesson later.",
+      "lessonEditorSourceFileUploadFailed": "Source file upload failed.",
+      "lessonEditorSubtitleAndGeneratedMediaStatusUnavailable": "Subtitle and generated media status is unavailable."
     }
   },
   "ru": {
@@ -1143,7 +1149,13 @@ export const GENERATED_LOCALE_RESOURCES = {
       "lessonEditorSaveLesson": "Сохранить урок",
       "lessonEditorProcessingStatusUnavailable": "Статус обработки недоступен.",
       "lessonEditorUploadFile": "Загрузить файл",
-      "coursesCourseActions": "Действия с курсом «{{courseTitle}}»"
+      "coursesCourseActions": "Действия с курсом «{{courseTitle}}»",
+      "lessonEditorUploadStatusQueued": "В очереди",
+      "lessonEditorUploadStatusProcessing": "Обрабатывается",
+      "lessonEditorUploadedSourceFileReady": "Загруженный исходный файл готов",
+      "lessonEditorUploadStatusUnavailableCheckLater": "Статус загрузки недоступен. Проверьте урок позже.",
+      "lessonEditorSourceFileUploadFailed": "Не удалось загрузить исходный файл.",
+      "lessonEditorSubtitleAndGeneratedMediaStatusUnavailable": "Статус субтитров и созданных медиа недоступен."
     }
   },
   "uz": {
@@ -1711,7 +1723,13 @@ export const GENERATED_LOCALE_RESOURCES = {
       "lessonEditorSaveLesson": "Darsni saqlash",
       "lessonEditorProcessingStatusUnavailable": "Qayta ishlash holati mavjud emas.",
       "lessonEditorUploadFile": "Faylni yuklash",
-      "coursesCourseActions": "{{courseTitle}} kursi bo‘yicha amallar"
+      "coursesCourseActions": "{{courseTitle}} kursi bo‘yicha amallar",
+      "lessonEditorUploadStatusQueued": "Navbatda",
+      "lessonEditorUploadStatusProcessing": "Qayta ishlanmoqda",
+      "lessonEditorUploadedSourceFileReady": "Yuklangan manba fayli tayyor",
+      "lessonEditorUploadStatusUnavailableCheckLater": "Yuklash holati mavjud emas. Darsni keyinroq tekshiring.",
+      "lessonEditorSourceFileUploadFailed": "Manba faylini yuklab bo‘lmadi.",
+      "lessonEditorSubtitleAndGeneratedMediaStatusUnavailable": "Subtitrlar va yaratilgan media holati mavjud emas."
     }
   }
 } satisfies Resource & Readonly<Record<'en' | 'ru' | 'uz', Resource[string]>>;

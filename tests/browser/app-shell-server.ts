@@ -29,6 +29,8 @@ export default async function startAppShellServer() {
 
   try {
     await server.listen();
+    await server.environments.client.warmupRequest('/src/main.tsx');
+    await server.environments.client.waitForRequestsIdle();
   } catch (error) {
     await server.close();
     throw error;

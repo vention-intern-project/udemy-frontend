@@ -8,12 +8,16 @@ import type { LessonType } from '@entities/course';
 import {
   instructorEditorCourseQueryKey,
   instructorEditorLessonQueryKey,
+  createInstructorLessonUploadStatusObserver,
   mapInstructorEditorFormFailure,
   resolveInstructorEditorFailureMessage,
   resolveInstructorEditorFormFailure,
   requestInstructorEditorLesson,
   updateInstructorLesson,
   uploadInstructorLessonFile,
+  type InstructorLessonUploadObservation,
+  type InstructorLessonUploadReference,
+  type InstructorLessonUploadStatusObserver,
   type UpdateInstructorLessonInput,
   type InstructorEditorFormFailure,
 } from '@features/instructor-course-editor';
@@ -90,7 +94,12 @@ export function InstructorLessonEditorPage() {
   const [file, setFile] = useState<File | null>(null);
   const [formFailure, setFormFailure] = useState<InstructorEditorFormFailure | null>(null);
   const [uploadFailure, setUploadFailure] = useState<InstructorEditorFormFailure | null>(null);
-  const [uploadSuccess, setUploadSuccess] = useState(false);
+  const [uploadReference, setUploadReference] = useState<InstructorLessonUploadReference | null>(
+    null,
+  );
+  const [uploadObservation, setUploadObservation] =
+    useState<InstructorLessonUploadObservation | null>(null);
+  const uploadObserverRef = useRef<InstructorLessonUploadStatusObserver | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   const lessonTypeRef = useRef<HTMLSelectElement>(null);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
@@ -131,7 +140,10 @@ export function InstructorLessonEditorPage() {
     onSuccess: async (updatedLesson) => {
       setFormFailure(null);
       if (updatedLesson.lessonType !== lesson.data?.lessonType) {
-        setUploadSuccess(false);
+        uploadObserverRef.current?.dispose();
+        uploadObserverRef.current = null;
+        setUploadReference(null);
+        setUploadObservation(null);
         const nextRule = uploadRule(updatedLesson.lessonType, t);
         setFile(null);
         if (fileRef.current) fileRef.current.value = '';
@@ -169,12 +181,22 @@ export function InstructorLessonEditorPage() {
       if (lessonId === null || file === null) throw new Error('Choose a file first');
       return uploadInstructorLessonFile(session, lessonId, file);
     },
-    onMutate: () => lesson.data?.courseId,
-    onSuccess: async (_acknowledgement, _variables, courseId) => {
+    onMutate: () => {
+      uploadObserverRef.current?.dispose();
+      uploadObserverRef.current = null;
+      setUploadReference(null);
+      setUploadObservation(null);
+      return lesson.data?.courseId;
+    },
+    onSuccess: async (acknowledgement, _variables, courseId) => {
       setUploadFailure(null);
       setFile(null);
       if (fileRef.current) fileRef.current.value = '';
-      setUploadSuccess(true);
+      setUploadReference({
+        lessonId: acknowledgement.lessonId,
+        uploadId: acknowledgement.uploadId,
+      });
+      setUploadObservation('queued');
       if (courseId !== undefined) await refresh(courseId);
     },
     onError: (error) => {
@@ -204,6 +226,34 @@ export function InstructorLessonEditorPage() {
     if (uploadFailure?.fields.file) fileRef.current?.focus({ preventScroll: true });
     else if (uploadFailure) uploadErrorRef.current?.focus({ preventScroll: true });
   }, [uploadFailure]);
+  useEffect(() => {
+    uploadObserverRef.current?.dispose();
+    uploadObserverRef.current = null;
+    if (
+      uploadReference === null ||
+      lessonId === null ||
+      session.cacheEpoch === null ||
+      uploadReference.lessonId !== lessonId
+    ) {
+      setUploadObservation((currentObservation) =>
+        currentObservation === null ? currentObservation : null,
+      );
+      return;
+    }
+    let observer: InstructorLessonUploadStatusObserver | null = null;
+    observer = createInstructorLessonUploadStatusObserver({
+      session,
+      reference: uploadReference,
+      onStatus: (nextObservation) => {
+        if (uploadObserverRef.current === observer) setUploadObservation(nextObservation);
+      },
+    });
+    uploadObserverRef.current = observer;
+    return () => {
+      observer?.dispose();
+      if (uploadObserverRef.current === observer) uploadObserverRef.current = null;
+    };
+  }, [lessonId, session, uploadReference]);
   if (lessonId === null)
     return (
       <Notice tone="error" title={t('instructor:lessonEditorLessonNotFound')}>
@@ -387,9 +437,19 @@ export function InstructorLessonEditorPage() {
           <Notice tone="info">
             {t('instructor:lessonEditorFileUploadIsUnavailableForTextLessons')}
           </Notice>
-        ) : uploadSuccess ? (
-          <Notice tone="info" title={t('instructor:lessonEditorFileAcceptedAndQueued')}>
-            {t('instructor:lessonEditorProcessingStatusUnavailable')}
+        ) : uploadObservation === 'queued' ? (
+          <Notice tone="info" title={t('instructor:lessonEditorUploadStatusQueued')} />
+        ) : uploadObservation === 'processing' ? (
+          <Notice tone="info" title={t('instructor:lessonEditorUploadStatusProcessing')} />
+        ) : uploadObservation === 'ready' ? (
+          <Notice tone="success" title={t('instructor:lessonEditorUploadedSourceFileReady')}>
+            {t('instructor:lessonEditorSubtitleAndGeneratedMediaStatusUnavailable')}
+          </Notice>
+        ) : uploadObservation === 'failed' ? (
+          <Notice tone="error" title={t('instructor:lessonEditorSourceFileUploadFailed')} />
+        ) : uploadObservation === 'unavailable' ? (
+          <Notice tone="info">
+            {t('instructor:lessonEditorUploadStatusUnavailableCheckLater')}
           </Notice>
         ) : (
           <form className={styles.form} onSubmit={submitUpload}>

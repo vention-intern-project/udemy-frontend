@@ -15,6 +15,11 @@ export interface InstructorLessonFileUploadAcknowledgement {
   readonly status: 'queued';
   readonly detail: string;
 }
+export type InstructorLessonUploadStatus = 'queued' | 'processing' | 'ready' | 'failed';
+export interface InstructorLessonUploadReference {
+  readonly lessonId: number;
+  readonly uploadId: string;
+}
 
 export interface InstructorEditorCourse {
   readonly id: number;

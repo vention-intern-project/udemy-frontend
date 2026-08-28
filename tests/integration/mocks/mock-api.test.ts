@@ -236,6 +236,11 @@ describe('deterministic API mock harness', () => {
         init: jsonRequest('POST', { enrollment_id: 7, status: 'success' }),
         jsonBody: { enrollment_id: 7, status: 'success' },
       },
+      {
+        operationId: 'API-036',
+        url: '/lessons/uploads/0123456789abcdef0123456789abcdef/status',
+        pathParams: { uploadId: '0123456789abcdef0123456789abcdef' },
+      },
     ];
 
     const routed = new Map<
@@ -324,8 +329,8 @@ describe('deterministic API mock harness', () => {
       }
     }
 
-    expect(mockFetch.operationIds).toHaveLength(32);
-    expect(new Set(mockFetch.operationIds).size).toBe(32);
+    expect(mockFetch.operationIds).toHaveLength(33);
+    expect(new Set(mockFetch.operationIds).size).toBe(33);
     expect(mockFetch.assumptionTags).toEqual([
       CONTRACT_ASSUMPTIONS.GAP_007.code,
       CONTRACT_ASSUMPTIONS.GAP_003.code,
