@@ -76,6 +76,11 @@ test('opens a published Catalog course through a successful Course Detail respon
     path: '/courses?page=1&page_size=20&sort=created_at',
     errorText: 'net::ERR_ABORTED',
   });
+  assertClean.allowRequestFailure({
+    method: 'GET',
+    path: `/courses/${course.id}/reviews?page=1&page_size=20`,
+    errorText: 'net::ERR_ABORTED',
+  });
   assertClean.allowOptionalRequestFailure({
     method: 'GET',
     path: `/courses/${course.id}`,
@@ -83,6 +88,28 @@ test('opens a published Catalog course through a successful Course Detail respon
   });
   await installCatalogAdmissionRoutes(page, { courses: [course] });
   const detail = await installCatalogCourseDetailScenario(page, course);
+  await page.route(
+    (url) =>
+      url.pathname === `/courses/${course.id}/reviews` &&
+      url.searchParams.get('page') === '1' &&
+      url.searchParams.get('page_size') === '20',
+    async (route) => {
+      if (route.request().method() !== 'GET') return route.fallback();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          items: [],
+          page: 1,
+          page_size: 20,
+          total: 0,
+          pages: 0,
+          has_next: false,
+          has_previous: false,
+        }),
+      });
+    },
+  );
 
   await page.goto('/');
   const courseLink = page.getByRole('link', { name: course.title });
@@ -93,10 +120,24 @@ test('opens a published Catalog course through a successful Course Detail respon
       new URL(response.url()).pathname === `/courses/${course.id}` &&
       response.status() === 200,
   );
+  const reviewsResponse = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return (
+      response.request().method() === 'GET' &&
+      url.pathname === `/courses/${course.id}/reviews` &&
+      url.searchParams.get('page') === '1' &&
+      url.searchParams.get('page_size') === '20' &&
+      response.status() === 200
+    );
+  });
   await courseLink.click();
   await expect(page).toHaveURL(`/courses/${course.id}`);
   await expect(page.getByRole('heading', { level: 1, name: course.title })).toBeVisible();
   await detailResponse;
+  const reviews = await reviewsResponse;
+  const reviewsUrl = new URL(reviews.url());
+  expect(reviewsUrl.searchParams.get('page')).toBe('1');
+  expect(reviewsUrl.searchParams.get('page_size')).toBe('20');
   expect(detail.requests).not.toEqual([]);
   expect(detail.requests).toEqual(expect.arrayContaining([`GET /courses/${course.id}`]));
   assertClean();
