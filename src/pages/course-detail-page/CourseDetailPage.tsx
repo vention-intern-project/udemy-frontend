@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 
 import { courseDetailFailure, useCourseDetail } from '@features/course-detail';
+import { CourseReviews } from '@features/course-reviews';
 import { useSession } from '@features/auth-session';
 import {
   Button,
@@ -194,6 +195,7 @@ export function CourseDetailPage() {
         items={outline.data?.items}
         onRetry={retryOutline}
       />
+      <CourseReviews key={courseId} courseId={courseId} />
     </article>
   );
 }

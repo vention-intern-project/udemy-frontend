@@ -19,6 +19,20 @@ false` without writing. Registry/output aliases, missing or ambiguous wrappers, 
 and any unrelated source-graph violation fail before a write. It does not create, review, export,
 import, approve, or alter locale candidate metadata.
 
+## Rebind every existing grammar entry for one source file
+
+```powershell
+npm run localization:consumer:source-rebind -- <registryPath> <generatedOutputPath> <taskId> <sourcePath>
+```
+
+This command accepts one exact normalized `src/`-relative source path and updates only the
+`sourceFingerprint` fields of every existing consumer-grammar entry with that source path. It
+covers wrappers, forwarders, dependencies, and dynamic-key-family consumers so a file revision is
+coherent without changing grammar identities, unit IDs, locale candidates, review metadata,
+baseline resources, or occurrences. At least one entry must match; malformed/aliased targets,
+missing sources, invalid corpus/source graphs, and transaction failures fail closed. Exact replay
+returns `rebound: false` without writing.
+
 ## Register authorized draft units
 
 ```powershell

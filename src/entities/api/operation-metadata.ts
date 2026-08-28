@@ -56,6 +56,11 @@ export const API_OPERATION_METADATA_BY_ID = {
   'API-034': { authPolicy: 'required', sensitiveVariables: false },
   'API-035': { authPolicy: 'required', sensitiveVariables: false },
   'API-036': { authPolicy: 'required', sensitiveVariables: false },
+  'API-037': { authPolicy: 'public', sensitiveVariables: false },
+  'API-038': { authPolicy: 'required', sensitiveVariables: false },
+  'API-039': { authPolicy: 'required', sensitiveVariables: false },
+  'API-040': { authPolicy: 'required', sensitiveVariables: false },
+  'API-041': { authPolicy: 'required', sensitiveVariables: false },
 } as const satisfies OperationMetadataRegistry;
 
 export function operationMetadata(operationId: SelectedApiOperationId) {

@@ -35,7 +35,12 @@ export type SelectedApiOperationId =
   | 'API-033'
   | 'API-034'
   | 'API-035'
-  | 'API-036';
+  | 'API-036'
+  | 'API-037'
+  | 'API-038'
+  | 'API-039'
+  | 'API-040'
+  | 'API-041';
 
 export type ApiOperationRequestMode = 'none' | 'query' | 'json' | 'multipart';
 export type ApiOperationResponseMode = 'json' | 'binary' | 'void';
@@ -386,6 +391,56 @@ export const API_OPERATION_BY_ID = {
     path: '/lessons/uploads/:uploadId/status',
     retry: 'safe_read',
     mutationDedupe: 'not_applicable',
+    requestMode: 'none',
+    responseMode: 'json',
+    assumptionTags: [],
+  },
+  'API-037': {
+    id: 'API-037',
+    method: 'GET',
+    path: '/courses/:courseId/reviews',
+    retry: 'safe_read',
+    mutationDedupe: 'not_applicable',
+    requestMode: 'query',
+    responseMode: 'json',
+    assumptionTags: [],
+  },
+  'API-038': {
+    id: 'API-038',
+    method: 'GET',
+    path: '/courses/:courseId/reviews/me',
+    retry: 'safe_read',
+    mutationDedupe: 'not_applicable',
+    requestMode: 'none',
+    responseMode: 'json',
+    assumptionTags: [],
+  },
+  'API-039': {
+    id: 'API-039',
+    method: 'POST',
+    path: '/courses/:courseId/reviews',
+    retry: 'never',
+    mutationDedupe: 'supported',
+    requestMode: 'json',
+    responseMode: 'json',
+    assumptionTags: [],
+  },
+  'API-040': {
+    id: 'API-040',
+    method: 'PATCH',
+    path: '/courses/:courseId/reviews',
+    retry: 'never',
+    mutationDedupe: 'supported',
+    requestMode: 'json',
+    responseMode: 'json',
+    assumptionTags: [],
+  },
+  'API-041': {
+    id: 'API-041',
+    method: 'DELETE',
+    path: '/courses/:courseId/reviews',
+    retry: 'never',
+    mutationDedupe: 'supported',
     requestMode: 'none',
     responseMode: 'json',
     assumptionTags: [],

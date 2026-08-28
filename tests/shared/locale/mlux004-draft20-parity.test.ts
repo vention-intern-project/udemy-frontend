@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 type GeneratedResources = Record<string, Record<string, Record<string, string>>>;
 
 const generatedResources = GENERATED_LOCALE_RESOURCES as GeneratedResources;
-const CURRENT_CORPUS_OCCURRENCE_COUNT = 757;
+const CURRENT_CORPUS_OCCURRENCE_COUNT = 768;
 
 function placeholders(value: string): readonly string[] {
   return [...value.matchAll(/\{\{?\s*([A-Za-z][A-Za-z0-9_]*)\s*}}?/g)]

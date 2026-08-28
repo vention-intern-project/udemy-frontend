@@ -53,6 +53,11 @@ import type {
   ResetPasswordRequestDto,
   UserProfileDto,
   UserRegisterDto,
+  ReviewCreateDto,
+  ReviewDto,
+  ReviewListDto,
+  ReviewPageQueryDto,
+  ReviewUpdateDto,
 } from '../../../src/entities';
 import type { ApiBinaryResponse, PageQueryDto, PaginationDto } from '../../../src/shared/api';
 
@@ -96,6 +101,11 @@ type ExpectedContractMap = {
   'API-034': { input: { body: MockPaymentCompletionRequestDto }; response: MockPaymentCompleteDto };
   'API-035': { input: { query: PageQueryDto }; response: CourseListDto };
   'API-036': { input: { path: PathUpload }; response: LessonUploadStatusDto };
+  'API-037': { input: { path: PathCourse; query: ReviewPageQueryDto }; response: ReviewListDto };
+  'API-038': { input: { path: PathCourse }; response: ReviewDto };
+  'API-039': { input: { path: PathCourse; body: ReviewCreateDto }; response: ReviewDto };
+  'API-040': { input: { path: PathCourse; body: ReviewUpdateDto }; response: ReviewDto };
+  'API-041': { input: { path: PathCourse }; response: DeleteMessageDto };
 };
 
 type IsExact<TLeft, TRight> =
@@ -339,6 +349,41 @@ const AUDITED_OPERATION_TABLE = [
     id: 'API-036',
     method: 'GET',
     path: '/lessons/uploads/:uploadId/status',
+    requestMode: 'none',
+    responseMode: 'json',
+  },
+  {
+    id: 'API-037',
+    method: 'GET',
+    path: '/courses/:courseId/reviews',
+    requestMode: 'query',
+    responseMode: 'json',
+  },
+  {
+    id: 'API-038',
+    method: 'GET',
+    path: '/courses/:courseId/reviews/me',
+    requestMode: 'none',
+    responseMode: 'json',
+  },
+  {
+    id: 'API-039',
+    method: 'POST',
+    path: '/courses/:courseId/reviews',
+    requestMode: 'json',
+    responseMode: 'json',
+  },
+  {
+    id: 'API-040',
+    method: 'PATCH',
+    path: '/courses/:courseId/reviews',
+    requestMode: 'json',
+    responseMode: 'json',
+  },
+  {
+    id: 'API-041',
+    method: 'DELETE',
+    path: '/courses/:courseId/reviews',
     requestMode: 'none',
     responseMode: 'json',
   },

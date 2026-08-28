@@ -5,4 +5,5 @@ export * from './api';
 export * from './cart';
 export * from './course';
 export * from './enrollment';
+export * from './review';
 export * from './user';

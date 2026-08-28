@@ -241,6 +241,33 @@ describe('deterministic API mock harness', () => {
         url: '/lessons/uploads/0123456789abcdef0123456789abcdef/status',
         pathParams: { uploadId: '0123456789abcdef0123456789abcdef' },
       },
+      {
+        operationId: 'API-037',
+        url: '/courses/7/reviews?page=1&page_size=20',
+        pathParams: { courseId: '7' },
+        query: { page: '1', page_size: '20' },
+      },
+      { operationId: 'API-038', url: '/courses/7/reviews/me', pathParams: { courseId: '7' } },
+      {
+        operationId: 'API-039',
+        url: '/courses/7/reviews',
+        init: jsonRequest('POST', { rating: 5, comment: 'Clear review' }),
+        pathParams: { courseId: '7' },
+        jsonBody: { rating: 5, comment: 'Clear review' },
+      },
+      {
+        operationId: 'API-040',
+        url: '/courses/7/reviews',
+        init: jsonRequest('PATCH', { rating: 4, comment: 'Updated review' }),
+        pathParams: { courseId: '7' },
+        jsonBody: { rating: 4, comment: 'Updated review' },
+      },
+      {
+        operationId: 'API-041',
+        url: '/courses/7/reviews',
+        init: { method: 'DELETE' },
+        pathParams: { courseId: '7' },
+      },
     ];
 
     const routed = new Map<
@@ -329,8 +356,8 @@ describe('deterministic API mock harness', () => {
       }
     }
 
-    expect(mockFetch.operationIds).toHaveLength(33);
-    expect(new Set(mockFetch.operationIds).size).toBe(33);
+    expect(mockFetch.operationIds).toHaveLength(38);
+    expect(new Set(mockFetch.operationIds).size).toBe(38);
     expect(mockFetch.assumptionTags).toEqual([
       CONTRACT_ASSUMPTIONS.GAP_007.code,
       CONTRACT_ASSUMPTIONS.GAP_003.code,
