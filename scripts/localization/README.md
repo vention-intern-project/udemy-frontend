@@ -57,8 +57,6 @@ baseline resources, or occurrences. At least one entry must match; malformed/ali
 missing sources, invalid corpus/source graphs, and transaction failures fail closed. Exact replay
 returns `rebound: false` without writing.
 
-## Register authorized draft units
-
 ## Recover a recorded immutable baseline without broad formatting churn
 
 ```powershell
@@ -73,6 +71,8 @@ and rejects invalid current pairs, semantic drift, or non-allowlisted changes be
 atomic workspace write. It never invokes Git, formats the registry, copies inputs into the workspace,
 or accepts a broad current registry rewrite. Exact already-recovered bytes return `wrote: false`.
 
+## Register authorized draft units
+
 ```powershell
 npm run localization:draft:register -- <registryPath> <generatedOutputPath> <taskId> <unitsJsonPath>
 ```
@@ -85,8 +85,6 @@ aliases, assigns the next stable `MLUX-C####` and `MLUX-O####` IDs, then validat
 complete next corpus before one paired atomic commit. Exact replays return `reused` IDs without a
 write; non-exact collisions fail closed. New RU and UZ candidates are always `draft` with null
 review, verdict, request, approval, and authority metadata.
-
-## Export a standard CSV pack
 
 ## Request bounded human review
 
@@ -107,6 +105,8 @@ Any altered time, changed/partial boundary, non-draft state, path alias, corpus/
 invalid input fails before mutation. Review-request metadata never changes renderer-derived locale
 resources. After success, use the ordinary bounded export below; its rows carry the live
 `review_requested` status and `requestedAt` for human review and ordinary CSV import.
+
+## Export a standard CSV pack
 
 ```powershell
 npm run localization:review:export -- <registryPath> <outputCsvPath> <taskId> [ru,uz] [unitIdsJsonPath]

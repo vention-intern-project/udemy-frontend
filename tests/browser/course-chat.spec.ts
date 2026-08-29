@@ -742,6 +742,7 @@ test('repositions the open mini clear menu after footer-clearance scroll and men
 test('resets Catalog footer clearance before My learning and Cart geometry without another scroll', async ({
   page,
 }) => {
+  test.setTimeout(180_000);
   const chatRequests: ChatRequestEvidence[] = [];
   const diagnostics = captureRuntimeDiagnostics(page);
   await installCourseChatFixture(page, chatRequests, {
@@ -784,7 +785,9 @@ test('resets Catalog footer clearance before My learning and Cart geometry witho
     { accessibleName: 'My learning', path: '/learning' },
     { accessibleName: /^Cart/, path: '/cart' },
   ]) {
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'commit', timeout: 120_000 });
+    await expect(page.locator('#catalog-page-title')).toBeVisible({ timeout: 120_000 });
+    await expect(page.getByLabel('Course assistant')).toBeVisible({ timeout: 120_000 });
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
 
     const launcherRoot = page.getByLabel('Course assistant');

@@ -35,7 +35,6 @@ const {
 } = await import('../../../scripts/localization/corpus-engine.mjs');
 
 const LIVE_OUTPUT = resolve('src/shared/locale/generated-resources.ts');
-const LIVE_REGISTRY = resolve('localization/corpus/registry.json');
 const REQUESTED_AT = '2026-08-29T12:34:56.789Z';
 const TASK_ID = 'CRF-001';
 const UNIT_IDS = ['MLUX-C0109', 'MLUX-C0119', 'MLUX-C0386', 'MLUX-C0416'];
@@ -47,14 +46,58 @@ interface Targets {
   readonly registryPath: string;
 }
 
+type ReviewRequestFixtureState = 'draft' | 'requested';
+
 const temporaryDirectories: string[] = [];
 
-async function createTargets(): Promise<Targets> {
+function exactReviewRequestBoundary() {
+  return {
+    taskId: TASK_ID,
+    locales: ['ru', 'uz'],
+    unitIds: UNIT_IDS,
+    requestedAt: REQUESTED_AT,
+  };
+}
+
+function prepareReviewRequestFixture(
+  corpus: typeof draft37Registry,
+  state: ReviewRequestFixtureState,
+) {
+  for (const id of UNIT_IDS) {
+    const unit = corpus.units.find((entry) => entry.id === id);
+    if (!unit) throw new Error(`review-request fixture unit is missing: ${id}`);
+    for (const locale of ['ru', 'uz'] as const) {
+      const candidate = unit.locales[locale];
+      const terminal = candidate.history[candidate.history.length - 1];
+      if (
+        terminal?.type !== 'transition' ||
+        terminal.from !== 'draft' ||
+        terminal.to !== 'review_requested'
+      )
+        throw new Error(`review-request fixture boundary is not requested: ${id}/${locale}`);
+      if (state === 'draft') {
+        candidate.status = 'draft';
+        candidate.requestedAt = null;
+        candidate.history = candidate.history.slice(0, -1);
+      } else {
+        candidate.requestedAt = REQUESTED_AT;
+        terminal.reviewRequest = exactReviewRequestBoundary();
+      }
+    }
+  }
+}
+
+async function createTargets(state: ReviewRequestFixtureState = 'draft'): Promise<Targets> {
   const directory = await mkdtemp(join(tmpdir(), 'learnhub-review-request-'));
   temporaryDirectories.push(directory);
   const registryPath = join(directory, 'registry.json');
   const outputPath = join(directory, 'generated-resources.ts');
-  await Promise.all([copyFile(LIVE_REGISTRY, registryPath), copyFile(LIVE_OUTPUT, outputPath)]);
+  const corpus = structuredClone(draft37Registry);
+  prepareReviewRequestFixture(corpus, state);
+  await Promise.all([
+    writeFile(registryPath, `${JSON.stringify(corpus, null, 2)}\n`, 'utf8'),
+    copyFile(LIVE_OUTPUT, outputPath),
+  ]);
   return { directory, registryPath, outputPath };
 }
 
@@ -205,9 +248,10 @@ describe('public review-request transition', () => {
       ...alteredApprovalAuthority.legacy.approvalAuthority,
       artifactName: 'forged.md',
     };
-    expect(validateCorpus(alteredApprovalAuthority.corpus)).toContain(
-      'MLUX-C0001: ru review-request history lacks an exact request boundary',
-    );
+    expect(validateCorpus(alteredApprovalAuthority.corpus)).toEqual([
+      'MLUX-C0001: ru approved candidate lacks internally consistent supplied-artifact authority',
+      'MLUX-C0001: ru approved candidate lacks supplied-artifact authority',
+    ]);
 
     const alteredApprovalAdjacency = historicalSuppliedArtifactLegacy();
     alteredApprovalAdjacency.legacy.history.splice(1, 0, {
@@ -296,8 +340,7 @@ describe('public review-request transition', () => {
   });
 
   it('is no-write only for an exact task, sorted boundary, locales, and requestedAt replay', async () => {
-    const targets = await createTargets();
-    await requestLocaleReviews({ ...request(), ...targets });
+    const targets = await createTargets('requested');
     const requestedPair = await readPair(targets);
 
     await expect(requestLocaleReviews({ ...request(), ...targets })).resolves.toEqual({

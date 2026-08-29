@@ -4,6 +4,11 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const {
+  RECORDED_BASE_REQUEST,
+  // @ts-expect-error The dependency-free Node localization fixture has no TypeScript declaration.
+} = await import('./fixtures/crf001-recorded-base-fixture.mjs');
+
+const {
   RECORDED_BASE,
   recoverRecordedBase,
   // @ts-expect-error The dependency-free Node recovery module has no TypeScript declaration.
@@ -23,11 +28,10 @@ describe('recorded-base recovery', () => {
           registryPath,
           outputPath,
           request: {
+            ...RECORDED_BASE_REQUEST,
             base: RECORDED_BASE,
             registryBaselinePath: registryPath,
             generatedBaselinePath: outputPath,
-            revisionRequest: { taskId: 'CRF-001', revisions: [] },
-            reconcileRequest: { taskId: 'CRF-001', sources: [], obsolete: [] },
           },
         }),
       ).rejects.toThrow(/baseline content hash/);

@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { link, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -23,6 +24,11 @@ const {
   serializeReviewCsv,
   // @ts-expect-error The dependency-free Node exchange module has no TypeScript declaration.
 } = await import('../../../scripts/localization/review-exchange.mjs');
+const {
+  RECORDED_BASE_REQUEST,
+  writeRecordedBaseArtifacts,
+  // @ts-expect-error The dependency-free Node localization fixture has no TypeScript declaration.
+} = await import('./fixtures/crf001-recorded-base-fixture.mjs');
 // @ts-expect-error The dependency-free Node engine has no TypeScript declaration.
 const corpusEngineModule = await import('../../../scripts/localization/corpus-engine.mjs');
 const {
@@ -30,6 +36,7 @@ const {
   requestLocaleCandidateReview,
   serializeGeneratedResources,
   transitionLocaleCandidate,
+  withdrawLocaleCandidateReview,
 } = corpusEngineModule;
 
 const REQUESTED_AT = '2026-08-25T00:00:00.000Z';
@@ -46,15 +53,8 @@ const ARTIFACT_FIXTURE = join(
   process.cwd(),
   'tests/shared/locale/fixtures/review-exchange/learnhub-multilingual-review-readable.md',
 );
-const HISTORICAL_IMPORT_BASE = Object.freeze({
-  commit: '3aa975e4bdb8571942e736acb78e2acadec74ed7',
-  registryBlob: '2fd9c3750d345f106d2dd55abf02647f3e6ef863',
-  generatedBlob: '617d55ac2de0f31a96a839036d9b3f61c1829c7b',
-  registryPath: 'localization/corpus/registry.json',
-  generatedPath: 'src/shared/locale/generated-resources.ts',
-});
-const execFileAsync = promisify(execFile);
 const temporaryDirectories: string[] = [];
+const execFileAsync = promisify(execFile);
 type ReviewLocale = 'ru' | 'uz';
 type ReviewVerdict = 'approve' | 'request_changes' | 'withdraw';
 type MutableReviewCandidate = Record<string, unknown>;
@@ -434,25 +434,23 @@ async function immutableHistoricalTargets() {
   temporaryDirectories.push(directory);
   const registryPath = join(directory, 'registry.json');
   const outputPath = join(directory, 'generated-resources.ts');
-  const registryRef = `${HISTORICAL_IMPORT_BASE.commit}:${HISTORICAL_IMPORT_BASE.registryPath}`;
-  const outputRef = `${HISTORICAL_IMPORT_BASE.commit}:${HISTORICAL_IMPORT_BASE.generatedPath}`;
-  const [
-    { stdout: registryBlob },
-    { stdout: outputBlob },
-    { stdout: registry },
-    { stdout: output },
-  ] = await Promise.all([
-    execFileAsync('git', ['rev-parse', registryRef]),
-    execFileAsync('git', ['rev-parse', outputRef]),
-    execFileAsync('git', ['show', registryRef]),
-    execFileAsync('git', ['show', outputRef]),
-  ]);
-  if (registryBlob.trim() !== HISTORICAL_IMPORT_BASE.registryBlob)
+  await writeRecordedBaseArtifacts({
+    registryBaselinePath: registryPath,
+    generatedBaselinePath: outputPath,
+  });
+  const [registry, output] = await Promise.all([readFile(registryPath), readFile(outputPath)]);
+  const blobIdentity = (source: Buffer) =>
+    createHash('sha1').update(`blob ${source.length}\0`).update(source).digest('hex');
+  if (blobIdentity(registry) !== RECORDED_BASE_REQUEST.base.registryBlob)
     throw new Error('immutable historical registry fixture identity drifted');
-  if (outputBlob.trim() !== HISTORICAL_IMPORT_BASE.generatedBlob)
+  if (blobIdentity(output) !== RECORDED_BASE_REQUEST.base.generatedBlob)
     throw new Error('immutable historical generated fixture identity drifted');
-  await Promise.all([writeFile(registryPath, registry), writeFile(outputPath, output)]);
   return { directory, registryPath, outputPath };
+}
+
+async function immutableHistoricalCorpus(): Promise<typeof draft37Registry> {
+  const { registryPath } = await immutableHistoricalTargets();
+  return JSON.parse(await readFile(registryPath, 'utf8')) as typeof draft37Registry;
 }
 
 describe('localization review exchange', () => {
@@ -1018,9 +1016,10 @@ describe('localization review exchange', () => {
   });
 
   it('hashes and classifies the exact corrected supplied artifact before mutation', async () => {
+    const corpus = await immutableHistoricalCorpus();
     const inspection = inspectSuppliedReviewArtifact({
       bytes: await readFile(ARTIFACT_FIXTURE),
-      corpus: draft37Registry,
+      corpus,
     });
     expect(inspection.summary).toMatchObject({
       artifactRows: 346,
@@ -1037,11 +1036,11 @@ describe('localization review exchange', () => {
     expect(inspection.eligibleBothLocaleIds).toEqual(['MLUX-C0340']);
     for (const id of ['MLUX-C0050', 'MLUX-C0051', 'MLUX-C0052', 'MLUX-C0053', 'MLUX-C0054'])
       expect(inspection.artifactIds).toContain(id);
-    expect(draft37Registry.units.every((unit) => unit.locales.ru.status === 'draft')).toBe(true);
+    expect(corpus.units.every((unit) => unit.locales.ru.status === 'draft')).toBe(true);
   });
 
-  it('lets an exact current changes-requested unit override predicted artifact approval', async () => {
-    const corpus = structuredClone(draft37Registry);
+  it('lets an exact historical changes-requested unit override predicted artifact approval', async () => {
+    const corpus = structuredClone(await immutableHistoricalCorpus());
     const unit = corpus.units.find(({ id }) => id === 'MLUX-C0017');
     if (!unit) throw new Error('fixture unit is missing');
     const requested = requestCandidateReview(unit.locales.ru, unit.id, ['ru']);
@@ -1073,7 +1072,7 @@ describe('localization review exchange', () => {
   });
 
   it('lets an exact malformed current unit override artifact admission and retain diagnostics', async () => {
-    const corpus = structuredClone(draft37Registry);
+    const corpus = structuredClone(await immutableHistoricalCorpus());
     const unit = corpus.units.find(({ id }) => id === 'MLUX-C0017');
     if (!unit) throw new Error('fixture unit is missing');
     unit.locales.ru.candidate = '';
@@ -1111,7 +1110,7 @@ describe('localization review exchange', () => {
 
   it('reports a missing exact locale candidate through the artifact API and public wrapper', async () => {
     const bytes = await readFile(ARTIFACT_FIXTURE);
-    const corpus = structuredClone(draft37Registry);
+    const corpus = structuredClone(await immutableHistoricalCorpus());
     const unit = corpus.units.find(({ id }) => id === 'MLUX-C0017');
     if (!unit) throw new Error('fixture unit is missing');
     Reflect.deleteProperty(unit.locales, 'ru');
@@ -1149,7 +1148,7 @@ describe('localization review exchange', () => {
     'preserves canonical report parity and fail-closed import for %s',
     async (_shape, mutateCorpus) => {
       const bytes = await readFile(ARTIFACT_FIXTURE);
-      const corpus = structuredClone(draft37Registry);
+      const corpus = structuredClone(await immutableHistoricalCorpus());
       mutateCorpus(corpus);
       const before = structuredClone(corpus);
       const canonical = createCorpusReviewReport(corpus);
@@ -1202,7 +1201,7 @@ describe('localization review exchange', () => {
   ] satisfies ReadonlyArray<readonly [string, MalformedUnitMutation]>)(
     'fails closed for an exact unit with %s',
     async (_shape, mutateUnit) => {
-      const corpus = structuredClone(draft37Registry);
+      const corpus = structuredClone(await immutableHistoricalCorpus());
       const unit = corpus.units.find(({ id }) => id === 'MLUX-C0017');
       if (!unit) throw new Error('fixture unit is missing');
       mutateUnit(unit);
@@ -1219,12 +1218,13 @@ describe('localization review exchange', () => {
   );
 
   it.each(['stale', 'absent'] as const)(
-    'lets a current rejected unit override %s artifact admission without double counting',
+    'lets a historical rejected unit override %s artifact admission without double counting',
     async (admission) => {
       const bytes = await readFile(ARTIFACT_FIXTURE);
-      const baseline = inspectSuppliedReviewArtifact({ bytes, corpus: draft37Registry });
+      const historicalCorpus = await immutableHistoricalCorpus();
+      const baseline = inspectSuppliedReviewArtifact({ bytes, corpus: historicalCorpus });
       const id = admission === 'stale' ? baseline.staleIds[0] : baseline.absentIds[0];
-      const corpus = structuredClone(draft37Registry);
+      const corpus = structuredClone(historicalCorpus);
       const unit = corpus.units.find((entry) => entry.id === id);
       if (!unit) throw new Error('fixture unit is missing');
       const requested = requestCandidateReview(unit.locales.ru, unit.id, ['ru']);
@@ -1251,8 +1251,8 @@ describe('localization review exchange', () => {
     },
   );
 
-  it('classifies protected plural revision drift as stale when primary display strings are unchanged', async () => {
-    const corpus = structuredClone(draft37Registry);
+  it('classifies protected historical plural revision drift as stale when primary display strings are unchanged', async () => {
+    const corpus = structuredClone(await immutableHistoricalCorpus());
     const unitIndex = corpus.units.findIndex(({ id }) => id === 'MLUX-C0017');
     if (unitIndex < 0) throw new Error('fixture unit is missing');
     const original = corpus.units[unitIndex];
@@ -1299,6 +1299,7 @@ describe('localization review exchange', () => {
       'approved-effective': 0,
       'unchanged-approved': 0,
       'stale-source': SUPPLIED_LEGACY_ARTIFACT_ROW_COUNT,
+      unreviewed: CURRENT_LEGACY_ARTIFACT_UNREVIEWED_UNIT_COUNT,
     });
     expect(await Promise.all([readFile(registryPath), readFile(outputPath)])).toEqual(before);
   });
@@ -1390,13 +1391,19 @@ describe('localization review exchange', () => {
     const before = structuredClone(corpus);
     const unit = corpus.units.find(({ id }) => id === 'MLUX-C0109');
     if (!unit) throw new Error('CRF C0109 fixture unit is missing');
-    const candidate = requestLocaleCandidateReview(unit.locales.ru, {
-      taskId: TASK_ID,
+    const request = {
+      taskId: 'CRF-001',
       locales: ['ru'],
       unitIds: ['MLUX-C0109'],
       requestedAt: REQUESTED_AT,
-    });
+    };
+    const draft = withdrawLocaleCandidateReview(unit.locales.ru);
+    expect(draft).toMatchObject({ status: 'draft', requestedAt: null });
+    const candidate = requestLocaleCandidateReview(draft, request);
     expect(candidate.status).toBe('review_requested');
+    expect(() => requestLocaleCandidateReview(candidate, request)).toThrow(
+      /review_requested -> review_requested request is forbidden/,
+    );
     expect(() =>
       (
         corpusEngineModule as typeof corpusEngineModule & {
@@ -1430,7 +1437,9 @@ describe('localization review exchange', () => {
         outputPath,
         approvalRecordedAt: IMPORTED_AT,
       }),
-    ).resolves.toMatchObject({ protectedSourceIdentityMatches: false });
+    ).rejects.toThrow(
+      /current corpus validation: MLUX-C0109: source revision fingerprint mismatch/,
+    );
     expect(await Promise.all([readFile(registryPath), readFile(outputPath)])).toEqual(
       afterMutation,
     );

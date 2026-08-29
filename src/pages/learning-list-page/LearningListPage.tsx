@@ -3,7 +3,6 @@ import { ChevronLeft } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Link, useSearchParams } from 'react-router-dom';
 
-import { hasActiveLearningEntitlement } from '@entities/enrollment';
 import { useSession } from '@features/auth-session';
 import { learningFailure, useLearningList } from '@features/learning-progress';
 import {
@@ -49,6 +48,7 @@ export function LearningListPage() {
   const retryIntentRef = useRef<LearningListRetryFocusIntent | null>(null);
   const requestedPageFocusRef = useRef<number | null>(null);
   const observedPageRef = useRef(page);
+  const successfullyResolvedPageRef = useRef<number | null>(null);
   const retryIdentity = `${session.cacheEpoch ?? 'anonymous'}:${page}`;
   useEffect(() => {
     retryIntentRef.current = null;
@@ -75,7 +75,19 @@ export function LearningListPage() {
       requestedPageFocusRef.current = null;
       headingRef.current?.focus();
     }
+    if (enrollments.isSuccess && enrollments.data?.page === page)
+      successfullyResolvedPageRef.current = page;
   }, [enrollments.data?.page, enrollments.isSuccess, page, retryIdentity]);
+  useEffect(() => {
+    if (!enrollments.isSuccess || enrollments.data?.page === page) return;
+    const shouldPreserveCurrentFocus =
+      requestedPageFocusRef.current === null && successfullyResolvedPageRef.current === page;
+    if (!shouldPreserveCurrentFocus) requestedPageFocusRef.current = enrollments.data?.page ?? null;
+    const normalizedSearchParams = new URLSearchParams(searchParams);
+    if (enrollments.data?.page === 1) normalizedSearchParams.delete('page');
+    else normalizedSearchParams.set('page', String(enrollments.data?.page));
+    setSearchParams(normalizedSearchParams, { replace: true });
+  }, [enrollments.data?.page, enrollments.isSuccess, page, searchParams, setSearchParams]);
   const retryList = () => {
     const intent: LearningListRetryFocusIntent = { identity: retryIdentity };
     retryIntentRef.current = intent;
@@ -132,10 +144,7 @@ export function LearningListPage() {
     );
   }
   const result = enrollments.data;
-  const activeEnrollments = result.items.filter((enrollment) =>
-    hasActiveLearningEntitlement(enrollment.status),
-  );
-  if (activeEnrollments.length === 0) {
+  if (result.items.length === 0) {
     return (
       <article className={[styles.page, styles.emptyPage].join(' ')}>
         <header className={styles.pageHeader}>
@@ -194,8 +203,8 @@ export function LearningListPage() {
           <p className={styles.summary} aria-live="polite">
             {t('learning:enrollmentSummary', {
               defaultValue: '{{total}} enrollment{{suffix}} · Page {{page}} of {{pages}}',
-              total: activeEnrollments.length,
-              suffix: activeEnrollments.length === 1 ? '' : 's',
+              total: result.total,
+              suffix: result.total === 1 ? '' : 's',
               page: result.page,
               pages: Math.max(1, result.pages),
             })}
@@ -203,7 +212,7 @@ export function LearningListPage() {
         </div>
       </header>
       <ol className={styles.list}>
-        {activeEnrollments.map((enrollment) => (
+        {result.items.map((enrollment) => (
           <li key={enrollment.id} className={styles.card}>
             <div className={styles.cardContent}>
               <h2>{enrollment.course.title}</h2>

@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 interface ResidualConsumerExpectation {
   readonly path: string;
   readonly requiredCalls: readonly string[];
+  readonly requiredSemanticCalls?: readonly RegExp[];
   readonly residualRawJsx: readonly RegExp[];
 }
 
@@ -128,7 +129,6 @@ const DRAFT20_RESIDUAL_CONSUMERS: readonly ResidualConsumerExpectation[] = [
     requiredCalls: [
       "t('navigation:logIn')",
       "t('cart:checkCheckoutStatus')",
-      "t('cart:checkoutStatusUncertain')",
       "t('cart:refreshCart')",
       "t('common:cart')",
       "t('a11y:loadingCart')",
@@ -161,6 +161,9 @@ const DRAFT20_RESIDUAL_CONSUMERS: readonly ResidualConsumerExpectation[] = [
       "labelKey: 'routes:editCourseTitle'",
       "labelKey: 'routes:courseEnrollmentsTitle'",
       "labelKey: 'routes:editLessonTitle'",
+    ],
+    requiredSemanticCalls: [
+      /t\('cart:checkoutStatusUncertain',\s*\{\s*defaultValue:\s*'Your cart still cannot prove whether checkout partially completed\. Do not start another checkout action\.',\s*\}\)/,
     ],
     residualRawJsx: [
       />\s*Check checkout status\s*</,
@@ -213,21 +216,20 @@ const DRAFT20_RESIDUAL_CONSUMERS: readonly ResidualConsumerExpectation[] = [
   {
     path: 'src/pages/learning-detail-page/LearningDetailPage.tsx',
     requiredCalls: [
-      "t('learning:mockPaymentCompleted')",
-      "t('learning:mockPaymentDeclined'",
-      "t('learning:mockPaymentDeclinedBody')",
-      "t('learning:enrollmentPending')",
-      "t('learning:paymentStatusUnconfirmed')",
-      "t('learning:signInBeforePaymentStatus')",
-      "t('learning:paymentActionUnavailable')",
-      "t('learning:mockPaymentUnavailable')",
       "t('a11y:breadcrumb')",
       "t('routes:tryAgain'",
-      "t('learning:mockPaymentAwaitingCompletion')",
-      "t('learning:checkPaymentStatus')",
-      "t('learning:completeMockPayment')",
-      "t('learning:simulateMockPaymentFailure')",
+      "t('learning:learningWorkspaceUnavailable'",
+      "t('learning:thisLearningWorkspaceIsUnavailable'",
+      "t('learning:loadingLearningWorkspace'",
+      "t('learning:active'",
+      "t('learning:cancelled'",
+      "t('learning:paymentPending'",
+      "t('learning:learningProgressUnavailable'",
+      "t('learning:learningProgressIsNotAvailableFor'",
       "t('catalog:noCourseDescriptionIsAvailable'",
+    ],
+    requiredSemanticCalls: [
+      /t\('learning:mockPaymentAwaitingCompletion',\s*\{\s*defaultValue:\s*'Payment is pending\. Learning remains locked until your enrollment is active\.',\s*\}\)/,
     ],
     residualRawJsx: [
       />\s*The mock payment completed\. Enrollment status was refreshed; learning unlocks only after\s*active status is observed\.\s*</,
@@ -258,6 +260,7 @@ describe('MLUX-004 DRAFT-20 residual consumer source admission', () => {
     for (const expectation of DRAFT20_RESIDUAL_CONSUMERS) {
       const source = readFileSync(new URL(`../../../${expectation.path}`, import.meta.url), 'utf8');
       for (const call of expectation.requiredCalls) expect(source).toContain(call);
+      for (const call of expectation.requiredSemanticCalls ?? []) expect(source).toMatch(call);
       for (const residual of expectation.residualRawJsx) expect(source).not.toMatch(residual);
     }
   });

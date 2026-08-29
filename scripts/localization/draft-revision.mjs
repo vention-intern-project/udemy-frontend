@@ -80,10 +80,10 @@ function validateRequest(request) {
   }
 }
 
-function expectedRevisedUnit(unit, revision, taskId, { requireCurrentRevision = true } = {}) {
+function expectedRevisedUnit(unit, revision, taskId) {
   if (!unit || unit.unitLifecycle !== 'active')
     throw new Error(`unknown or retired unit: ${revision.id}`);
-  if (requireCurrentRevision && unit.sourceRevision !== revision.expectedSourceRevision)
+  if (unit.sourceRevision !== revision.expectedSourceRevision)
     throw new Error(`stale source revision: ${revision.id}`);
   if (unit.namespace !== revision.namespace || unit.key !== revision.key)
     throw new Error(`immutable identity mismatch: ${revision.id}`);
@@ -216,7 +216,9 @@ export async function reviseDraftUnits({ registryPath, outputPath, request, file
         ...unit,
         migrationProvenance: {
           ...unit.migrationProvenance,
-          ownerTasks: [...unit.migrationProvenance.ownerTasks, request.taskId],
+          ownerTasks: unit.migrationProvenance.ownerTasks.includes(request.taskId)
+            ? unit.migrationProvenance.ownerTasks
+            : [...unit.migrationProvenance.ownerTasks, request.taskId],
         },
       };
     return expectedRevisedUnit(unit, revision, request.taskId);

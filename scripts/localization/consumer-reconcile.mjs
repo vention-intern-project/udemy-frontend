@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { relative, resolve } from 'node:path';
 
 import {
+  consumerReconciliationRequestDigest,
   rebindConsumerSource,
   retiredConsumerViolations,
   serializeGeneratedResources,
@@ -112,6 +113,46 @@ function sourceFile(sourceRoot, sourcePath) {
     throw new Error('sourcePath must stay under sourceRoot');
   return path;
 }
+function graphViolationReferencesSource(violation, sourcePath) {
+  const escaped = sourcePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?:^|[ :])${escaped}(?=[:|]|$)`).test(violation);
+}
+
+function appliedSourceRecord(sourcePath, sourceFingerprint, entryCount) {
+  return { sourcePath, sourceFingerprint, entryCount };
+}
+
+function reconciliationRecord(request, rebinds, corpus) {
+  return {
+    request: structuredClone(request),
+    requestDigest: consumerReconciliationRequestDigest(request),
+    sources: request.sources.map((requestSource) => {
+      const rebind = rebinds.get(requestSource.sourcePath);
+      if (!rebind)
+        throw new Error(`consumer reconciliation lost source: ${requestSource.sourcePath}`);
+      const entryCount = allEntries(corpus).filter(
+        (entry) => entry.sourcePath === requestSource.sourcePath,
+      ).length;
+      return appliedSourceRecord(requestSource.sourcePath, rebind.sourceFingerprint, entryCount);
+    }),
+  };
+}
+
+function hasExactAppliedReplay(corpus, request) {
+  const requestDigest = consumerReconciliationRequestDigest(request);
+  const records = corpus.consumerGrammar.reconciliations ?? [];
+  const record = records.find((entry) => entry.requestDigest === requestDigest);
+  if (!record) return false;
+  const entries = allEntries(corpus);
+  return record.sources.every((source) => {
+    const matchingEntries = entries.filter((entry) => entry.sourcePath === source.sourcePath);
+    return (
+      matchingEntries.length === source.entryCount &&
+      matchingEntries.every((entry) => entry.sourceFingerprint === source.sourceFingerprint)
+    );
+  });
+}
+
 export async function reconcileConsumerGrammar({
   registryPath,
   outputPath,
@@ -131,7 +172,8 @@ export async function reconcileConsumerGrammar({
   const existing = new Set(allEntries(corpus).map(signature));
   if (
     currentGraph.length === 0 &&
-    request.obsolete.every((item) => !existing.has(signature(item)))
+    request.obsolete.every((item) => !existing.has(signature(item))) &&
+    hasExactAppliedReplay(corpus, request)
   ) {
     if (currentOutput !== serializeGeneratedResources(corpus))
       throw new Error('consumer reconciliation generated output is out of date');
@@ -152,21 +194,34 @@ export async function reconcileConsumerGrammar({
   const acceptedSources = new Set(request.sources.map((item) => item.sourcePath));
   if (
     currentGraph.some(
-      (violation) => ![...acceptedSources].some((path) => violation.includes(` ${path}`)),
+      (violation) =>
+        ![...acceptedSources].some((path) => graphViolationReferencesSource(violation, path)),
     )
   )
     throw new Error(`current source graph validation failed:\n${currentGraph.join('\n')}`);
   let next = corpus;
   let updatedEntries = 0;
+  const rebinds = new Map();
   for (const requestSource of request.sources) {
     const rebind = rebindConsumerSource(next, {
       sourcePath: requestSource.sourcePath,
       source: await readFile(sourceFile(sourceRoot, requestSource.sourcePath), 'utf8'),
     });
     next = rebind.corpus;
+    rebinds.set(requestSource.sourcePath, rebind);
     if (rebind.rebound) updatedEntries += rebind.updatedEntries;
   }
   next = removeExact(next, request.obsolete);
+  next = {
+    ...next,
+    consumerGrammar: {
+      ...next.consumerGrammar,
+      reconciliations: [
+        ...(next.consumerGrammar.reconciliations ?? []),
+        reconciliationRecord(request, rebinds, next),
+      ],
+    },
+  };
   const nextViolations = validateCorpus(next);
   if (nextViolations.length)
     throw new Error(`next corpus validation failed:\n${nextViolations.join('\n')}`);

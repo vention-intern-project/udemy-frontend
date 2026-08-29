@@ -84,7 +84,7 @@ const CART_STRICT_MODE_ABORT: RequestFailureIdentity = {
 
 const ENROLLMENTS_STRICT_MODE_ABORT: RequestFailureIdentity = {
   method: 'GET',
-  path: '/enrollments/my?page=1&page_size=20',
+  path: '/enrollments/my?page=1&page_size=100',
   errorText: 'net::ERR_ABORTED',
 };
 
@@ -561,26 +561,29 @@ async function mockStudentWorkspaceData(
       }),
     }),
   );
-  await page.route('**/enrollments/my**', async (route) =>
-    route
-      .fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          items: [],
-          page: 1,
-          page_size: 20,
-          total: 0,
-          pages: 0,
-          has_next: false,
-          has_previous: false,
-        }),
-      })
-      .then(() => {
-        resolveEnrollmentFulfillment?.();
-        resolveEnrollmentFulfillment = null;
+  await page.route('**/enrollments/my**', async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (request.method() !== 'GET' || url.search !== '?page=1&page_size=100')
+      throw new Error(
+        `Unexpected API-021 request ${request.method()} ${url.pathname}${url.search}`,
+      );
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        items: [],
+        page: 1,
+        page_size: 100,
+        total: 0,
+        pages: 0,
+        has_next: false,
+        has_previous: false,
       }),
-  );
+    });
+    resolveEnrollmentFulfillment?.();
+    resolveEnrollmentFulfillment = null;
+  });
   return {
     waitForEnrollmentFulfillment() {
       if (resolveEnrollmentFulfillment !== null)

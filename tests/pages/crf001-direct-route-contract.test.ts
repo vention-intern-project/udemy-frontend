@@ -28,10 +28,10 @@ describe('CRF-001 direct-route and Cart contract', () => {
   });
 
   it('uses the shared complete enrollment-action projection at Catalog and Course Detail', async () => {
-    const [catalog, detail, list] = await Promise.all([
+    const [catalog, detail, learningApi] = await Promise.all([
       readSource('pages/catalog-page/useCatalogCourseActions.ts'),
       readSource('features/course-detail/useCourseDetail.ts'),
-      readSource('pages/learning-list-page/LearningListPage.tsx'),
+      readSource('features/learning-progress/api.ts'),
     ]);
 
     expect(catalog).toContain('enrollmentCourseActionPreflight');
@@ -50,7 +50,9 @@ describe('CRF-001 direct-route and Cart contract', () => {
       "enrollmentPreflight === 'cancelled-recovery' && /^0(?:\\.0+)?$/.test(coursePrice)",
     );
     expect(detail).toContain("enrollmentPreflight === 'cancelled-recovery' &&");
-    expect(list).toContain('hasActiveLearningEntitlement(enrollment.status)');
+    expect(learningApi).toContain(
+      'collection.items.filter((item) => hasActiveLearningEntitlement(item.status))',
+    );
   });
 
   it('does not keep a My Learning continuation in uncorrelated Cart notices', async () => {

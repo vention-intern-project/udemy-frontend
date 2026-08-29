@@ -1,10 +1,8 @@
-import { copyFile, cp, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
-
-import recoveryRequest from '../../../plans/sprints/CANCELLED-REENROLL-FIX-20260817/tasks/CRF-001/localization/recorded-base-recovery.json';
 
 const {
   reviseDraftUnits,
@@ -23,10 +21,17 @@ const {
   serializeGeneratedResources,
   // @ts-expect-error The dependency-free Node localization module has no TypeScript declaration.
 } = await import('../../../scripts/localization/corpus-engine.mjs');
+const {
+  RECORDED_BASE_REQUEST,
+  writeRecordedBaseArtifacts,
+  // @ts-expect-error The dependency-free Node localization fixture has no TypeScript declaration.
+} = await import('./fixtures/crf001-recorded-base-fixture.mjs');
 
 interface TransactionTargets {
+  readonly generatedBaselinePath: string;
   readonly directory: string;
   readonly outputPath: string;
+  readonly registryBaselinePath: string;
   readonly registryPath: string;
 }
 
@@ -34,19 +39,52 @@ interface SourceFixture {
   readonly sourceRoot: string;
 }
 
+interface ConsumerGrammarEntry {
+  readonly sourceFingerprint: string;
+  readonly sourcePath: string;
+}
+
+interface ConsumerGrammarFamily {
+  readonly consumers: readonly ConsumerGrammarEntry[];
+}
+
+interface ConsumerGrammarFixture {
+  readonly dynamicKeyFamilies: readonly ConsumerGrammarFamily[];
+  readonly translatorDependencies: readonly ConsumerGrammarEntry[];
+  readonly translatorForwarders: readonly ConsumerGrammarEntry[];
+  readonly translatorWrappers: readonly ConsumerGrammarEntry[];
+}
+
 const temporaryDirectories: string[] = [];
-const taskRequest = structuredClone(recoveryRequest);
+const taskRequest = structuredClone(RECORDED_BASE_REQUEST);
 
 async function createTargets(): Promise<TransactionTargets> {
   const directory = await mkdtemp(join(tmpdir(), 'learnhub-crf001-transaction-'));
   temporaryDirectories.push(directory);
   const registryPath = join(directory, 'registry.json');
   const outputPath = join(directory, 'generated-resources.ts');
+  const registryBaselinePath = join(directory, 'recorded-registry.json');
+  const generatedBaselinePath = join(directory, 'recorded-generated-resources.ts');
+  await writeRecordedBaseArtifacts({ registryBaselinePath, generatedBaselinePath });
   await Promise.all([
-    copyFile(taskRequest.registryBaselinePath, registryPath),
-    copyFile(taskRequest.generatedBaselinePath, outputPath),
+    cp(registryBaselinePath, registryPath),
+    cp(generatedBaselinePath, outputPath),
   ]);
-  return { directory, registryPath, outputPath };
+  return {
+    directory,
+    registryPath,
+    outputPath,
+    registryBaselinePath,
+    generatedBaselinePath,
+  };
+}
+
+function recoveryRequestForTargets(targets: TransactionTargets, request = taskRequest) {
+  return {
+    ...request,
+    registryBaselinePath: targets.registryBaselinePath,
+    generatedBaselinePath: targets.generatedBaselinePath,
+  };
 }
 
 async function createSourceFixture(): Promise<SourceFixture> {
@@ -161,12 +199,112 @@ describe('CRF-001 localization transactions', () => {
     });
     const reconciled = await readPair(targets);
     expect(reconciled[0]).toContain(unrelatedUnit!);
+    const reconciledCorpus = JSON.parse(reconciled[0]);
+    expect(
+      reconciledCorpus.consumerGrammar.dynamicKeyFamilies
+        .flatMap((family: ConsumerGrammarFamily) => family.consumers)
+        .filter(
+          (consumer: ConsumerGrammarEntry) =>
+            consumer.sourcePath === 'pages/learning-list-page/LearningListPage.tsx',
+        ),
+    ).toEqual([
+      {
+        sourcePath: 'pages/learning-list-page/LearningListPage.tsx',
+        functionName: 'LearningListPage',
+        argument: 'failure.messageKey',
+        occurrence: 1,
+        sourceFingerprint:
+          'sha256:8ebde6f65eb583569e1d0db37651996aa6ba1d80fcf305bde618c820b27a9b1a',
+      },
+      {
+        sourcePath: 'pages/learning-list-page/LearningListPage.tsx',
+        functionName: 'LearningListPage',
+        argument: 'failure.titleKey',
+        occurrence: 1,
+        sourceFingerprint:
+          'sha256:8ebde6f65eb583569e1d0db37651996aa6ba1d80fcf305bde618c820b27a9b1a',
+      },
+    ]);
+    expect(reconciledCorpus.consumerGrammar.reconciliations).toEqual([
+      expect.objectContaining({
+        request: taskRequest.reconcileRequest,
+        requestDigest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+        sources: expect.arrayContaining([
+          expect.objectContaining({
+            sourcePath: 'pages/cart-page/CartPage.tsx',
+            sourceFingerprint: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+          }),
+        ]),
+      }),
+    ]);
     await expect(reconcileFromRecordedBase(targets, sourceFixture)).resolves.toEqual({
       reconciled: false,
       removedCount: 0,
       updatedEntries: 0,
     });
     expect(await readPair(targets)).toEqual(reconciled);
+    const staleReplayRequest = structuredClone(taskRequest.reconcileRequest);
+    staleReplayRequest.sources[0].expectedSourceFingerprint = `sha256:${'0'.repeat(64)}`;
+    await expect(
+      reconcileFromRecordedBase(targets, sourceFixture, staleReplayRequest),
+    ).rejects.toThrow(/stale expected source fingerprint/);
+    expect(await readPair(targets)).toEqual(reconciled);
+
+    const unprovenReplayTargets = await createTargets();
+    const unprovenReplaySourceFixture = await createSourceFixture();
+    await reviseFromRecordedBase(unprovenReplayTargets);
+    await reconcileFromRecordedBase(unprovenReplayTargets, unprovenReplaySourceFixture);
+    const unprovenReplayCorpus = JSON.parse(
+      await readFile(unprovenReplayTargets.registryPath, 'utf8'),
+    );
+    Reflect.deleteProperty(unprovenReplayCorpus.consumerGrammar, 'reconciliations');
+    await writeFile(
+      unprovenReplayTargets.registryPath,
+      `${JSON.stringify(unprovenReplayCorpus, null, 2)}\n`,
+      'utf8',
+    );
+    const unprovenReplayPair = await readPair(unprovenReplayTargets);
+    await expect(
+      reconcileFromRecordedBase(unprovenReplayTargets, unprovenReplaySourceFixture),
+    ).rejects.toThrow(/stale expected source fingerprint/);
+    expect(await readPair(unprovenReplayTargets)).toEqual(unprovenReplayPair);
+    const forgedCurrentFingerprintReplay = structuredClone(taskRequest.reconcileRequest);
+    const unprovenGrammar = unprovenReplayCorpus.consumerGrammar as ConsumerGrammarFixture;
+    for (const source of forgedCurrentFingerprintReplay.sources) {
+      const entry = [
+        ...unprovenGrammar.translatorWrappers,
+        ...unprovenGrammar.translatorForwarders,
+        ...unprovenGrammar.translatorDependencies,
+        ...unprovenGrammar.dynamicKeyFamilies.flatMap((family) => family.consumers),
+      ].find((candidate) => candidate.sourcePath === source.sourcePath);
+      if (!entry) throw new Error(`replayed source fixture entry is missing: ${source.sourcePath}`);
+      source.expectedSourceFingerprint = entry.sourceFingerprint;
+    }
+    await expect(
+      reconcileFromRecordedBase(
+        unprovenReplayTargets,
+        unprovenReplaySourceFixture,
+        forgedCurrentFingerprintReplay,
+      ),
+    ).rejects.toThrow(/obsolete identity is not exact/);
+    expect(await readPair(unprovenReplayTargets)).toEqual(unprovenReplayPair);
+
+    const forgedReplayTargets = await createTargets();
+    const forgedReplaySourceFixture = await createSourceFixture();
+    await reviseFromRecordedBase(forgedReplayTargets);
+    await reconcileFromRecordedBase(forgedReplayTargets, forgedReplaySourceFixture);
+    const forgedReplayCorpus = JSON.parse(await readFile(forgedReplayTargets.registryPath, 'utf8'));
+    forgedReplayCorpus.consumerGrammar.reconciliations[0].request.sources[0].expectedSourceFingerprint = `sha256:${'0'.repeat(64)}`;
+    await writeFile(
+      forgedReplayTargets.registryPath,
+      `${JSON.stringify(forgedReplayCorpus, null, 2)}\n`,
+      'utf8',
+    );
+    const forgedReplayPair = await readPair(forgedReplayTargets);
+    await expect(
+      reconcileFromRecordedBase(forgedReplayTargets, forgedReplaySourceFixture),
+    ).rejects.toThrow(/invalid consumer reconciliation provenance/);
+    expect(await readPair(forgedReplayTargets)).toEqual(forgedReplayPair);
 
     const rejectedTargets = await createTargets();
     const rejectedSourceFixture = await createSourceFixture();
@@ -201,7 +339,7 @@ describe('CRF-001 localization transactions', () => {
       }),
     ).rejects.toThrow('injected reconcile output failure');
     expect(await readPair(rejectedTargets)).toEqual(rejectedBefore);
-  });
+  }, 45_000);
 
   it('reconstructs the recorded base exactly, rejects semantic drift, and rolls back paired recovery writes', async () => {
     const rejectedRequests = [
@@ -250,7 +388,7 @@ describe('CRF-001 localization transactions', () => {
         recoverRecordedBase({
           registryPath: rejectedTargets.registryPath,
           outputPath: rejectedTargets.outputPath,
-          request: rejectedRequest,
+          request: recoveryRequestForTargets(rejectedTargets, rejectedRequest),
           sourceRoot: join(rejectedTargets.directory, 'unused-source-root'),
         }),
       ).rejects.toThrow(/approved CRF-001 delta/);
@@ -272,7 +410,7 @@ describe('CRF-001 localization transactions', () => {
       recoverRecordedBase({
         registryPath: targets.registryPath,
         outputPath: targets.outputPath,
-        request: taskRequest,
+        request: recoveryRequestForTargets(targets),
         sourceRoot: sourceFixture.sourceRoot,
       }),
     ).resolves.toEqual({ recovered: true, wrote: true });
@@ -281,7 +419,7 @@ describe('CRF-001 localization transactions', () => {
       recoverRecordedBase({
         registryPath: targets.registryPath,
         outputPath: targets.outputPath,
-        request: taskRequest,
+        request: recoveryRequestForTargets(targets),
         sourceRoot: sourceFixture.sourceRoot,
       }),
     ).resolves.toEqual({ recovered: false, wrote: false });
@@ -297,7 +435,7 @@ describe('CRF-001 localization transactions', () => {
       recoverRecordedBase({
         registryPath: targets.registryPath,
         outputPath: targets.outputPath,
-        request: taskRequest,
+        request: recoveryRequestForTargets(targets),
         sourceRoot: sourceFixture.sourceRoot,
       }),
     ).rejects.toThrow(/semantic drift/);
@@ -315,7 +453,7 @@ describe('CRF-001 localization transactions', () => {
       recoverRecordedBase({
         registryPath: targets.registryPath,
         outputPath: targets.outputPath,
-        request: taskRequest,
+        request: recoveryRequestForTargets(targets),
         sourceRoot: sourceFixture.sourceRoot,
       }),
     ).rejects.toThrow(/consumer grammar does not match the approved CRF-001 delta/);
@@ -333,7 +471,7 @@ describe('CRF-001 localization transactions', () => {
       recoverRecordedBase({
         registryPath: targets.registryPath,
         outputPath: targets.outputPath,
-        request: taskRequest,
+        request: recoveryRequestForTargets(targets),
         sourceRoot: rollbackSourceFixture.sourceRoot,
         fileSystem: {
           rename: async (from: string, to: string) => {
@@ -346,5 +484,5 @@ describe('CRF-001 localization transactions', () => {
     ).rejects.toThrow('injected recovery output failure');
     expect(await readPair(targets)).toEqual(beforeRollback);
     expect(RECORDED_BASE).toEqual(taskRequest.base);
-  });
+  }, 45_000);
 });

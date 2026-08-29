@@ -19,6 +19,7 @@ export const courseChatEnrollment = {
   course: { id: 7, title: 'Active course', description: null, price: '0.00', currency: 'USD' },
 };
 const emptyCart = { id: 1, items: [], total_price: '0.00', currency: 'USD', item_count: 0 };
+const MY_LEARNING_COLLECTION_QUERY = '?page=1&page_size=100';
 
 export interface ChatRequestEvidence {
   readonly method: string;
@@ -71,7 +72,8 @@ export async function installCourseChatFixture(
   await page.addInitScript(() => localStorage.setItem('learnhub.access-token', 'student-token'));
   await page.route('**/*', async (route) => {
     const request = route.request();
-    const path = new URL(request.url()).pathname;
+    const url = new URL(request.url());
+    const path = url.pathname;
     if (path === '/me') return fulfillCourseChatJson(route, student);
     if (path === '/cart') return fulfillCourseChatJson(route, options.cart ?? emptyCart);
     if (path === '/courses') {
@@ -87,11 +89,13 @@ export async function installCourseChatFixture(
     }
     if (path === '/enrollments/4') return fulfillCourseChatJson(route, courseChatEnrollment);
     if (path === '/enrollments/my') {
+      if (request.method() !== 'GET' || url.search !== MY_LEARNING_COLLECTION_QUERY)
+        throw new Error(`Unexpected API-021 request ${request.method()} ${path}${url.search}`);
       const enrollments = options.enrollments ?? [];
       return fulfillCourseChatJson(route, {
         items: enrollments,
         page: 1,
-        page_size: enrollments.length || 20,
+        page_size: 100,
         total: enrollments.length,
         pages: enrollments.length === 0 ? 0 : 1,
         has_next: false,

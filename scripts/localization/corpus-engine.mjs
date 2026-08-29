@@ -43,7 +43,7 @@ export const SUPPLIED_REVIEW_PROTECTED_SOURCE_IDENTITY_SHA256 =
   '24EA5BC9AFC65594F2A886005E646E16708BAD74FB395D5A02BF1EB975700CCA';
 const SUPPLIED_REVIEW_PROTECTED_PROVENANCE_IDENTITY_SHA256 =
   'EE4C751748D1A7CD96D3E05F4A98A37F871474B8ECC0638CB789A5BFEB244024';
-const SUPPLIED_REVIEW_ARTIFACT_UNIT_IDS = Object.freeze(
+export const SUPPLIED_REVIEW_ARTIFACT_UNIT_IDS = Object.freeze(
   Array.from({ length: 346 }, (_, index) => `MLUX-C${String(index + 1).padStart(4, '0')}`),
 );
 const DRAFT_37_SOURCE_SHA256 = 'C9E208FC5F1AEF55E709290C67270B79E1CBCE4831E7FBCB20555AB5CF8A73AE';
@@ -57,6 +57,28 @@ const CONSUMER_FAMILY_ID = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const CONSUMER_SOURCE_FINGERPRINT = /^sha256:[0-9a-f]{64}$/;
 const REACT_DEPENDENCY_HOOKS = new Set(['useCallback', 'useEffect', 'useLayoutEffect', 'useMemo']);
 const CONSUMER_SOURCE_FINGERPRINT_VERSION = 'localization-consumer-source-v1';
+const CONSUMER_RECONCILIATION_REQUEST_KEYS = ['obsolete', 'sources', 'taskId'];
+const CONSUMER_RECONCILIATION_SOURCE_KEYS = ['expectedSourceFingerprint', 'sourcePath'];
+const CONSUMER_RECONCILIATION_OBSOLETE_KEYS = ['bindingName', 'functionName', 'kind', 'sourcePath'];
+const CONSUMER_RECONCILIATION_DYNAMIC_OBSOLETE_KEYS = [
+  'bindingName',
+  'familyId',
+  'functionName',
+  'kind',
+  'sourcePath',
+];
+const CONSUMER_RECONCILIATION_RECORD_KEYS = ['request', 'requestDigest', 'sources'];
+const CONSUMER_RECONCILIATION_APPLIED_SOURCE_KEYS = [
+  'entryCount',
+  'sourceFingerprint',
+  'sourcePath',
+];
+const CONSUMER_RECONCILIATION_KINDS = new Set([
+  'translatorWrapper',
+  'translatorForwarder',
+  'translatorDependency',
+  'dynamicConsumer',
+]);
 const EXCLUSION_STATUSES = new Set([
   'Excluded',
   'Excluded or reconstructed',
@@ -1056,11 +1078,13 @@ function validateTopLevel(corpus, violations) {
     (count, unit) => count + (Array.isArray(unit.occurrences) ? unit.occurrences.length : 0),
     0,
   );
-  const hasProtectedRevision = corpus.units.some((unit) =>
-    REVIEW_LOCALES.some((locale) =>
-      unit.locales?.[locale]?.history?.some((event) => event?.type === 'source_revision'),
-    ),
-  );
+  const hasProtectedRevision = Array.isArray(corpus.units)
+    ? corpus.units.some((unit) =>
+        REVIEW_LOCALES.some((locale) =>
+          unit.locales?.[locale]?.history?.some((event) => event?.type === 'source_revision'),
+        ),
+      )
+    : false;
   if (
     !hasProtectedRevision &&
     (corpus.source?.sha256 !== DRAFT_37_SOURCE_SHA256 ||
@@ -1167,6 +1191,75 @@ function validateConsumerBoundary(boundary, kind, identities, violations) {
   identities.add(identity);
 }
 
+function validConsumerReconciliationRequest(request) {
+  if (
+    !hasExactKeys(request, CONSUMER_RECONCILIATION_REQUEST_KEYS) ||
+    !POST_MIGRATION_OWNER_TASK.test(request.taskId) ||
+    !Array.isArray(request.sources) ||
+    request.sources.length === 0 ||
+    !Array.isArray(request.obsolete)
+  )
+    return false;
+  const sourcePaths = new Set();
+  for (const source of request.sources) {
+    if (
+      !hasExactKeys(source, CONSUMER_RECONCILIATION_SOURCE_KEYS) ||
+      !validConsumerSourcePath(source.sourcePath) ||
+      !CONSUMER_SOURCE_FINGERPRINT.test(source.expectedSourceFingerprint) ||
+      sourcePaths.has(source.sourcePath)
+    )
+      return false;
+    sourcePaths.add(source.sourcePath);
+  }
+  const obsoleteIdentities = new Set();
+  for (const obsolete of request.obsolete) {
+    const keys =
+      obsolete?.kind === 'dynamicConsumer'
+        ? CONSUMER_RECONCILIATION_DYNAMIC_OBSOLETE_KEYS
+        : CONSUMER_RECONCILIATION_OBSOLETE_KEYS;
+    if (
+      !hasExactKeys(obsolete, keys) ||
+      !CONSUMER_RECONCILIATION_KINDS.has(obsolete.kind) ||
+      !validConsumerSourcePath(obsolete.sourcePath) ||
+      !nonEmptyString(obsolete.functionName) ||
+      !nonEmptyString(obsolete.bindingName) ||
+      (obsolete.kind === 'dynamicConsumer' && !nonEmptyString(obsolete.familyId))
+    )
+      return false;
+    const identity = `${obsolete.kind}|${obsolete.sourcePath}|${obsolete.functionName}|${obsolete.bindingName}|${obsolete.familyId ?? ''}`;
+    if (obsoleteIdentities.has(identity)) return false;
+    obsoleteIdentities.add(identity);
+  }
+  return true;
+}
+
+export function consumerReconciliationRequestDigest(request) {
+  if (!validConsumerReconciliationRequest(request))
+    throw new Error('consumer reconciliation request is invalid');
+  return digest(request);
+}
+
+function validConsumerReconciliationRecord(record) {
+  if (
+    !hasExactKeys(record, CONSUMER_RECONCILIATION_RECORD_KEYS) ||
+    !validConsumerReconciliationRequest(record.request) ||
+    record.requestDigest !== consumerReconciliationRequestDigest(record.request) ||
+    !Array.isArray(record.sources) ||
+    record.sources.length !== record.request.sources.length
+  )
+    return false;
+  return record.sources.every((source, index) => {
+    const requestSource = record.request.sources[index];
+    return (
+      hasExactKeys(source, CONSUMER_RECONCILIATION_APPLIED_SOURCE_KEYS) &&
+      source.sourcePath === requestSource.sourcePath &&
+      CONSUMER_SOURCE_FINGERPRINT.test(source.sourceFingerprint) &&
+      Number.isInteger(source.entryCount) &&
+      source.entryCount >= 0
+    );
+  });
+}
+
 function validateConsumerGrammar(corpus, unitIds, violations) {
   const grammar = corpus.consumerGrammar;
   if (!grammar || typeof grammar !== 'object' || Array.isArray(grammar)) {
@@ -1174,6 +1267,22 @@ function validateConsumerGrammar(corpus, unitIds, violations) {
     return;
   }
   if (grammar.version !== 1) violations.push('invalid consumer grammar version');
+  if (grammar.reconciliations !== undefined) {
+    if (!Array.isArray(grammar.reconciliations)) {
+      violations.push('invalid consumer reconciliation provenance');
+    } else {
+      const requestDigests = new Set();
+      for (const record of grammar.reconciliations) {
+        if (!validConsumerReconciliationRecord(record)) {
+          violations.push('invalid consumer reconciliation provenance');
+          continue;
+        }
+        if (requestDigests.has(record.requestDigest))
+          violations.push('duplicate consumer reconciliation provenance');
+        requestDigests.add(record.requestDigest);
+      }
+    }
+  }
   for (const kind of ['translatorWrappers', 'translatorForwarders']) {
     if (!Array.isArray(grammar[kind])) {
       violations.push(`missing ${kind}`);
@@ -1435,7 +1544,11 @@ export function transitionLocaleCandidate(candidate, nextStatus, options = {}) {
     ...clearApprovalMetadata(candidate),
     candidate: options.newCandidate ?? candidate.candidate,
     status: nextStatus,
-    ...(recordsReviewRequest ? { requestedAt: options.reviewRequest.requestedAt } : {}),
+    ...(returnsToDraft
+      ? { requestedAt: null }
+      : recordsReviewRequest
+        ? { requestedAt: options.reviewRequest.requestedAt }
+        : {}),
   };
   if (nextStatus === 'approved') {
     if (

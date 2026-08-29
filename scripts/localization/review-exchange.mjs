@@ -11,6 +11,7 @@ import { basename, dirname, join, normalize, resolve } from 'node:path';
 
 import {
   SUPPLIED_REVIEW_ARTIFACT,
+  SUPPLIED_REVIEW_ARTIFACT_UNIT_IDS,
   SUPPLIED_REVIEW_PROTECTED_SOURCE_IDENTITY_SHA256,
   readCorpus,
   serializeGeneratedResources,
@@ -50,9 +51,6 @@ export const REVIEW_REPORT_STATES = Object.freeze([
 ]);
 
 const REVIEW_LOCALES = new Set(['ru', 'uz']);
-const SUPPLIED_REVIEW_ARTIFACT_UNIT_IDS = Object.freeze(
-  Array.from({ length: 346 }, (_, index) => `MLUX-C${String(index + 1).padStart(4, '0')}`),
-);
 const SUPPLIED_REVIEW_ARTIFACT_UNIT_ID_SET = new Set(SUPPLIED_REVIEW_ARTIFACT_UNIT_IDS);
 const SUPPLIED_REVIEW_PROTECTED_PROVENANCE_IDENTITY_SHA256 =
   'EE4C751748D1A7CD96D3E05F4A98A37F871474B8ECC0638CB789A5BFEB244024';
@@ -1069,6 +1067,11 @@ export async function importSuppliedReviewArtifact({
   const corpus = await readCorpus(registryPath);
   if (!Array.isArray(corpus?.units))
     throw new Error('supplied review artifact corpus units must be an array');
+  const currentViolations = validateCorpus(corpus);
+  if (currentViolations.length > 0)
+    throw new ReviewPackError(
+      currentViolations.map((violation) => `current corpus validation: ${violation}`),
+    );
   const inspection = inspectSuppliedReviewArtifact({ bytes, corpus });
   if (!inspection.protectedSourceIdentityMatches) return inspection.report;
   const units = new Map(corpus.units.map((unit) => [unit.id, unit]));

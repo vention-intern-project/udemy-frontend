@@ -3,6 +3,7 @@ import {
   decodeEnrollmentListDto,
   mapEnrollmentDto,
   mapEnrollmentListDto,
+  hasActiveLearningEntitlement,
   type Enrollment,
   type EnrollmentList,
 } from '@entities/enrollment';
@@ -25,6 +26,8 @@ import {
 import type { CourseProgress, LessonProgress } from './model';
 
 const LEARNING_PAGE_SIZE = 20;
+const LEARNING_COLLECTION_PAGE_SIZE = 100;
+const MAX_LEARNING_COLLECTION_PAGES = 10;
 const OUTLINE_PAGE_SIZE = 100;
 const MAX_OUTLINE_PAGES = 10;
 
@@ -33,12 +36,53 @@ export async function requestLearningEnrollments(
   page: number,
   signal: AbortSignal,
 ): Promise<EnrollmentList> {
-  return requestOperation(session, 'API-021', {
-    path: '/enrollments/my',
-    query: { page, page_size: LEARNING_PAGE_SIZE },
+  const collection = await collectPaginationPages<Enrollment>({
+    context: 'learning enrollment collection',
     signal,
-    decode: (value) => mapEnrollmentListDto(decodeEnrollmentListDto(value)),
+    maximumPages: MAX_LEARNING_COLLECTION_PAGES,
+    identifyItem: (item) => item.id,
+    fetchPage: async (requestedPage) => {
+      const result = await requestOperation(session, 'API-021', {
+        path: '/enrollments/my',
+        query: { page: requestedPage, page_size: LEARNING_COLLECTION_PAGE_SIZE },
+        signal,
+        decode: (value) => {
+          const decoded = mapEnrollmentListDto(decodeEnrollmentListDto(value));
+          if (
+            decoded.page !== requestedPage ||
+            decoded.pageSize !== LEARNING_COLLECTION_PAGE_SIZE ||
+            decoded.pages > MAX_LEARNING_COLLECTION_PAGES
+          ) {
+            throw new TypeError('Invalid learning enrollment pagination');
+          }
+          return decoded;
+        },
+      });
+      return {
+        items: result.items,
+        page: result.page,
+        pageSize: result.pageSize,
+        total: result.total,
+        pages: result.pages,
+        hasNext: result.hasNext,
+        hasPrevious: result.hasPrevious,
+      };
+    },
   });
+  const activeItems = collection.items.filter((item) => hasActiveLearningEntitlement(item.status));
+  const total = activeItems.length;
+  const pages = total === 0 ? 0 : Math.ceil(total / LEARNING_PAGE_SIZE);
+  const resolvedPage = Math.min(page, Math.max(1, pages));
+  const offset = (resolvedPage - 1) * LEARNING_PAGE_SIZE;
+  return {
+    items: activeItems.slice(offset, offset + LEARNING_PAGE_SIZE),
+    page: resolvedPage,
+    pageSize: LEARNING_PAGE_SIZE,
+    total,
+    pages,
+    hasNext: resolvedPage < pages,
+    hasPrevious: resolvedPage > 1,
+  };
 }
 
 export async function requestLearningEnrollment(
