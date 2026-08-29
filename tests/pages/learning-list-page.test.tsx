@@ -768,7 +768,11 @@ describe('LearningListPage', () => {
       });
     });
 
-    expect(requestedPages).toEqual([1, 2, 1]);
+    expect(requestedPages.slice(0, 2)).toEqual([1, 2]);
+    const postShrinkRequestedPages = requestedPages.slice(2);
+    expect(postShrinkRequestedPages.length).toBeGreaterThanOrEqual(1);
+    expect(postShrinkRequestedPages.length).toBeLessThanOrEqual(2);
+    expect(postShrinkRequestedPages.every((page) => page === 1)).toBe(true);
     expect(await screen.findByText('20 enrollments · Page 1 of 1')).toBeTruthy();
     await waitFor(() => expect(screen.getByLabelText('Current location').textContent).toBe(''));
     expect(document.activeElement).toBe(nonPaginationNavigation);

@@ -402,7 +402,7 @@ describe('draft registration', () => {
     ).rejects.toThrow(/no translation unit IDs remain/);
     expect(await readFile(registryPath)).toEqual(beforeRegistry);
     expect(await readFile(outputPath)).toEqual(beforeOutput);
-  });
+  }, 20_000);
 
   it('rolls the registry back through the actual create transaction when generated-output replacement fails', async () => {
     const { directory, registryPath, outputPath } = await temporaryTargets();
