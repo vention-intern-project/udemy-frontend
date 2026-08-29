@@ -1,4 +1,5 @@
 import { defineConfig } from '@playwright/test';
+import { courseDetailOrigin } from './course-detail-server';
 
 export default defineConfig({
   testDir: '.',
@@ -13,7 +14,7 @@ export default defineConfig({
   outputDir: '../../test-results/playwright-fe008',
   reporter: 'line',
   use: {
-    baseURL: 'http://127.0.0.1:4176',
+    baseURL: courseDetailOrigin,
     browserName: 'chromium',
     actionTimeout: 5_000,
     navigationTimeout: 10_000,

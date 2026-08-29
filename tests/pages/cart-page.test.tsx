@@ -844,12 +844,10 @@ describe('CartPage', () => {
     await interact(() => user.click(recovery));
     expect(
       await screen.findByText(
-        'Your cart still cannot prove whether checkout partially completed. Check My Learning before taking another checkout action.',
+        'Your cart still cannot prove whether checkout partially completed. Do not start another checkout action.',
       ),
     ).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Check My Learning' }).getAttribute('href')).toBe(
-      '/learning',
-    );
+    expect(screen.queryByRole('link', { name: 'Check My Learning' })).toBeNull();
     expect(
       (screen.getByRole('button', { name: 'Mock checkout' }) as HTMLButtonElement).disabled,
     ).toBe(true);
@@ -899,7 +897,7 @@ describe('CartPage', () => {
     await interact(() => user.click(screen.getByRole('button', { name: 'Check checkout status' })));
     expect(
       await screen.findByText(
-        'Your cart still cannot prove whether checkout partially completed. Check My Learning before taking another checkout action.',
+        'Your cart still cannot prove whether checkout partially completed. Do not start another checkout action.',
       ),
     ).toBeTruthy();
     expect(
@@ -934,13 +932,11 @@ describe('CartPage', () => {
     await interact(() => user.click(checkout));
     expect(
       await screen.findByText(
-        'Mock checkout was accepted. Payment is pending; continue in My Learning.',
+        'Mock checkout was accepted. Payment is pending; learning access is not available yet.',
       ),
     ).toBeTruthy();
     expect(screen.queryByText(/payment success/i)).toBeNull();
-    expect(screen.getByRole('link', { name: 'Check My Learning' }).getAttribute('href')).toBe(
-      '/learning',
-    );
+    expect(screen.queryByRole('link', { name: 'Check My Learning' })).toBeNull();
   });
 
   it.each([

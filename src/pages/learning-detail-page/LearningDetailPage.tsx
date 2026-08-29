@@ -2,19 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import type { EnrollmentStatus } from '@entities/enrollment';
-import type {
-  LearningFeedbackMotionPreferences,
-  LearningWorkspaceWorkflow,
-} from '@features/learning-progress';
+import { hasActiveLearningEntitlement } from '@entities/enrollment';
+import type { LearningFeedbackMotionPreferences } from '@features/learning-progress';
 
 import { learningFailure, useLearningWorkspace } from '@features/learning-progress';
 import { useSession } from '@features/auth-session';
-import {
-  useCheckoutCart,
-  type CheckoutFeedback,
-  type EnrollmentStatusRefresh,
-} from '@features/checkout-cart';
 import { EnrollmentProgressPanel } from '@widgets/index';
 import { CourseChatLauncher } from '@widgets/course-chat';
 import {
@@ -26,8 +18,6 @@ import {
 } from '@shared/ui/primitives';
 
 import styles from './LearningDetailPage.module.css';
-
-const SUBMITTED_PAYMENT_NOTICE_DURATION_MS = 5000;
 
 function parseEnrollmentId(value: string | undefined): number | null {
   return value && /^[1-9]\d*$/.test(value) && Number.isSafeInteger(Number(value))
@@ -53,24 +43,6 @@ function useLearningFeedbackMotionPreferences(): LearningFeedbackMotionPreferenc
   return { reducedMotion };
 }
 
-type EnrollmentRefreshResult = Awaited<
-  ReturnType<LearningWorkspaceWorkflow['enrollment']['refetch']>
->;
-
-function observedEnrollmentStatus(result: EnrollmentRefreshResult): EnrollmentStatus {
-  if (result.isError) {
-    if (result.error instanceof Error) throw result.error;
-    throw new Error('Enrollment status refresh failed');
-  }
-  if (result.data === undefined)
-    throw new Error('Enrollment status refresh returned no enrollment data');
-  return result.data.status;
-}
-
-interface PaymentFeedbackNoticeProps {
-  readonly feedback: CheckoutFeedback | null;
-}
-
 type LearningRetryFocusTarget = 'enrollment' | 'workspace';
 type LearningWorkspaceIdentity = string;
 
@@ -87,74 +59,6 @@ function didRetrySucceed(result: unknown): boolean {
   return (
     typeof result === 'object' && result !== null && (result as RetryResult).isSuccess === true
   );
-}
-
-function PaymentFeedbackNotice({ feedback }: PaymentFeedbackNoticeProps) {
-  const { t } = useTranslation();
-  if (feedback === null) return null;
-  if (feedback.kind === 'payment_completed')
-    return (
-      <Notice
-        tone="info"
-        title={t('learning:mockPaymentSubmitted', { defaultValue: 'Mock payment submitted' })}
-      >
-        {t('learning:mockPaymentCompleted')}
-      </Notice>
-    );
-  if (feedback.kind === 'payment_declined')
-    return (
-      <Notice
-        tone="error"
-        title={t('learning:mockPaymentDeclined', { defaultValue: 'Mock payment declined' })}
-      >
-        {t('learning:mockPaymentDeclinedBody')}
-      </Notice>
-    );
-  if (feedback.kind === 'payment_pending')
-    return (
-      <Notice
-        tone="info"
-        title={t('learning:paymentRemainsPending', { defaultValue: 'Payment remains pending' })}
-      >
-        {t('learning:enrollmentPending')}
-      </Notice>
-    );
-  if (feedback.kind === 'payment_status_unknown')
-    return (
-      <Notice
-        tone="error"
-        title={t('learning:paymentStatusNeedsChecking', {
-          defaultValue: 'Payment status needs checking',
-        })}
-      >
-        {t('learning:paymentStatusUnconfirmed')}
-      </Notice>
-    );
-  if (feedback.kind === 'unauthorized')
-    return (
-      <Notice tone="error" title={t('cart:signInRequired', { defaultValue: 'Sign in required' })}>
-        {t('learning:signInBeforePaymentStatus')}
-      </Notice>
-    );
-  if (feedback.kind === 'not_authorized')
-    return (
-      <Notice
-        tone="error"
-        title={t('learning:paymentUnavailable', { defaultValue: 'Payment unavailable' })}
-      >
-        {t('learning:paymentActionUnavailable')}
-      </Notice>
-    );
-  if (feedback.kind === 'unavailable')
-    return (
-      <Notice
-        tone="error"
-        title={t('learning:paymentUnavailable', { defaultValue: 'Payment unavailable' })}
-      >
-        {t('learning:mockPaymentUnavailable')}
-      </Notice>
-    );
-  return null;
 }
 
 interface LearningReturnLinkProps {
@@ -185,10 +89,8 @@ export function LearningDetailPage() {
   const session = useSession();
   const feedbackMotion = useLearningFeedbackMotionPreferences();
   const workspace = useLearningWorkspace(enrollmentId, feedbackMotion);
-  const checkout = useCheckoutCart(`enrollment:${enrollmentId ?? 0}`);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const retryIntentRef = useRef<LearningRetryFocusIntent | null>(null);
-  const [submittedPaymentNoticeVisible, setSubmittedPaymentNoticeVisible] = useState(false);
   const workspaceIdentity: LearningWorkspaceIdentity = `${session.cacheEpoch ?? 'anonymous'}:${enrollmentId ?? 'invalid'}`;
   useEffect(() => {
     retryIntentRef.current = null;
@@ -216,18 +118,6 @@ export function LearningDetailPage() {
       headingRef.current?.focus();
     }
   }, [workspaceIdentity, workspace.outline.isSuccess, workspace.progress.isSuccess]);
-  useEffect(() => {
-    if (checkout.feedback?.kind !== 'payment_completed') {
-      setSubmittedPaymentNoticeVisible(false);
-      return undefined;
-    }
-    setSubmittedPaymentNoticeVisible(true);
-    const timeout = window.setTimeout(
-      () => setSubmittedPaymentNoticeVisible(false),
-      SUBMITTED_PAYMENT_NOTICE_DURATION_MS,
-    );
-    return () => window.clearTimeout(timeout);
-  }, [checkout.feedback, workspaceIdentity]);
   const finishRetry = (intent: LearningRetryFocusIntent, succeeded: boolean) => {
     if (!succeeded && retryIntentRef.current === intent) retryIntentRef.current = null;
   };
@@ -277,10 +167,7 @@ export function LearningDetailPage() {
         </SkeletonGroup>
       </section>
     );
-  if (
-    workspace.enrollment.isError &&
-    (workspace.enrollment.data === undefined || !checkout.paymentActionsLocked)
-  ) {
+  if (workspace.enrollment.isError && workspace.enrollment.data === undefined) {
     const failure = learningFailure(workspace.enrollment.error);
     return (
       <section className={styles.state}>
@@ -304,12 +191,6 @@ export function LearningDetailPage() {
     );
   }
   const enrollment = workspace.enrollment.data;
-  const enrollmentRefresh: EnrollmentStatusRefresh = {
-    refetchEnrollment: async () => {
-      const result = await workspace.enrollment.refetch();
-      return observedEnrollmentStatus(result);
-    },
-  };
   if (workspace.enrollment.data === undefined)
     return (
       <section className={styles.state}>
@@ -326,7 +207,7 @@ export function LearningDetailPage() {
         <LearningReturnLink />
       </section>
     );
-  const available = enrollment.status === 'active';
+  const available = hasActiveLearningEntitlement(enrollment.status);
   const progressFailure = workspace.progress.isError
     ? learningFailure(workspace.progress.error)
     : null;
@@ -355,7 +236,7 @@ export function LearningDetailPage() {
       </section>
     );
   return (
-    <article className={styles.page} aria-busy={checkout.pending}>
+    <article className={styles.page}>
       <div className={styles.readingContent}>
         <LearningReturnLink currentCourseTitle={enrollment.course.title} />
         <header className={styles.header}>
@@ -376,12 +257,6 @@ export function LearningDetailPage() {
               })}
           </p>
         </header>
-        {checkout.feedback !== null &&
-        (checkout.feedback.kind !== 'payment_completed' || submittedPaymentNoticeVisible) ? (
-          <div>
-            <PaymentFeedbackNotice feedback={checkout.feedback} />
-          </div>
-        ) : null}
         {available ? (
           <>
             {workspace.feedback?.tone === 'error' ? (
@@ -434,54 +309,14 @@ export function LearningDetailPage() {
                   })
             }
           >
-            {enrollment.status === 'pending_payment' ? (
-              <>
-                <p>{t('learning:mockPaymentAwaitingCompletion')}</p>
-                <div className={styles.paymentActions}>
-                  {checkout.paymentActionsLocked ? (
-                    <Button
-                      variant="secondary"
-                      onClick={() => checkout.checkPaymentStatus(enrollment.id, enrollmentRefresh)}
-                      disabled={checkout.pending}
-                      state={checkout.pending ? 'loading' : 'idle'}
-                      loadingLabel={t('learning:checkingPaymentStatus', {
-                        defaultValue: 'Checking payment status…',
-                      })}
-                    >
-                      {t('learning:checkPaymentStatus')}
-                    </Button>
-                  ) : (
-                    <>
-                      <Button
-                        onClick={() =>
-                          checkout.completeMockPayment(enrollment.id, 'success', enrollmentRefresh)
-                        }
-                        disabled={checkout.pending}
-                        state={checkout.pending ? 'loading' : 'idle'}
-                        loadingLabel={t('learning:completingMockPayment', {
-                          defaultValue: 'Completing mock payment…',
-                        })}
-                      >
-                        {t('learning:completeMockPayment')}
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        onClick={() =>
-                          checkout.completeMockPayment(enrollment.id, 'failed', enrollmentRefresh)
-                        }
-                        disabled={checkout.pending}
-                      >
-                        {t('learning:simulateMockPaymentFailure')}
-                      </Button>
-                    </>
-                  )}
-                </div>
-              </>
-            ) : (
-              t('learning:learningProgressIsNotAvailableFor', {
-                defaultValue: 'Learning progress is not available for this enrollment.',
-              })
-            )}
+            {enrollment.status === 'pending_payment'
+              ? t('learning:mockPaymentAwaitingCompletion', {
+                  defaultValue:
+                    'Payment is pending. Learning remains locked until your enrollment is active.',
+                })
+              : t('learning:learningProgressIsNotAvailableFor', {
+                  defaultValue: 'Learning progress is not available for this enrollment.',
+                })}
           </Notice>
         )}
       </div>

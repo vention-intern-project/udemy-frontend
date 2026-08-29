@@ -61,6 +61,8 @@ export interface CatalogActionStateScenarioController extends CatalogScenarioCon
   releaseAddRequest(): void;
 }
 
+export interface CatalogEnrollmentPreflightScenarioController extends CatalogScenarioController {}
+
 export interface CatalogRefreshScenarioController {
   readonly requests: string[];
   deferNextResponse(): void;
@@ -470,6 +472,140 @@ export async function installCatalogActionStateScenario(
     ),
   );
   return { mutationRequests, releaseAddRequest };
+}
+
+export async function installCatalogEnrollmentPreflightScenario(
+  page: Page,
+): Promise<CatalogEnrollmentPreflightScenarioController> {
+  const mutationRequests: string[] = [];
+  page.on('request', (request) => {
+    const path = new URL(request.url()).pathname;
+    if (request.method() === 'POST') mutationRequests.push(`${request.method()} ${path}`);
+  });
+  await page.addInitScript(() => localStorage.setItem('learnhub.access-token', 'student-token'));
+  await page.route('**/me', async (route) =>
+    fulfillCatalogJson(route, {
+      email: 'student@example.test',
+      name: 'Student',
+      surname: 'One',
+      role: 'student',
+      birthday: null,
+      phone_number: null,
+      created_at: '2026-01-01T00:00:00Z',
+    }),
+  );
+  await page.route('**/cart**', async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (path === '/cart/items' && request.method() === 'POST')
+      return fulfillCatalogJson(route, {
+        id: 13,
+        course_id: 9,
+        added_at: '2026-01-01T00:00:00Z',
+        course: { id: 9, title: 'Cancelled paid course', price: '19.99', currency: 'USD' },
+      });
+    if (path === '/cart' && request.method() === 'GET')
+      return fulfillCatalogJson(route, {
+        id: 1,
+        items: [],
+        total_price: '0.00',
+        currency: 'USD',
+        item_count: 0,
+      });
+    return route.fallback();
+  });
+  await page.route('**/enrollments**', async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (path === '/enrollments/my' && request.method() === 'GET')
+      return fulfillCatalogJson(route, {
+        items: [
+          {
+            id: 21,
+            user_id: 1,
+            course_id: 7,
+            status: 'pending_payment',
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: '2026-01-01T00:00:00Z',
+            course: {
+              id: 7,
+              title: 'Pending paid course',
+              description: null,
+              price: '19.99',
+              currency: 'USD',
+            },
+          },
+          {
+            id: 22,
+            user_id: 1,
+            course_id: 8,
+            status: 'pending_payment',
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: '2026-01-01T00:00:00Z',
+            course: {
+              id: 8,
+              title: 'Pending free course',
+              description: null,
+              price: '0.00',
+              currency: 'USD',
+            },
+          },
+          {
+            id: 23,
+            user_id: 1,
+            course_id: 9,
+            status: 'cancelled',
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: '2026-01-01T00:00:00Z',
+            course: {
+              id: 9,
+              title: 'Cancelled paid course',
+              description: null,
+              price: '19.99',
+              currency: 'USD',
+            },
+          },
+          {
+            id: 24,
+            user_id: 1,
+            course_id: 10,
+            status: 'cancelled',
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: '2026-01-01T00:00:00Z',
+            course: {
+              id: 10,
+              title: 'Cancelled free course',
+              description: null,
+              price: '0.00',
+              currency: 'USD',
+            },
+          },
+        ],
+        page: 1,
+        page_size: 100,
+        total: 4,
+        pages: 1,
+        has_next: false,
+        has_previous: false,
+      });
+    if (path === '/enrollments' && request.method() === 'POST')
+      throw new Error('Cancelled or pending Catalog preflight must not enroll directly.');
+    return route.fallback();
+  });
+  await page.route('**/courses**', async (route) =>
+    fulfillCatalogJson(
+      route,
+      JSON.parse(
+        createCatalogResponse([
+          { ...createPermittedCatalogCourse('Pending paid course'), id: 7, price: '19.99' },
+          { ...createPermittedCatalogCourse('Pending free course'), id: 8, price: '0.00' },
+          { ...createPermittedCatalogCourse('Cancelled paid course'), id: 9, price: '19.99' },
+          { ...createPermittedCatalogCourse('Cancelled free course'), id: 10, price: '0.00' },
+        ]),
+      ),
+    ),
+  );
+  return { mutationRequests };
 }
 
 function fulfillCatalogJson(route: Route, body: unknown) {

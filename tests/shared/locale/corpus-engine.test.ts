@@ -35,13 +35,36 @@ const {
   retiredConsumerViolations,
   reviseProtectedSource,
   checkCorpus,
-  approveSuppliedReviewArtifactCandidate,
+  requestLocaleCandidateReview,
   syncCorpus,
-  transitionLocaleCandidate,
+  transitionLocaleCandidate: engineTransitionLocaleCandidate,
   validateCorpus,
   withdrawLocaleCandidateReview,
   // @ts-expect-error The dependency-free Node engine intentionally has no TypeScript declaration.
 } = await import('../../../scripts/localization/corpus-engine.mjs');
+
+function reviewRequestFixture() {
+  return {
+    taskId: 'FE-067',
+    locales: ['ru'],
+    unitIds: ['MLUX-C0001'],
+    requestedAt: '2026-08-23T00:00:00.000Z',
+  };
+}
+
+function transitionLocaleCandidate(
+  candidate: Record<string, unknown>,
+  nextStatus: string,
+  options = {},
+) {
+  if (
+    candidate.status === 'draft' &&
+    nextStatus === 'review_requested' &&
+    Object.keys(options).length === 0
+  )
+    return requestLocaleCandidateReview(candidate, reviewRequestFixture());
+  return engineTransitionLocaleCandidate(candidate, nextStatus, options);
+}
 
 type FixtureCandidate = Record<string, unknown> & {
   candidate: string;
@@ -169,13 +192,6 @@ function humanApprovedFixtureCandidate(): FixtureCandidate {
         reviewerName: 'Native Reviewer',
       },
     },
-  }) as FixtureCandidate;
-}
-
-function suppliedApprovedFixtureCandidate(): FixtureCandidate {
-  return approveSuppliedReviewArtifactCandidate(reviewRequestedFixtureCandidate(), {
-    approvalRecordedAt: '2026-08-25T00:00:00.000Z',
-    artifactSha256: 'ED5D3D613F21DE188DB0512B3701EA9C0C0A6D254FD1C77829FB3E61ECD3310C',
   }) as FixtureCandidate;
 }
 
@@ -491,75 +507,6 @@ function restoredFixture(multiRevision = false) {
 }
 
 describe('canonical localization corpus engine', () => {
-  it('allows only the dedicated exact supplied-artifact approval transition', () => {
-    const corpus = fixture();
-    const requested = transitionLocaleCandidate(corpus.units[0].locales.ru, 'review_requested');
-    const approved = approveSuppliedReviewArtifactCandidate(requested, {
-      approvalRecordedAt: '2026-08-25T00:00:00.000Z',
-      artifactSha256: 'ED5D3D613F21DE188DB0512B3701EA9C0C0A6D254FD1C77829FB3E61ECD3310C',
-      newCandidate: 'Одобрено из supplied artifact, {{name}}',
-    });
-
-    expect(approved).toMatchObject({
-      status: 'approved',
-      reviewerId: null,
-      reviewedAt: null,
-      approvalRecordedAt: '2026-08-25T00:00:00.000Z',
-      approvalAuthority: {
-        kind: 'user-authorized supplied review artifact',
-        artifactSha256: 'ED5D3D613F21DE188DB0512B3701EA9C0C0A6D254FD1C77829FB3E61ECD3310C',
-      },
-    });
-    corpus.units[0].locales.ru = approved;
-    expect(validateFixtureCorpus(corpus)).toEqual([]);
-
-    expect(() =>
-      approveSuppliedReviewArtifactCandidate(requested, {
-        approvalRecordedAt: '2026-08-25T00:00:00.000Z',
-        artifactSha256: '0'.repeat(64),
-      }),
-    ).toThrow('supplied review artifact hash is not authorized');
-
-    const rerequested = transitionLocaleCandidate(
-      transitionLocaleCandidate(approved, 'stale'),
-      'draft',
-      { newCandidate: 'Новая версия, {{name}}' },
-    );
-    expect(() =>
-      approveSuppliedReviewArtifactCandidate(
-        transitionLocaleCandidate(rerequested, 'review_requested'),
-        {
-          approvalRecordedAt: '2026-08-25T00:01:00.000Z',
-          artifactSha256: 'ED5D3D613F21DE188DB0512B3701EA9C0C0A6D254FD1C77829FB3E61ECD3310C',
-        },
-      ),
-    ).toThrow('supplied review artifact authority cannot be reused');
-
-    const fabricatedReviewer = structuredClone(approved);
-    fabricatedReviewer.reviewerId = 'anonymous-reuse';
-    corpus.units[0].locales.ru = fabricatedReviewer;
-    expect(validateFixtureCorpus(corpus)).toContain(
-      'MLUX-C0001: ru approved candidate lacks supplied-artifact authority',
-    );
-
-    const ordinaryPropertyReuse = structuredClone(approved);
-    const terminal = ordinaryPropertyReuse.history.at(-1);
-    terminal.humanApproval = terminal.suppliedArtifactApproval;
-    delete terminal.suppliedArtifactApproval;
-    corpus.units[0].locales.ru = ordinaryPropertyReuse;
-    expect(validateFixtureCorpus(corpus)).toContain(
-      'MLUX-C0001: ru approved history lacks transition-specific human-native authority',
-    );
-
-    const conflictingTerminal = structuredClone(approved);
-    conflictingTerminal.history.at(-1).suppliedArtifactApproval.approvalRecordedAt =
-      '2026-08-25T00:00:01.000Z';
-    corpus.units[0].locales.ru = conflictingTerminal;
-    expect(validateFixtureCorpus(corpus)).toContain(
-      'MLUX-C0001: ru approved candidate does not match terminal approval history',
-    );
-  });
-
   it('keeps the exported corpus contract aligned with required runtime shapes', () => {
     const pluralForms: LocalizationPluralForms = {
       en: { one: 'one', other: 'other' },
@@ -2010,15 +1957,6 @@ describe('canonical localization corpus engine', () => {
         }),
     },
     {
-      name: 'review requested to supplied approved',
-      candidate: reviewRequestedFixtureCandidate,
-      run: (candidate) =>
-        approveSuppliedReviewArtifactCandidate(candidate, {
-          approvalRecordedAt: '2026-08-25T00:00:00.000Z',
-          artifactSha256: SUPPLIED_REVIEW_ARTIFACT.artifactSha256,
-        }),
-    },
-    {
       name: 'review requested to changes requested',
       candidate: reviewRequestedFixtureCandidate,
       run: requestChanges,
@@ -2080,7 +2018,6 @@ describe('canonical localization corpus engine', () => {
     { name: 'draft', candidate: () => fixture().units[0].locales.ru as FixtureCandidate },
     { name: 'review-requested', candidate: reviewRequestedFixtureCandidate },
     { name: 'ordinary approved', candidate: humanApprovedFixtureCandidate },
-    { name: 'supplied-artifact approved', candidate: suppliedApprovedFixtureCandidate },
   ];
 
   it.each(validCandidateShapeControls)(
@@ -2163,13 +2100,6 @@ describe('canonical localization corpus engine', () => {
       forgedKey: 'reviewerId',
       forgedValue: 'forged-reviewer',
     },
-    {
-      name: 'supplied approval with outer reviewer identity',
-      candidate: suppliedApprovedFixtureCandidate,
-      event: (candidate) => mutableHistoryEvent(candidate),
-      forgedKey: 'reviewerId',
-      forgedValue: 'forged-reviewer',
-    },
   ];
 
   it.each(historyOuterShapeAdversaries)(
@@ -2213,26 +2143,6 @@ describe('canonical localization corpus engine', () => {
       },
       expectedViolation:
         'MLUX-C0001: ru approved history lacks transition-specific human-native authority',
-    },
-    {
-      name: 'supplied approval record with a verdict',
-      candidate: suppliedApprovedFixtureCandidate,
-      approvalProperty: 'suppliedArtifactApproval',
-      mutate: (approval) => {
-        approval.verdict = 'approved';
-      },
-      expectedViolation:
-        'MLUX-C0001: ru approved history lacks transition-specific supplied-artifact authority',
-    },
-    {
-      name: 'supplied approval authority with a reviewer identity',
-      candidate: suppliedApprovedFixtureCandidate,
-      approvalProperty: 'suppliedArtifactApproval',
-      mutate: (approval) => {
-        (approval.approvalAuthority as MutableHistoryEvent).reviewerId = 'forged-reviewer';
-      },
-      expectedViolation:
-        'MLUX-C0001: ru approved history lacks transition-specific supplied-artifact authority',
     },
   ];
 

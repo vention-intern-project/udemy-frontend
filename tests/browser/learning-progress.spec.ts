@@ -38,15 +38,14 @@ interface LearningResidualBrowserCopy {
   readonly absentDescription: string;
   readonly breadcrumb: string;
   readonly catalog: string;
+  readonly completeMockPayment: string;
   readonly myLearning: string;
   readonly paymentPending: string;
   readonly pendingBody: string;
-  readonly failedAction: string;
-  readonly declinedTitle: string;
-  readonly declinedBody: string;
   readonly progressHeading: string;
   readonly progressSummary: string;
   readonly progressAccessibleName: string;
+  readonly simulateMockPaymentFailure: string;
 }
 
 const learningResidualBrowserCopy: Readonly<
@@ -56,46 +55,41 @@ const learningResidualBrowserCopy: Readonly<
     absentDescription: 'No course description is available.',
     breadcrumb: 'Breadcrumb',
     catalog: 'Catalog',
+    completeMockPayment: 'Complete mock payment',
     myLearning: 'My learning',
     paymentPending: 'Payment pending',
-    pendingBody:
-      'Mock payment is awaiting completion. Learning remains locked until your enrollment is active.',
-    failedAction: 'Simulate mock payment failure',
-    declinedTitle: 'Mock payment declined',
-    declinedBody: 'The mock payment was declined. This enrollment remains locked.',
+    pendingBody: 'Payment is pending. Learning remains locked until your enrollment is active.',
     progressHeading: 'Learning progress',
     progressSummary: '2 of 5 lessons completed',
     progressAccessibleName: '2 of 5 lessons completed, 40%',
+    simulateMockPaymentFailure: 'Simulate mock payment failure',
   },
   ru: {
     absentDescription: 'Описание курса отсутствует.',
     breadcrumb: 'Хлебные крошки',
     catalog: 'Каталог',
+    completeMockPayment: 'Завершить тестовую оплату',
     myLearning: 'Моё обучение',
     paymentPending: 'Платёж ожидается',
     pendingBody:
-      'Тестовая оплата ожидает завершения. Обучение останется заблокированным, пока запись не станет активной.',
-    failedAction: 'Сымитировать сбой тестовой оплаты',
-    declinedTitle: 'Тестовый платёж отклонён',
-    declinedBody: 'Тестовая оплата отклонена. Эта запись остаётся заблокированной.',
+      'Платёж ожидает обработки. Обучение останется заблокированным, пока ваша запись не станет активной.',
     progressHeading: 'Прогресс обучения',
     progressSummary: 'Завершено: 2 из 5 уроков',
     progressAccessibleName: 'Завершено: 2 из 5 уроков, 40%',
+    simulateMockPaymentFailure: 'Сымитировать сбой тестовой оплаты',
   },
   uz: {
     absentDescription: 'Kurs tavsifi mavjud emas.',
     breadcrumb: 'Yo‘l ko‘rsatkich',
     catalog: 'Katalog',
+    completeMockPayment: 'Sinov to‘lovini yakunlash',
     myLearning: 'Ta’limim',
     paymentPending: 'To‘lov kutilmoqda',
-    pendingBody:
-      'Sinov to‘lovi yakunlanishini kutmoqda. Ro‘yxatdan o‘tishingiz faol bo‘lmaguncha ta’lim yopiq qoladi.',
-    failedAction: 'Sinov to‘lovi xatosini taqlid qilish',
-    declinedTitle: 'Sinov to‘lovi rad etildi',
-    declinedBody: 'Sinov to‘lovi rad etildi. Bu ro‘yxatdan o‘tish yopiq qoladi.',
+    pendingBody: 'To‘lov kutilmoqda. Ro‘yxatdan o‘tishingiz faol bo‘lmaguncha ta’lim yopiq qoladi.',
     progressHeading: 'Ta’lim jarayoni',
     progressSummary: '5 ta darsdan 2 tasi yakunlandi',
     progressAccessibleName: '5 ta darsdan 2 tasi yakunlandi, 40%',
+    simulateMockPaymentFailure: 'Sinov to‘lovi xatosini taqlid qilish',
   },
 };
 const VALID_VIDEO_MP4 = Buffer.from(
@@ -2036,13 +2030,13 @@ for (const status of ['pending_payment', 'cancelled'] as const)
       await expect(page.getByText('Payment pending', { exact: true }).last()).toBeVisible();
       await expect(
         page.getByText(
-          'Mock payment is awaiting completion. Learning remains locked until your enrollment is active.',
+          'Payment is pending. Learning remains locked until your enrollment is active.',
         ),
       ).toBeVisible();
-      await expect(page.getByRole('button', { name: 'Complete mock payment' })).toBeVisible();
-      await expect(
-        page.getByRole('button', { name: 'Simulate mock payment failure' }),
-      ).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Complete mock payment' })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'Simulate mock payment failure' })).toHaveCount(
+        0,
+      );
     } else {
       await expect(
         page.getByText('Learning progress is not available for this enrollment.'),
@@ -2055,8 +2049,77 @@ for (const status of ['pending_payment', 'cancelled'] as const)
     expect(diagnostics.httpFailures).toEqual([]);
   });
 
+test('renders only active enrollments in My Learning and keeps their workspace navigation', async ({
+  page,
+}) => {
+  await installStudent(page);
+  const writeRequests: string[] = [];
+  page.on('request', (request) => {
+    const url = new URL(request.url());
+    if (
+      url.origin === 'http://127.0.0.1:4179' &&
+      !['GET', 'HEAD', 'OPTIONS'].includes(request.method())
+    ) {
+      writeRequests.push(`${request.method()} ${url.pathname}`);
+    }
+  });
+  await page.route('**/*', async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.origin !== 'http://127.0.0.1:4179') return route.fallback();
+    if (url.pathname === '/me') return json(route, student);
+    if (url.pathname === '/enrollments/my')
+      return json(route, {
+        items: [
+          enrollment,
+          {
+            ...enrollment,
+            id: 5,
+            course_id: 8,
+            status: 'pending_payment',
+            course: { ...enrollment.course, id: 8, title: 'Pending list course' },
+          },
+          {
+            ...enrollment,
+            id: 6,
+            course_id: 9,
+            status: 'cancelled',
+            course: { ...enrollment.course, id: 9, title: 'Cancelled list course' },
+          },
+        ],
+        page: 1,
+        page_size: 20,
+        total: 3,
+        pages: 1,
+        has_next: false,
+        has_previous: false,
+      });
+    if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/'))
+      throw new Error(
+        `Unexpected non-active My Learning request ${request.method()} ${url.pathname}`,
+      );
+    return route.fallback();
+  });
+
+  await page.goto('/learning');
+  const activeCourse = page.getByRole('heading', { level: 2, name: enrollment.course.title });
+  await expect(activeCourse).toBeVisible();
+  const activeWorkspace = activeCourse
+    .locator('xpath=ancestor::li')
+    .getByRole('link', { name: 'Open course' });
+  await expect(activeWorkspace).toHaveAttribute('href', '/learning/enrollments/4');
+  await expect(page.getByRole('heading', { level: 2, name: 'Pending list course' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { level: 2, name: 'Cancelled list course' })).toHaveCount(
+    0,
+  );
+  await expect(page.locator('body')).not.toContainText(
+    /Payment pending|Payment is pending|Complete mock payment|Simulate mock payment failure/,
+  );
+  expect(writeRequests).toEqual([]);
+});
+
 for (const locale of ['en', 'ru', 'uz'] as const) {
-  test(`resolves the complete DRAFT-22 learning residual family and exact payment write in ${locale}`, async ({
+  test(`resolves the complete DRAFT-22 learning residual family without a payment write in ${locale}`, async ({
     page,
   }) => {
     test.slow();
@@ -2099,13 +2162,6 @@ for (const locale of ['en', 'ru', 'uz'] as const) {
         });
       if (url.pathname === '/enrollments/4')
         return json(route, { ...enrollment, status: enrollmentStatus });
-      if (url.pathname === '/payments/complete') {
-        expect(request.method()).toBe('POST');
-        expect(request.headers().authorization).toBe('Bearer student-token');
-        expect(request.postDataJSON()).toEqual({ enrollment_id: 4, status: 'failed' });
-        enrollmentStatus = 'cancelled';
-        return json(route, { enrollment_id: 4, status: 'cancelled', message: 'private mock' });
-      }
       if (url.pathname === '/courses/7/progress') {
         if (enrollmentStatus !== 'active')
           throw new Error(`Progress requested for ${enrollmentStatus} enrollment`);
@@ -2142,27 +2198,16 @@ for (const locale of ['en', 'ru', 'uz'] as const) {
         .press('Enter');
     }
     await expect(page).toHaveURL(/\/learning$/);
-    const listBreadcrumb = page.getByRole('navigation', { name: copy.breadcrumb });
-    await expect(listBreadcrumb.getByRole('link', { name: copy.catalog })).toHaveAttribute(
-      'href',
-      '/',
-    );
-    await expect(listBreadcrumb.locator('[aria-current="page"]')).toHaveText(`/${copy.myLearning}`);
 
     await page.goto('/learning/enrollments/4');
     await expect(page.getByText(copy.paymentPending, { exact: true }).last()).toBeVisible();
     await expect(page.getByText(copy.pendingBody, { exact: true })).toBeVisible();
-    const failedAction = page.getByRole('button', { name: copy.failedAction });
-    await tabTo(page, failedAction);
-    await expect(failedAction).toBeFocused();
-    await page.keyboard.press('Enter');
-    const declined = page.getByRole('alert');
-    await expect(declined).toContainText(copy.declinedTitle);
-    await expect(declined).toContainText(copy.declinedBody);
-    await expect(declined).toHaveAttribute('aria-live', 'assertive');
-    await expect(declined).toHaveAttribute('aria-atomic', 'true');
+    await expect(page.getByRole('button', { name: copy.completeMockPayment })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: copy.simulateMockPaymentFailure })).toHaveCount(
+      0,
+    );
     await expect(page.locator('body')).not.toContainText(/private mock|learning:\w+|a11y:\w+/);
-    expect(writeRequests).toEqual(['POST /payments/complete']);
+    expect(writeRequests).toEqual([]);
 
     enrollmentStatus = 'active';
     await page.reload();
@@ -2216,7 +2261,7 @@ for (const locale of ['en', 'ru', 'uz'] as const) {
       await cdp.detach();
     }
 
-    expect(writeRequests).toEqual(['POST /payments/complete']);
+    expect(writeRequests).toEqual([]);
     expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
     expect(diagnostics.httpFailures).toEqual([]);
   });

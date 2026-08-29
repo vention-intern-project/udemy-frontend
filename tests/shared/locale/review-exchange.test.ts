@@ -23,12 +23,14 @@ const {
   serializeReviewCsv,
   // @ts-expect-error The dependency-free Node exchange module has no TypeScript declaration.
 } = await import('../../../scripts/localization/review-exchange.mjs');
+// @ts-expect-error The dependency-free Node engine has no TypeScript declaration.
+const corpusEngineModule = await import('../../../scripts/localization/corpus-engine.mjs');
 const {
   reviseProtectedSource,
+  requestLocaleCandidateReview,
   serializeGeneratedResources,
   transitionLocaleCandidate,
-  // @ts-expect-error The dependency-free Node engine has no TypeScript declaration.
-} = await import('../../../scripts/localization/corpus-engine.mjs');
+} = corpusEngineModule;
 
 const REQUESTED_AT = '2026-08-25T00:00:00.000Z';
 const REVIEWED_AT = '2026-08-25T00:01:00.000Z';
@@ -44,6 +46,13 @@ const ARTIFACT_FIXTURE = join(
   process.cwd(),
   'tests/shared/locale/fixtures/review-exchange/learnhub-multilingual-review-readable.md',
 );
+const HISTORICAL_IMPORT_BASE = Object.freeze({
+  commit: '3aa975e4bdb8571942e736acb78e2acadec74ed7',
+  registryBlob: '2fd9c3750d345f106d2dd55abf02647f3e6ef863',
+  generatedBlob: '617d55ac2de0f31a96a839036d9b3f61c1829c7b',
+  registryPath: 'localization/corpus/registry.json',
+  generatedPath: 'src/shared/locale/generated-resources.ts',
+});
 const execFileAsync = promisify(execFile);
 const temporaryDirectories: string[] = [];
 type ReviewLocale = 'ru' | 'uz';
@@ -84,15 +93,25 @@ afterEach(async () => {
   );
 });
 
+function requestCandidateReview(
+  candidate: Record<string, unknown>,
+  unitId: string,
+  locales: readonly ReviewLocale[],
+) {
+  return requestLocaleCandidateReview(candidate, {
+    taskId: TASK_ID,
+    locales: [...locales].sort(),
+    unitIds: [unitId],
+    requestedAt: REQUESTED_AT,
+  });
+}
+
 function corpusInReviewFor(locales: readonly ReviewLocale[]) {
   const corpus = structuredClone(draft37Registry);
   const unit = corpus.units.find(({ id }) => id === 'MLUX-C0001');
   if (!unit) throw new Error('fixture unit is missing');
   for (const locale of locales)
-    unit.locales[locale] = {
-      ...transitionLocaleCandidate(unit.locales[locale], 'review_requested'),
-      requestedAt: REQUESTED_AT,
-    };
+    unit.locales[locale] = requestCandidateReview(unit.locales[locale], unit.id, locales);
   return corpus;
 }
 
@@ -134,10 +153,7 @@ function corpusWithTamperedRetainedChangeRequest() {
   const corrected = transitionLocaleCandidate(changed, 'draft', {
     newCandidate: 'Исправленная локализация {{identity}}',
   });
-  unit.locales.ru = {
-    ...transitionLocaleCandidate(corrected, 'review_requested'),
-    requestedAt: REQUESTED_AT,
-  };
+  unit.locales.ru = requestCandidateReview(corrected, unit.id, ['ru']);
   retainedChangeRequest(unit.locales.ru).replacement = 'Исправление без placeholder';
   return corpus;
 }
@@ -150,10 +166,7 @@ function corpusWithForgedRetainedHistory() {
   const corrected = transitionLocaleCandidate(changed, 'draft', {
     newCandidate: 'Исправленная локализация {{identity}}',
   });
-  unit.locales.ru = {
-    ...transitionLocaleCandidate(corrected, 'review_requested'),
-    requestedAt: REQUESTED_AT,
-  };
+  unit.locales.ru = requestCandidateReview(corrected, unit.id, ['ru']);
   const history = unit.locales.ru.history as MutableReviewHistoryEvent[];
   const forgedEvent = history.find(
     (event) =>
@@ -186,10 +199,7 @@ function corpusWithStaleToDraftRevision(revision: unknown) {
   const reactivated = transitionLocaleCandidate(revised.locales.ru, 'draft', {
     newCandidate: 'Исправленная локализация {{identity}}',
   });
-  revised.locales.ru = {
-    ...transitionLocaleCandidate(reactivated, 'review_requested'),
-    requestedAt: REQUESTED_AT,
-  };
+  revised.locales.ru = requestCandidateReview(reactivated, revised.id, ['ru']);
   const staleToDraft = (revised.locales.ru.history as MutableReviewHistoryEvent[]).find(
     (event) => event.from === 'stale' && event.to === 'draft',
   );
@@ -416,6 +426,32 @@ async function temporaryTargets(corpus: unknown = draft37Registry) {
   const outputPath = join(directory, 'generated-resources.ts');
   await writeFile(registryPath, `${JSON.stringify(corpus, null, 2)}\n`, 'utf8');
   await writeFile(outputPath, serializeGeneratedResources(corpus), 'utf8');
+  return { directory, registryPath, outputPath };
+}
+
+async function immutableHistoricalTargets() {
+  const directory = await mkdtemp(join(tmpdir(), 'fe067-historical-import-'));
+  temporaryDirectories.push(directory);
+  const registryPath = join(directory, 'registry.json');
+  const outputPath = join(directory, 'generated-resources.ts');
+  const registryRef = `${HISTORICAL_IMPORT_BASE.commit}:${HISTORICAL_IMPORT_BASE.registryPath}`;
+  const outputRef = `${HISTORICAL_IMPORT_BASE.commit}:${HISTORICAL_IMPORT_BASE.generatedPath}`;
+  const [
+    { stdout: registryBlob },
+    { stdout: outputBlob },
+    { stdout: registry },
+    { stdout: output },
+  ] = await Promise.all([
+    execFileAsync('git', ['rev-parse', registryRef]),
+    execFileAsync('git', ['rev-parse', outputRef]),
+    execFileAsync('git', ['show', registryRef]),
+    execFileAsync('git', ['show', outputRef]),
+  ]);
+  if (registryBlob.trim() !== HISTORICAL_IMPORT_BASE.registryBlob)
+    throw new Error('immutable historical registry fixture identity drifted');
+  if (outputBlob.trim() !== HISTORICAL_IMPORT_BASE.generatedBlob)
+    throw new Error('immutable historical generated fixture identity drifted');
+  await Promise.all([writeFile(registryPath, registry), writeFile(outputPath, output)]);
   return { directory, registryPath, outputPath };
 }
 
@@ -1008,10 +1044,7 @@ describe('localization review exchange', () => {
     const corpus = structuredClone(draft37Registry);
     const unit = corpus.units.find(({ id }) => id === 'MLUX-C0017');
     if (!unit) throw new Error('fixture unit is missing');
-    const requested = {
-      ...transitionLocaleCandidate(unit.locales.ru, 'review_requested'),
-      requestedAt: REQUESTED_AT,
-    };
+    const requested = requestCandidateReview(unit.locales.ru, unit.id, ['ru']);
     unit.locales.ru = requestChanges(requested);
     const before = structuredClone(corpus);
 
@@ -1194,10 +1227,7 @@ describe('localization review exchange', () => {
       const corpus = structuredClone(draft37Registry);
       const unit = corpus.units.find((entry) => entry.id === id);
       if (!unit) throw new Error('fixture unit is missing');
-      const requested = {
-        ...transitionLocaleCandidate(unit.locales.ru, 'review_requested'),
-        requestedAt: REQUESTED_AT,
-      };
+      const requested = requestCandidateReview(unit.locales.ru, unit.id, ['ru']);
       unit.locales.ru = requestChanges(requested);
 
       const report = inspectSuppliedReviewArtifact({ bytes, corpus }).report;
@@ -1254,8 +1284,27 @@ describe('localization review exchange', () => {
     expect(inspection.summary).toMatchObject({ exactRows: 0, staleRows: 346 });
   });
 
-  it('imports only exact supplied rows with the named null-reviewer authority', async () => {
+  it('returns the current CRF-revised registry as a stale no-write historical boundary', async () => {
     const { registryPath, outputPath } = await temporaryTargets();
+    const before = await Promise.all([readFile(registryPath), readFile(outputPath)]);
+
+    const report = await importSuppliedReviewArtifact({
+      artifactPath: ARTIFACT_FIXTURE,
+      registryPath,
+      outputPath,
+      approvalRecordedAt: IMPORTED_AT,
+    });
+
+    expect(report.counts).toMatchObject({
+      'approved-effective': 0,
+      'unchanged-approved': 0,
+      'stale-source': SUPPLIED_LEGACY_ARTIFACT_ROW_COUNT,
+    });
+    expect(await Promise.all([readFile(registryPath), readFile(outputPath)])).toEqual(before);
+  });
+
+  it('imports only exact supplied rows with the named null-reviewer authority', async () => {
+    const { registryPath, outputPath } = await immutableHistoricalTargets();
     const report = await importSuppliedReviewArtifact({
       artifactPath: ARTIFACT_FIXTURE,
       registryPath,
@@ -1290,7 +1339,144 @@ describe('localization review exchange', () => {
           artifactSha256: 'ED5D3D613F21DE188DB0512B3701EA9C0C0A6D254FD1C77829FB3E61ECD3310C',
         },
       });
+    for (const locale of ['ru', 'uz']) {
+      const request = c0340.locales[locale].history[0];
+      expect(request).toMatchObject({
+        type: 'transition',
+        from: 'draft',
+        to: 'review_requested',
+        suppliedArtifactImport: {
+          artifactSha256: 'ED5D3D613F21DE188DB0512B3701EA9C0C0A6D254FD1C77829FB3E61ECD3310C',
+          protectedSourceIdentitySha256:
+            '24EA5BC9AFC65594F2A886005E646E16708BAD74FB395D5A02BF1EB975700CCA',
+          unitId: 'MLUX-C0340',
+          unitSourceRevision: c0340.sourceRevision,
+        },
+      });
+      expect(request).not.toHaveProperty('reviewRequest');
+    }
   }, 30_000);
+
+  it('keeps the historical import transition out of the generic engine capability surface', () => {
+    expect(corpusEngineModule).not.toHaveProperty('authorizeSuppliedReviewArtifactImport');
+    expect(corpusEngineModule).not.toHaveProperty('requestSuppliedReviewArtifactCandidate');
+    expect(corpusEngineModule).not.toHaveProperty('approveSuppliedReviewArtifactCandidate');
+    expect(corpusEngineModule).not.toHaveProperty('applySuppliedReviewArtifactImport');
+  });
+
+  it('prevents a cloned immutable-base corpus from invoking historical approval construction', () => {
+    const corpus = structuredClone(draft37Registry);
+    const before = structuredClone(corpus);
+    expect(() =>
+      (
+        corpusEngineModule as typeof corpusEngineModule & {
+          applySuppliedReviewArtifactImport: (corpus: unknown, options: unknown) => unknown;
+        }
+      ).applySuppliedReviewArtifactImport(corpus, {
+        artifactSha256: 'ED5D3D613F21DE188DB0512B3701EA9C0C0A6D254FD1C77829FB3E61ECD3310C',
+        artifactIds: Array.from(
+          { length: SUPPLIED_LEGACY_ARTIFACT_ROW_COUNT },
+          (_, index) => `MLUX-C${String(index + 1).padStart(4, '0')}`,
+        ),
+        approvalRecordedAt: IMPORTED_AT,
+        entries: [{ id: 'MLUX-C0001', locale: 'ru', replacement: '' }],
+      }),
+    ).toThrow(/is not a function/);
+    expect(corpus).toEqual(before);
+  });
+
+  it('keeps ordinary CRF review requests outside the historical supplied-artifact approval API', () => {
+    const corpus = structuredClone(draft37Registry);
+    const before = structuredClone(corpus);
+    const unit = corpus.units.find(({ id }) => id === 'MLUX-C0109');
+    if (!unit) throw new Error('CRF C0109 fixture unit is missing');
+    const candidate = requestLocaleCandidateReview(unit.locales.ru, {
+      taskId: TASK_ID,
+      locales: ['ru'],
+      unitIds: ['MLUX-C0109'],
+      requestedAt: REQUESTED_AT,
+    });
+    expect(candidate.status).toBe('review_requested');
+    expect(() =>
+      (
+        corpusEngineModule as typeof corpusEngineModule & {
+          approveSuppliedReviewArtifactCandidate: (candidate: unknown, options: unknown) => unknown;
+        }
+      ).approveSuppliedReviewArtifactCandidate(candidate, {
+        artifactSha256: 'ED5D3D613F21DE188DB0512B3701EA9C0C0A6D254FD1C77829FB3E61ECD3310C',
+        approvalRecordedAt: IMPORTED_AT,
+      }),
+    ).toThrow(/is not a function/);
+    expect(corpus).toEqual(before);
+    expect(unit.locales.ru).toEqual(before.units.find(({ id }) => id === 'MLUX-C0109')?.locales.ru);
+  });
+
+  it('rejects a C0109 historical-artifact substitution without writing either target', async () => {
+    const { registryPath, outputPath } = await immutableHistoricalTargets();
+    const before = await Promise.all([readFile(registryPath), readFile(outputPath)]);
+    const altered = JSON.parse(await readFile(registryPath, 'utf8'));
+    const c0109 = altered.units.find((unit: { id: string }) => unit.id === 'MLUX-C0109');
+    if (!c0109) throw new Error('CRF C0109 fixture unit is missing');
+    c0109.sourceRevision =
+      'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    for (const locale of ['ru', 'uz']) c0109.locales[locale].sourceRevision = c0109.sourceRevision;
+    await writeFile(registryPath, `${JSON.stringify(altered, null, 2)}\n`);
+
+    const afterMutation = await Promise.all([readFile(registryPath), readFile(outputPath)]);
+    await expect(
+      importSuppliedReviewArtifact({
+        artifactPath: ARTIFACT_FIXTURE,
+        registryPath,
+        outputPath,
+        approvalRecordedAt: IMPORTED_AT,
+      }),
+    ).resolves.toMatchObject({ protectedSourceIdentityMatches: false });
+    expect(await Promise.all([readFile(registryPath), readFile(outputPath)])).toEqual(
+      afterMutation,
+    );
+    expect(afterMutation[1]).toEqual(before[1]);
+  });
+
+  it('rejects supplied-artifact replay after the exact historical import without partial writes', async () => {
+    const { registryPath, outputPath } = await immutableHistoricalTargets();
+    await importSuppliedReviewArtifact({
+      artifactPath: ARTIFACT_FIXTURE,
+      registryPath,
+      outputPath,
+      approvalRecordedAt: IMPORTED_AT,
+    });
+    const beforeReplay = await Promise.all([readFile(registryPath), readFile(outputPath)]);
+
+    await expect(
+      importSuppliedReviewArtifact({
+        artifactPath: ARTIFACT_FIXTURE,
+        registryPath,
+        outputPath,
+        approvalRecordedAt: '2026-08-25T00:03:00.000Z',
+      }),
+    ).rejects.toThrow(/current draft|pristine historical draft/);
+    expect(await Promise.all([readFile(registryPath), readFile(outputPath)])).toEqual(beforeReplay);
+  }, 30_000);
+
+  it('rejects altered supplied-artifact task provenance before writing either target', async () => {
+    const { registryPath, outputPath } = await immutableHistoricalTargets();
+    const corpus = JSON.parse(await readFile(registryPath, 'utf8')) as typeof draft37Registry;
+    const unit = corpus.units.find(({ id }) => id === 'MLUX-C0001');
+    if (!unit) throw new Error('fixture unit is missing');
+    unit.migrationProvenance.ownerTasks = ['MLUX-003'];
+    await writeFile(registryPath, `${JSON.stringify(corpus, null, 2)}\n`, 'utf8');
+    const before = await Promise.all([readFile(registryPath), readFile(outputPath)]);
+
+    await expect(
+      importSuppliedReviewArtifact({
+        artifactPath: ARTIFACT_FIXTURE,
+        registryPath,
+        outputPath,
+        approvalRecordedAt: IMPORTED_AT,
+      }),
+    ).rejects.toThrow(/provenance/);
+    expect(await Promise.all([readFile(registryPath), readFile(outputPath)])).toEqual(before);
+  });
 
   it('rejects altered supplied bytes and bad authority time without writes', async () => {
     const bytes = await readFile(ARTIFACT_FIXTURE);

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { queryKeys } from '@entities/api';
+import { enrollmentCourseActionPreflight, type Enrollment } from '@entities/enrollment';
 import type { CatalogCourse } from '@entities/course';
 import { useSession } from '@features/auth-session';
 import {
@@ -112,19 +113,24 @@ function actionIdentity(
 
 function queryPreflight(
   courseId: number,
+  coursePrice: string,
   enabled: boolean,
   cartPending: boolean,
   enrollmentsPending: boolean,
   cartError: boolean,
   enrollmentsError: boolean,
   cartCourseIds: readonly number[],
-  enrolledCourseIds: readonly number[],
+  enrollments: readonly Enrollment[],
 ): CoursePreflightState {
   if (!enabled) return 'not-required';
   if (cartPending || enrollmentsPending) return 'loading';
   if (cartError || enrollmentsError) return 'unavailable';
-  if (enrolledCourseIds.includes(courseId)) return 'already-enrolled';
+  const enrollmentPreflight = enrollmentCourseActionPreflight(enrollments, courseId);
+  if (enrollmentPreflight === 'active-entitlement') return 'already-enrolled';
+  if (enrollmentPreflight === 'pending-protected') return 'unavailable';
   if (cartCourseIds.includes(courseId)) return 'already-in-cart';
+  if (enrollmentPreflight === 'cancelled-recovery' && /^0(?:\.0+)?$/.test(coursePrice))
+    return 'unavailable';
   return 'eligible';
 }
 
@@ -175,10 +181,7 @@ export function useCatalogCourseActions(courses: readonly CatalogCourse[]) {
     () => cart.data?.items.map((item) => item.courseId) ?? [],
     [cart.data],
   );
-  const enrolledCourseIds = useMemo(
-    () => enrollments.data?.items.map((item) => item.courseId) ?? [],
-    [enrollments.data],
-  );
+  const enrollmentItems = useMemo(() => enrollments.data?.items ?? [], [enrollments.data]);
   const preflightHasAuthoritativeResult =
     preflightEnabled &&
     !cart.isPending &&
@@ -205,7 +208,8 @@ export function useCatalogCourseActions(courses: readonly CatalogCourse[]) {
           override.reconcileWithPreflight ||
           (override.preflight === 'already-in-cart' && cartCourseIds.includes(override.courseId)) ||
           (override.preflight === 'already-enrolled' &&
-            enrolledCourseIds.includes(override.courseId))
+            enrollmentCourseActionPreflight(enrollmentItems, override.courseId) ===
+              'active-entitlement')
         );
       })
       .map(([identity]) => identity);
@@ -229,7 +233,7 @@ export function useCatalogCourseActions(courses: readonly CatalogCourse[]) {
     });
   }, [
     cartCourseIds,
-    enrolledCourseIds,
+    enrollmentItems,
     overrideByIdentity,
     preflightHasAuthoritativeResult,
     recoveryByIdentity,
@@ -365,13 +369,14 @@ export function useCatalogCourseActions(courses: readonly CatalogCourse[]) {
       const identity = actionIdentity(epoch, course.id);
       const basePreflight = queryPreflight(
         course.id,
+        course.price,
         preflightEnabled,
         cart.isPending,
         enrollments.isPending,
         cart.isError,
         enrollments.isError,
         cartCourseIds,
-        enrolledCourseIds,
+        enrollmentItems,
       );
       const preflight = identity
         ? (overrideByIdentity.get(identity)?.preflight ?? basePreflight)
@@ -492,7 +497,7 @@ export function useCatalogCourseActions(courses: readonly CatalogCourse[]) {
       cart.isError,
       cart.isPending,
       cartCourseIds,
-      enrolledCourseIds,
+      enrollmentItems,
       enrollments.isError,
       enrollments.isPending,
       epoch,
@@ -546,13 +551,14 @@ export function useCatalogCourseActions(courses: readonly CatalogCourse[]) {
         session: session.state,
         preflight: queryPreflight(
           course.id,
+          course.price,
           preflightEnabled,
           cart.isPending,
           enrollments.isPending,
           cart.isError,
           enrollments.isError,
           cartCourseIds,
-          enrolledCourseIds,
+          enrollmentItems,
         ),
       });
       const inCart = student && cartCourseIds.includes(course.id);
@@ -577,7 +583,7 @@ export function useCatalogCourseActions(courses: readonly CatalogCourse[]) {
       cart,
       actionFor,
       cartCourseIds,
-      enrolledCourseIds,
+      enrollmentItems,
       enrollments,
       epoch,
       mutation,

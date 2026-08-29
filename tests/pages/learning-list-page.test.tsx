@@ -334,7 +334,7 @@ describe('LearningListPage', () => {
     await waitFor(() => expect(screen.getByLabelText('Current route').textContent).toBe('/'));
   });
 
-  it('preserves API-021 server order, totals, status, and page cursor', async () => {
+  it('projects only active API-021 enrollment entries while preserving the page cursor', async () => {
     const requests: ApiRequestOptions[] = [];
     const request: ApiClient['request'] = async <TResponse, TBody>(
       options: ApiRequestOptions<TBody, TResponse>,
@@ -348,10 +348,10 @@ describe('LearningListPage', () => {
     expect(await screen.findByRole('heading', { name: 'My learning' })).toBeTruthy();
     expect(screen.getByText('22 enrollments · Page 2 of 2')).toBeTruthy();
     expect(screen.getAllByRole('heading', { level: 2 }).map((node) => node.textContent)).toEqual([
-      'Cancelled course',
       'Active course',
     ]);
-    expect(screen.getByText('Cancelled')).toBeTruthy();
+    expect(screen.queryByText('Cancelled')).toBeNull();
+    expect(screen.queryByText('Cancelled course')).toBeNull();
     expect(requests.find((entry) => entry.path === '/enrollments/my')?.query).toEqual({
       page: 2,
       page_size: 20,
@@ -537,7 +537,6 @@ describe('LearningListPage', () => {
     expect(screen.getByLabelText('Current location').textContent).toBe('?page=2');
     expect(requestedPages).toEqual([1, 2]);
     expect(screen.getAllByRole('heading', { level: 2 }).map((node) => node.textContent)).toEqual([
-      'Cancelled course',
       'Active course',
     ]);
     await waitFor(() =>
@@ -646,7 +645,6 @@ describe('LearningListPage', () => {
     await screen.findByText('22 enrollments · Page 2 of 2');
     expect(screen.getByLabelText('Current location').textContent).toBe('?page=2');
     expect(screen.getAllByRole('heading', { level: 2 }).map((node) => node.textContent)).toEqual([
-      'Cancelled course',
       'Active course',
     ]);
     await waitFor(() => expect(document.activeElement).toBe(nonPaginationNavigation));

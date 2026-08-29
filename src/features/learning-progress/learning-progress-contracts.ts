@@ -1,4 +1,4 @@
-import type { EnrollmentStatus } from '@entities/enrollment';
+import { hasActiveLearningEntitlement, type EnrollmentStatus } from '@entities/enrollment';
 import type { SessionContextValue } from '@features/auth-session';
 import { ApiError, type SessionCacheEpoch } from '@shared/api';
 
@@ -54,7 +54,7 @@ export function learningEpoch(session: SessionContextValue): SessionCacheEpoch |
 }
 
 export function statusAllowsProgress(status: EnrollmentStatus | undefined): boolean {
-  return status === 'active';
+  return status !== undefined && hasActiveLearningEntitlement(status);
 }
 
 export function workspaceIdentity(

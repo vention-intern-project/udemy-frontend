@@ -1,10 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { ChevronLeft } from 'lucide-react';
-import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { Link, useSearchParams } from 'react-router-dom';
 
-import type { EnrollmentStatus } from '@entities/enrollment';
+import { hasActiveLearningEntitlement } from '@entities/enrollment';
 import { useSession } from '@features/auth-session';
 import { learningFailure, useLearningList } from '@features/learning-progress';
 import {
@@ -24,12 +23,6 @@ function parsePage(value: string | null): number {
   return value !== null && /^[1-9]\d*$/.test(value) && Number.isSafeInteger(Number(value))
     ? Number(value)
     : 1;
-}
-
-function enrollmentStatusLabel(status: EnrollmentStatus, t: TFunction): string {
-  if (status === 'active') return t('learning:active', { defaultValue: 'Active' });
-  if (status === 'cancelled') return t('learning:cancelled', { defaultValue: 'Cancelled' });
-  return t('learning:paymentPending', { defaultValue: 'Payment pending' });
 }
 
 interface LearningListRetryFocusIntent {
@@ -139,7 +132,10 @@ export function LearningListPage() {
     );
   }
   const result = enrollments.data;
-  if (result.items.length === 0) {
+  const activeEnrollments = result.items.filter((enrollment) =>
+    hasActiveLearningEntitlement(enrollment.status),
+  );
+  if (activeEnrollments.length === 0) {
     return (
       <article className={[styles.page, styles.emptyPage].join(' ')}>
         <header className={styles.pageHeader}>
@@ -198,8 +194,8 @@ export function LearningListPage() {
           <p className={styles.summary} aria-live="polite">
             {t('learning:enrollmentSummary', {
               defaultValue: '{{total}} enrollment{{suffix}} · Page {{page}} of {{pages}}',
-              total: result.total,
-              suffix: result.total === 1 ? '' : 's',
+              total: activeEnrollments.length,
+              suffix: activeEnrollments.length === 1 ? '' : 's',
               page: result.page,
               pages: Math.max(1, result.pages),
             })}
@@ -207,12 +203,12 @@ export function LearningListPage() {
         </div>
       </header>
       <ol className={styles.list}>
-        {result.items.map((enrollment) => (
+        {activeEnrollments.map((enrollment) => (
           <li key={enrollment.id} className={styles.card}>
             <div className={styles.cardContent}>
               <h2>{enrollment.course.title}</h2>
-              <p className={`${styles.status} ${styles[`status${enrollment.status}`]}`}>
-                {enrollmentStatusLabel(enrollment.status, t)}
+              <p className={`${styles.status} ${styles.statusactive}`}>
+                {t('learning:active', { defaultValue: 'Active' })}
               </p>
               {enrollment.course.description !== null ? (
                 <p className={styles.description}>{enrollment.course.description}</p>

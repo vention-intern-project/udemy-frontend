@@ -1,9 +1,4 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
-import type {
-  MockPaymentCompletionRequestDto,
-  MockPaymentCompletionStatusDto,
-} from '@entities/cart';
-import type { EnrollmentStatus } from '@entities/enrollment';
 import { cartWorkflowOrigin } from './cart-workflow-server';
 
 const student = {
@@ -23,36 +18,73 @@ const course = {
   price: '19.99',
   currency: 'USD',
 };
-const pendingEnrollment = {
-  id: 4,
-  user_id: 1,
-  course_id: 7,
-  status: 'pending_payment',
-  created_at: '2026-01-01T00:00:00Z',
-  updated_at: '2026-01-01T00:00:00Z',
-  course,
-};
-
 const checkoutResidualCopy = {
   en: {
     checkStatus: 'Check checkout status',
     mockCheckout: 'Mock checkout',
     uncertain:
-      'Your cart still cannot prove whether checkout partially completed. Check My Learning before taking another checkout action.',
+      'Your cart still cannot prove whether checkout partially completed. Do not start another checkout action.',
   },
   ru: {
     checkStatus: 'Проверить статус оплаты',
     mockCheckout: 'Тестовое оформление',
     uncertain:
-      'Корзина пока не может подтвердить, завершилась ли оплата частично. Перед новой оплатой проверьте «Моё обучение».',
+      'Корзина по-прежнему не может подтвердить, была ли оплата частично завершена. Не начинайте новое оформление.',
   },
   uz: {
     checkStatus: 'To‘lov holatini tekshirish',
     mockCheckout: 'Sinov buyurtmasi',
     uncertain:
-      'Savat to‘lov qisman yakunlanganini hozircha tasdiqlay olmaydi. Yana to‘lov qilishdan oldin «Ta’limim»ni tekshiring.',
+      'Savatingiz to‘lov qisman yakunlanganini hali ham tasdiqlay olmaydi. Yana checkout boshlamang.',
   },
 } as const;
+
+interface CheckoutTerminalLocaleCopy {
+  readonly acceptedBody: string;
+  readonly acceptedTitle: string;
+  readonly conflictBody: string;
+  readonly conflictTitle: string;
+  readonly mockCheckout: string;
+}
+
+const checkoutTerminalCopy: Readonly<Record<'en' | 'ru' | 'uz', CheckoutTerminalLocaleCopy>> = {
+  en: {
+    acceptedTitle: 'Checkout accepted',
+    acceptedBody:
+      'Mock checkout was accepted. Payment is pending; learning access is not available yet.',
+    conflictTitle: 'Enrollment changed',
+    conflictBody:
+      'Your enrollment changed. Checkout cannot confirm a payment result or learning access.',
+    mockCheckout: 'Mock checkout',
+  },
+  ru: {
+    acceptedTitle: 'Оформление принято',
+    acceptedBody:
+      'Тестовое оформление принято. Платёж ожидает обработки; доступ к обучению пока недоступен.',
+    conflictTitle: 'Запись на курс изменилась',
+    conflictBody:
+      'Ваша запись изменилась. Оформление не может подтвердить результат платежа или доступ к обучению.',
+    mockCheckout: 'Тестовое оформление',
+  },
+  uz: {
+    acceptedTitle: 'Buyurtma qabul qilindi',
+    acceptedBody:
+      'Sinov buyurtmasi qabul qilindi. To‘lov kutilmoqda; ta’limga kirish hozircha mavjud emas.',
+    conflictTitle: 'Kursga yozilish holati o‘zgardi',
+    conflictBody:
+      'Yozilishingiz o‘zgardi. Checkout to‘lov natijasini yoki ta’limga kirishni tasdiqlay olmaydi.',
+    mockCheckout: 'Sinov buyurtmasi',
+  },
+};
+
+const obsoletePaymentControlLabels = [
+  'Complete mock payment',
+  'Simulate mock payment failure',
+  'Завершить тестовую оплату',
+  'Сымитировать сбой тестовой оплаты',
+  'Sinov to‘lovini yakunlash',
+  'Sinov to‘lovi xatosini taqlid qilish',
+] as const;
 
 function cart(
   items = [
@@ -94,11 +126,7 @@ async function routeCheckoutApi(
       url.pathname === '/me' ||
       url.pathname === '/cart' ||
       url.pathname === '/cart/checkout' ||
-      url.pathname === '/enrollments/my' ||
-      url.pathname === '/enrollments/4' ||
-      url.pathname === '/payments/complete' ||
-      url.pathname === '/courses/7/progress' ||
-      url.pathname === '/courses/7/lessons'
+      url.pathname === '/enrollments/my'
     ) {
       await handler(route, url.pathname, route.request().method());
       return;
@@ -133,16 +161,6 @@ test('sends one checkout POST, labels accepted payment as pending, and preserves
       currentCart = cart([]);
       return json(route, { message: 'Checkout successful.', enrolled_courses: 1 });
     }
-    if (path === '/enrollments/my')
-      return json(route, {
-        items: [pendingEnrollment],
-        page: 1,
-        page_size: 20,
-        total: 1,
-        pages: 1,
-        has_next: false,
-        has_previous: false,
-      });
     throw new Error(`Unexpected request ${method} ${path}`);
   });
   await page.goto('/cart');
@@ -150,11 +168,11 @@ test('sends one checkout POST, labels accepted payment as pending, and preserves
   await checkout.dblclick();
   await expect.poll(() => checkoutPosts).toBe(1);
   await expect(
-    page.getByText('Mock checkout was accepted. Payment is pending; continue in My Learning.'),
+    page.getByText(
+      'Mock checkout was accepted. Payment is pending; learning access is not available yet.',
+    ),
   ).toBeVisible();
-  await page.getByRole('link', { name: 'Check My Learning' }).press('Enter');
-  await expect(page.getByRole('heading', { name: 'My learning' })).toBeVisible();
-  await expect(page.getByText('Payment pending')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Check My Learning' })).toHaveCount(0);
   for (const width of [320, 390, 768, 1280, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     const geometry = await assertNoOverflow(page);
@@ -170,7 +188,7 @@ test('sends one checkout POST, labels accepted payment as pending, and preserves
   expect(consoleErrors).toEqual([]);
 });
 
-test('keeps a 5xx checkout locked after unchanged-cart reconciliation and directs the student to My Learning', async ({
+test('keeps a 5xx checkout locked after unchanged-cart reconciliation with actionless guidance', async ({
   page,
 }) => {
   await installStudent(page);
@@ -204,134 +222,14 @@ test('keeps a 5xx checkout locked after unchanged-cart reconciliation and direct
   await page.getByRole('button', { name: 'Check checkout status' }).press('Enter');
   await expect(
     page.getByText(
-      'Your cart still cannot prove whether checkout partially completed. Check My Learning before taking another checkout action.',
+      'Your cart still cannot prove whether checkout partially completed. Do not start another checkout action.',
     ),
   ).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Check My Learning' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Check My Learning' })).toHaveCount(0);
   await expect(checkout).toBeDisabled();
   await checkout.press('Enter');
   await checkout.click({ force: true });
   expect(checkoutPosts).toBe(1);
-});
-
-test('supports explicit mock-payment success and failure while only observed active enrollment unlocks progress', async ({
-  page,
-}) => {
-  await installStudent(page);
-  let enrollmentStatus: EnrollmentStatus = 'pending_payment';
-  let paymentPosts = 0;
-  await routeCheckoutApi(page, async (route, path, method) => {
-    if (path === '/me') return json(route, student);
-    if (path === '/cart' && method === 'GET') {
-      expect(route.request().headers().authorization).toBe('Bearer student-token');
-      return json(route, cart([]));
-    }
-    if (path === '/enrollments/4')
-      return json(route, { ...pendingEnrollment, status: enrollmentStatus });
-    if (path === '/payments/complete') {
-      paymentPosts += 1;
-      const body = route.request().postDataJSON() as MockPaymentCompletionRequestDto;
-      const completionStatus: MockPaymentCompletionStatusDto =
-        body.status === 'success' ? 'active' : 'cancelled';
-      enrollmentStatus = completionStatus;
-      return json(route, { enrollment_id: 4, status: completionStatus, message: 'mock' });
-    }
-    if (path === '/courses/7/progress')
-      return json(route, {
-        course_id: 7,
-        completed_lessons: 0,
-        total_lessons: 0,
-        progress_percentage: 0,
-      });
-    if (path === '/courses/7/lessons')
-      return json(route, {
-        items: [],
-        page: 1,
-        page_size: 100,
-        total: 0,
-        pages: 0,
-        has_next: false,
-        has_previous: false,
-      });
-    throw new Error(`Unexpected request ${method} ${path}`);
-  });
-  await page.goto('/learning/enrollments/4');
-  await page.getByRole('button', { name: 'Complete mock payment' }).dblclick();
-  await expect.poll(() => paymentPosts).toBe(1);
-  await expect(page.getByRole('heading', { name: 'Learning progress' })).toBeVisible();
-  const submittedPayment = page.getByRole('status').filter({ hasText: 'Mock payment submitted' });
-  await expect(submittedPayment).toBeVisible();
-  const progressTopBeforeDismiss = await page
-    .getByRole('heading', { name: 'Learning progress' })
-    .evaluate((element) => element.getBoundingClientRect().top);
-  await page.waitForTimeout(4500);
-  await expect(submittedPayment).toBeVisible();
-  await expect(submittedPayment).toHaveCount(0, { timeout: 1000 });
-  await expect
-    .poll(() =>
-      page
-        .getByRole('heading', { name: 'Learning progress' })
-        .evaluate((element) => element.getBoundingClientRect().top),
-    )
-    .toBeLessThan(progressTopBeforeDismiss);
-  await page.goto('/learning/enrollments/4');
-  enrollmentStatus = 'pending_payment';
-  await expect(page.getByRole('button', { name: 'Simulate mock payment failure' })).toBeVisible();
-  await page.getByRole('button', { name: 'Simulate mock payment failure' }).click();
-  await expect(page.getByText('Cancelled')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Learning progress' })).toHaveCount(0);
-  expect(paymentPosts).toBe(2);
-});
-
-test('keeps an unknown mock payment locked with no second POST until status reconciliation observes pending', async ({
-  page,
-}) => {
-  await installStudent(page);
-  let paymentPosts = 0;
-  await routeCheckoutApi(page, async (route, path, method) => {
-    if (path === '/me') return json(route, student);
-    if (path === '/cart' && method === 'GET') {
-      expect(route.request().headers().authorization).toBe('Bearer student-token');
-      return json(route, cart([]));
-    }
-    if (path === '/enrollments/4') {
-      return json(route, { ...pendingEnrollment, status: 'pending_payment' });
-    }
-    if (path === '/payments/complete') {
-      paymentPosts += 1;
-      await route.abort('failed');
-      return;
-    }
-    if (path === '/courses/7/progress')
-      return json(route, {
-        course_id: 7,
-        completed_lessons: 0,
-        total_lessons: 0,
-        progress_percentage: 0,
-      });
-    if (path === '/courses/7/lessons')
-      return json(route, {
-        items: [],
-        page: 1,
-        page_size: 100,
-        total: 0,
-        pages: 0,
-        has_next: false,
-        has_previous: false,
-      });
-    throw new Error(`Unexpected request ${method} ${path}`);
-  });
-  await page.goto('/learning/enrollments/4');
-  await page.getByRole('button', { name: 'Complete mock payment' }).click();
-  await expect(page.getByText('Payment status needs checking')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Complete mock payment' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Simulate mock payment failure' })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Check payment status' }).click();
-  await expect(page.getByText('Payment remains pending')).toBeVisible();
-  expect(paymentPosts).toBe(1);
-  await expect(page.getByRole('button', { name: 'Complete mock payment' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Simulate mock payment failure' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Check payment status' })).toHaveCount(0);
 });
 
 for (const scenario of [
@@ -380,18 +278,68 @@ for (const scenario of [
       if (scenario.name === 'conflict') {
         await expect(
           alert.getByText(
-            'Your enrollment changed. Check My Learning before taking another action.',
+            'Your enrollment changed. Checkout cannot confirm a payment result or learning access.',
             { exact: true },
           ),
         ).toBeVisible();
         await expect(
           alert.getByRole('link', { name: 'Check My Learning', exact: true }),
-        ).toBeVisible();
+        ).toHaveCount(0);
       }
     }
     await expect(page.locator('body')).not.toContainText('private');
     expect(posts).toBe(1);
   });
+
+for (const locale of ['en', 'ru', 'uz'] as const)
+  for (const result of ['accepted', 'conflict'] as const) {
+    test(`renders canonical ${result === 'accepted' ? 'C0109' : 'C0119'} Cart notice in ${locale} without terminal inference`, async ({
+      page,
+    }) => {
+      const copy = checkoutTerminalCopy[locale];
+      let currentCart = cart();
+      let checkoutPosts = 0;
+      await installStudent(page);
+      await routeCheckoutApi(page, async (route, path, method) => {
+        if (path === '/me') return json(route, student);
+        if (path === '/cart' && method === 'GET') return json(route, currentCart);
+        if (path === '/cart/checkout') {
+          checkoutPosts += 1;
+          if (result === 'accepted') {
+            currentCart = cart([]);
+            return json(route, { message: 'Checkout successful.', enrolled_courses: 1 });
+          }
+          return json(route, { detail: 'private' }, 409);
+        }
+        throw new Error(`Unexpected localized terminal request ${method} ${path}`);
+      });
+
+      await page.goto('/cart');
+      if (locale !== 'en') {
+        await page.getByRole('button', { name: 'Change language' }).press('Enter');
+        await page
+          .getByRole('button', { name: locale === 'ru' ? 'Русский' : "O'zbek", exact: true })
+          .press('Enter');
+      }
+      await page.getByRole('button', { name: copy.mockCheckout, exact: true }).press('Enter');
+      const notice = page.getByText(result === 'accepted' ? copy.acceptedBody : copy.conflictBody, {
+        exact: true,
+      });
+      await expect(notice).toBeVisible();
+      const feedbackNotice = notice.locator(
+        'xpath=ancestor::*[@role="status" or @role="alert"][1]',
+      );
+      await expect(feedbackNotice).toContainText(
+        result === 'accepted' ? copy.acceptedTitle : copy.conflictTitle,
+      );
+      await expect(feedbackNotice.getByRole('link')).toHaveCount(0);
+      for (const label of obsoletePaymentControlLabels)
+        await expect(page.getByRole('button', { name: label, exact: true })).toHaveCount(0);
+      expect(checkoutPosts).toBe(1);
+      await page.waitForTimeout(150);
+      expect(checkoutPosts).toBe(1);
+    });
+  }
 
 for (const locale of ['en', 'ru', 'uz'] as const) {
   test(`localizes checkout reconciliation and preserves one-write recovery in ${locale}`, async ({

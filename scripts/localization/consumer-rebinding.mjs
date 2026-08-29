@@ -10,7 +10,7 @@ import {
 } from './corpus-engine.mjs';
 import { assertDistinctFileTargets, commitReviewTransaction } from './review-exchange.mjs';
 
-const TASK_ID = /^FE-\d{3}$/;
+const TASK_ID = /^(FE|CRF)-\d{3}$/;
 
 function sameJsonValue(left, right) {
   if (Object.is(left, right)) return true;
@@ -245,7 +245,7 @@ function recoverableCurrentGraphViolations({ sourcePath, functionName, bindingNa
 
 function validateTaskId(taskId) {
   if (typeof taskId !== 'string' || !TASK_ID.test(taskId))
-    throw new Error('taskId must be an exact FE-NNN identifier');
+    throw new Error('taskId must be an exact FE-NNN or CRF-NNN identifier');
 }
 
 function sourceFilePath(sourceRoot, sourcePath) {

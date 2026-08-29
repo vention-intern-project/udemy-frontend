@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { queryKeys } from '@entities/api';
+import { enrollmentCourseActionPreflight } from '@entities/enrollment';
 import { ApiError, type SessionCacheEpoch } from '@shared/api';
 import { useSession, type SessionContextValue } from '@features/auth-session';
 import { cartQueryKey, requestCart } from '@features/cart-workflow';
@@ -186,15 +187,26 @@ export function useCourseDetail(courseId: number | null) {
     if (!preflightEnabled) return 'not-required';
     if (cart.isPending || enrollments.isPending) return 'loading';
     if (cart.isError || enrollments.isError) return 'unavailable';
-    if (enrollments.data?.items.some((item) => item.courseId === courseId))
-      return 'already-enrolled';
+    const enrollmentPreflight = enrollmentCourseActionPreflight(
+      enrollments.data?.items ?? [],
+      courseId ?? 0,
+    );
+    if (enrollmentPreflight === 'active-entitlement') return 'already-enrolled';
+    if (enrollmentPreflight === 'pending-protected') return 'unavailable';
     if (cart.data?.items.some((item) => item.courseId === courseId)) return 'already-in-cart';
+    if (
+      enrollmentPreflight === 'cancelled-recovery' &&
+      detail.data !== undefined &&
+      /^0(?:\.0+)?$/.test(detail.data.price)
+    )
+      return 'unavailable';
     return 'eligible';
   }, [
     cart.data,
     cart.isError,
     cart.isPending,
     courseId,
+    detail.data,
     enrollments.data,
     enrollments.isError,
     enrollments.isPending,
