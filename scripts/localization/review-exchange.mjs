@@ -11,8 +11,8 @@ import { basename, dirname, join, normalize, resolve } from 'node:path';
 
 import {
   SUPPLIED_REVIEW_ARTIFACT,
+  SUPPLIED_REVIEW_ARTIFACT_UNIT_IDS,
   SUPPLIED_REVIEW_PROTECTED_SOURCE_IDENTITY_SHA256,
-  approveSuppliedReviewArtifactCandidate,
   readCorpus,
   serializeGeneratedResources,
   transitionLocaleCandidate,
@@ -51,6 +51,9 @@ export const REVIEW_REPORT_STATES = Object.freeze([
 ]);
 
 const REVIEW_LOCALES = new Set(['ru', 'uz']);
+const SUPPLIED_REVIEW_ARTIFACT_UNIT_ID_SET = new Set(SUPPLIED_REVIEW_ARTIFACT_UNIT_IDS);
+const SUPPLIED_REVIEW_PROTECTED_PROVENANCE_IDENTITY_SHA256 =
+  'EE4C751748D1A7CD96D3E05F4A98A37F871474B8ECC0638CB789A5BFEB244024';
 const REVIEW_VERDICTS = new Set(['approve', 'request_changes', 'withdraw']);
 const UTC_MILLISECOND_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const REPORTABLE_UNIT_ID = /^(?:MLUX-C\d{4}|MLUX-003-S\d{3})$/;
@@ -234,6 +237,126 @@ function validUtcMillisecondInstant(value) {
     Number.isFinite(Date.parse(value)) &&
     new Date(value).toISOString() === value
   );
+}
+
+function suppliedArtifactDigest(value) {
+  return `sha256:${createHash('sha256')
+    .update(JSON.stringify(stable(value)))
+    .digest('hex')}`;
+}
+
+function suppliedArtifactSourceIdentity(corpus, field) {
+  const units = new Map(corpus.units.map((unit) => [unit?.id, unit]));
+  if (!SUPPLIED_REVIEW_ARTIFACT_UNIT_IDS.every((id) => units.has(id))) return null;
+  return createHash('sha256')
+    .update(
+      JSON.stringify(SUPPLIED_REVIEW_ARTIFACT_UNIT_IDS.map((id) => [id, units.get(id)[field]])),
+    )
+    .digest('hex')
+    .toUpperCase();
+}
+
+function assertHistoricalImporterBoundary(corpus, inspection, approvalRecordedAt, entries) {
+  if (!validUtcMillisecondInstant(approvalRecordedAt))
+    throw new Error('supplied review artifact approval time is invalid');
+  if (inspection.artifactSha256 !== SUPPLIED_REVIEW_ARTIFACT.artifactSha256)
+    throw new Error('supplied review artifact hash is not authorized');
+  if (stableJson(inspection.artifactIds) !== stableJson(SUPPLIED_REVIEW_ARTIFACT_UNIT_IDS))
+    throw new Error('supplied review artifact IDs are not the authorized ordered boundary');
+  if (
+    suppliedArtifactSourceIdentity(corpus, 'sourceRevision') !==
+      SUPPLIED_REVIEW_PROTECTED_SOURCE_IDENTITY_SHA256 ||
+    suppliedArtifactSourceIdentity(corpus, 'migrationProvenance') !==
+      SUPPLIED_REVIEW_PROTECTED_PROVENANCE_IDENTITY_SHA256
+  )
+    throw new Error(
+      'supplied review artifact protected source or provenance identity is not authorized',
+    );
+  const keys = new Set();
+  for (const entry of entries) {
+    if (
+      !entry ||
+      !SUPPLIED_REVIEW_ARTIFACT_UNIT_ID_SET.has(entry.id) ||
+      !REVIEW_LOCALES.has(entry.locale) ||
+      typeof entry.replacement !== 'string' ||
+      entry.replacement.trim() !== entry.replacement
+    )
+      throw new Error('supplied review artifact import entries are invalid');
+    const key = `${entry.id}/${entry.locale}`;
+    if (keys.has(key)) throw new Error('supplied review artifact import entries are duplicated');
+    keys.add(key);
+  }
+}
+
+function approveHistoricalImporterEntries(corpus, inspection, approvalRecordedAt, entries) {
+  assertHistoricalImporterBoundary(corpus, inspection, approvalRecordedAt, entries);
+  const next = structuredClone(corpus);
+  const units = new Map(next.units.map((unit) => [unit.id, unit]));
+  for (const entry of entries) {
+    const unit = units.get(entry.id);
+    const candidate = unit?.locales?.[entry.locale];
+    if (
+      !candidate ||
+      candidate.status !== 'draft' ||
+      candidate.requestedAt !== null ||
+      candidate.sourceRevision !== unit.sourceRevision ||
+      candidate.history.length !== 0
+    )
+      throw new Error(
+        `${entry.id}/${entry.locale}: supplied artifact authority requires a pristine historical draft`,
+      );
+    if (entry.replacement && !exactReplacementPlaceholders(entry.replacement, unit, entry.locale))
+      throw new Error(
+        `${entry.id}/${entry.locale}: supplied replacement placeholder contract drift`,
+      );
+    const nextCandidate = entry.replacement || candidate.candidate;
+    const request = {
+      type: 'transition',
+      from: 'draft',
+      to: 'review_requested',
+      previousCandidate: candidate.candidate,
+      nextCandidate: candidate.candidate,
+      sourceRevision: candidate.sourceRevision,
+      suppliedArtifactImport: {
+        artifactSha256: SUPPLIED_REVIEW_ARTIFACT.artifactSha256,
+        candidateSha256: suppliedArtifactDigest(candidate.candidate),
+        protectedSourceIdentitySha256: SUPPLIED_REVIEW_PROTECTED_SOURCE_IDENTITY_SHA256,
+        unitId: unit.id,
+        unitProvenanceSha256: suppliedArtifactDigest(unit.migrationProvenance),
+        unitSourceRevision: unit.sourceRevision,
+      },
+    };
+    const suppliedArtifactApproval = {
+      reviewerId: null,
+      reviewedAt: null,
+      approvalRecordedAt,
+      approvalAuthority: { ...SUPPLIED_REVIEW_ARTIFACT },
+    };
+    unit.locales[entry.locale] = {
+      ...candidate,
+      candidate: nextCandidate,
+      status: 'approved',
+      reviewerId: null,
+      verdict: 'approved',
+      requestedAt: null,
+      reviewedAt: null,
+      approvalRecordedAt,
+      approvalAuthority: { ...SUPPLIED_REVIEW_ARTIFACT },
+      history: [
+        request,
+        {
+          type: 'transition',
+          from: 'review_requested',
+          to: 'approved',
+          previousCandidate: candidate.candidate,
+          nextCandidate,
+          sourceRevision: candidate.sourceRevision,
+          suppliedArtifactApproval,
+        },
+      ],
+    };
+  }
+  return next;
 }
 
 function placeholderNames(value, renderingContract) {
@@ -944,10 +1067,15 @@ export async function importSuppliedReviewArtifact({
   const corpus = await readCorpus(registryPath);
   if (!Array.isArray(corpus?.units))
     throw new Error('supplied review artifact corpus units must be an array');
+  const currentViolations = validateCorpus(corpus);
+  if (currentViolations.length > 0)
+    throw new ReviewPackError(
+      currentViolations.map((violation) => `current corpus validation: ${violation}`),
+    );
   const inspection = inspectSuppliedReviewArtifact({ bytes, corpus });
   if (!inspection.protectedSourceIdentityMatches) return inspection.report;
-  const next = structuredClone(corpus);
-  const units = new Map(next.units.map((unit) => [unit.id, unit]));
+  const units = new Map(corpus.units.map((unit) => [unit.id, unit]));
+  const entries = [];
   for (const row of inspection.exactRows) {
     const unit = units.get(row.id);
     for (const locale of ['ru', 'uz']) {
@@ -959,14 +1087,10 @@ export async function importSuppliedReviewArtifact({
       const replacement = row[`${locale}Replacement`].trim();
       if (replacement && !exactReplacementPlaceholders(replacement, unit, locale))
         throw new Error(`${row.id}/${locale}: supplied replacement placeholder contract drift`);
-      const requested = transitionLocaleCandidate(candidate, 'review_requested');
-      unit.locales[locale] = approveSuppliedReviewArtifactCandidate(requested, {
-        artifactSha256: inspection.artifactSha256,
-        approvalRecordedAt,
-        ...(replacement ? { newCandidate: replacement } : {}),
-      });
+      entries.push({ id: row.id, locale, replacement });
     }
   }
+  const next = approveHistoricalImporterEntries(corpus, inspection, approvalRecordedAt, entries);
   const violations = validateCorpus(next);
   if (violations.length > 0)
     throw new ReviewPackError(violations.map((violation) => `corpus validation: ${violation}`));

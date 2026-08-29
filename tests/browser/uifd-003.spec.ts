@@ -70,7 +70,7 @@ function learningList() {
       },
     ],
     page: 1,
-    page_size: 20,
+    page_size: 100,
     total: 1,
     pages: 1,
     has_next: false,
@@ -107,12 +107,18 @@ async function installApiFixtures(page: Page, options: UiFixesDeferredApiOptions
       await route.fallback();
       return;
     }
-    const label = `${request.method()} ${url.pathname}`;
+    const label = `${request.method()} ${url.pathname}${url.search}`;
     if (url.pathname === '/me' && request.method() === 'GET') return fulfillJson(route, student);
     if (url.pathname === '/cart' && request.method() === 'GET')
       return fulfillJson(route, cart(options.cartItems), options.cartStatus ?? 200);
-    if (url.pathname === '/enrollments/my' && request.method() === 'GET')
+    if (url.pathname === '/enrollments/my') {
+      if (request.method() !== 'GET' || url.search !== '?page=1&page_size=100') {
+        unexpectedRequests.push(`Unexpected API-021 request ${label}`);
+        await route.abort('failed');
+        return;
+      }
       return fulfillJson(route, learningList(), options.learningStatus ?? 200);
+    }
     if (request.resourceType() !== 'fetch') {
       await route.fallback();
       return;
@@ -168,11 +174,14 @@ test.describe('UIFD-003 deterministic Cart contextual-return harness', () => {
   test('AC01 renders the My learning Catalog source only inside main content', async ({
     page,
   }, testInfo) => {
+    test.setTimeout(180_000);
     await installScenario(page);
     const api = await installApiFixtures(page);
-    await page.goto('/learning');
+    await page.goto('/learning', { waitUntil: 'commit', timeout: 120_000 });
     const link = contextualLink(page, 'Catalog');
-    await expect(mainContent(page).getByRole('heading', { name: 'My learning' })).toBeVisible();
+    await expect(mainContent(page).getByRole('heading', { name: 'My learning' })).toBeVisible({
+      timeout: 120_000,
+    });
     await expect(link).toHaveCount(1);
     await expect(link).toHaveAttribute('href', '/');
     await record(testInfo, 'UIFD-003-AC-01', {

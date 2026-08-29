@@ -29,12 +29,14 @@ export function requireAuthWorkflowRuntimeEvidence(page: Page): AuthRuntimeEvide
 const emptyLearningEnrollments = {
   items: [],
   page: 1,
-  page_size: 20,
+  page_size: 100,
   total: 0,
   pages: 0,
   has_next: false,
   has_previous: false,
 };
+
+export const AUTH_MY_LEARNING_COLLECTION_PATH = '/enrollments/my?page=1&page_size=100';
 
 const emptyCart = {
   id: 1,
@@ -75,7 +77,7 @@ export async function installAuthWorkflowRuntime(page: Page) {
 
 export async function installAuthAdmissionRoutes(page: Page) {
   await page.route(
-    (url) => url.pathname === '/enrollments/my' && url.search === '?page=1&page_size=20',
+    (url) => `${url.pathname}${url.search}` === AUTH_MY_LEARNING_COLLECTION_PATH,
     async (route) => {
       const request = route.request();
       expect(request.method()).toBe('GET');
@@ -702,7 +704,7 @@ export async function runAuthWorkflowReflowScenario(
     { method: 'GET', path: '/cart', errorText: 'net::ERR_ABORTED', occurrences: 2 },
     {
       method: 'GET',
-      path: '/enrollments/my?page=1&page_size=20',
+      path: AUTH_MY_LEARNING_COLLECTION_PATH,
       errorText: 'net::ERR_ABORTED',
       occurrences: 2,
     },

@@ -1,6 +1,7 @@
 import { createServer } from 'vite';
 
-const courseDetailOrigin = 'http://127.0.0.1:4176';
+const courseDetailPort = Number.parseInt(process.env.COURSE_DETAIL_TEST_PORT ?? '4176', 10);
+export const courseDetailOrigin = `http://127.0.0.1:${courseDetailPort}`;
 const readinessDeadlineMs = 60_000;
 const readinessPollIntervalMs = 100;
 
@@ -58,12 +59,13 @@ export async function waitForHtmlServerReady(origin: string, options: HtmlReadin
 }
 
 export default async function startCourseDetailServer() {
+  if (process.env.COURSE_DETAIL_SERVER_ALREADY_RUNNING === '1') return async () => undefined;
   const server = await createServer({
     clearScreen: false,
     logLevel: 'warn',
     envFile: false,
     appType: 'spa',
-    server: { host: '127.0.0.1', port: 4176, strictPort: true },
+    server: { host: '127.0.0.1', port: courseDetailPort, strictPort: true },
   });
   try {
     await server.listen();

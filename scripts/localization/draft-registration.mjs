@@ -7,7 +7,7 @@ import {
 } from './corpus-engine.mjs';
 import { assertDistinctFileTargets, commitReviewTransaction } from './review-exchange.mjs';
 
-const TASK_ID = /^FE-\d{3}$/;
+const TASK_ID = /^(FE|CRF)-\d{3}$/;
 const UNIT_ID = /^MLUX-C(\d{4})$/;
 const OCCURRENCE_ID = /^MLUX-O(\d{4})$/;
 const UNIT_KEYS = ['context', 'english', 'key', 'namespace', 'ru', 'uz'];
@@ -42,7 +42,7 @@ function requiredText(value, label) {
 
 function validateInput(taskId, units) {
   if (typeof taskId !== 'string' || !TASK_ID.test(taskId))
-    throw new Error('taskId must be an exact FE-NNN identifier');
+    throw new Error('taskId must be an exact FE-NNN or CRF-NNN identifier');
   if (!Array.isArray(units) || units.length === 0)
     throw new Error('units must be a non-empty array');
   const keys = new Set();

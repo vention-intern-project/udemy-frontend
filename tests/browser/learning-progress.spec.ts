@@ -1,6 +1,6 @@
 import { Buffer } from 'node:buffer';
 
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page, type Request } from '@playwright/test';
 import {
   fulfillLearningJson,
   installLearningAdmissionRoutes,
@@ -34,19 +34,111 @@ const enrollment = {
   },
 };
 
+type BrowserEnrollmentStatus = 'active' | 'cancelled';
+
+interface BrowserLearningEnrollment {
+  readonly id: number;
+  readonly user_id: number;
+  readonly course_id: number;
+  readonly status: BrowserEnrollmentStatus;
+  readonly created_at: string;
+  readonly updated_at: string;
+  readonly course: {
+    readonly id: number;
+    readonly title: string;
+    readonly description: null;
+    readonly price: string;
+    readonly currency: string;
+  };
+}
+
+interface BrowserLearningCollectionPage {
+  readonly items: readonly BrowserLearningEnrollment[];
+  readonly page: number;
+  readonly page_size: 100;
+  readonly total: number;
+  readonly pages: number;
+  readonly has_next: boolean;
+  readonly has_previous: boolean;
+}
+
+type Api021RequestState = 'pending' | 'finished' | 'failed';
+
+interface Api021RequestLifecycle {
+  readonly identity: string;
+  readonly request: Request;
+  failureText: string | null;
+  state: Api021RequestState;
+}
+
+function browserLearningEnrollment(
+  id: number,
+  status: BrowserEnrollmentStatus,
+  title: string,
+): BrowserLearningEnrollment {
+  return {
+    ...enrollment,
+    id,
+    course_id: id + 1000,
+    status,
+    course: { ...enrollment.course, id: id + 1000, title },
+  };
+}
+
+function browserLearningCollectionPage(page: number): BrowserLearningCollectionPage {
+  if (page === 1) {
+    const items = Array.from({ length: 100 }, (_, index) => {
+      const id = index + 1;
+      return browserLearningEnrollment(
+        id,
+        index < 80 ? 'cancelled' : 'active',
+        index < 80 ? `Cancelled enrollment ${id}` : `Collected active enrollment ${id}`,
+      );
+    });
+    return {
+      items,
+      page: 1,
+      page_size: 100,
+      total: 101,
+      pages: 2,
+      has_next: true,
+      has_previous: false,
+    };
+  }
+  return {
+    items: [browserLearningEnrollment(101, 'active', 'Collected active enrollment 101')],
+    page: 2,
+    page_size: 100,
+    total: 101,
+    pages: 2,
+    has_next: false,
+    has_previous: true,
+  };
+}
+
+function validateApi021CollectionRequest(method: string, url: URL, failures: string[]): void {
+  if (
+    method === 'GET' &&
+    url.searchParams.size === 2 &&
+    url.searchParams.get('page') === '1' &&
+    url.searchParams.get('page_size') === '100'
+  )
+    return;
+  failures.push(`Unexpected API-021 collection request ${method} ${url.pathname}${url.search}`);
+}
+
 interface LearningResidualBrowserCopy {
   readonly absentDescription: string;
   readonly breadcrumb: string;
   readonly catalog: string;
+  readonly completeMockPayment: string;
   readonly myLearning: string;
   readonly paymentPending: string;
   readonly pendingBody: string;
-  readonly failedAction: string;
-  readonly declinedTitle: string;
-  readonly declinedBody: string;
   readonly progressHeading: string;
   readonly progressSummary: string;
   readonly progressAccessibleName: string;
+  readonly simulateMockPaymentFailure: string;
 }
 
 const learningResidualBrowserCopy: Readonly<
@@ -56,46 +148,41 @@ const learningResidualBrowserCopy: Readonly<
     absentDescription: 'No course description is available.',
     breadcrumb: 'Breadcrumb',
     catalog: 'Catalog',
+    completeMockPayment: 'Complete mock payment',
     myLearning: 'My learning',
     paymentPending: 'Payment pending',
-    pendingBody:
-      'Mock payment is awaiting completion. Learning remains locked until your enrollment is active.',
-    failedAction: 'Simulate mock payment failure',
-    declinedTitle: 'Mock payment declined',
-    declinedBody: 'The mock payment was declined. This enrollment remains locked.',
+    pendingBody: 'Payment is pending. Learning remains locked until your enrollment is active.',
     progressHeading: 'Learning progress',
     progressSummary: '2 of 5 lessons completed',
     progressAccessibleName: '2 of 5 lessons completed, 40%',
+    simulateMockPaymentFailure: 'Simulate mock payment failure',
   },
   ru: {
     absentDescription: 'Описание курса отсутствует.',
     breadcrumb: 'Хлебные крошки',
     catalog: 'Каталог',
+    completeMockPayment: 'Завершить тестовую оплату',
     myLearning: 'Моё обучение',
     paymentPending: 'Платёж ожидается',
     pendingBody:
-      'Тестовая оплата ожидает завершения. Обучение останется заблокированным, пока запись не станет активной.',
-    failedAction: 'Сымитировать сбой тестовой оплаты',
-    declinedTitle: 'Тестовый платёж отклонён',
-    declinedBody: 'Тестовая оплата отклонена. Эта запись остаётся заблокированной.',
+      'Платёж ожидает обработки. Обучение останется заблокированным, пока ваша запись не станет активной.',
     progressHeading: 'Прогресс обучения',
     progressSummary: 'Завершено: 2 из 5 уроков',
     progressAccessibleName: 'Завершено: 2 из 5 уроков, 40%',
+    simulateMockPaymentFailure: 'Сымитировать сбой тестовой оплаты',
   },
   uz: {
     absentDescription: 'Kurs tavsifi mavjud emas.',
     breadcrumb: 'Yo‘l ko‘rsatkich',
     catalog: 'Katalog',
+    completeMockPayment: 'Sinov to‘lovini yakunlash',
     myLearning: 'Ta’limim',
     paymentPending: 'To‘lov kutilmoqda',
-    pendingBody:
-      'Sinov to‘lovi yakunlanishini kutmoqda. Ro‘yxatdan o‘tishingiz faol bo‘lmaguncha ta’lim yopiq qoladi.',
-    failedAction: 'Sinov to‘lovi xatosini taqlid qilish',
-    declinedTitle: 'Sinov to‘lovi rad etildi',
-    declinedBody: 'Sinov to‘lovi rad etildi. Bu ro‘yxatdan o‘tish yopiq qoladi.',
+    pendingBody: 'To‘lov kutilmoqda. Ro‘yxatdan o‘tishingiz faol bo‘lmaguncha ta’lim yopiq qoladi.',
     progressHeading: 'Ta’lim jarayoni',
     progressSummary: '5 ta darsdan 2 tasi yakunlandi',
     progressAccessibleName: '5 ta darsdan 2 tasi yakunlandi, 40%',
+    simulateMockPaymentFailure: 'Sinov to‘lovi xatosini taqlid qilish',
   },
 };
 const VALID_VIDEO_MP4 = Buffer.from(
@@ -512,7 +599,7 @@ test('renders the My learning empty state within its responsive geometry', async
       return json(route, {
         items: [],
         page: 1,
-        page_size: 20,
+        page_size: 100,
         total: 0,
         pages: 0,
         has_next: false,
@@ -610,6 +697,80 @@ test('renders the My learning empty state within its responsive geometry', async
     await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 });
     await cdp.detach();
   }
+  expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
+  expect(diagnostics.httpFailures).toEqual([]);
+});
+
+test('collects later active enrollment pages before client-paginating My learning', async ({
+  page,
+}) => {
+  await installStudent(page);
+  const diagnostics = captureRuntimeDiagnostics(page, {
+    abortedRequests: [expectedGetAbort('/enrollments/my', 1)],
+  });
+  const enrollmentRequests: Api021RequestLifecycle[] = [];
+  const unexpectedRequests: string[] = [];
+  page.on('requestfinished', (request) => {
+    const lifecycle = enrollmentRequests.find((candidate) => candidate.request === request);
+    if (lifecycle) lifecycle.state = 'finished';
+  });
+  page.on('requestfailed', (request) => {
+    const lifecycle = enrollmentRequests.find((candidate) => candidate.request === request);
+    if (!lifecycle) return;
+    lifecycle.state = 'failed';
+    lifecycle.failureText = request.failure()?.errorText ?? null;
+  });
+  await page.route('**/*', async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.origin !== 'http://127.0.0.1:4179') return route.fallback();
+    if (url.pathname === '/me') return json(route, student);
+    if (url.pathname === '/enrollments/my') {
+      const serverPage = Number(url.searchParams.get('page'));
+      const pageSize = url.searchParams.get('page_size');
+      enrollmentRequests.push({
+        identity: `${serverPage}:${pageSize}`,
+        request,
+        failureText: null,
+        state: 'pending',
+      });
+      if (pageSize !== '100' || (serverPage !== 1 && serverPage !== 2)) {
+        unexpectedRequests.push(`Invalid API-021 query ${url.search}`);
+        return json(route, { detail: 'invalid test route' }, 400);
+      }
+      return json(route, browserLearningCollectionPage(serverPage));
+    }
+    if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/')) {
+      unexpectedRequests.push(`Unexpected learning request ${request.method()} ${url.pathname}`);
+      return json(route, { detail: 'unexpected test route' }, 404);
+    }
+    return route.fallback();
+  });
+
+  await page.goto('/learning');
+  await expect(page.getByRole('heading', { name: 'My learning' })).toBeVisible();
+  await expect(page.getByText('21 enrollments · Page 1 of 2')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Collected active enrollment 81' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Start your learning journey' })).toHaveCount(0);
+  await expect(page.getByText('Cancelled enrollment 1')).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Go to next page' }).click();
+  await expect(page).toHaveURL(/\/learning\?page=2$/);
+  await expect(page.getByText('21 enrollments · Page 2 of 2')).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Collected active enrollment 101' }),
+  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'My learning' })).toBeFocused();
+  await expect.poll(() => enrollmentRequests.every(({ state }) => state !== 'pending')).toBe(true);
+  expect(
+    enrollmentRequests.filter(({ state }) => state === 'finished').map(({ identity }) => identity),
+  ).toEqual(['1:100', '2:100', '1:100', '2:100']);
+  expect(
+    enrollmentRequests
+      .filter(({ state }) => state === 'failed')
+      .map(({ failureText, identity }) => `${identity}:${failureText}`),
+  ).toEqual(['1:100:net::ERR_ABORTED']);
+  expect(unexpectedRequests).toEqual([]);
   expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
   expect(diagnostics.httpFailures).toEqual([]);
 });
@@ -1122,6 +1283,7 @@ test('aborts a pending authorized media request when the workspace unmounts', as
       expectedGetAbort(mediaPath, 1),
     ],
   });
+  const api021RequestFailures: string[] = [];
   let releaseMediaResponse: () => void = () => undefined;
   const mediaResponseReleased = new Promise<void>((resolve) => {
     releaseMediaResponse = resolve;
@@ -1131,16 +1293,18 @@ test('aborts a pending authorized media request when the workspace unmounts', as
     const url = new URL(request.url());
     if (url.origin !== 'http://127.0.0.1:4179') return route.fallback();
     if (url.pathname === '/me') return json(route, student);
-    if (url.pathname === '/enrollments/my')
+    if (url.pathname === '/enrollments/my') {
+      validateApi021CollectionRequest(request.method(), url, api021RequestFailures);
       return json(route, {
         items: [],
         page: 1,
-        page_size: 20,
+        page_size: 100,
         total: 0,
         pages: 0,
         has_next: false,
         has_previous: false,
       });
+    }
     if (url.pathname === '/enrollments/4') return json(route, enrollment);
     if (url.pathname === '/courses/7/progress')
       return json(route, {
@@ -1195,6 +1359,7 @@ test('aborts a pending authorized media request when the workspace unmounts', as
     .toBe(1);
   expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
   expect(diagnostics.httpFailures).toEqual([]);
+  expect(api021RequestFailures).toEqual([]);
 });
 
 const deniedMediaScenarios = [
@@ -1922,6 +2087,7 @@ test('keeps student contextual navigation consistent across the DD-259 CSS-width
   });
   const longCourseTitle =
     'A deliberately long browser learning course title that must wrap without clipping the truthful current segment';
+  const api021RequestFailures: string[] = [];
   await page.route('**/*', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -1929,16 +2095,18 @@ test('keeps student contextual navigation consistent across the DD-259 CSS-width
     if (url.pathname.startsWith('/media/'))
       throw new Error('Media must not be requested by FE-011');
     if (url.pathname === '/me') return json(route, student);
-    if (url.pathname === '/enrollments/my')
+    if (url.pathname === '/enrollments/my') {
+      validateApi021CollectionRequest(request.method(), url, api021RequestFailures);
       return json(route, {
         items: [{ ...enrollment, course: { ...enrollment.course, title: longCourseTitle } }],
         page: 1,
-        page_size: 20,
+        page_size: 100,
         total: 1,
         pages: 1,
         has_next: false,
         has_previous: false,
       });
+    }
     if (url.pathname === '/enrollments/4')
       return json(route, {
         ...enrollment,
@@ -2006,6 +2174,7 @@ test('keeps student contextual navigation consistent across the DD-259 CSS-width
   }
   expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
   expect(diagnostics.httpFailures).toEqual([]);
+  expect(api021RequestFailures).toEqual([]);
 });
 
 for (const status of ['pending_payment', 'cancelled'] as const)
@@ -2036,13 +2205,13 @@ for (const status of ['pending_payment', 'cancelled'] as const)
       await expect(page.getByText('Payment pending', { exact: true }).last()).toBeVisible();
       await expect(
         page.getByText(
-          'Mock payment is awaiting completion. Learning remains locked until your enrollment is active.',
+          'Payment is pending. Learning remains locked until your enrollment is active.',
         ),
       ).toBeVisible();
-      await expect(page.getByRole('button', { name: 'Complete mock payment' })).toBeVisible();
-      await expect(
-        page.getByRole('button', { name: 'Simulate mock payment failure' }),
-      ).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Complete mock payment' })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'Simulate mock payment failure' })).toHaveCount(
+        0,
+      );
     } else {
       await expect(
         page.getByText('Learning progress is not available for this enrollment.'),
@@ -2055,8 +2224,81 @@ for (const status of ['pending_payment', 'cancelled'] as const)
     expect(diagnostics.httpFailures).toEqual([]);
   });
 
+test('renders only active enrollments in My Learning and keeps their workspace navigation', async ({
+  page,
+}) => {
+  await installStudent(page);
+  const writeRequests: string[] = [];
+  const api021RequestFailures: string[] = [];
+  page.on('request', (request) => {
+    const url = new URL(request.url());
+    if (
+      url.origin === 'http://127.0.0.1:4179' &&
+      !['GET', 'HEAD', 'OPTIONS'].includes(request.method())
+    ) {
+      writeRequests.push(`${request.method()} ${url.pathname}`);
+    }
+  });
+  await page.route('**/*', async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.origin !== 'http://127.0.0.1:4179') return route.fallback();
+    if (url.pathname === '/me') return json(route, student);
+    if (url.pathname === '/enrollments/my') {
+      validateApi021CollectionRequest(request.method(), url, api021RequestFailures);
+      return json(route, {
+        items: [
+          enrollment,
+          {
+            ...enrollment,
+            id: 5,
+            course_id: 8,
+            status: 'pending_payment',
+            course: { ...enrollment.course, id: 8, title: 'Pending list course' },
+          },
+          {
+            ...enrollment,
+            id: 6,
+            course_id: 9,
+            status: 'cancelled',
+            course: { ...enrollment.course, id: 9, title: 'Cancelled list course' },
+          },
+        ],
+        page: 1,
+        page_size: 100,
+        total: 3,
+        pages: 1,
+        has_next: false,
+        has_previous: false,
+      });
+    }
+    if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/'))
+      throw new Error(
+        `Unexpected non-active My Learning request ${request.method()} ${url.pathname}`,
+      );
+    return route.fallback();
+  });
+
+  await page.goto('/learning');
+  const activeCourse = page.getByRole('heading', { level: 2, name: enrollment.course.title });
+  await expect(activeCourse).toBeVisible();
+  const activeWorkspace = activeCourse
+    .locator('xpath=ancestor::li')
+    .getByRole('link', { name: 'Open course' });
+  await expect(activeWorkspace).toHaveAttribute('href', '/learning/enrollments/4');
+  await expect(page.getByRole('heading', { level: 2, name: 'Pending list course' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { level: 2, name: 'Cancelled list course' })).toHaveCount(
+    0,
+  );
+  await expect(page.locator('body')).not.toContainText(
+    /Payment pending|Payment is pending|Complete mock payment|Simulate mock payment failure/,
+  );
+  expect(writeRequests).toEqual([]);
+  expect(api021RequestFailures).toEqual([]);
+});
+
 for (const locale of ['en', 'ru', 'uz'] as const) {
-  test(`resolves the complete DRAFT-22 learning residual family and exact payment write in ${locale}`, async ({
+  test(`resolves the complete DRAFT-22 learning residual family without a payment write in ${locale}`, async ({
     page,
   }) => {
     test.slow();
@@ -2069,10 +2311,19 @@ for (const locale of ['en', 'ru', 'uz'] as const) {
         expectedGetAbort('/enrollments/4', 4),
         expectedGetAbort('/courses/7/progress', 2),
         expectedGetAbort('/courses/7/lessons', 2),
+        ...(locale === 'en'
+          ? [
+              expectedGetAbort(
+                '/src/pages/learning-list-page/assets/my-learning-empty-state-ui022.png',
+                1,
+              ),
+            ]
+          : []),
       ],
     });
     let enrollmentStatus: 'pending_payment' | 'cancelled' | 'active' = 'pending_payment';
     const writeRequests: string[] = [];
+    const api021RequestFailures: string[] = [];
     page.on('request', (request) => {
       const url = new URL(request.url());
       if (
@@ -2087,25 +2338,20 @@ for (const locale of ['en', 'ru', 'uz'] as const) {
       const url = new URL(request.url());
       if (url.origin !== 'http://127.0.0.1:4179') return route.fallback();
       if (url.pathname === '/me') return json(route, student);
-      if (url.pathname === '/enrollments/my')
+      if (url.pathname === '/enrollments/my') {
+        validateApi021CollectionRequest(request.method(), url, api021RequestFailures);
         return json(route, {
           items: [{ ...enrollment, status: enrollmentStatus }],
           page: 1,
-          page_size: 20,
+          page_size: 100,
           total: 1,
           pages: 1,
           has_next: false,
           has_previous: false,
         });
+      }
       if (url.pathname === '/enrollments/4')
         return json(route, { ...enrollment, status: enrollmentStatus });
-      if (url.pathname === '/payments/complete') {
-        expect(request.method()).toBe('POST');
-        expect(request.headers().authorization).toBe('Bearer student-token');
-        expect(request.postDataJSON()).toEqual({ enrollment_id: 4, status: 'failed' });
-        enrollmentStatus = 'cancelled';
-        return json(route, { enrollment_id: 4, status: 'cancelled', message: 'private mock' });
-      }
       if (url.pathname === '/courses/7/progress') {
         if (enrollmentStatus !== 'active')
           throw new Error(`Progress requested for ${enrollmentStatus} enrollment`);
@@ -2142,27 +2388,16 @@ for (const locale of ['en', 'ru', 'uz'] as const) {
         .press('Enter');
     }
     await expect(page).toHaveURL(/\/learning$/);
-    const listBreadcrumb = page.getByRole('navigation', { name: copy.breadcrumb });
-    await expect(listBreadcrumb.getByRole('link', { name: copy.catalog })).toHaveAttribute(
-      'href',
-      '/',
-    );
-    await expect(listBreadcrumb.locator('[aria-current="page"]')).toHaveText(`/${copy.myLearning}`);
 
     await page.goto('/learning/enrollments/4');
     await expect(page.getByText(copy.paymentPending, { exact: true }).last()).toBeVisible();
     await expect(page.getByText(copy.pendingBody, { exact: true })).toBeVisible();
-    const failedAction = page.getByRole('button', { name: copy.failedAction });
-    await tabTo(page, failedAction);
-    await expect(failedAction).toBeFocused();
-    await page.keyboard.press('Enter');
-    const declined = page.getByRole('alert');
-    await expect(declined).toContainText(copy.declinedTitle);
-    await expect(declined).toContainText(copy.declinedBody);
-    await expect(declined).toHaveAttribute('aria-live', 'assertive');
-    await expect(declined).toHaveAttribute('aria-atomic', 'true');
+    await expect(page.getByRole('button', { name: copy.completeMockPayment })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: copy.simulateMockPaymentFailure })).toHaveCount(
+      0,
+    );
     await expect(page.locator('body')).not.toContainText(/private mock|learning:\w+|a11y:\w+/);
-    expect(writeRequests).toEqual(['POST /payments/complete']);
+    expect(writeRequests).toEqual([]);
 
     enrollmentStatus = 'active';
     await page.reload();
@@ -2216,9 +2451,10 @@ for (const locale of ['en', 'ru', 'uz'] as const) {
       await cdp.detach();
     }
 
-    expect(writeRequests).toEqual(['POST /payments/complete']);
+    expect(writeRequests).toEqual([]);
     expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
     expect(diagnostics.httpFailures).toEqual([]);
+    expect(api021RequestFailures).toEqual([]);
   });
 }
 
@@ -2236,6 +2472,7 @@ test('supports keyboard traversal and restores focus after list and workspace re
   let listRecoveryEnabled = false;
   let workspaceRecoveryEnabled = false;
   const preListRecoveryDependents: string[] = [];
+  const api021RequestFailures: string[] = [];
   await page.route('**/*', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -2244,11 +2481,12 @@ test('supports keyboard traversal and restores focus after list and workspace re
       throw new Error('Media must not be requested by FE-011');
     if (url.pathname === '/me') return json(route, student);
     if (url.pathname === '/enrollments/my') {
+      validateApi021CollectionRequest(request.method(), url, api021RequestFailures);
       if (!listRecoveryEnabled) return json(route, { detail: 'private list failure' }, 500);
       return json(route, {
         items: [enrollment],
         page: 1,
-        page_size: 20,
+        page_size: 100,
         total: 1,
         pages: 1,
         has_next: false,
@@ -2370,4 +2608,5 @@ test('supports keyboard traversal and restores focus after list and workspace re
     'GET /courses/7/progress 500',
     'GET /courses/7/progress 500',
   ]);
+  expect(api021RequestFailures).toEqual([]);
 });

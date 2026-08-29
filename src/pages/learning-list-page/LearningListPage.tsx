@@ -1,10 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { ChevronLeft } from 'lucide-react';
-import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { Link, useSearchParams } from 'react-router-dom';
 
-import type { EnrollmentStatus } from '@entities/enrollment';
 import { useSession } from '@features/auth-session';
 import { learningFailure, useLearningList } from '@features/learning-progress';
 import {
@@ -24,12 +22,6 @@ function parsePage(value: string | null): number {
   return value !== null && /^[1-9]\d*$/.test(value) && Number.isSafeInteger(Number(value))
     ? Number(value)
     : 1;
-}
-
-function enrollmentStatusLabel(status: EnrollmentStatus, t: TFunction): string {
-  if (status === 'active') return t('learning:active', { defaultValue: 'Active' });
-  if (status === 'cancelled') return t('learning:cancelled', { defaultValue: 'Cancelled' });
-  return t('learning:paymentPending', { defaultValue: 'Payment pending' });
 }
 
 interface LearningListRetryFocusIntent {
@@ -56,6 +48,7 @@ export function LearningListPage() {
   const retryIntentRef = useRef<LearningListRetryFocusIntent | null>(null);
   const requestedPageFocusRef = useRef<number | null>(null);
   const observedPageRef = useRef(page);
+  const successfullyResolvedPageRef = useRef<number | null>(null);
   const retryIdentity = `${session.cacheEpoch ?? 'anonymous'}:${page}`;
   useEffect(() => {
     retryIntentRef.current = null;
@@ -82,7 +75,19 @@ export function LearningListPage() {
       requestedPageFocusRef.current = null;
       headingRef.current?.focus();
     }
+    if (enrollments.isSuccess && enrollments.data?.page === page)
+      successfullyResolvedPageRef.current = page;
   }, [enrollments.data?.page, enrollments.isSuccess, page, retryIdentity]);
+  useEffect(() => {
+    if (!enrollments.isSuccess || enrollments.data?.page === page) return;
+    const shouldPreserveCurrentFocus =
+      requestedPageFocusRef.current === null && successfullyResolvedPageRef.current === page;
+    if (!shouldPreserveCurrentFocus) requestedPageFocusRef.current = enrollments.data?.page ?? null;
+    const normalizedSearchParams = new URLSearchParams(searchParams);
+    if (enrollments.data?.page === 1) normalizedSearchParams.delete('page');
+    else normalizedSearchParams.set('page', String(enrollments.data?.page));
+    setSearchParams(normalizedSearchParams, { replace: true });
+  }, [enrollments.data?.page, enrollments.isSuccess, page, searchParams, setSearchParams]);
   const retryList = () => {
     const intent: LearningListRetryFocusIntent = { identity: retryIdentity };
     retryIntentRef.current = intent;
@@ -211,8 +216,8 @@ export function LearningListPage() {
           <li key={enrollment.id} className={styles.card}>
             <div className={styles.cardContent}>
               <h2>{enrollment.course.title}</h2>
-              <p className={`${styles.status} ${styles[`status${enrollment.status}`]}`}>
-                {enrollmentStatusLabel(enrollment.status, t)}
+              <p className={`${styles.status} ${styles.statusactive}`}>
+                {t('learning:active', { defaultValue: 'Active' })}
               </p>
               {enrollment.course.description !== null ? (
                 <p className={styles.description}>{enrollment.course.description}</p>

@@ -1447,11 +1447,16 @@ describe('staged and CI decision simulations', () => {
     };
     const publicReviewTargets = Object.entries(packageJson.scripts)
       .filter(([name]) => name.startsWith('localization:review:'))
-      .map(([, command]) => command.match(/^node (scripts\/localization\/[^ ]+\.mjs)$/)?.[1]);
-    expect(publicReviewTargets).toHaveLength(3);
-    expect(publicReviewTargets.every((target) => target?.startsWith('scripts/localization/'))).toBe(
-      true,
-    );
+      .map(([name, command]) => [
+        name,
+        command.match(/^node (scripts\/localization\/[^ ]+\.mjs)$/)?.[1],
+      ]);
+    expect(publicReviewTargets).toEqual([
+      ['localization:review:export', 'scripts/localization/review-export.mjs'],
+      ['localization:review:request', 'scripts/localization/review-request.mjs'],
+      ['localization:review:import', 'scripts/localization/review-import.mjs'],
+      ['localization:review:report', 'scripts/localization/review-report.mjs'],
+    ]);
     expect(packageJson.scripts['lint:quality']).toContain('scripts/localization');
     expect(packageJson.scripts['format:check']).toContain('scripts/localization');
 

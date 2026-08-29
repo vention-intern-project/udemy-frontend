@@ -41,6 +41,11 @@ export const SUPPLIED_REVIEW_ARTIFACT = Object.freeze({
 });
 export const SUPPLIED_REVIEW_PROTECTED_SOURCE_IDENTITY_SHA256 =
   '24EA5BC9AFC65594F2A886005E646E16708BAD74FB395D5A02BF1EB975700CCA';
+const SUPPLIED_REVIEW_PROTECTED_PROVENANCE_IDENTITY_SHA256 =
+  'EE4C751748D1A7CD96D3E05F4A98A37F871474B8ECC0638CB789A5BFEB244024';
+export const SUPPLIED_REVIEW_ARTIFACT_UNIT_IDS = Object.freeze(
+  Array.from({ length: 346 }, (_, index) => `MLUX-C${String(index + 1).padStart(4, '0')}`),
+);
 const DRAFT_37_SOURCE_SHA256 = 'C9E208FC5F1AEF55E709290C67270B79E1CBCE4831E7FBCB20555AB5CF8A73AE';
 const SEMANTIC_IDENTITY_VERSION = 'unit-semantic-identity-v1';
 const DRAFT_37_SEMANTIC_IDENTITY_SHA256 =
@@ -52,6 +57,28 @@ const CONSUMER_FAMILY_ID = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const CONSUMER_SOURCE_FINGERPRINT = /^sha256:[0-9a-f]{64}$/;
 const REACT_DEPENDENCY_HOOKS = new Set(['useCallback', 'useEffect', 'useLayoutEffect', 'useMemo']);
 const CONSUMER_SOURCE_FINGERPRINT_VERSION = 'localization-consumer-source-v1';
+const CONSUMER_RECONCILIATION_REQUEST_KEYS = ['obsolete', 'sources', 'taskId'];
+const CONSUMER_RECONCILIATION_SOURCE_KEYS = ['expectedSourceFingerprint', 'sourcePath'];
+const CONSUMER_RECONCILIATION_OBSOLETE_KEYS = ['bindingName', 'functionName', 'kind', 'sourcePath'];
+const CONSUMER_RECONCILIATION_DYNAMIC_OBSOLETE_KEYS = [
+  'bindingName',
+  'familyId',
+  'functionName',
+  'kind',
+  'sourcePath',
+];
+const CONSUMER_RECONCILIATION_RECORD_KEYS = ['request', 'requestDigest', 'sources'];
+const CONSUMER_RECONCILIATION_APPLIED_SOURCE_KEYS = [
+  'entryCount',
+  'sourceFingerprint',
+  'sourcePath',
+];
+const CONSUMER_RECONCILIATION_KINDS = new Set([
+  'translatorWrapper',
+  'translatorForwarder',
+  'translatorDependency',
+  'dynamicConsumer',
+]);
 const EXCLUSION_STATUSES = new Set([
   'Excluded',
   'Excluded or reconstructed',
@@ -68,11 +95,12 @@ const MIGRATION_OWNER_TASKS = new Set([
   'MLUX-005',
   'MLUX-006-FOLLOWUP',
 ]);
-const POST_MIGRATION_OWNER_TASK = /^FE-\d{3}$/;
+const POST_MIGRATION_OWNER_TASK = /^(FE|CRF)-\d{3}$/;
 const HISTORIC_GENERATED_PLURAL_SUFFIXES = new Map([
   ['catalog:lessonAvailability', new Set(['custom'])],
 ]);
 const SOURCE_REVISION_HISTORY_KEYS = ['previousSourceRevision', 'sourceRevision', 'type'];
+const DRAFT_RESET_HISTORY_KEYS = ['nextCandidate', 'previousCandidate', 'sourceRevision', 'type'];
 const TRANSITION_HISTORY_KEYS = [
   'from',
   'nextCandidate',
@@ -88,6 +116,32 @@ const TRANSITION_HISTORY_KEYS_WITHOUT_REVISION = [
   'to',
   'type',
 ];
+const REVIEW_REQUEST_HISTORY_KEYS = [
+  'from',
+  'nextCandidate',
+  'previousCandidate',
+  'reviewRequest',
+  'sourceRevision',
+  'to',
+  'type',
+];
+const SUPPLIED_ARTIFACT_IMPORT_HISTORY_KEYS = [
+  'from',
+  'nextCandidate',
+  'previousCandidate',
+  'sourceRevision',
+  'suppliedArtifactImport',
+  'to',
+  'type',
+];
+const SUPPLIED_ARTIFACT_IMPORT_KEYS = [
+  'artifactSha256',
+  'candidateSha256',
+  'protectedSourceIdentitySha256',
+  'unitId',
+  'unitProvenanceSha256',
+  'unitSourceRevision',
+];
 const CHANGE_REQUEST_HISTORY_KEYS = ['changeRequest', ...TRANSITION_HISTORY_KEYS];
 const HUMAN_APPROVAL_HISTORY_KEYS = ['from', 'humanApproval', ...TRANSITION_HISTORY_KEYS.slice(1)];
 const SUPPLIED_APPROVAL_HISTORY_KEYS = [
@@ -99,6 +153,20 @@ const SUPPLIED_APPROVAL_HISTORY_KEYS = [
   'to',
   'type',
 ];
+const SUPPLIED_REVIEW_ARTIFACT_UNIT_ID_SET = new Set(SUPPLIED_REVIEW_ARTIFACT_UNIT_IDS);
+const HISTORICAL_SUPPLIED_REVIEW_REQUEST_IDENTITIES = Object.freeze([
+  Object.freeze({
+    unitId: 'MLUX-C0001',
+    locale: 'ru',
+    sourceRevision: 'sha256:e6db5ae02ca2f20bf592d285426387990c99c9a0140e6a9dff71b9c1d8a2d690',
+    candidate: 'Меню аккаунта: {{identity}}',
+    migrationProvenance: Object.freeze({
+      legacyResourceStatus: 'Draft',
+      legacyReviewStatus: 'Pending',
+      ownerTasks: Object.freeze(['MLUX-002']),
+    }),
+  }),
+]);
 const WITHDRAWAL_HISTORY_KEYS = [
   'from',
   'nextCandidate',
@@ -188,6 +256,10 @@ function same(left, right) {
   );
 }
 
+function sameStableValue(left, right) {
+  return JSON.stringify(stable(left)) === JSON.stringify(stable(right));
+}
+
 function hasExactKeys(value, expectedKeys) {
   return (
     value &&
@@ -243,6 +315,84 @@ export function semanticIdentityDigest(units) {
 function validInstant(value) {
   if (!nonEmptyString(value) || !Number.isFinite(Date.parse(value))) return false;
   return new Date(value).toISOString() === value;
+}
+
+function validMillisecondInstant(value) {
+  return (
+    typeof value === 'string' &&
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) &&
+    validInstant(value)
+  );
+}
+
+function validReviewRequest(reviewRequest, unitId, locale) {
+  if (!hasExactKeys(reviewRequest, ['locales', 'requestedAt', 'taskId', 'unitIds'])) return false;
+  const { locales, requestedAt, taskId, unitIds } = reviewRequest;
+  return (
+    POST_MIGRATION_OWNER_TASK.test(taskId) &&
+    Array.isArray(locales) &&
+    locales.length > 0 &&
+    locales.every((locale) => REVIEW_LOCALES.includes(locale)) &&
+    same(locales, [...new Set(locales)].sort()) &&
+    Array.isArray(unitIds) &&
+    unitIds.length > 0 &&
+    unitIds.every((unitId) => ID.test(unitId)) &&
+    same(unitIds, [...new Set(unitIds)].sort()) &&
+    (unitId === undefined || unitIds.includes(unitId)) &&
+    (locale === undefined || locales.includes(locale)) &&
+    validMillisecondInstant(requestedAt)
+  );
+}
+
+function suppliedArtifactSourceIdentitySha256(corpus) {
+  if (!Array.isArray(corpus?.units)) return null;
+  const units = new Map(corpus.units.map((unit) => [unit?.id, unit]));
+  if (!SUPPLIED_REVIEW_ARTIFACT_UNIT_IDS.every((id) => units.has(id))) return null;
+  return createHash('sha256')
+    .update(
+      JSON.stringify(
+        SUPPLIED_REVIEW_ARTIFACT_UNIT_IDS.map((id) => [id, units.get(id).sourceRevision]),
+      ),
+    )
+    .digest('hex')
+    .toUpperCase();
+}
+
+function hasAuthorizedSuppliedArtifactSourceIdentity(corpus) {
+  return (
+    suppliedArtifactSourceIdentitySha256(corpus) ===
+      SUPPLIED_REVIEW_PROTECTED_SOURCE_IDENTITY_SHA256 &&
+    suppliedArtifactProvenanceIdentitySha256(corpus) ===
+      SUPPLIED_REVIEW_PROTECTED_PROVENANCE_IDENTITY_SHA256
+  );
+}
+
+function suppliedArtifactProvenanceIdentitySha256(corpus) {
+  if (!Array.isArray(corpus?.units)) return null;
+  const units = new Map(corpus.units.map((unit) => [unit?.id, unit]));
+  if (!SUPPLIED_REVIEW_ARTIFACT_UNIT_IDS.every((id) => units.has(id))) return null;
+  return createHash('sha256')
+    .update(
+      JSON.stringify(
+        SUPPLIED_REVIEW_ARTIFACT_UNIT_IDS.map((id) => [id, units.get(id).migrationProvenance]),
+      ),
+    )
+    .digest('hex')
+    .toUpperCase();
+}
+
+function validSuppliedArtifactImport(importRecord) {
+  return (
+    hasExactKeys(importRecord, SUPPLIED_ARTIFACT_IMPORT_KEYS) &&
+    importRecord.artifactSha256 === SUPPLIED_REVIEW_ARTIFACT.artifactSha256 &&
+    importRecord.protectedSourceIdentitySha256 ===
+      SUPPLIED_REVIEW_PROTECTED_SOURCE_IDENTITY_SHA256 &&
+    nonEmptyString(importRecord.unitId) &&
+    SUPPLIED_REVIEW_ARTIFACT_UNIT_ID_SET.has(importRecord.unitId) &&
+    REVISION.test(importRecord.unitProvenanceSha256 ?? '') &&
+    REVISION.test(importRecord.unitSourceRevision ?? '') &&
+    REVISION.test(importRecord.candidateSha256 ?? '')
+  );
 }
 
 function validChangeRequest(changeRequest) {
@@ -391,10 +541,18 @@ function clearApprovalMetadata(candidate) {
 }
 
 function sameApprovalRecord(candidate, approval) {
-  return JSON.stringify(stable(approvalRecord(candidate))) === JSON.stringify(stable(approval));
+  return sameStableValue(approvalRecord(candidate), approval);
 }
 
 function hasExactTransitionHistoryKeys(event) {
+  if (
+    event.from === 'draft' &&
+    event.to === 'review_requested' &&
+    event.reviewRequest !== undefined
+  )
+    return hasExactKeys(event, REVIEW_REQUEST_HISTORY_KEYS);
+  if (event.from === 'draft' && event.to === 'review_requested' && event.suppliedArtifactImport)
+    return hasExactKeys(event, SUPPLIED_ARTIFACT_IMPORT_HISTORY_KEYS);
   if (event.from === 'review_requested' && event.to === 'approved')
     return event.suppliedArtifactApproval !== undefined
       ? hasExactKeys(event, SUPPLIED_APPROVAL_HISTORY_KEYS)
@@ -408,7 +566,85 @@ function hasExactTransitionHistoryKeys(event) {
   return hasExactKeys(event, TRANSITION_HISTORY_KEYS);
 }
 
-function lifecycleViolation(candidate) {
+function isReadCompatibleLegacyReviewRequest(unit, locale, candidate, event, index) {
+  const identity = HISTORICAL_SUPPLIED_REVIEW_REQUEST_IDENTITIES.find(
+    (entry) => entry.unitId === unit?.id && entry.locale === locale,
+  );
+  if (!identity || index !== 0 || candidate.history.length !== 2) return false;
+  if (
+    unit.sourceRevision !== identity.sourceRevision ||
+    candidate.sourceRevision !== identity.sourceRevision ||
+    !sameStableValue(unit.migrationProvenance, identity.migrationProvenance) ||
+    candidate.candidate !== identity.candidate ||
+    candidate.status !== 'approved' ||
+    candidate.requestedAt !== null ||
+    candidate.verdict !== 'approved' ||
+    candidate.approvalAuthority?.kind !== SUPPLIED_REVIEW_ARTIFACT.kind ||
+    !hasExactKeys(event, TRANSITION_HISTORY_KEYS) ||
+    event.previousCandidate !== identity.candidate ||
+    event.nextCandidate !== identity.candidate ||
+    event.sourceRevision !== identity.sourceRevision
+  )
+    return false;
+  const approval = candidate.history[index + 1];
+  return (
+    approval?.type === 'transition' &&
+    approval.from === 'review_requested' &&
+    approval.to === 'approved' &&
+    approval.previousCandidate === identity.candidate &&
+    approval.nextCandidate === identity.candidate &&
+    approval.sourceRevision === identity.sourceRevision &&
+    hasExactKeys(approval, SUPPLIED_APPROVAL_HISTORY_KEYS) &&
+    validSuppliedArtifactApprovalRecord(approval.suppliedArtifactApproval)
+  );
+}
+
+function isReadCompatibleSuppliedArtifactImport(
+  unit,
+  candidate,
+  event,
+  index,
+  hasAuthorizedSourceIdentity,
+) {
+  if (
+    !hasAuthorizedSourceIdentity ||
+    index !== 0 ||
+    candidate.history.length !== 2 ||
+    candidate.status !== 'approved' ||
+    candidate.requestedAt !== null ||
+    candidate.verdict !== 'approved' ||
+    !SUPPLIED_REVIEW_ARTIFACT_UNIT_ID_SET.has(unit?.id) ||
+    candidate.sourceRevision !== unit?.sourceRevision ||
+    event.sourceRevision !== unit?.sourceRevision ||
+    !validSuppliedArtifactImport(event.suppliedArtifactImport) ||
+    event.suppliedArtifactImport.unitId !== unit.id ||
+    event.suppliedArtifactImport.unitSourceRevision !== unit.sourceRevision ||
+    event.suppliedArtifactImport.unitProvenanceSha256 !== digest(unit.migrationProvenance) ||
+    event.suppliedArtifactImport.candidateSha256 !== digest(event.nextCandidate) ||
+    !hasExactKeys(event, SUPPLIED_ARTIFACT_IMPORT_HISTORY_KEYS)
+  )
+    return false;
+  const approval = candidate.history[index + 1];
+  return (
+    approval?.type === 'transition' &&
+    approval.from === 'review_requested' &&
+    approval.to === 'approved' &&
+    approval.previousCandidate === event.nextCandidate &&
+    approval.sourceRevision === unit.sourceRevision &&
+    hasExactKeys(approval, SUPPLIED_APPROVAL_HISTORY_KEYS) &&
+    validSuppliedArtifactApprovalRecord(approval.suppliedArtifactApproval)
+  );
+}
+
+function lifecycleViolation(
+  candidate,
+  {
+    allowSuppliedArtifactImport = false,
+    readCompatibilitySuppliedArtifactSourceIdentity = false,
+    readCompatibilityUnit,
+    readCompatibilityLocale,
+  } = {},
+) {
   if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
     const metadataViolation = nonApprovedMetadataViolation(candidate);
     if (metadataViolation) return metadataViolation;
@@ -457,6 +693,20 @@ function lifecycleViolation(candidate) {
       }
       continue;
     }
+    if (event.type === 'draft_reset') {
+      if (
+        status !== 'draft' ||
+        !hasExactKeys(event, DRAFT_RESET_HISTORY_KEYS) ||
+        event.sourceRevision !== activeSourceRevision ||
+        !nonEmptyString(event.previousCandidate) ||
+        !nonEmptyString(event.nextCandidate) ||
+        event.previousCandidate === event.nextCandidate ||
+        (heldCandidate !== null && event.previousCandidate !== heldCandidate)
+      )
+        return 'invalid draft reset history';
+      heldCandidate = event.nextCandidate;
+      continue;
+    }
     if (event.type !== 'transition' || !STATUSES.has(event.from) || !STATUSES.has(event.to))
       return 'invalid history event';
     const isWithdrawal = event.from === 'review_requested' && event.to === 'draft';
@@ -477,6 +727,36 @@ function lifecycleViolation(candidate) {
       return 'invalid review withdrawal history';
     }
     const isChangeRequest = event.from === 'review_requested' && event.to === 'changes_requested';
+    const isReviewRequest = event.from === 'draft' && event.to === 'review_requested';
+    if (
+      isReviewRequest &&
+      !validReviewRequest(event.reviewRequest, readCompatibilityUnit?.id, readCompatibilityLocale)
+    ) {
+      if (
+        !(
+          isReadCompatibleLegacyReviewRequest(
+            readCompatibilityUnit,
+            readCompatibilityLocale,
+            candidate,
+            event,
+            index,
+          ) ||
+          isReadCompatibleSuppliedArtifactImport(
+            readCompatibilityUnit,
+            candidate,
+            event,
+            index,
+            readCompatibilitySuppliedArtifactSourceIdentity,
+          ) ||
+          (allowSuppliedArtifactImport &&
+            validSuppliedArtifactImport(event.suppliedArtifactImport) &&
+            hasExactKeys(event, SUPPLIED_ARTIFACT_IMPORT_HISTORY_KEYS))
+        )
+      )
+        return 'review-request history lacks an exact request boundary';
+    }
+    if (!isReviewRequest && event.reviewRequest !== undefined)
+      return 'review-request history appears outside draft-to-review transition';
     if (isChangeRequest) {
       if (!validChangeRequest(event.changeRequest))
         return 'changes-requested history lacks valid native-review evidence';
@@ -553,6 +833,25 @@ function lifecycleViolation(candidate) {
       return 'approved candidate does not match terminal approval history';
     if (terminalApproval.sourceRevision !== candidate.sourceRevision)
       return 'approved history does not match current protected source revision';
+    if (candidate.approvalAuthority?.kind === SUPPLIED_REVIEW_ARTIFACT.kind) {
+      const initialReview = candidate.history[0];
+      const isBoundedLegacyRead = isReadCompatibleLegacyReviewRequest(
+        readCompatibilityUnit,
+        readCompatibilityLocale,
+        candidate,
+        initialReview,
+        0,
+      );
+      const isBoundedImporterRead = isReadCompatibleSuppliedArtifactImport(
+        readCompatibilityUnit,
+        candidate,
+        initialReview,
+        0,
+        readCompatibilitySuppliedArtifactSourceIdentity,
+      );
+      if (!isBoundedLegacyRead && !isBoundedImporterRead)
+        return 'supplied-artifact approval is outside the authorized import boundary';
+    }
   } else if (['review_requested', 'changes_requested'].includes(candidate.status)) {
     const terminalReview = [...candidate.history]
       .reverse()
@@ -564,13 +863,19 @@ function lifecycleViolation(candidate) {
       terminalReview.changeRequest?.requestedAt !== candidate.requestedAt
     )
       return 'changes-requested candidate does not match terminal evidence';
+    if (
+      candidate.status === 'review_requested' &&
+      terminalReview.reviewRequest !== undefined &&
+      candidate.requestedAt !== terminalReview.reviewRequest.requestedAt
+    )
+      return 'review-requested candidate does not match terminal request evidence';
   }
   return null;
 }
 
-function assertValidCandidateLifecycleSource(candidate, operation) {
+function assertValidCandidateLifecycleSource(candidate, operation, options = {}) {
   assertNonApprovedMetadataInvariant(candidate, operation);
-  const violation = lifecycleViolation(candidate);
+  const violation = lifecycleViolation(candidate, options);
   if (violation) throw new Error(`cannot ${operation} candidate from invalid source: ${violation}`);
 }
 
@@ -640,7 +945,7 @@ function validateRestoration(unit, violations) {
   }
 }
 
-function validateCandidate(unit, locale, violations) {
+function validateCandidate(unit, locale, violations, hasAuthorizedSuppliedArtifactSourceIdentity) {
   const candidate = unit.locales?.[locale];
   if (!candidate || typeof candidate !== 'object' || !STATUSES.has(candidate.status)) {
     violations.push(`${unit.id}: invalid ${locale} candidate`);
@@ -650,7 +955,11 @@ function validateCandidate(unit, locale, violations) {
     violations.push(`${unit.id}: invalid ${locale} candidate text`);
   if (candidate.sourceRevision !== unit.sourceRevision)
     violations.push(`${unit.id}: ${locale} candidate source revision mismatch`);
-  const history = lifecycleViolation(candidate);
+  const history = lifecycleViolation(candidate, {
+    readCompatibilityUnit: unit,
+    readCompatibilityLocale: locale,
+    readCompatibilitySuppliedArtifactSourceIdentity: hasAuthorizedSuppliedArtifactSourceIdentity,
+  });
   if (history) violations.push(`${unit.id}: ${locale} ${history}`);
   if (candidate.status === 'approved' && !validApproval(candidate)) {
     const authority =
@@ -774,21 +1083,31 @@ function validateTopLevel(corpus, violations) {
     (count, unit) => count + (Array.isArray(unit.occurrences) ? unit.occurrences.length : 0),
     0,
   );
+  const hasProtectedRevision = Array.isArray(corpus.units)
+    ? corpus.units.some((unit) =>
+        REVIEW_LOCALES.some((locale) =>
+          unit.locales?.[locale]?.history?.some((event) => event?.type === 'source_revision'),
+        ),
+      )
+    : false;
   if (
-    corpus.source?.sha256 !== DRAFT_37_SOURCE_SHA256 ||
-    corpus.migration?.sourceSha256 !== DRAFT_37_SOURCE_SHA256 ||
-    historicUnits.length !== 523 ||
-    corpus.summary?.mergedDuplicateRows !== 223 ||
-    corpus.exclusions?.length !== 12 ||
-    corpus.migration?.sourceOccurrences !== 746 ||
-    historicOccurrenceCount !== 746
+    !hasProtectedRevision &&
+    (corpus.source?.sha256 !== DRAFT_37_SOURCE_SHA256 ||
+      corpus.migration?.sourceSha256 !== DRAFT_37_SOURCE_SHA256 ||
+      historicUnits.length !== 523 ||
+      corpus.summary?.mergedDuplicateRows !== 223 ||
+      corpus.exclusions?.length !== 12 ||
+      corpus.migration?.sourceOccurrences !== 746 ||
+      historicOccurrenceCount !== 746)
   )
     violations.push('DRAFT-37 identity/count mismatch');
   if (
     corpus.migration?.semanticIdentityVersion !== SEMANTIC_IDENTITY_VERSION ||
     !SOURCE_HASH.test(corpus.migration?.semanticIdentitySha256 ?? '') ||
-    corpus.migration?.semanticIdentitySha256 !== semanticIdentityDigest(historicUnits) ||
-    corpus.migration?.semanticIdentitySha256 !== DRAFT_37_SEMANTIC_IDENTITY_SHA256
+    (!hasProtectedRevision &&
+      corpus.migration?.semanticIdentitySha256 !== semanticIdentityDigest(historicUnits)) ||
+    (!hasProtectedRevision &&
+      corpus.migration?.semanticIdentitySha256 !== DRAFT_37_SEMANTIC_IDENTITY_SHA256)
   )
     violations.push('DRAFT-37 semantic identity mismatch');
   if (
@@ -822,7 +1141,13 @@ function validUnitProvenance(unit) {
     return false;
   return (
     provenance.ownerTasks.every((ownerTask) => MIGRATION_OWNER_TASKS.has(ownerTask)) ||
-    (provenance.ownerTasks.length === 1 && POST_MIGRATION_OWNER_TASK.test(provenance.ownerTasks[0]))
+    (provenance.ownerTasks.some((ownerTask) => POST_MIGRATION_OWNER_TASK.test(ownerTask)) &&
+      provenance.ownerTasks.filter((ownerTask) => POST_MIGRATION_OWNER_TASK.test(ownerTask))
+        .length === 1 &&
+      provenance.ownerTasks.every(
+        (ownerTask) =>
+          MIGRATION_OWNER_TASKS.has(ownerTask) || POST_MIGRATION_OWNER_TASK.test(ownerTask),
+      ))
   );
 }
 
@@ -871,6 +1196,75 @@ function validateConsumerBoundary(boundary, kind, identities, violations) {
   identities.add(identity);
 }
 
+function validConsumerReconciliationRequest(request) {
+  if (
+    !hasExactKeys(request, CONSUMER_RECONCILIATION_REQUEST_KEYS) ||
+    !POST_MIGRATION_OWNER_TASK.test(request.taskId) ||
+    !Array.isArray(request.sources) ||
+    request.sources.length === 0 ||
+    !Array.isArray(request.obsolete)
+  )
+    return false;
+  const sourcePaths = new Set();
+  for (const source of request.sources) {
+    if (
+      !hasExactKeys(source, CONSUMER_RECONCILIATION_SOURCE_KEYS) ||
+      !validConsumerSourcePath(source.sourcePath) ||
+      !CONSUMER_SOURCE_FINGERPRINT.test(source.expectedSourceFingerprint) ||
+      sourcePaths.has(source.sourcePath)
+    )
+      return false;
+    sourcePaths.add(source.sourcePath);
+  }
+  const obsoleteIdentities = new Set();
+  for (const obsolete of request.obsolete) {
+    const keys =
+      obsolete?.kind === 'dynamicConsumer'
+        ? CONSUMER_RECONCILIATION_DYNAMIC_OBSOLETE_KEYS
+        : CONSUMER_RECONCILIATION_OBSOLETE_KEYS;
+    if (
+      !hasExactKeys(obsolete, keys) ||
+      !CONSUMER_RECONCILIATION_KINDS.has(obsolete.kind) ||
+      !validConsumerSourcePath(obsolete.sourcePath) ||
+      !nonEmptyString(obsolete.functionName) ||
+      !nonEmptyString(obsolete.bindingName) ||
+      (obsolete.kind === 'dynamicConsumer' && !nonEmptyString(obsolete.familyId))
+    )
+      return false;
+    const identity = `${obsolete.kind}|${obsolete.sourcePath}|${obsolete.functionName}|${obsolete.bindingName}|${obsolete.familyId ?? ''}`;
+    if (obsoleteIdentities.has(identity)) return false;
+    obsoleteIdentities.add(identity);
+  }
+  return true;
+}
+
+export function consumerReconciliationRequestDigest(request) {
+  if (!validConsumerReconciliationRequest(request))
+    throw new Error('consumer reconciliation request is invalid');
+  return digest(request);
+}
+
+function validConsumerReconciliationRecord(record) {
+  if (
+    !hasExactKeys(record, CONSUMER_RECONCILIATION_RECORD_KEYS) ||
+    !validConsumerReconciliationRequest(record.request) ||
+    record.requestDigest !== consumerReconciliationRequestDigest(record.request) ||
+    !Array.isArray(record.sources) ||
+    record.sources.length !== record.request.sources.length
+  )
+    return false;
+  return record.sources.every((source, index) => {
+    const requestSource = record.request.sources[index];
+    return (
+      hasExactKeys(source, CONSUMER_RECONCILIATION_APPLIED_SOURCE_KEYS) &&
+      source.sourcePath === requestSource.sourcePath &&
+      CONSUMER_SOURCE_FINGERPRINT.test(source.sourceFingerprint) &&
+      Number.isInteger(source.entryCount) &&
+      source.entryCount >= 0
+    );
+  });
+}
+
 function validateConsumerGrammar(corpus, unitIds, violations) {
   const grammar = corpus.consumerGrammar;
   if (!grammar || typeof grammar !== 'object' || Array.isArray(grammar)) {
@@ -878,6 +1272,22 @@ function validateConsumerGrammar(corpus, unitIds, violations) {
     return;
   }
   if (grammar.version !== 1) violations.push('invalid consumer grammar version');
+  if (grammar.reconciliations !== undefined) {
+    if (!Array.isArray(grammar.reconciliations)) {
+      violations.push('invalid consumer reconciliation provenance');
+    } else {
+      const requestDigests = new Set();
+      for (const record of grammar.reconciliations) {
+        if (!validConsumerReconciliationRecord(record)) {
+          violations.push('invalid consumer reconciliation provenance');
+          continue;
+        }
+        if (requestDigests.has(record.requestDigest))
+          violations.push('duplicate consumer reconciliation provenance');
+        requestDigests.add(record.requestDigest);
+      }
+    }
+  }
   for (const kind of ['translatorWrappers', 'translatorForwarders']) {
     if (!Array.isArray(grammar[kind])) {
       violations.push(`missing ${kind}`);
@@ -966,6 +1376,8 @@ export function validateCorpus(corpus) {
   const violations = [];
   validateTopLevel(corpus, violations);
   if (!Array.isArray(corpus?.units)) return violations.sort();
+  const authorizedSuppliedArtifactSourceIdentity =
+    hasAuthorizedSuppliedArtifactSourceIdentity(corpus);
   const ids = new Set();
   const keys = new Set();
   const occurrences = new Set();
@@ -1032,7 +1444,10 @@ export function validateCorpus(corpus) {
       violations.push(`${unit.id}: source revision fingerprint mismatch`);
     if (!unit.locales || Object.keys(unit.locales).sort().join(',') !== 'ru,uz')
       violations.push(`${unit.id}: invalid review locales`);
-    else REVIEW_LOCALES.forEach((locale) => validateCandidate(unit, locale, violations));
+    else
+      REVIEW_LOCALES.forEach((locale) =>
+        validateCandidate(unit, locale, violations, authorizedSuppliedArtifactSourceIdentity),
+      );
     if (
       !same(
         placeholders(unit.english, unit.renderingContract),
@@ -1094,6 +1509,7 @@ export function transitionLocaleCandidate(candidate, nextStatus, options = {}) {
     candidate.status === 'review_requested' && nextStatus === 'approved';
   const recordsChangeRequest =
     candidate.status === 'review_requested' && nextStatus === 'changes_requested';
+  const recordsReviewRequest = candidate.status === 'draft' && nextStatus === 'review_requested';
   if (replacesDefaultWithApproval || recordsChangeRequest)
     assertValidCandidateLifecycleSource(
       candidate,
@@ -1123,10 +1539,21 @@ export function transitionLocaleCandidate(candidate, nextStatus, options = {}) {
     throw new Error('changes_requested requires valid native-review change-request evidence');
   if (!recordsChangeRequest && options.changeRequest !== undefined)
     throw new Error('change-request evidence is only allowed for changes_requested');
+  if (recordsReviewRequest && !validReviewRequest(options.reviewRequest))
+    throw new Error('review_requested requires an exact request boundary');
+  if (!recordsReviewRequest && options.reviewRequest !== undefined)
+    throw new Error('review-request evidence is only allowed for draft-to-review_requested');
+  if (recordsReviewRequest && candidate.requestedAt !== null)
+    throw new Error('draft review request requires a null requestedAt source');
   const next = {
     ...clearApprovalMetadata(candidate),
     candidate: options.newCandidate ?? candidate.candidate,
     status: nextStatus,
+    ...(returnsToDraft
+      ? { requestedAt: null }
+      : recordsReviewRequest
+        ? { requestedAt: options.reviewRequest.requestedAt }
+        : {}),
   };
   if (nextStatus === 'approved') {
     if (
@@ -1157,9 +1584,16 @@ export function transitionLocaleCandidate(candidate, nextStatus, options = {}) {
         sourceRevision: candidate.sourceRevision,
         ...(nextStatus === 'approved' ? { humanApproval: options.humanApproval } : {}),
         ...(recordsChangeRequest ? { changeRequest: options.changeRequest } : {}),
+        ...(recordsReviewRequest ? { reviewRequest: options.reviewRequest } : {}),
       },
     ],
   };
+}
+
+export function requestLocaleCandidateReview(candidate, reviewRequest) {
+  if (candidate.status !== 'draft')
+    throw new Error(`${candidate.status} -> review_requested request is forbidden`);
+  return transitionLocaleCandidate(candidate, 'review_requested', { reviewRequest });
 }
 
 export function withdrawLocaleCandidateReview(candidate) {
@@ -1188,56 +1622,6 @@ export function withdrawLocaleCandidateReview(candidate) {
   };
 }
 
-export function approveSuppliedReviewArtifactCandidate(candidate, options = {}) {
-  if (candidate.status !== 'review_requested')
-    throw new Error(`${candidate.status} -> approved is forbidden`);
-  assertValidCandidateLifecycleSource(candidate, 'approve supplied-artifact review for');
-  if (options.artifactSha256 !== SUPPLIED_REVIEW_ARTIFACT.artifactSha256)
-    throw new Error('supplied review artifact hash is not authorized');
-  if (
-    candidate.history.some(
-      (event) =>
-        event?.suppliedArtifactApproval ||
-        event?.humanApproval?.approvalAuthority?.kind === SUPPLIED_REVIEW_ARTIFACT.kind,
-    )
-  )
-    throw new Error('supplied review artifact authority cannot be reused');
-  const nextCandidate =
-    options.newCandidate === undefined ? candidate.candidate : options.newCandidate.trim();
-  if (!nonEmptyString(nextCandidate))
-    throw new Error('approved replacement requires a non-empty candidate');
-  const suppliedArtifactApproval = {
-    reviewerId: null,
-    reviewedAt: null,
-    approvalRecordedAt: options.approvalRecordedAt,
-    approvalAuthority: { ...SUPPLIED_REVIEW_ARTIFACT },
-  };
-  if (!validSuppliedArtifactApprovalRecord(suppliedArtifactApproval))
-    throw new Error('supplied review artifact approval is invalid');
-  return {
-    ...clearApprovalMetadata(candidate),
-    candidate: nextCandidate,
-    status: 'approved',
-    reviewerId: null,
-    reviewedAt: null,
-    approvalRecordedAt: options.approvalRecordedAt,
-    approvalAuthority: { ...SUPPLIED_REVIEW_ARTIFACT },
-    verdict: 'approved',
-    history: [
-      ...candidate.history,
-      {
-        type: 'transition',
-        from: 'review_requested',
-        to: 'approved',
-        previousCandidate: candidate.candidate,
-        nextCandidate,
-        sourceRevision: candidate.sourceRevision,
-        suppliedArtifactApproval,
-      },
-    ],
-  };
-}
-
 export function migrateLegacyDraft(
   candidate,
   sourceRevision = 'sha256:0000000000000000000000000000000000000000000000000000000000000000',
@@ -1256,13 +1640,21 @@ export function migrateLegacyDraft(
   };
 }
 
-export function applyProtectedSourceRevision(candidate, sourceRevision) {
+export function applyProtectedSourceRevision(candidate, sourceRevision, newCandidate = undefined) {
   assertValidCandidateLifecycleSource(candidate, 'revise protected source for');
   const shouldStale = ['approved', 'review_requested', 'changes_requested'].includes(
     candidate.status,
   );
+  if (
+    newCandidate !== undefined &&
+    (!nonEmptyString(newCandidate) || newCandidate === candidate.candidate)
+  )
+    throw new Error('draft reset requires a new non-empty candidate');
+  if (newCandidate !== undefined && candidate.status !== 'draft')
+    throw new Error('draft reset is allowed only for a draft candidate');
   return {
     ...clearApprovalMetadata(candidate),
+    candidate: newCandidate ?? candidate.candidate,
     sourceRevision,
     status: shouldStale ? 'stale' : candidate.status,
     history: [
@@ -1272,6 +1664,16 @@ export function applyProtectedSourceRevision(candidate, sourceRevision) {
         previousSourceRevision: candidate.sourceRevision,
         sourceRevision,
       },
+      ...(newCandidate === undefined
+        ? []
+        : [
+            {
+              type: 'draft_reset',
+              previousCandidate: candidate.candidate,
+              nextCandidate: newCandidate,
+              sourceRevision,
+            },
+          ]),
       ...(shouldStale
         ? [
             {

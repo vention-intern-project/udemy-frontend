@@ -7,6 +7,7 @@ import {
   installCatalogActionStateScenario,
   installCatalogBrowserMonitor,
   installCatalogCourseDetailScenario,
+  installCatalogEnrollmentPreflightScenario,
   installCatalogHeroScenario,
   installCatalogLocalizedVerticalSliceScenario,
   installCatalogQuietCartScenario,
@@ -3621,6 +3622,44 @@ test('renders the DD-045 CourseCard action and status system without changing ac
       ),
     ).toBe(true);
   }
+  assertClean();
+});
+
+test('keeps pending enrollment protected and recovers cancelled paid Catalog courses only through Cart', async ({
+  page,
+}) => {
+  const assertClean = await monitor(page);
+  assertClean.allowRequestFailure({
+    method: 'GET',
+    path: '/courses?page=1&page_size=20&sort=created_at',
+    errorText: 'net::ERR_ABORTED',
+  });
+  assertClean.allowRequestFailure({ method: 'GET', path: '/cart', errorText: 'net::ERR_ABORTED' });
+  const scenario = await installCatalogEnrollmentPreflightScenario(page);
+  await page.goto('/');
+  const cardFor = (title: string) =>
+    page
+      .locator('[data-part="course-card"]')
+      .filter({ has: page.getByRole('heading', { level: 3, name: title }) });
+
+  for (const title of ['Pending paid course', 'Pending free course', 'Cancelled free course']) {
+    await expect(cardFor(title).getByRole('button', { name: 'Action unavailable' })).toBeDisabled();
+  }
+  await expect(
+    cardFor('Pending paid course').getByRole('button', { name: /add to cart/i }),
+  ).toHaveCount(0);
+  await expect(
+    cardFor('Pending free course').getByRole('button', { name: /enroll free/i }),
+  ).toHaveCount(0);
+  await expect(
+    cardFor('Cancelled free course').getByRole('button', { name: /enroll free/i }),
+  ).toHaveCount(0);
+
+  const recovery = cardFor('Cancelled paid course').getByRole('button', { name: 'Add to cart' });
+  await expect(recovery).toBeEnabled();
+  await recovery.dblclick();
+  await expect.poll(() => scenario.mutationRequests).toEqual(['POST /cart/items']);
+  expect(scenario.mutationRequests).toEqual(['POST /cart/items']);
   assertClean();
 });
 

@@ -21,6 +21,17 @@ interface LessonPageInput {
   readonly pageSize?: number;
 }
 
+type EnrollmentStatusInput = 'pending_payment' | 'active' | 'cancelled';
+
+interface EnrollmentPageInput {
+  readonly page: number;
+  readonly enrollmentIds: readonly number[];
+  readonly total: number;
+  readonly pages: number;
+  readonly statuses?: readonly EnrollmentStatusInput[];
+  readonly pageSize?: number;
+}
+
 function lessonDto(id: number) {
   return {
     id,
@@ -37,6 +48,43 @@ function lessonDto(id: number) {
 function lessonPage({ page, lessonIds, total, pages, pageSize = 100 }: LessonPageInput) {
   return {
     items: lessonIds.map(lessonDto),
+    page,
+    page_size: pageSize,
+    total,
+    pages,
+    has_next: page < pages,
+    has_previous: page > 1,
+  };
+}
+
+function enrollmentDto(id: number, status: EnrollmentStatusInput = 'active') {
+  return {
+    id,
+    user_id: 1,
+    course_id: id + 1000,
+    status,
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+    course: {
+      id: id + 1000,
+      title: `Course ${id}`,
+      description: null,
+      price: '10.00',
+      currency: 'USD',
+    },
+  };
+}
+
+function enrollmentPage({
+  page,
+  enrollmentIds,
+  total,
+  pages,
+  statuses = [],
+  pageSize = 100,
+}: EnrollmentPageInput) {
+  return {
+    items: enrollmentIds.map((id, index) => enrollmentDto(id, statuses[index])),
     page,
     page_size: pageSize,
     total,
@@ -170,6 +218,148 @@ describe('learning-progress transport and row-state boundary', () => {
         new AbortController().signal,
       ),
     ).rejects.toThrow(/pagination/i);
+  });
+
+  it('collects API-021 server pages, filters active entitlement, and client-paginates at twenty rows', async () => {
+    const firstPageIds = Array.from({ length: 100 }, (_, index) => index + 1);
+    const firstPageStatuses: EnrollmentStatusInput[] = [
+      ...Array.from({ length: 80 }, () => 'cancelled' as const),
+      ...Array.from({ length: 20 }, () => 'active' as const),
+    ];
+    const session = sessionRespondingWithSequence([
+      enrollmentPage({
+        page: 1,
+        enrollmentIds: firstPageIds,
+        statuses: firstPageStatuses,
+        total: 101,
+        pages: 2,
+      }),
+      enrollmentPage({ page: 2, enrollmentIds: [101], total: 101, pages: 2 }),
+    ]);
+    const signal = new AbortController().signal;
+
+    await expect(requestLearningEnrollments(session, 2, signal)).resolves.toMatchObject({
+      items: [expect.objectContaining({ id: 101, status: 'active' })],
+      page: 2,
+      pageSize: 20,
+      total: 21,
+      pages: 2,
+      hasNext: false,
+      hasPrevious: true,
+    });
+    expect(session.requestOptional).toHaveBeenCalledTimes(2);
+    expect(session.requestOptional).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        path: '/enrollments/my',
+        query: { page: 1, page_size: 100 },
+        signal,
+      }),
+    );
+    expect(session.requestOptional).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        path: '/enrollments/my',
+        query: { page: 2, page_size: 100 },
+        signal,
+      }),
+    );
+  });
+
+  it('returns the coherent empty active projection when every collected API-021 enrollment is non-active', async () => {
+    const result = await requestLearningEnrollments(
+      sessionRespondingWith(
+        enrollmentPage({
+          page: 1,
+          enrollmentIds: [1, 2],
+          statuses: ['pending_payment', 'cancelled'],
+          total: 2,
+          pages: 1,
+        }),
+      ),
+      7,
+      new AbortController().signal,
+    );
+
+    expect(result).toEqual({
+      items: [],
+      page: 1,
+      pageSize: 20,
+      total: 0,
+      pages: 0,
+      hasNext: false,
+      hasPrevious: false,
+    });
+  });
+
+  it('fails closed when API-021 exceeds the ten-page collection bound', async () => {
+    const session = sessionRespondingWith(
+      enrollmentPage({
+        page: 1,
+        enrollmentIds: Array.from({ length: 100 }, (_, index) => index + 1),
+        total: 1001,
+        pages: 11,
+      }),
+    );
+
+    await expect(
+      requestLearningEnrollments(session, 1, new AbortController().signal),
+    ).rejects.toThrow(/learning enrollment/i);
+    expect(session.requestOptional).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails closed when API-021 repeats an enrollment identity across collection pages', async () => {
+    const firstPageIds = Array.from({ length: 100 }, (_, index) => index + 1);
+    const session = sessionRespondingWithSequence([
+      enrollmentPage({ page: 1, enrollmentIds: firstPageIds, total: 101, pages: 2 }),
+      enrollmentPage({ page: 2, enrollmentIds: [100], total: 101, pages: 2 }),
+    ]);
+
+    await expect(
+      requestLearningEnrollments(session, 1, new AbortController().signal),
+    ).rejects.toThrow(/learning enrollment/i);
+    expect(session.requestOptional).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not issue API-021 collection requests when the caller signal is already aborted', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const session = sessionRespondingWith(null);
+
+    await expect(requestLearningEnrollments(session, 1, controller.signal)).rejects.toMatchObject({
+      name: 'AbortError',
+    });
+    expect(session.requestOptional).not.toHaveBeenCalled();
+  });
+
+  it('stops API-021 collection before the next server page when the caller aborts', async () => {
+    const controller = new AbortController();
+    const requestRequired = vi.fn(
+      async <TResponse, TBody>(options: ApiRequestOptions<TBody, TResponse>) => {
+        controller.abort();
+        const response = enrollmentPage({
+          page: 1,
+          enrollmentIds: Array.from({ length: 100 }, (_, index) => index + 1),
+          total: 101,
+          pages: 2,
+        });
+        return options.decode ? options.decode(response) : (response as TResponse);
+      },
+    );
+    const session = {
+      state: { status: 'anonymous' },
+      retryBootstrap: vi.fn(),
+      acceptAccessToken: vi.fn(),
+      clearSession: vi.fn(),
+      requestPublic: requestRequired,
+      requestOptional: requestRequired,
+      requestRequired,
+    } as unknown as SessionContextValue;
+
+    await expect(requestLearningEnrollments(session, 1, controller.signal)).rejects.toMatchObject({
+      name: 'AbortError',
+    });
+    expect(requestRequired).toHaveBeenCalledTimes(1);
   });
 
   it('rejects an API-014 collection that exceeds the ten-page workspace maximum', async () => {

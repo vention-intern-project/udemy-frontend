@@ -176,12 +176,9 @@ function CheckoutFeedbackNotice({
         <p>
           {t('cart:mockCheckoutWasAcceptedPaymentIs', {
             defaultValue:
-              'Mock checkout was accepted. Payment is pending; continue in My Learning.',
+              'Mock checkout was accepted. Payment is pending; learning access is not available yet.',
           })}
         </p>
-        <Link to="/learning">
-          {t('cart:checkMyLearning', { defaultValue: 'Check My Learning' })}
-        </Link>
       </Notice>
     );
   if (feedback.kind === 'recovery_required')
@@ -211,10 +208,12 @@ function CheckoutFeedbackNotice({
           defaultValue: 'Checkout status remains unknown',
         })}
       >
-        <p>{t('cart:checkoutStatusUncertain')}</p>
-        <Link to="/learning">
-          {t('cart:checkMyLearning', { defaultValue: 'Check My Learning' })}
-        </Link>
+        <p>
+          {t('cart:checkoutStatusUncertain', {
+            defaultValue:
+              'Your cart still cannot prove whether checkout partially completed. Do not start another checkout action.',
+          })}
+        </p>
       </Notice>
     );
   if (feedback.kind === 'unauthorized')
@@ -252,12 +251,9 @@ function CheckoutFeedbackNotice({
         <p>
           {t('cart:yourEnrollmentChangedCheckMyLearning', {
             defaultValue:
-              'Your enrollment changed. Check My Learning before taking another action.',
+              'Your enrollment changed. Checkout cannot confirm a payment result or learning access.',
           })}
         </p>
-        <Link to="/learning">
-          {t('cart:checkMyLearning', { defaultValue: 'Check My Learning' })}
-        </Link>
       </Notice>
     );
   if (feedback.kind === 'cart_changed')

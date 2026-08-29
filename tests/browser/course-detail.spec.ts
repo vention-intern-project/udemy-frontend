@@ -1,5 +1,7 @@
 import { expect, test, type Page, type Response, type Route } from '@playwright/test';
 
+import { courseDetailOrigin } from './course-detail-server';
+
 const detail = {
   id: 7,
   title:
@@ -172,6 +174,14 @@ interface LocalizedCoursePriceFallbackScenario {
   readonly freeLabel: string;
   readonly unavailableLabel: string;
   readonly actionLabel: string;
+}
+
+interface EnrollmentPreflightBrowserScenario {
+  readonly name: string;
+  readonly enrollmentStatus: 'pending_payment' | 'cancelled';
+  readonly price: string;
+  readonly expectedAction: 'Action unavailable' | 'Add to cart';
+  readonly expectedMutations: readonly string[];
 }
 
 const courseResidualBrowserCopy: Readonly<Record<'en' | 'ru' | 'uz', CourseResidualBrowserCopy>> = {
@@ -355,7 +365,7 @@ async function expectNoHorizontalOverflow(page: Page) {
 }
 
 test('matches a resource-status console allowance by status and pathname before its response event', () => {
-  const expectedResponseUrl = 'http://127.0.0.1:4176/courses/7';
+  const expectedResponseUrl = `${courseDetailOrigin}/courses/7`;
   const expectedFailure: ObservedHttpFailure = {
     method: 'GET',
     pathname: '/courses/7',
@@ -368,7 +378,7 @@ test('matches a resource-status console allowance by status and pathname before 
   expect(
     findExpectedFailureForConsole([expectedFailure], {
       status: 500,
-      url: 'http://127.0.0.1:4176/unrelated-resource.js',
+      url: `${courseDetailOrigin}/unrelated-resource.js`,
     }),
   ).toBeUndefined();
   expect(expectedFailure.consoleObserved).toBe(false);
@@ -1204,6 +1214,103 @@ for (const scenario of [
     await page.goto('/courses/7');
     await expect(page.getByRole('button', { name: scenario.expected })).toBeDisabled();
     expect(mutations).toBe(0);
+    diagnostics.assertClean();
+  });
+}
+
+for (const scenario of [
+  {
+    name: 'pending paid',
+    enrollmentStatus: 'pending_payment',
+    price: '19.99',
+    expectedAction: 'Action unavailable',
+    expectedMutations: [],
+  },
+  {
+    name: 'pending free',
+    enrollmentStatus: 'pending_payment',
+    price: '0.00',
+    expectedAction: 'Action unavailable',
+    expectedMutations: [],
+  },
+  {
+    name: 'cancelled paid',
+    enrollmentStatus: 'cancelled',
+    price: '19.99',
+    expectedAction: 'Add to cart',
+    expectedMutations: ['POST /cart/items'],
+  },
+  {
+    name: 'cancelled free',
+    enrollmentStatus: 'cancelled',
+    price: '0.00',
+    expectedAction: 'Action unavailable',
+    expectedMutations: [],
+  },
+] satisfies readonly EnrollmentPreflightBrowserScenario[]) {
+  test(`uses the named enrollment preflight for ${scenario.name} Course Detail recovery`, async ({
+    page,
+  }) => {
+    const diagnostics = await installDiagnostics(page);
+    expectMissingCurrentReview(diagnostics);
+    await installStudentToken(page);
+    const mutations: string[] = [];
+    await page.route('**/me', (route) => json(route, studentProfile));
+    await page.route('**/courses/7**', (route) => {
+      if (isDocumentNavigation(route)) return route.fallback();
+      const path = new URL(route.request().url()).pathname;
+      if (path === '/courses/7/reviews') return json(route, emptyReviewPage);
+      if (path === '/courses/7/reviews/me') return json(route, { detail: 'Review not found' }, 404);
+      return json(
+        route,
+        path.endsWith('/lessons') ? outline(null) : { ...detail, price: scenario.price },
+      );
+    });
+    await page.route('**/cart', (route) => json(route, emptyCart));
+    await page.route('**/enrollments/my**', (route) =>
+      json(route, {
+        ...emptyEnrollments,
+        items: [
+          {
+            id: 14,
+            user_id: 9,
+            course_id: 7,
+            status: scenario.enrollmentStatus,
+            created_at: '2026-07-01T00:00:00Z',
+            updated_at: '2026-07-01T00:00:00Z',
+            course: {
+              id: 7,
+              title: detail.title,
+              description: detail.description,
+              price: scenario.price,
+              currency: detail.currency,
+            },
+          },
+        ],
+        total: 1,
+        pages: 1,
+      }),
+    );
+    await page.route(/\/(?:cart\/items|enrollments)$/, async (route) => {
+      const request = route.request();
+      const path = new URL(request.url()).pathname;
+      mutations.push(`${request.method()} ${path}`);
+      if (path === '/cart/items' && scenario.expectedAction === 'Add to cart')
+        return json(route, cartItemMutation, 201);
+      throw new Error(`Unexpected Course Detail mutation ${request.method()} ${path}`);
+    });
+
+    await page.goto('/courses/7');
+    const action = page.getByRole('button', { name: scenario.expectedAction });
+    if (scenario.expectedAction === 'Action unavailable') {
+      await expect(action).toBeDisabled();
+      await expect(page.getByRole('button', { name: /Enroll free|Add to cart/ })).toHaveCount(0);
+    } else {
+      await expect(action).toBeEnabled();
+      await action.dblclick();
+      await expect(page.getByText('This course was added to your cart.')).toBeVisible();
+    }
+    expect(mutations).toEqual(scenario.expectedMutations);
     diagnostics.assertClean();
   });
 }

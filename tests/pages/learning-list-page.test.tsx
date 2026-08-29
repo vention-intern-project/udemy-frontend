@@ -74,6 +74,101 @@ const emptyEnrollments = {
   has_previous: false,
 };
 
+interface EnrollmentFixtureItem {
+  readonly id: number;
+  readonly user_id: number;
+  readonly course_id: number;
+  readonly status: 'pending_payment' | 'active' | 'cancelled';
+  readonly created_at: string;
+  readonly updated_at: string;
+  readonly course: {
+    readonly id: number;
+    readonly title: string;
+    readonly description: string | null;
+    readonly price: string;
+    readonly currency: string;
+  };
+}
+
+interface EnrollmentFixturePage {
+  readonly items: readonly EnrollmentFixtureItem[];
+  readonly total?: number;
+  readonly pages?: number;
+}
+
+interface LearningCollectionPage {
+  readonly items: readonly EnrollmentFixtureItem[];
+  readonly page: number;
+  readonly page_size: 100;
+  readonly total: number;
+  readonly pages: number;
+  readonly has_next: boolean;
+  readonly has_previous: boolean;
+}
+
+function learningCollectionPage(
+  page: number,
+  source: EnrollmentFixturePage,
+): LearningCollectionPage {
+  if (source.items.length === 0) {
+    return { ...emptyEnrollments, page: 1, page_size: 100 };
+  }
+  if (source.total === 1 && source.pages === 1) {
+    return {
+      items: source.items,
+      page: 1,
+      page_size: 100,
+      total: 1,
+      pages: 1,
+      has_next: false,
+      has_previous: false,
+    };
+  }
+  const active = source.items.find((item) => item.status === 'active') ?? source.items[0];
+  const firstPageItems = Array.from({ length: 100 }, (_, index): EnrollmentFixtureItem => {
+    const id = index + 1;
+    const isActive = index >= 80;
+    return {
+      ...active,
+      id,
+      course_id: id + 100,
+      status: isActive ? 'active' : 'cancelled',
+      course: {
+        ...active.course,
+        id: id + 100,
+        title: isActive && index === 80 ? active.course.title : `Enrollment course ${id}`,
+      },
+    };
+  });
+  return page === 1
+    ? {
+        items: firstPageItems,
+        page: 1,
+        page_size: 100,
+        total: 101,
+        pages: 2,
+        has_next: true,
+        has_previous: false,
+      }
+    : {
+        items: [
+          {
+            ...active,
+            id: 101,
+            course_id: 201,
+            status: 'active',
+            course: { ...active.course, id: 201, title: 'Active course page two' },
+          },
+        ],
+        page: 2,
+        page_size: 100,
+        total: 101,
+        pages: 2,
+        has_next: false,
+        has_previous: true,
+      };
+}
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -90,7 +185,14 @@ function decode<TResponse, TBody>(
   options: ApiRequestOptions<TBody, TResponse>,
   value: unknown,
 ): TResponse {
-  return options.decode ? options.decode(value) : (value as TResponse);
+  const response =
+    options.path === '/enrollments/my' &&
+    typeof value === 'object' &&
+    value !== null &&
+    Array.isArray((value as EnrollmentFixturePage).items)
+      ? learningCollectionPage(Number(options.query?.page), value as EnrollmentFixturePage)
+      : value;
+  return options.decode ? options.decode(response) : (response as TResponse);
 }
 
 function LocationProbe() {
@@ -159,7 +261,7 @@ describe('LearningListPage', () => {
       'Моё обучение',
       'Активно',
       'Навигация по страницам обучения',
-      'Записей на курсы: 22 · Страница 2 из 2',
+      'Записей на курсы: 21 · Страница 2 из 2',
       'Хлебные крошки',
     ],
     [
@@ -168,7 +270,7 @@ describe('LearningListPage', () => {
       'Ta’limim',
       'Faol',
       'Ta’limga yozilishlar sahifalari',
-      'Kurslarga yozilishlar: 22 · 2-sahifa, jami 2 ta',
+      'Kurslarga yozilishlar: 21 · 2-sahifa, jami 2 ta',
       'Yo‘l ko‘rsatkich',
     ],
   ] as const)(
@@ -334,7 +436,7 @@ describe('LearningListPage', () => {
     await waitFor(() => expect(screen.getByLabelText('Current route').textContent).toBe('/'));
   });
 
-  it('preserves API-021 server order, totals, status, and page cursor', async () => {
+  it('projects only active API-021 enrollment entries while preserving the page cursor', async () => {
     const requests: ApiRequestOptions[] = [];
     const request: ApiClient['request'] = async <TResponse, TBody>(
       options: ApiRequestOptions<TBody, TResponse>,
@@ -344,18 +446,42 @@ describe('LearningListPage', () => {
       if (options.path === '/enrollments/my') return decode(options, enrollments);
       throw new Error(`Unexpected request ${options.path}`);
     };
-    await renderPage(request);
+    await renderPage(request, '/learning?page=2');
     expect(await screen.findByRole('heading', { name: 'My learning' })).toBeTruthy();
-    expect(screen.getByText('22 enrollments · Page 2 of 2')).toBeTruthy();
+    expect(screen.getByText('21 enrollments · Page 2 of 2')).toBeTruthy();
     expect(screen.getAllByRole('heading', { level: 2 }).map((node) => node.textContent)).toEqual([
-      'Cancelled course',
-      'Active course',
+      'Active course page two',
     ]);
-    expect(screen.getByText('Cancelled')).toBeTruthy();
-    expect(requests.find((entry) => entry.path === '/enrollments/my')?.query).toEqual({
-      page: 2,
-      page_size: 20,
-    });
+    expect(screen.queryByText('Cancelled')).toBeNull();
+    expect(screen.queryByText('Cancelled course')).toBeNull();
+    expect(
+      requests.filter((entry) => entry.path === '/enrollments/my').map((entry) => entry.query),
+    ).toEqual([
+      { page: 1, page_size: 100 },
+      { page: 2, page_size: 100 },
+    ]);
+  });
+
+  it('replace-normalizes an active page beyond the final page without showing an empty state', async () => {
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/enrollments/my') return decode(options, enrollments);
+      throw new Error(`Unexpected request ${options.path}`);
+    };
+
+    await renderPage(request, '/learning?page=9');
+
+    expect(await screen.findByText('21 enrollments · Page 2 of 2')).toBeTruthy();
+    await waitFor(() =>
+      expect(screen.getByLabelText('Current location').textContent).toBe('?page=2'),
+    );
+    expect(await screen.findByRole('heading', { name: 'Active course page two' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Start your learning journey' })).toBeNull();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'My learning' })),
+    );
   });
 
   it('retries a list error and restores focus to the recovered heading', async () => {
@@ -378,13 +504,13 @@ describe('LearningListPage', () => {
         throw new Error(`Unexpected request ${options.path}`);
       },
     );
-    await renderPage(request as ApiClient['request']);
+    await renderPage(request as ApiClient['request'], '/learning');
     const user = userEvent.setup();
     const retry = await screen.findByRole('button', { name: 'Try again' });
     await act(async () => {
       await user.click(retry);
     });
-    await screen.findByText('22 enrollments · Page 1 of 2');
+    await screen.findByText('21 enrollments · Page 1 of 2');
     const heading = screen.getByRole('heading', { name: 'My learning' });
     await waitFor(() => expect(document.activeElement).toBe(heading));
     expect(screen.queryByText('private')).toBeNull();
@@ -459,7 +585,7 @@ describe('LearningListPage', () => {
           pageOneRequests += 1;
           if (pageOneRequests === 1)
             throw new ApiError({ kind: 'server', status: 500, message: 'private list' });
-          await retryResponse;
+          if (pageOneRequests === 2) await retryResponse;
         }
         return decode(options, {
           ...enrollments,
@@ -480,7 +606,7 @@ describe('LearningListPage', () => {
     await act(async () => {
       await user.click(screen.getByRole('button', { name: 'Navigate to page 2' }));
     });
-    await screen.findByText('22 enrollments · Page 2 of 2');
+    await screen.findByText('21 enrollments · Page 2 of 2');
     const sentinel = document.createElement('button');
     document.body.append(sentinel);
     sentinel.focus();
@@ -528,17 +654,16 @@ describe('LearningListPage', () => {
       throw new Error(`Unexpected request ${options.path}`);
     };
     const queryClient = await renderPage(request, '/learning');
-    expect(await screen.findByText('22 enrollments · Page 1 of 2')).toBeTruthy();
+    expect(await screen.findByText('21 enrollments · Page 1 of 2')).toBeTruthy();
     const user = userEvent.setup();
     await act(async () => {
       await user.click(screen.getByRole('button', { name: 'Go to next page' }));
     });
-    expect(await screen.findByText('22 enrollments · Page 2 of 2')).toBeTruthy();
+    expect(await screen.findByText('21 enrollments · Page 2 of 2')).toBeTruthy();
     expect(screen.getByLabelText('Current location').textContent).toBe('?page=2');
-    expect(requestedPages).toEqual([1, 2]);
+    expect(requestedPages).toEqual([1, 2, 1, 2]);
     expect(screen.getAllByRole('heading', { level: 2 }).map((node) => node.textContent)).toEqual([
-      'Cancelled course',
-      'Active course',
+      'Active course page two',
     ]);
     await waitFor(() =>
       expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'My learning' })),
@@ -547,17 +672,17 @@ describe('LearningListPage', () => {
     await act(async () => {
       await user.click(screen.getByRole('button', { name: 'Go to previous page' }));
     });
-    expect(await screen.findByText('22 enrollments · Page 1 of 2')).toBeTruthy();
+    expect(await screen.findByText('21 enrollments · Page 1 of 2')).toBeTruthy();
     expect(screen.getByLabelText('Current location').textContent).toBe('');
-    expect(screen.getAllByRole('heading', { level: 2 }).map((node) => node.textContent)).toEqual([
-      'First page course',
-    ]);
+    expect(screen.getAllByRole('heading', { level: 2 })[0]?.textContent).toBe('First page course');
     await waitFor(() =>
       expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'My learning' })),
     );
-    expect(requestedPages).toEqual([1, 2, 1]);
+    expect(requestedPages).toEqual([1, 2, 1, 2, 1, 2]);
 
-    const workspaceLink = screen.getByRole('link', { name: 'Open course' });
+    const [workspaceLink] = screen.getAllByRole('link', { name: 'Open course' });
+    expect(workspaceLink).toBeDefined();
+    if (!workspaceLink) throw new Error('Expected an active course action to retain focus.');
     workspaceLink.focus();
     holdBackgroundRefresh = true;
     let refresh: Promise<void> | undefined;
@@ -569,12 +694,88 @@ describe('LearningListPage', () => {
           query.queryKey[3] === 'learning:list:1',
       });
     });
-    await waitFor(() => expect(requestedPages).toEqual([1, 2, 1, 1]));
+    await waitFor(() => expect(requestedPages).toEqual([1, 2, 1, 2, 1, 2, 1]));
     await act(async () => {
       resolveBackgroundRefresh?.();
       await refresh;
     });
     expect(document.activeElement).toBe(workspaceLink);
+  });
+
+  it('replace-normalizes a background-shrunk active page without stealing focus', async () => {
+    const requestedPages: number[] = [];
+    let shrinkActiveCollection = false;
+    const retainedActiveEnrollment: EnrollmentFixtureItem = {
+      ...enrollments.items[1],
+      status: 'active',
+      id: 101,
+      course_id: 201,
+      course: { ...enrollments.items[1].course, id: 201, title: 'Active course page two' },
+    };
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/enrollments/my') {
+        const page = Number(options.query?.page);
+        requestedPages.push(page);
+        const response = shrinkActiveCollection
+          ? {
+              items: [
+                retainedActiveEnrollment,
+                ...Array.from({ length: 19 }, (_, index) => ({
+                  ...retainedActiveEnrollment,
+                  id: 102 + index,
+                  course_id: 202 + index,
+                  course: {
+                    ...retainedActiveEnrollment.course,
+                    id: 202 + index,
+                    title: `Retained active course ${index + 2}`,
+                  },
+                })),
+              ],
+              page: 1,
+              page_size: 100,
+              total: 20,
+              pages: 1,
+              has_next: false,
+              has_previous: false,
+            }
+          : learningCollectionPage(page, {
+              items: [
+                { ...enrollments.items[0], status: 'cancelled' },
+                { ...enrollments.items[1], status: 'active' },
+              ],
+              total: enrollments.total,
+              pages: enrollments.pages,
+            });
+        return options.decode ? options.decode(response) : (response as TResponse);
+      }
+      throw new Error(`Unexpected request ${options.path}`);
+    };
+    const queryClient = await renderPage(request, '/learning?page=2');
+    expect(await screen.findByText('21 enrollments · Page 2 of 2')).toBeTruthy();
+    const nonPaginationNavigation = screen.getByRole('button', { name: 'Navigate to page 2' });
+    nonPaginationNavigation.focus();
+    shrinkActiveCollection = true;
+
+    await act(async () => {
+      await queryClient.refetchQueries({
+        predicate: (query) =>
+          query.queryKey[0] === 'private' &&
+          query.queryKey[2] === 'API-021' &&
+          query.queryKey[3] === 'learning:list:2',
+      });
+    });
+
+    expect(requestedPages.slice(0, 2)).toEqual([1, 2]);
+    const postShrinkRequestedPages = requestedPages.slice(2);
+    expect(postShrinkRequestedPages.length).toBeGreaterThanOrEqual(1);
+    expect(postShrinkRequestedPages.length).toBeLessThanOrEqual(2);
+    expect(postShrinkRequestedPages.every((page) => page === 1)).toBe(true);
+    expect(await screen.findByText('20 enrollments · Page 1 of 1')).toBeTruthy();
+    await waitFor(() => expect(screen.getByLabelText('Current location').textContent).toBe(''));
+    expect(document.activeElement).toBe(nonPaginationNavigation);
   });
 
   it('cancels interrupted page focus intent before later history-independent page success', async () => {
@@ -592,7 +793,7 @@ describe('LearningListPage', () => {
         requestedPages.push(page);
         if (
           page === 2 &&
-          requestedPages.filter((requestedPage) => requestedPage === 2).length === 1
+          requestedPages.filter((requestedPage) => requestedPage === 2).length === 2
         )
           await pageTwoResponse;
         const items =
@@ -618,20 +819,20 @@ describe('LearningListPage', () => {
     };
     await renderPage(request, '/learning');
     const user = userEvent.setup();
-    await screen.findByText('22 enrollments · Page 1 of 2');
+    await screen.findByText('21 enrollments · Page 1 of 2');
     await act(async () => {
       await user.click(screen.getByRole('button', { name: 'Go to next page' }));
     });
     await waitFor(() =>
       expect(screen.getByLabelText('Current location').textContent).toBe('?page=2'),
     );
-    await waitFor(() => expect(requestedPages).toEqual([1, 2]));
+    await waitFor(() => expect(requestedPages).toEqual([1, 2, 1, 2]));
 
     const historyBack = screen.getByRole('button', { name: 'History back' });
     await act(async () => {
       await user.click(historyBack);
     });
-    await screen.findByText('22 enrollments · Page 1 of 2');
+    await screen.findByText('21 enrollments · Page 1 of 2');
     await waitFor(() => expect(document.activeElement).toBe(historyBack));
     await act(async () => {
       resolvePageTwo?.();
@@ -643,11 +844,10 @@ describe('LearningListPage', () => {
     await act(async () => {
       await user.click(nonPaginationNavigation);
     });
-    await screen.findByText('22 enrollments · Page 2 of 2');
+    await screen.findByText('21 enrollments · Page 2 of 2');
     expect(screen.getByLabelText('Current location').textContent).toBe('?page=2');
     expect(screen.getAllByRole('heading', { level: 2 }).map((node) => node.textContent)).toEqual([
-      'Cancelled course',
-      'Active course',
+      'Active course page two',
     ]);
     await waitFor(() => expect(document.activeElement).toBe(nonPaginationNavigation));
   });

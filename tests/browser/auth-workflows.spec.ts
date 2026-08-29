@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
 import {
   assertAuthWorkflowRuntime,
+  AUTH_MY_LEARNING_COLLECTION_PATH,
   authAdmissionController,
   authLocalizedResidualController,
   authWorkflowReflowController,
@@ -530,7 +531,7 @@ test('signup covers keyboard validation, safe 422/duplicate/offline states, pend
   allowRequestFailures(
     page,
     { method: 'GET', path: '/cart', errorText: 'net::ERR_ABORTED' },
-    { method: 'GET', path: '/enrollments/my?page=1&page_size=20', errorText: 'net::ERR_ABORTED' },
+    { method: 'GET', path: AUTH_MY_LEARNING_COLLECTION_PATH, errorText: 'net::ERR_ABORTED' },
   );
   let attempts = 0;
   const successGate = createDeferred();
@@ -981,7 +982,7 @@ test('login rejects an external returnTo and falls back to the role home', async
   allowRequestFailures(
     page,
     { method: 'GET', path: '/cart', errorText: 'net::ERR_ABORTED' },
-    { method: 'GET', path: '/enrollments/my?page=1&page_size=20', errorText: 'net::ERR_ABORTED' },
+    { method: 'GET', path: AUTH_MY_LEARNING_COLLECTION_PATH, errorText: 'net::ERR_ABORTED' },
   );
   await page.route('**/me', (route) => fulfillJson(route, 200, profile));
   await page.route('**/login', async (route) => {

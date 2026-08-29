@@ -1,5 +1,16 @@
 # Localization review exchange
 
+## Revise protected draft sources
+
+```powershell
+npm run localization:draft:revise -- <registryPath> <generatedOutputPath> <requestJsonPath>
+```
+
+The exact `{ taskId, revisions }` request asserts stable unit identity, the current source revision,
+complete occurrences and rendering fields, and new English/RU/UZ drafts. It preflights every item
+then commits the registry and generated resources together. A draft source revision records a
+`source_revision` and `draft_reset`; it never grants review approval.
+
 These public Node commands read only explicit paths and never load local-only orchestration files. The canonical
 registry remains the sole corpus source of truth; generated resources are always rendered by the
 corpus engine and committed together with the registry only after full-pack preflight succeeds.
@@ -25,6 +36,19 @@ import, approve, or alter locale candidate metadata.
 npm run localization:consumer:source-rebind -- <registryPath> <generatedOutputPath> <taskId> <sourcePath>
 ```
 
+## Atomically reconcile consumer grammar
+
+```powershell
+npm run localization:consumer:reconcile -- <registryPath> <generatedOutputPath> <requestJsonPath>
+```
+
+The exact `{ taskId, sources, obsolete }` request uses canonical paths relative to `src`, validates
+every declared current fingerprint, refreshes all existing entries for those sources, removes only
+the exact allowlisted identities, validates the complete next corpus/source graph, and commits the
+registry/generated pair atomically. The registry serializer preserves all bytes outside the selected
+`consumerGrammar` object. Exact replay writes nothing; aliases, inferred removals, stale fingerprints,
+and graph/transaction failures fail closed.
+
 This command accepts one exact normalized `src/`-relative source path and updates only the
 `sourceFingerprint` fields of every existing consumer-grammar entry with that source path. It
 covers wrappers, forwarders, dependencies, and dynamic-key-family consumers so a file revision is
@@ -32,6 +56,20 @@ coherent without changing grammar identities, unit IDs, locale candidates, revie
 baseline resources, or occurrences. At least one entry must match; malformed/aliased targets,
 missing sources, invalid corpus/source graphs, and transaction failures fail closed. Exact replay
 returns `rebound: false` without writing.
+
+## Recover a recorded immutable baseline without broad formatting churn
+
+```powershell
+npm run localization:recorded-base:recover -- <registryPath> <generatedOutputPath> <recoveryRequestJsonPath>
+```
+
+The exact request supplies two explicitly acquired external baseline paths, the immutable base
+commit/path/blob provenance, and the exact protected-revision and consumer-reconciliation requests.
+The command SHA-1 verifies both baseline blobs, validates and renders the pair, reconstructs the
+approved four-unit/history/provenance plus consumer-grammar delta in an external temporary target,
+and rejects invalid current pairs, semantic drift, or non-allowlisted changes before its sole paired
+atomic workspace write. It never invokes Git, formats the registry, copies inputs into the workspace,
+or accepts a broad current registry rewrite. Exact already-recovered bytes return `wrote: false`.
 
 ## Register authorized draft units
 
@@ -47,6 +85,26 @@ aliases, assigns the next stable `MLUX-C####` and `MLUX-O####` IDs, then validat
 complete next corpus before one paired atomic commit. Exact replays return `reused` IDs without a
 write; non-exact collisions fail closed. New RU and UZ candidates are always `draft` with null
 review, verdict, request, approval, and authority metadata.
+
+## Request bounded human review
+
+```powershell
+npm run localization:review:request -- <registryPath> <generatedOutputPath> <taskId> <ru,uz> <unitIdsJsonPath> <requestedAt>
+```
+
+This public command is the sole draft-to-review-requested route for an exact task-owned boundary.
+It accepts a canonical `(FE|CRF)-NNN` task, sorted non-empty unique `ru`/`uz` locale list, sorted
+non-empty unique stable-ID JSON array, and a UTC RFC3339 millisecond request time. It validates the
+complete current corpus and renderer output, accepts only active task-owned clean drafts, records
+the exact task/locales/IDs/time in first-class request history, then source-preservingly commits the
+registry/generated pair with the normal alias-safe rollback transaction. It never creates reviewer,
+verdict, replacement, approval, or supplied-artifact authority metadata.
+
+Exact replay of the same task, sorted boundary, locale list, and request time returns no write.
+Any altered time, changed/partial boundary, non-draft state, path alias, corpus/render drift, or
+invalid input fails before mutation. Review-request metadata never changes renderer-derived locale
+resources. After success, use the ordinary bounded export below; its rows carry the live
+`review_requested` status and `requestedAt` for human review and ordinary CSV import.
 
 ## Export a standard CSV pack
 
