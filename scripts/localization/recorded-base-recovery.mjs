@@ -17,7 +17,7 @@ export const RECORDED_BASE = Object.freeze({
 });
 
 const APPROVED_CRF_001 = Object.freeze({
-  revisionRequestDigest: '40b9580f37c767b1673152f96268c5c9b564f8bef0891d10cfe29fd6075c8a2d',
+  revisionRequestDigest: '87a2434dc7ff46c2030a4eeea30b2e381656c5f72845f8f2ddc8c9a29a7b8546',
   reconcileRequestDigest: 'a6244b0122795c0068008d523d95e37d07b58b3048fc33447e637a0eb2021652',
   revisedUnitIds: Object.freeze(['MLUX-C0109', 'MLUX-C0119', 'MLUX-C0386', 'MLUX-C0416']),
   targetConsumerGrammarDigest: '1cc3417851359513a9ffc8aad383a3ebc5f56437a81cdcf823ad91452970007b',

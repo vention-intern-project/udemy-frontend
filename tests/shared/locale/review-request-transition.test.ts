@@ -196,6 +196,24 @@ describe('public review-request transition', () => {
     expect(requested).toMatchObject({ status: 'review_requested', requestedAt: REQUESTED_AT });
     expect(requested.history.at(-1)).toMatchObject({ reviewRequest: engineReviewRequest() });
 
+    const wrongUnitRequest = structuredClone(requested);
+    (
+      wrongUnitRequest.history.at(-1) as { reviewRequest: { unitIds: string[] } }
+    ).reviewRequest.unitIds = ['MLUX-C0002'];
+    unit.locales.ru = wrongUnitRequest;
+    expect(validateCorpus(corpus)).toContain(
+      'MLUX-C0001: ru review-request history lacks an exact request boundary',
+    );
+
+    const wrongLocaleRequest = structuredClone(requested);
+    (
+      wrongLocaleRequest.history.at(-1) as { reviewRequest: { locales: string[] } }
+    ).reviewRequest.locales = ['uz'];
+    unit.locales.ru = wrongLocaleRequest;
+    expect(validateCorpus(corpus)).toContain(
+      'MLUX-C0001: ru review-request history lacks an exact request boundary',
+    );
+
     const missingRequest = structuredClone(requested);
     delete (missingRequest.history.at(-1) as { reviewRequest?: unknown }).reviewRequest;
     unit.locales.ru = missingRequest;

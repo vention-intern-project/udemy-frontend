@@ -325,7 +325,7 @@ function validMillisecondInstant(value) {
   );
 }
 
-function validReviewRequest(reviewRequest) {
+function validReviewRequest(reviewRequest, unitId, locale) {
   if (!hasExactKeys(reviewRequest, ['locales', 'requestedAt', 'taskId', 'unitIds'])) return false;
   const { locales, requestedAt, taskId, unitIds } = reviewRequest;
   return (
@@ -338,6 +338,8 @@ function validReviewRequest(reviewRequest) {
     unitIds.length > 0 &&
     unitIds.every((unitId) => ID.test(unitId)) &&
     same(unitIds, [...new Set(unitIds)].sort()) &&
+    (unitId === undefined || unitIds.includes(unitId)) &&
+    (locale === undefined || locales.includes(locale)) &&
     validMillisecondInstant(requestedAt)
   );
 }
@@ -726,7 +728,10 @@ function lifecycleViolation(
     }
     const isChangeRequest = event.from === 'review_requested' && event.to === 'changes_requested';
     const isReviewRequest = event.from === 'draft' && event.to === 'review_requested';
-    if (isReviewRequest && !validReviewRequest(event.reviewRequest)) {
+    if (
+      isReviewRequest &&
+      !validReviewRequest(event.reviewRequest, readCompatibilityUnit?.id, readCompatibilityLocale)
+    ) {
       if (
         !(
           isReadCompatibleLegacyReviewRequest(

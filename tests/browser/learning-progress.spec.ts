@@ -2311,6 +2311,14 @@ for (const locale of ['en', 'ru', 'uz'] as const) {
         expectedGetAbort('/enrollments/4', 4),
         expectedGetAbort('/courses/7/progress', 2),
         expectedGetAbort('/courses/7/lessons', 2),
+        ...(locale === 'en'
+          ? [
+              expectedGetAbort(
+                '/src/pages/learning-list-page/assets/my-learning-empty-state-ui022.png',
+                1,
+              ),
+            ]
+          : []),
       ],
     });
     let enrollmentStatus: 'pending_payment' | 'cancelled' | 'active' = 'pending_payment';

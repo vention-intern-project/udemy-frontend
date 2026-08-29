@@ -73,7 +73,7 @@ export const RECORDED_BASE_REQUEST = Object.freeze({
           {
             id: 'MLUX-O0588',
             context:
-              'src/pages/learning-detail-page/LearningDetailPage.tsx:437 — Page: learning-detail-page',
+              'src/pages/learning-detail-page/LearningDetailPage.tsx:316 — Page: learning-detail-page',
           },
         ],
         placeholdersByLocale: { en: [], ru: [], uz: [] },

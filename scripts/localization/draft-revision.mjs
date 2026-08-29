@@ -176,6 +176,12 @@ function isUnattributedCompletedRevision(unit, revision) {
     sameJsonValue(unit.pluralForms, revision.pluralForms) &&
     ['ru', 'uz'].every((locale) => {
       const candidate = unit.locales[locale];
+      const sourceRevisionEvent = candidate.history.find(
+        (event) =>
+          event?.type === 'source_revision' &&
+          event.previousSourceRevision === revision.expectedSourceRevision &&
+          event.sourceRevision === unit.sourceRevision,
+      );
       return (
         candidate.status === 'draft' &&
         candidate.candidate === (locale === 'ru' ? revision.ru : revision.uz) &&
@@ -184,7 +190,8 @@ function isUnattributedCompletedRevision(unit, revision) {
         candidate.requestedAt === null &&
         candidate.reviewedAt === null &&
         candidate.approvalRecordedAt === null &&
-        candidate.approvalAuthority === null
+        candidate.approvalAuthority === null &&
+        sourceRevisionEvent !== undefined
       );
     })
   );

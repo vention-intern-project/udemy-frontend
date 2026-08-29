@@ -113,9 +113,19 @@ function sourceFile(sourceRoot, sourcePath) {
     throw new Error('sourcePath must stay under sourceRoot');
   return path;
 }
-function graphViolationReferencesSource(violation, sourcePath) {
+function graphViolationReferencesSource(violation, sourcePath, acceptedSourcePaths) {
   const escaped = sourcePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`(?:^|[ :])${escaped}(?=[:|]|$)`).test(violation);
+  if (new RegExp(`(?:^|[ :])${escaped}(?=[:|]|$)`).test(violation)) return true;
+  const basename = sourcePath.split('/').at(-1);
+  if (
+    !basename ||
+    acceptedSourcePaths.filter((path) => path.split('/').at(-1) === basename).length !== 1
+  )
+    return false;
+  const escapedBasename = basename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`^MLUX-C\\d{4}: retired unit has source consumer ${escapedBasename}$`).test(
+    violation,
+  );
 }
 
 function appliedSourceRecord(sourcePath, sourceFingerprint, entryCount) {
@@ -195,7 +205,9 @@ export async function reconcileConsumerGrammar({
   if (
     currentGraph.some(
       (violation) =>
-        ![...acceptedSources].some((path) => graphViolationReferencesSource(violation, path)),
+        ![...acceptedSources].some((path) =>
+          graphViolationReferencesSource(violation, path, [...acceptedSources]),
+        ),
     )
   )
     throw new Error(`current source graph validation failed:\n${currentGraph.join('\n')}`);
