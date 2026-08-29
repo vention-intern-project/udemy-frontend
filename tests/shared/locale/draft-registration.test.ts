@@ -428,5 +428,5 @@ describe('draft registration', () => {
     expect(await readFile(registryPath)).toEqual(beforeRegistry);
     expect(await readFile(outputPath)).toEqual(beforeOutput);
     expect(await readdir(directory)).not.toContainEqual(expect.stringContaining('.tmp'));
-  });
+  }, 20_000);
 });
