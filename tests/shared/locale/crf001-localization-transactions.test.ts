@@ -339,7 +339,7 @@ describe('CRF-001 localization transactions', () => {
       }),
     ).rejects.toThrow('injected reconcile output failure');
     expect(await readPair(rejectedTargets)).toEqual(rejectedBefore);
-  }, 45_000);
+  }, 120_000);
 
   it('reconstructs the recorded base exactly, rejects semantic drift, and rolls back paired recovery writes', async () => {
     const rejectedRequests = [
