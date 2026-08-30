@@ -23,6 +23,7 @@ const {
 } = await import('../../../scripts/localization/corpus-engine.mjs');
 const {
   RECORDED_BASE_REQUEST,
+  recordedBaseAccountMenuSource,
   writeRecordedBaseArtifacts,
   // @ts-expect-error The dependency-free Node localization fixture has no TypeScript declaration.
 } = await import('./fixtures/crf001-recorded-base-fixture.mjs');
@@ -95,6 +96,12 @@ async function createSourceFixture(): Promise<SourceFixture> {
   const sourceRoot = join(await mkdtemp(join(tmpdir(), 'learnhub-crf001-source-')), 'src');
   temporaryDirectories.push(dirname(sourceRoot));
   await cp(resolve('src'), sourceRoot, { recursive: true });
+  const accountMenuPath = join(sourceRoot, 'app/layouts/AccountMenu.tsx');
+  await writeFile(
+    accountMenuPath,
+    recordedBaseAccountMenuSource(await readFile(accountMenuPath, 'utf8')),
+    'utf8',
+  );
   const cartPageSource = `${CRF_001_CART_PAGE_SOURCE.replace(/^\n/, '')}\n`;
   await writeFile(join(sourceRoot, 'pages/cart-page/CartPage.tsx'), cartPageSource, 'utf8');
   return { sourceRoot };

@@ -116,6 +116,31 @@ export const RECORDED_BASE_REQUEST = Object.freeze({
   },
 });
 
+const ACCOUNT_MENU_FINGERPRINT_REBIND_PATCH = String.raw`diff --git localization/corpus/registry.json localization/corpus/registry.json
+index f36a2c4..cec02ce 100644
+--- localization/corpus/registry.json
++++ localization/corpus/registry.json
+@@ -31106 +31106 @@
+-            "sourceFingerprint": "sha256:f5d50a5aaec69f2419d957f48014b9a62b113c1f4c428853ea38ec18b3e5e010"
++            "sourceFingerprint": "sha256:45f427f4a53dd4209b93013acd8ae2970074bf1ffaf06aafe345b20aa0774586"
+`;
+
+const ACCOUNT_MENU_RUNTIME_PATCH = String.raw`diff --git src/app/layouts/AccountMenu.tsx src/app/layouts/AccountMenu.tsx
+index 3b662ab..83abf5e 100644
+--- src/app/layouts/AccountMenu.tsx
++++ src/app/layouts/AccountMenu.tsx
+@@ -42 +42 @@ export function AccountMenu({ user, showLanguage = false }: AccountMenuProps) {
+-  const { locale, setLocale } = useLocale();
++  const { clearStoredLocale, locale, setLocale } = useLocale();
+@@ -237,6 +237,7 @@ export function AccountMenu({ user, showLanguage = false }: AccountMenuProps) {
+                 type="button"
+                 onClick={() => {
++                  clearStoredLocale();
+                   clearSession();
+                   navigate('/');
+                 }}
+`;
+
 const REGISTRY_PATCH = String.raw`diff --git localization/corpus/registry.json localization/corpus/registry.json
 index 2fd9c37..fe21d57 100644
 --- localization/corpus/registry.json
@@ -921,6 +946,10 @@ export function reverseUnifiedPatch(source, patch) {
   return sourceLines.join('\n');
 }
 
+export function recordedBaseAccountMenuSource(source) {
+  return reverseUnifiedPatch(source, ACCOUNT_MENU_RUNTIME_PATCH);
+}
+
 function patchForPath(patch, path) {
   const start = patch.indexOf(`diff --git a/${path} b/${path}`);
   if (start < 0) throw new Error(`recorded CRF-002 delta does not contain ${path}`);
@@ -935,7 +964,7 @@ export async function writeRecordedBaseArtifacts({ registryBaselinePath, generat
   ]);
   const registryBeforeCrf001 = reverseUnifiedPatch(
     reverseUnifiedPatch(
-      currentRegistry,
+      reverseUnifiedPatch(currentRegistry, ACCOUNT_MENU_FINGERPRINT_REBIND_PATCH),
       patchForPath(CRF_002_PATCH, 'localization/corpus/registry.json'),
     ),
     REGISTRY_PATCH,
