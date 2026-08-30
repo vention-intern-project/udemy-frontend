@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { QueryClientProvider } from '@tanstack/react-query';
+import { defaultScheduler, notifyManager, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { I18nextProvider } from 'react-i18next';
@@ -316,6 +316,45 @@ function decode<TResponse, TBody>(
   return options.decode ? options.decode(value) : (value as TResponse);
 }
 
+interface Deferred<T> {
+  readonly promise: Promise<T>;
+  resolve(value: T): void;
+}
+
+type ScheduledNotification = () => void;
+
+interface SchedulerAdmissionOptions {
+  readonly timeout: number;
+}
+
+const schedulerAdmissionTimeout: SchedulerAdmissionOptions = { timeout: 100 };
+
+function createDeferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
+async function captureScheduledNotification(
+  admitNotification: () => void,
+  options: SchedulerAdmissionOptions = schedulerAdmissionTimeout,
+): Promise<ScheduledNotification> {
+  let scheduledNotification: ScheduledNotification | undefined;
+  notifyManager.setScheduler((notification) => {
+    scheduledNotification = notification;
+  });
+  try {
+    admitNotification();
+    await waitFor(() => expect(scheduledNotification).toBeDefined(), options);
+    if (!scheduledNotification) throw new Error('Scheduled notification was not captured.');
+    return scheduledNotification;
+  } finally {
+    notifyManager.setScheduler(defaultScheduler);
+  }
+}
+
 interface PageHarnessOptions {
   readonly sessionControls?: boolean;
   readonly routeControls?: boolean;
@@ -379,6 +418,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   cleanup();
+  notifyManager.setScheduler(defaultScheduler);
   vi.restoreAllMocks();
 });
 
@@ -664,12 +704,14 @@ describe('CourseDetailPage', () => {
       has_next: false,
       has_previous: false,
     };
+    const reviewResponse = createDeferred<typeof reviews>();
     const request: ApiClient['request'] = async <TResponse, TBody>(
       options: ApiRequestOptions<TBody, TResponse>,
     ) => {
       if (options.path === '/courses/7') return decode(options, course);
       if (options.path === '/courses/7/lessons') return decode(options, outline(null));
-      if (options.path === '/courses/7/reviews') return decode(options, reviews);
+      if (options.path === '/courses/7/reviews')
+        return decode(options, await reviewResponse.promise);
       if (options.path === '/cart' || options.path === '/enrollments/my') {
         preflightReads += 1;
         return decode(options, options.path === '/cart' ? emptyCart : emptyEnrollments);
@@ -703,7 +745,7 @@ describe('CourseDetailPage', () => {
     };
     const useSessionSpy = vi.spyOn(authSession, 'useSession').mockReturnValue(session);
     const queryClient = createAppQueryClient();
-    render(
+    const view = render(
       <I18nextProvider i18n={localeRuntime}>
         <QueryClientProvider client={queryClient}>
           <MemoryRouter initialEntries={['/courses/7']}>
@@ -720,8 +762,20 @@ describe('CourseDetailPage', () => {
     expect(preflightReads).toBe(0);
     await userEvent.setup().click(action);
     expect(writes).toBe(0);
-    await screen.findByText('No reviews yet.');
+    const notify = await captureScheduledNotification(() => reviewResponse.resolve(reviews));
+    await act(async () => {
+      notify();
+    });
+    expect(screen.getByText('No reviews yet.')).toBeTruthy();
+    view.unmount();
     useSessionSpy.mockRestore();
+  });
+
+  it('restores the default scheduler when notification admission is missing', async () => {
+    const setScheduler = vi.spyOn(notifyManager, 'setScheduler');
+
+    await expect(captureScheduledNotification(() => {})).rejects.toThrow();
+    expect(setScheduler).toHaveBeenLastCalledWith(defaultScheduler);
   });
 
   it.each(courseResidualLocaleScenarios)(
