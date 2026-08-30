@@ -4,6 +4,7 @@ import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 import {
+  classifyCoursePrice,
   courseMutationDisposition,
   coursePrimaryAction,
 } from '../../../src/features/course-detail';
@@ -139,6 +140,16 @@ function coursePrimaryActionSource(): string {
 }
 
 describe('course primary action matrix', () => {
+  it.each([
+    ['0', 'free'],
+    ['0.00', 'free'],
+    ['19.99', 'paid'],
+    ['-1', 'invalid'],
+    ['invalid', 'invalid'],
+  ] as const)('exports the canonical %s price classification as %s', (price, expected) => {
+    expect(classifyCoursePrice(price)).toBe(expected);
+  });
+
   it('carries locale-neutral guest and disabled descriptors with a safe internal login target', () => {
     expect(
       coursePrimaryAction({

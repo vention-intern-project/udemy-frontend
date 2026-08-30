@@ -1,411 +1,434 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
+
 import { cartWorkflowOrigin } from './cart-workflow-server';
 
-const student = {
-  email: 'student@example.test',
-  name: 'Sam',
-  surname: 'Student',
-  role: 'student',
-  birthday: null,
-  phone_number: null,
-  created_at: '2026-01-01T00:00:00Z',
-};
-const course = {
-  id: 7,
-  title:
-    'A deliberately long mock checkout course title that must remain operable at compact widths',
-  description: null,
-  price: '19.99',
-  currency: 'USD',
-};
-const checkoutResidualCopy = {
-  en: {
-    checkStatus: 'Check checkout status',
-    mockCheckout: 'Mock checkout',
-    uncertain:
-      'Your cart still cannot prove whether checkout partially completed. Do not start another checkout action.',
-  },
-  ru: {
-    checkStatus: 'Проверить статус оплаты',
-    mockCheckout: 'Тестовое оформление',
-    uncertain:
-      'Корзина по-прежнему не может подтвердить, была ли оплата частично завершена. Не начинайте новое оформление.',
-  },
-  uz: {
-    checkStatus: 'To‘lov holatini tekshirish',
-    mockCheckout: 'Sinov buyurtmasi',
-    uncertain:
-      'Savatingiz to‘lov qisman yakunlanganini hali ham tasdiqlay olmaydi. Yana checkout boshlamang.',
-  },
-} as const;
+type PaymentOutcome = 'success' | 'failed';
+type EnrollmentStatus = 'active' | 'cancelled' | 'pending_payment';
+type FixtureLocale = 'en' | 'ru' | 'uz';
 
-interface CheckoutTerminalLocaleCopy {
-  readonly acceptedBody: string;
-  readonly acceptedTitle: string;
-  readonly conflictBody: string;
-  readonly conflictTitle: string;
-  readonly mockCheckout: string;
+interface FixtureCourse {
+  readonly id: number;
+  readonly price: string;
+  readonly title: string;
+}
+interface FixtureEnrollment {
+  readonly course: FixtureCourse;
+  readonly id: number;
+  status: EnrollmentStatus;
+}
+interface RequestRecord {
+  readonly body: unknown;
+  readonly method: string;
+  readonly path: string;
+}
+interface CartFixtureOptions {
+  readonly cartCourseIds?: readonly number[];
+  readonly checkoutMode?: 'lost' | 'normal';
+  readonly completionMode?: 'lost' | 'malformed' | 'normal';
+  readonly completionStatusByEnrollment?: Readonly<Record<number, EnrollmentStatus>>;
+  readonly enrollments?: readonly FixtureEnrollment[];
+  readonly initialPending?: readonly number[];
+  readonly uncertainCompletionEnrollmentId?: number;
+  readonly unrelatedCourseIdAfterRestore?: number;
 }
 
-const checkoutTerminalCopy: Readonly<Record<'en' | 'ru' | 'uz', CheckoutTerminalLocaleCopy>> = {
-  en: {
-    acceptedTitle: 'Checkout accepted',
-    acceptedBody:
-      'Mock checkout was accepted. Payment is pending; learning access is not available yet.',
-    conflictTitle: 'Enrollment changed',
-    conflictBody:
-      'Your enrollment changed. Checkout cannot confirm a payment result or learning access.',
-    mockCheckout: 'Mock checkout',
-  },
-  ru: {
-    acceptedTitle: 'Оформление принято',
-    acceptedBody:
-      'Тестовое оформление принято. Платёж ожидает обработки; доступ к обучению пока недоступен.',
-    conflictTitle: 'Запись на курс изменилась',
-    conflictBody:
-      'Ваша запись изменилась. Оформление не может подтвердить результат платежа или доступ к обучению.',
-    mockCheckout: 'Тестовое оформление',
-  },
-  uz: {
-    acceptedTitle: 'Buyurtma qabul qilindi',
-    acceptedBody:
-      'Sinov buyurtmasi qabul qilindi. To‘lov kutilmoqda; ta’limga kirish hozircha mavjud emas.',
-    conflictTitle: 'Kursga yozilish holati o‘zgardi',
-    conflictBody:
-      'Yozilishingiz o‘zgardi. Checkout to‘lov natijasini yoki ta’limga kirishni tasdiqlay olmaydi.',
-    mockCheckout: 'Sinov buyurtmasi',
-  },
+const student = {
+  birthday: null,
+  created_at: '2026-01-01T00:00:00Z',
+  email: 'student@example.test',
+  name: 'Sam',
+  phone_number: null,
+  role: 'student',
+  surname: 'Student',
+};
+const courses: Readonly<Record<number, FixtureCourse>> = {
+  7: { id: 7, price: '19.99', title: 'Advanced TypeScript Architecture' },
+  8: { id: 8, price: '29.99', title: 'FastAPI and Async SQLAlchemy' },
+  9: { id: 9, price: '39.99', title: 'Accessible Frontend Systems' },
 };
 
-const obsoletePaymentControlLabels = [
-  'Complete mock payment',
-  'Simulate mock payment failure',
-  'Завершить тестовую оплату',
-  'Сымитировать сбой тестовой оплаты',
-  'Sinov to‘lovini yakunlash',
-  'Sinov to‘lovi xatosini taqlid qilish',
-] as const;
+function enrollment(id: number, courseId: number, status: EnrollmentStatus): FixtureEnrollment {
+  return { course: courses[courseId]!, id, status };
+}
 
-function cart(
-  items = [
-    {
-      id: 10,
-      course_id: 7,
-      added_at: '2026-01-01T00:00:00Z',
-      course: { id: 7, title: course.title, price: '19.99', currency: 'USD' },
-    },
-  ],
-) {
+function pageOf(items: readonly FixtureEnrollment[]) {
   return {
-    id: 1,
-    items,
-    total_price: items.length === 0 ? '0.00' : '19.99',
-    currency: 'USD',
-    item_count: items.length,
+    has_next: false,
+    has_previous: false,
+    items: items.map((item) => ({
+      course: { ...item.course, currency: 'USD', description: null },
+      course_id: item.course.id,
+      created_at: '2026-01-01T00:00:00Z',
+      id: item.id,
+      status: item.status,
+      updated_at: '2026-01-01T00:00:00Z',
+      user_id: 1,
+    })),
+    page: 1,
+    page_size: 100,
+    pages: 1,
+    total: items.length,
   };
 }
 
-async function json(route: Route, body: unknown, status = 200) {
-  await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+function cartOf(courseIds: readonly number[]) {
+  return {
+    currency: 'USD',
+    id: 1,
+    item_count: courseIds.length,
+    items: courseIds.map((courseId, index) => ({
+      added_at: '2026-01-01T00:00:00Z',
+      course: { ...courses[courseId]!, currency: 'USD' },
+      course_id: courseId,
+      id: 100 + index,
+    })),
+    total_price: courseIds
+      .reduce((sum, courseId) => sum + Number(courses[courseId]!.price), 0)
+      .toFixed(2),
+  };
 }
 
-async function installStudent(page: Page) {
-  await page.addInitScript(() => localStorage.setItem('learnhub.access-token', 'student-token'));
+async function json(route: Route, body: unknown, status = 200): Promise<void> {
+  await route.fulfill({ body: JSON.stringify(body), contentType: 'application/json', status });
+}
+async function noContent(route: Route): Promise<void> {
+  await route.fulfill({ status: 204 });
 }
 
-async function routeCheckoutApi(
-  page: Page,
-  handler: (route: Route, path: string, method: string) => Promise<void>,
-) {
-  await page.route('**/*', async (route) => {
+function isCartCompositeApiPath(path: string): boolean {
+  return (
+    path === '/me' ||
+    path === '/cart' ||
+    path === '/cart/checkout' ||
+    path === '/cart/items' ||
+    path.startsWith('/cart/items/') ||
+    path === '/enrollments/my' ||
+    path.startsWith('/enrollments/') ||
+    path === '/payments/complete'
+  );
+}
+
+class CartCompositeFixture {
+  readonly records: RequestRecord[] = [];
+  cartCourseIds: number[];
+  readonly checkoutMode: 'lost' | 'normal';
+  readonly completionMode: 'lost' | 'malformed' | 'normal';
+  readonly completionStatusByEnrollment: Readonly<Record<number, EnrollmentStatus>>;
+  readonly enrollments: FixtureEnrollment[];
+  readonly uncertainCompletionEnrollmentId: number | undefined;
+  readonly unrelatedCourseIdAfterRestore: number | undefined;
+
+  constructor(options: CartFixtureOptions = {}) {
+    this.cartCourseIds = [...(options.cartCourseIds ?? [7])];
+    this.checkoutMode = options.checkoutMode ?? 'normal';
+    this.completionMode = options.completionMode ?? 'normal';
+    this.completionStatusByEnrollment = options.completionStatusByEnrollment ?? {};
+    this.uncertainCompletionEnrollmentId = options.uncertainCompletionEnrollmentId;
+    this.unrelatedCourseIdAfterRestore = options.unrelatedCourseIdAfterRestore;
+    this.enrollments = [...(options.enrollments ?? [])];
+    for (const courseId of options.initialPending ?? [])
+      this.enrollments.push(enrollment(70 + courseId, courseId, 'pending_payment'));
+  }
+
+  count(path: string, method?: string): number {
+    return this.records.filter(
+      (record) => record.path === path && (method === undefined || record.method === method),
+    ).length;
+  }
+  bodies(path: string): readonly unknown[] {
+    return this.records.filter((record) => record.path === path).map((record) => record.body);
+  }
+
+  private record(route: Route): RequestRecord {
     const request = route.request();
-    const url = new URL(request.url());
-    if (request.resourceType() === 'document' || url.origin !== cartWorkflowOrigin)
-      return route.fallback();
-    if (
-      url.pathname === '/me' ||
-      url.pathname === '/cart' ||
-      url.pathname === '/cart/checkout' ||
-      url.pathname === '/enrollments/my'
-    ) {
-      await handler(route, url.pathname, route.request().method());
-      return;
-    }
-    await route.fallback();
-  });
+    const rawBody = request.postData();
+    const record = {
+      body: rawBody === null ? null : (JSON.parse(rawBody) as unknown),
+      method: request.method(),
+      path: new URL(request.url()).pathname,
+    };
+    this.records.push(record);
+    return record;
+  }
+  private enrollmentById(id: number): FixtureEnrollment | undefined {
+    return this.enrollments.find((item) => item.id === id);
+  }
+
+  async install(page: Page, locale: FixtureLocale = 'en'): Promise<void> {
+    await page.addInitScript((initialLocale) => {
+      localStorage.setItem('learnhub.access-token', 'student-token');
+      localStorage.setItem('learnhub.locale', initialLocale);
+    }, locale);
+    await page.route('**/*', async (route) => {
+      const url = new URL(route.request().url());
+      if (
+        route.request().resourceType() === 'document' ||
+        url.origin !== cartWorkflowOrigin ||
+        !isCartCompositeApiPath(url.pathname)
+      )
+        return route.fallback();
+      const record = this.record(route);
+      if (record.path === '/me') return json(route, student);
+      if (record.path === '/cart' && record.method === 'GET')
+        return json(route, cartOf(this.cartCourseIds));
+      if (record.path === '/cart/checkout' && record.method === 'POST') {
+        for (const courseId of this.cartCourseIds) {
+          const existingEnrollment = this.enrollments.find((item) => item.course.id === courseId);
+          if (existingEnrollment !== undefined) existingEnrollment.status = 'pending_payment';
+          else this.enrollments.push(enrollment(70 + courseId, courseId, 'pending_payment'));
+        }
+        this.cartCourseIds = [];
+        if (this.checkoutMode === 'lost') return route.abort('failed');
+        return json(route, { enrolled_courses: 1, message: 'legacy acknowledgement' });
+      }
+      if (record.path === '/enrollments/my' && record.method === 'GET')
+        return json(route, pageOf(this.enrollments));
+      const enrollmentMatch = /^\/enrollments\/(\d+)$/.exec(record.path);
+      if (enrollmentMatch && record.method === 'GET') {
+        const item = this.enrollmentById(Number(enrollmentMatch[1]));
+        return item
+          ? json(route, pageOf([item]).items[0])
+          : json(route, { detail: 'not found' }, 404);
+      }
+      if (record.path === '/payments/complete' && record.method === 'POST') {
+        const payload = record.body as { enrollment_id?: number; status?: PaymentOutcome };
+        const item = this.enrollmentById(payload.enrollment_id ?? -1);
+        if (!item || (payload.status !== 'success' && payload.status !== 'failed'))
+          return json(route, { detail: 'bad request' }, 400);
+        if (item.id === this.uncertainCompletionEnrollmentId) {
+          item.status = 'pending_payment';
+          return json(route, { message: 'uncertain completion' });
+        }
+        item.status =
+          this.completionStatusByEnrollment[item.id] ??
+          (payload.status === 'success' ? 'active' : 'cancelled');
+        if (this.completionMode === 'lost') return route.abort('failed');
+        if (this.completionMode === 'malformed') return json(route, { message: 'broken' });
+        return json(route, { enrollment_id: item.id, message: 'completed', status: item.status });
+      }
+      const removeMatch = /^\/cart\/items\/(\d+)$/.exec(record.path);
+      if (removeMatch && record.method === 'DELETE') {
+        this.cartCourseIds = this.cartCourseIds.filter((id) => id !== Number(removeMatch[1]));
+        return noContent(route);
+      }
+      if (record.path === '/cart/items' && record.method === 'POST') {
+        const payload = record.body as { course_id?: number };
+        if (typeof payload.course_id !== 'number')
+          return json(route, { detail: 'bad request' }, 400);
+        if (!this.cartCourseIds.includes(payload.course_id))
+          this.cartCourseIds.push(payload.course_id);
+        if (
+          payload.course_id === 7 &&
+          this.unrelatedCourseIdAfterRestore !== undefined &&
+          !this.cartCourseIds.includes(this.unrelatedCourseIdAfterRestore)
+        )
+          this.cartCourseIds.push(this.unrelatedCourseIdAfterRestore);
+        const courseId = payload.course_id;
+        return json(route, {
+          added_at: '2026-01-01T00:00:00Z',
+          course: { ...courses[courseId]!, currency: 'USD' },
+          course_id: courseId,
+          id: 100 + this.cartCourseIds.indexOf(courseId),
+        });
+      }
+      throw new Error(`Unexpected API request ${record.method} ${record.path}`);
+    });
+  }
 }
 
-function assertNoOverflow(page: Page) {
+function overflow(page: Page) {
   return page.evaluate(() => ({
+    body: document.body.scrollWidth,
     client: document.documentElement.clientWidth,
-    documentWidth: document.documentElement.scrollWidth,
-    bodyWidth: document.body.scrollWidth,
+    document: document.documentElement.scrollWidth,
   }));
 }
+async function openCart(
+  page: Page,
+  fixture: CartCompositeFixture,
+  locale: FixtureLocale = 'en',
+): Promise<void> {
+  await fixture.install(page, locale);
+  await page.goto('/cart');
+}
 
-test('sends one checkout POST, labels accepted payment as pending, and preserves responsive keyboard access', async ({
+test('proves the whole Cart payment once and focuses the terminal result without legacy acknowledgement', async ({
   page,
 }) => {
-  await installStudent(page);
-  let currentCart = cart();
-  let checkoutPosts = 0;
-  const consoleErrors: string[] = [];
-  page.on('console', (message) => {
-    if (message.type() === 'error') consoleErrors.push(message.text());
-  });
-  await routeCheckoutApi(page, async (route, path, method) => {
-    if (path === '/me') return json(route, student);
-    if (path === '/cart' && method === 'GET') return json(route, currentCart);
-    if (path === '/cart/checkout') {
-      checkoutPosts += 1;
-      currentCart = cart([]);
-      return json(route, { message: 'Checkout successful.', enrolled_courses: 1 });
-    }
-    throw new Error(`Unexpected request ${method} ${path}`);
-  });
-  await page.goto('/cart');
-  const checkout = page.getByRole('button', { name: 'Mock checkout', exact: true });
-  await checkout.dblclick();
-  await expect.poll(() => checkoutPosts).toBe(1);
+  const fixture = new CartCompositeFixture({ cartCourseIds: [7, 8] });
+  const diagnostics: string[] = [];
+  page.on('pageerror', (error) => diagnostics.push(error.message));
+  await openCart(page, fixture);
+  const action = page.getByRole('button', { name: 'Complete mock payment', exact: true });
+  const disclosureText = page.getByText('Insecure checkout', { exact: true });
+  await expect(disclosureText).toHaveJSProperty('tagName', 'SPAN');
+  const disclosure = disclosureText.locator('..');
+  await expect(disclosure).toHaveJSProperty('tagName', 'P');
+  await expect(disclosure.locator('svg[aria-hidden="true"]')).toHaveCount(1);
+  expect(await disclosure.locator(':scope > *').evaluateAll((children) => children.length)).toBe(2);
+  await action.dblclick();
+  await expect(page.getByText('Payment completed', { exact: true })).toHaveCount(2);
+  expect(fixture.count('/cart/checkout', 'POST')).toBe(1);
+  expect(fixture.count('/payments/complete', 'POST')).toBe(2);
+  expect(fixture.count('/enrollments/my', 'GET')).toBe(1);
+  expect(fixture.count('/cart', 'GET')).toBeGreaterThanOrEqual(3);
+  await expect(page.getByText('Checkout accepted', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Check My Learning', exact: true })).toHaveCount(0);
   await expect(
-    page.getByText(
-      'Mock checkout was accepted. Payment is pending; learning access is not available yet.',
-    ),
-  ).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Check My Learning' })).toHaveCount(0);
-  for (const width of [320, 390, 768, 1280, 1440]) {
-    await page.setViewportSize({ width, height: 900 });
-    const geometry = await assertNoOverflow(page);
-    expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.client);
-    expect(geometry.bodyWidth).toBeLessThanOrEqual(geometry.client);
-  }
-  await page.evaluate(() => {
-    document.documentElement.style.zoom = '200%';
-  });
-  const zoomed = await assertNoOverflow(page);
-  expect(zoomed.documentWidth).toBeLessThanOrEqual(zoomed.client);
-  expect(zoomed.bodyWidth).toBeLessThanOrEqual(zoomed.client);
-  expect(consoleErrors).toEqual([]);
+    page
+      .getByText('Payment completed', { exact: true })
+      .first()
+      .locator('xpath=ancestor::div[@tabindex="-1"][1]'),
+  ).toBeFocused();
+  expect(diagnostics).toEqual([]);
 });
 
-test('keeps a 5xx checkout locked after unchanged-cart reconciliation with actionless guidance', async ({
+test('restores only the failed course and retries it from a mixed Cart', async ({ page }) => {
+  const fixture = new CartCompositeFixture({
+    cartCourseIds: [7, 8],
+    unrelatedCourseIdAfterRestore: 9,
+  });
+  await openCart(page, fixture);
+  await page
+    .getByRole('button', { name: 'Simulate payment failure: Advanced TypeScript Architecture' })
+    .click();
+  await expect(page.getByText('Payment failed', { exact: true })).toBeVisible();
+  expect(fixture.cartCourseIds).toEqual([7, 9]);
+  expect(fixture.count('/payments/complete', 'POST')).toBe(2);
+  await page
+    .getByRole('button', { name: 'Retry mock payment: Advanced TypeScript Architecture' })
+    .click();
+  await expect(page.getByText('Payment completed', { exact: true })).toBeVisible();
+  expect(fixture.count('/cart/checkout', 'POST')).toBe(2);
+  expect(fixture.count('/cart/items/9', 'DELETE')).toBe(1);
+  expect(fixture.count('/cart/items', 'POST')).toBeGreaterThanOrEqual(2);
+  const paymentBodies = fixture.bodies('/payments/complete') as readonly {
+    enrollment_id: number;
+  }[];
+  expect(paymentBodies.map((body) => body.enrollment_id)).toEqual([77, 78, 77]);
+});
+
+test('admits loss only from full truth, locks ambiguity, and preserves a proven prefix', async ({
   page,
 }) => {
-  await installStudent(page);
-  let checkoutPosts = 0;
-  await routeCheckoutApi(page, async (route, path, method) => {
-    if (path === '/me') return json(route, student);
-    if (path === '/cart' && method === 'GET') return json(route, cart());
-    if (path === '/cart/checkout') {
-      checkoutPosts += 1;
-      return json(route, { detail: 'private' }, 503);
-    }
-    if (path === '/enrollments/my')
-      return json(route, {
-        items: [],
-        page: 1,
-        page_size: 20,
-        total: 0,
-        pages: 0,
-        has_next: false,
-        has_previous: false,
-      });
-    throw new Error(`Unexpected request ${method} ${path}`);
+  const fixture = new CartCompositeFixture({ checkoutMode: 'lost' });
+  await openCart(page, fixture);
+  await page.getByRole('button', { name: 'Complete mock payment', exact: true }).click();
+  await expect(page.getByText('Payment completed', { exact: true })).toBeVisible();
+  expect(fixture.count('/cart/checkout', 'POST')).toBe(1);
+  expect(fixture.count('/payments/complete', 'POST')).toBe(1);
+  await page.unroute('**/*');
+  const ambiguous = new CartCompositeFixture({
+    cartCourseIds: [7],
+    enrollments: [enrollment(77, 7, 'pending_payment'), enrollment(78, 7, 'pending_payment')],
   });
-  await page.goto('/cart');
-  const checkout = page.getByRole('button', { name: 'Mock checkout', exact: true });
-  await checkout.click();
+  await openCart(page, ambiguous);
+  const action = page.getByRole('button', { name: 'Complete mock payment', exact: true });
+  await action.click();
+  await expect(page.getByText('Payment result needs checking', { exact: true })).toBeVisible();
   await expect(
-    page.getByText('We could not confirm checkout. Check the cart status for updated guidance.'),
-  ).toBeVisible();
-  await expect(checkout).toBeDisabled();
-  await page.getByRole('button', { name: 'Check checkout status' }).press('Enter');
+    page.getByRole('button', { name: 'Complete mock payment', exact: true }),
+  ).toHaveCount(0);
+  expect(ambiguous.count('/payments/complete', 'POST')).toBe(0);
+
+  await page.unroute('**/*');
+  const provenPrefix = new CartCompositeFixture({
+    cartCourseIds: [7, 8],
+    completionStatusByEnrollment: { 77: 'cancelled' },
+    uncertainCompletionEnrollmentId: 78,
+  });
+  await openCart(page, provenPrefix);
+  const prefixAction = page.getByRole('button', {
+    name: 'Complete mock payment',
+    exact: true,
+  });
+  await prefixAction.dblclick();
+  const warning = page.getByText('Payment result needs checking', { exact: true });
+  await expect(warning).toBeVisible();
+  await expect(page.getByText('Payment failed', { exact: true })).toBeVisible();
   await expect(
-    page.getByText(
-      'Your cart still cannot prove whether checkout partially completed. Do not start another checkout action.',
-    ),
+    page
+      .getByRole('alert')
+      .filter({ hasText: 'Payment failed' })
+      .getByText('Advanced TypeScript Architecture', { exact: true }),
   ).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Check My Learning' })).toHaveCount(0);
-  await expect(checkout).toBeDisabled();
-  await checkout.press('Enter');
-  await checkout.click({ force: true });
-  expect(checkoutPosts).toBe(1);
+  await expect(page.getByText('FastAPI and Async SQLAlchemy', { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole('button', {
+      name: 'Retry mock payment: Advanced TypeScript Architecture',
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  await expect(warning.locator('xpath=ancestor::div[@tabindex="-1"][1]')).toBeFocused();
+  expect(provenPrefix.count('/payments/complete', 'POST')).toBe(2);
+  expect(provenPrefix.count('/cart/items', 'POST')).toBe(1);
+  const terminalRequestCount = provenPrefix.records.length;
+  await page.keyboard.press('Enter');
+  expect(provenPrefix.records).toHaveLength(terminalRequestCount);
 });
 
-for (const scenario of [
-  { name: 'unauthorized', status: 401, title: 'Sign in required' },
-  { name: 'conflict', status: 409, title: 'Enrollment changed' },
-  { name: 'unavailable', status: 503, title: 'Checkout status needs checking' },
-  { name: 'malformed', status: 200, title: 'Checkout status needs checking' },
-] as const)
-  test(`renders ${scenario.name} checkout feedback without retrying the POST`, async ({ page }) => {
-    await installStudent(page);
-    let posts = 0;
-    await routeCheckoutApi(page, async (route, path, method) => {
-      if (path === '/me') return json(route, student);
-      if (path === '/cart' && method === 'GET') return json(route, cart());
-      if (path === '/cart/checkout') {
-        posts += 1;
-        if (scenario.name === 'malformed')
-          return json(route, { message: 7, enrolled_courses: 'bad' });
-        return json(route, { detail: 'private' }, scenario.status);
-      }
-      if (path === '/enrollments/my')
-        return json(route, {
-          items: [],
-          page: 1,
-          page_size: 20,
-          total: 0,
-          pages: 0,
-          has_next: false,
-          has_previous: false,
-        });
-      throw new Error(`Unexpected request ${method} ${path}`);
-    });
-    await page.goto('/cart');
-    await page.getByRole('button', { name: 'Mock checkout', exact: true }).click();
-    if (scenario.name === 'unauthorized') {
-      await expect(
-        page.getByRole('heading', { level: 1, name: 'Log in', exact: true }),
-      ).toBeVisible();
-      const loginUrl = new URL(page.url());
-      expect(loginUrl.pathname).toBe('/login');
-      expect(loginUrl.searchParams.get('returnTo')).toBe('/cart');
-      expect(await page.evaluate(() => localStorage.getItem('learnhub.access-token'))).toBe(null);
-    } else {
-      const alert = page.getByRole('alert');
-      await expect(alert.getByText(scenario.title, { exact: true })).toBeVisible();
-      if (scenario.name === 'conflict') {
-        await expect(
-          alert.getByText(
-            'Your enrollment changed. Checkout cannot confirm a payment result or learning access.',
-            { exact: true },
-          ),
-        ).toBeVisible();
-        await expect(
-          alert.getByRole('link', { name: 'Check My Learning', exact: true }),
-        ).toHaveCount(0);
-      }
-    }
-    await expect(page.locator('body')).not.toContainText('private');
-    expect(posts).toBe(1);
-  });
+test('reconciles a malformed completion exactly once without repeating payment', async ({
+  page,
+}) => {
+  const fixture = new CartCompositeFixture({ completionMode: 'malformed' });
+  await openCart(page, fixture);
+  await page.getByRole('button', { name: 'Complete mock payment', exact: true }).click();
+  await expect(page.getByText('Payment completed', { exact: true })).toBeVisible();
+  expect(fixture.count('/payments/complete', 'POST')).toBe(1);
+  expect(fixture.count('/enrollments/77', 'GET')).toBe(1);
+});
 
-for (const locale of ['en', 'ru', 'uz'] as const)
-  for (const result of ['accepted', 'conflict'] as const) {
-    test(`renders canonical ${result === 'accepted' ? 'C0109' : 'C0119'} Cart notice in ${locale} without terminal inference`, async ({
-      page,
-    }) => {
-      const copy = checkoutTerminalCopy[locale];
-      let currentCart = cart();
-      let checkoutPosts = 0;
-      await installStudent(page);
-      await routeCheckoutApi(page, async (route, path, method) => {
-        if (path === '/me') return json(route, student);
-        if (path === '/cart' && method === 'GET') return json(route, currentCart);
-        if (path === '/cart/checkout') {
-          checkoutPosts += 1;
-          if (result === 'accepted') {
-            currentCart = cart([]);
-            return json(route, { message: 'Checkout successful.', enrolled_courses: 1 });
-          }
-          return json(route, { detail: 'private' }, 409);
-        }
-        throw new Error(`Unexpected localized terminal request ${method} ${path}`);
-      });
+test('discovers all empty-Cart pending candidates and resumes exact identities without checkout', async ({
+  page,
+}) => {
+  const fixture = new CartCompositeFixture({ cartCourseIds: [], initialPending: [7, 8] });
+  await openCart(page, fixture);
+  const catalogLink = page.getByRole('link', { name: 'Browse courses', exact: true });
+  await catalogLink.hover();
+  await expect(catalogLink).toHaveCSS('color', 'rgb(73, 50, 182)');
+  await expect(catalogLink).toHaveCSS('text-decoration-line', 'underline');
+  await expect(page.getByText('Advanced TypeScript Architecture', { exact: true })).toBeVisible();
+  await expect(page.getByText('FastAPI and Async SQLAlchemy', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Check pending payment', exact: true }).click();
+  await expect(page.getByText('Payment completed', { exact: true })).toHaveCount(2);
+  expect(fixture.count('/cart/checkout', 'POST')).toBe(0);
+  expect(fixture.count('/payments/complete', 'POST')).toBe(2);
 
-      await page.goto('/cart');
-      if (locale !== 'en') {
-        await page.getByRole('button', { name: 'Change language' }).press('Enter');
-        await page
-          .getByRole('button', { name: locale === 'ru' ? 'Русский' : "O'zbek", exact: true })
-          .press('Enter');
-      }
-      await page.getByRole('button', { name: copy.mockCheckout, exact: true }).press('Enter');
-      const notice = page.getByText(result === 'accepted' ? copy.acceptedBody : copy.conflictBody, {
-        exact: true,
-      });
-      await expect(notice).toBeVisible();
-      const feedbackNotice = notice.locator(
-        'xpath=ancestor::*[@role="status" or @role="alert"][1]',
-      );
-      await expect(feedbackNotice).toContainText(
-        result === 'accepted' ? copy.acceptedTitle : copy.conflictTitle,
-      );
-      await expect(feedbackNotice.getByRole('link')).toHaveCount(0);
-      for (const label of obsoletePaymentControlLabels)
-        await expect(page.getByRole('button', { name: label, exact: true })).toHaveCount(0);
-      expect(checkoutPosts).toBe(1);
-      await page.waitForTimeout(150);
-      expect(checkoutPosts).toBe(1);
-    });
-  }
+  const box = await catalogLink.boundingBox();
+  if (box === null) throw new Error('Expected the empty-Cart catalog link to have a bounding box.');
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await expect(catalogLink).toHaveCSS('color', 'rgb(73, 50, 182)');
+  await expect(catalogLink).toHaveCSS('text-decoration-line', 'underline');
+  await page.mouse.up();
+});
+
+const localizedFailureControls: Readonly<Record<FixtureLocale, string>> = {
+  en: 'Simulate payment failure: Advanced TypeScript Architecture',
+  ru: 'Сымитировать ошибку платежа: Advanced TypeScript Architecture',
+  uz: 'To‘lov xatosini taqlid qilish: Advanced TypeScript Architecture',
+};
 
 for (const locale of ['en', 'ru', 'uz'] as const) {
-  test(`localizes checkout reconciliation and preserves one-write recovery in ${locale}`, async ({
+  test(`renders CCMP terminal content and controls without overflow in ${locale}`, async ({
     page,
   }) => {
-    test.slow();
-    const copy = checkoutResidualCopy[locale];
-    const diagnostics: string[] = [];
-    let checkoutPosts = 0;
-    page.on('pageerror', (error) => diagnostics.push(error.stack ?? error.message));
-    page.on('console', (message) => {
-      if (message.type() === 'error') diagnostics.push(message.text());
+    const fixture = new CartCompositeFixture();
+    await openCart(page, fixture, locale);
+    await expect(page.locator('html')).toHaveAttribute('lang', locale);
+    const failure = page.getByRole('button', {
+      name: localizedFailureControls[locale],
+      exact: true,
     });
-    await installStudent(page);
-    await routeCheckoutApi(page, async (route, path, method) => {
-      if (path === '/me') return json(route, student);
-      if (path === '/cart' && method === 'GET') return json(route, cart());
-      if (path === '/cart/checkout') {
-        checkoutPosts += 1;
-        return json(route, { detail: 'private' }, 503);
-      }
-      if (path === '/enrollments/my')
-        return json(route, {
-          items: [],
-          page: 1,
-          page_size: 20,
-          total: 0,
-          pages: 0,
-          has_next: false,
-          has_previous: false,
-        });
-      throw new Error(`Unexpected localized reconciliation request ${method} ${path}`);
-    });
-
-    await page.goto('/cart');
-    if (locale !== 'en') {
-      await page.getByRole('button', { name: 'Change language' }).press('Enter');
-      await page
-        .getByRole('button', { name: locale === 'ru' ? 'Русский' : "O'zbek", exact: true })
-        .press('Enter');
+    await expect(failure).toBeVisible();
+    await expect(failure).toHaveCSS('min-height', '44px');
+    await failure.focus();
+    await expect(failure).toBeFocused();
+    for (const width of [320, 390, 768, 1280]) {
+      await page.setViewportSize({ height: 900, width });
+      const geometry = await overflow(page);
+      expect(geometry.document).toBeLessThanOrEqual(geometry.client);
+      expect(geometry.body).toBeLessThanOrEqual(geometry.client);
     }
-    await page.getByRole('button', { name: copy.mockCheckout, exact: true }).press('Enter');
-    const recovery = page.getByRole('button', { name: copy.checkStatus, exact: true });
-    await expect(recovery).toBeVisible();
-    await recovery.focus();
-    await expect(recovery).toBeFocused();
-    await recovery.press('Enter');
-    await expect(page.getByText(copy.uncertain, { exact: true })).toBeVisible();
-    expect(checkoutPosts).toBe(1);
-
-    for (const width of [320, 390, 768, 1280] as const) {
-      await page.setViewportSize({ width, height: 900 });
-      const geometry = await assertNoOverflow(page);
-      expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.client);
-      expect(geometry.bodyWidth).toBeLessThanOrEqual(geometry.client);
-    }
-    const cdp = await page.context().newCDPSession(page);
-    await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 2 });
-    const zoomed = await assertNoOverflow(page);
-    expect(zoomed.documentWidth).toBeLessThanOrEqual(zoomed.client);
-    expect(zoomed.bodyWidth).toBeLessThanOrEqual(zoomed.client);
-    await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 });
-    await cdp.detach();
-    await expect(page.locator('body')).not.toContainText(/Translation unavailable|cart:\w+/);
-    expect(diagnostics).toEqual([
-      'Failed to load resource: the server responded with a status of 503 (Service Unavailable)',
-    ]);
   });
 }

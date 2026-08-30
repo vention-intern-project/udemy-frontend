@@ -171,6 +171,10 @@
   min-width: 0;
   align-items: end;
 }
+.failureAction {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
 .courseLink {
   display: -webkit-box;
   overflow: hidden;
@@ -263,6 +267,10 @@
 .mockCheckoutDisclosure span {
   min-width: 0;
 }
+.checkoutResults {
+  display: grid;
+  gap: var(--spacing-3);
+}
 .state,
 .loading {
   display: grid;
@@ -285,6 +293,11 @@
   align-items: center;
   color: var(--action-primary-bg);
   font-weight: var(--font-weight-semibold);
+}
+.catalogLink:hover,
+.catalogLink:active {
+  color: var(--action-primary-bg-hover);
+  text-decoration: underline;
 }
 .catalogLink:focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring);
@@ -348,6 +361,11 @@
   }
   .itemFooter {
     display: contents;
+  }
+  .failureAction {
+    grid-column: 2;
+    grid-row: 2;
+    justify-self: start;
   }
   .removeAction {
     justify-items: end;
