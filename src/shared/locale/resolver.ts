@@ -67,6 +67,14 @@ export function createBrowserLocaleStore(
         return false;
       }
     },
+    remove() {
+      try {
+        browserStorage().removeItem(storageKey);
+        return true;
+      } catch {
+        return false;
+      }
+    },
   };
 }
 

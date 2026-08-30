@@ -1,6 +1,6 @@
 import type { CourseListQueryDto } from '@entities/course';
 
-export const CATALOG_PAGE_SIZE = 20;
+export const CATALOG_PAGE_SIZE = 24;
 export type CatalogSort = 'created_at' | '-created_at' | 'price' | '-price' | 'title' | '-title';
 
 export const CATALOG_SORT_VALUES = [

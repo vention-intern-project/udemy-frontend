@@ -658,10 +658,29 @@ describe('AppShell student cart query and presentation', () => {
     fireEvent.click(accountTrigger);
     const logout = screen.getByRole('button', { name: 'Log out' });
     expect(logout.querySelector('svg')).toBeTruthy();
+    localStorage.setItem('learnhub.locale', 'ru');
 
     fireEvent.click(logout);
     await waitFor(() => expect(screen.getByRole('link', { name: 'Log in' })).toBeTruthy());
     expect(screen.queryByRole('button', { name: /Account menu/ })).toBeNull();
+    expect(localStorage.getItem('learnhub.locale')).toBeNull();
+    expect(document.documentElement.lang).toBe('en');
+  });
+
+  it('completes explicit logout when locale storage removal throws', async () => {
+    renderShell(authenticatedClient('student'), 'student-token');
+    const accountTrigger = await screen.findByRole('button', {
+      name: 'Account menu for student User',
+    });
+    fireEvent.click(accountTrigger);
+    const removeItem = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+      throw new Error('removal denied');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Log out' }));
+    await waitFor(() => expect(screen.getByRole('link', { name: 'Log in' })).toBeTruthy());
+    expect(removeItem).toHaveBeenCalledWith('learnhub.locale');
+    expect(document.documentElement.lang).toBe('en');
   });
 
   it.each([

@@ -48,5 +48,8 @@ export function useLocale(): LocaleContextValue {
     },
     [browserStore, i18n],
   );
-  return { locale, setLocale };
+  const clearStoredLocale = useCallback(() => {
+    browserStore.remove();
+  }, [browserStore]);
+  return { locale, setLocale, clearStoredLocale };
 }

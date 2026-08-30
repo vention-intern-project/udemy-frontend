@@ -3,6 +3,6 @@
   "compilerOptions": {
     "noEmit": true
   },
-  "include": ["src", "tests", "vite.config.ts"],
+  "include": ["src", "tests", "config/**/*.ts", "vite.config.ts", "vitest.config.ts"],
   "exclude": ["dist", "node_modules", "playwright-report", "test-results"]
 }

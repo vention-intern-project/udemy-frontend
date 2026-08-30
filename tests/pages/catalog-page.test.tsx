@@ -1338,7 +1338,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(screen.getByRole('status', { name: 'Catalog refresh status' }).textContent).toBe('');
     expect(screen.queryByRole('link', { name: 'React' })).toBeNull();
     expect(document.querySelector('[data-part="catalog-result-list"]')).toBeTruthy();
-    expect(document.querySelectorAll('[data-part="skeleton"]')).toHaveLength(20);
+    expect(document.querySelectorAll('[data-part="skeleton"]')).toHaveLength(24);
     expect(
       document.querySelector('[data-part="catalog-discovery-results"]')?.getAttribute('aria-busy'),
     ).toBe('true');
@@ -1955,7 +1955,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
       max_price: undefined,
       sort: '-created_at',
       page: 3,
-      page_size: 20,
+      page_size: 24,
     });
     await waitFor(() =>
       expect(screen.getByLabelText('catalog location').textContent).toBe(
@@ -2078,7 +2078,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
         max_price: undefined,
         sort: 'price',
         page: 1,
-        page_size: 20,
+        page_size: 24,
       }),
     );
     expect(keyboardListbox.isConnected).toBe(false);
@@ -2118,7 +2118,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
         max_price: undefined,
         sort: 'price',
         page: 1,
-        page_size: 20,
+        page_size: 24,
       }),
     );
 
@@ -2175,7 +2175,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
         max_price: undefined,
         sort: 'price',
         page: 1,
-        page_size: 20,
+        page_size: 24,
       }),
     );
 
@@ -2272,7 +2272,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
         max_price: undefined,
         sort: 'created_at',
         page: 1,
-        page_size: 20,
+        page_size: 24,
       }),
     );
   });
@@ -2491,7 +2491,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
       max_price: undefined,
       sort: '-price',
       page: 1,
-      page_size: 20,
+      page_size: 24,
     });
     const remainingDescriptionId = screen
       .getByRole('button', { name: 'Price' })
@@ -2552,7 +2552,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
       max_price: undefined,
       sort: '-price',
       page: 1,
-      page_size: 20,
+      page_size: 24,
     });
 
     const next = screen.getByRole('button', { name: 'Go to next page' }) as HTMLButtonElement;
@@ -2577,7 +2577,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
         max_price: undefined,
         sort: '-price',
         page: 2,
-        page_size: 20,
+        page_size: 24,
       }),
     );
     expect(screen.queryByRole('button', { name: 'Go to page 2' })).toBeNull();

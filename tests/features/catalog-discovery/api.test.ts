@@ -52,7 +52,7 @@ describe('catalog request boundary', () => {
           max_price: 10,
           sort: '-price',
           page: 2,
-          page_size: 20,
+          page_size: 24,
         },
       }),
     );
