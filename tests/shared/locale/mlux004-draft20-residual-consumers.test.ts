@@ -128,7 +128,6 @@ const DRAFT20_RESIDUAL_CONSUMERS: readonly ResidualConsumerExpectation[] = [
     path: 'src/pages/cart-page/CartPage.tsx',
     requiredCalls: [
       "t('navigation:logIn')",
-      "t('cart:checkCheckoutStatus')",
       "t('cart:refreshCart')",
       "t('common:cart')",
       "t('a11y:loadingCart')",
@@ -142,7 +141,9 @@ const DRAFT20_RESIDUAL_CONSUMERS: readonly ResidualConsumerExpectation[] = [
       "t('cart:orderSummary')",
       "t('cart:total')",
       "t('cart:totalUnavailable')",
-      "t('cart:mockCheckout')",
+      "t('cart:completeMockPayment')",
+      "t('cart:paymentResultNeedsChecking')",
+      "t('cart:doNotStartAnotherPayment')",
       "t('cart:yourCartIsEmpty'",
       "t('cart:cartCleared'",
       "t('cart:courseRemovedFromCart'",
@@ -162,12 +163,8 @@ const DRAFT20_RESIDUAL_CONSUMERS: readonly ResidualConsumerExpectation[] = [
       "labelKey: 'routes:courseEnrollmentsTitle'",
       "labelKey: 'routes:editLessonTitle'",
     ],
-    requiredSemanticCalls: [
-      /t\('cart:checkoutStatusUncertain',\s*\{\s*defaultValue:\s*'Your cart still cannot prove whether checkout partially completed\. Do not start another checkout action\.',\s*\}\)/,
-    ],
+    requiredSemanticCalls: [],
     residualRawJsx: [
-      />\s*Check checkout status\s*</,
-      />\s*Your cart still cannot prove whether checkout partially completed\. Check My Learning\s*before taking another checkout action\.\s*</,
       />\s*Refresh cart\s*</,
       />\s*Cart\s*</,
       /label="Loading cart"/,

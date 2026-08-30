@@ -1,3 +1,4 @@
+export const CRF_001_CART_PAGE_SOURCE = String.raw`
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
@@ -6,10 +7,7 @@ import { ChevronLeft, ShieldX, Trash2 } from 'lucide-react';
 
 import { sanitizeInternalReturnTo } from '@features/auth-session';
 import { cartFailureState, useCartWorkflow, type CartFailureState } from '@features/cart-workflow';
-import {
-  useCartCompositeCheckout,
-  type CartCompositeCheckoutWorkflow,
-} from '@features/checkout-cart';
+import { useCheckoutCart, type CartRecovery, type CheckoutFeedback } from '@features/checkout-cart';
 import type { Cart } from '@entities/cart';
 import { formatLocaleCurrency } from '@shared/locale';
 import {
@@ -39,10 +37,10 @@ interface RemoveFocusTarget {
   index: number;
 }
 
-export interface CompositeCheckoutNoticeProps {
-  readonly checkout: CartCompositeCheckoutWorkflow;
-  readonly courseTitles: ReadonlyMap<number, string>;
-  onRetryPayment(courseId: number): void;
+interface CheckoutFeedbackNoticeProps {
+  readonly feedback: CheckoutFeedback | null;
+  readonly pending: boolean;
+  onRecoverCheckout(): void;
 }
 
 interface SummaryJumpState {
@@ -166,86 +164,121 @@ function getSummaryJumpState(summaryHeading: HTMLElement): SummaryJumpState {
   };
 }
 
-export function CompositeCheckoutNotice({
-  checkout,
-  courseTitles,
-  onRetryPayment,
-}: CompositeCheckoutNoticeProps) {
+function CheckoutFeedbackNotice({
+  feedback,
+  pending,
+  onRecoverCheckout,
+}: CheckoutFeedbackNoticeProps) {
   const { t } = useTranslation();
-  if (checkout.phase === 'discovering_recovery')
+  if (feedback === null) return null;
+  if (feedback.kind === 'checkout_accepted')
     return (
-      <Notice tone="info" title={t('learning:paymentPending')}>
-        <p>{t('cart:checkingOut')}</p>
+      <Notice tone="info" title={t('cart:checkoutAccepted', { defaultValue: 'Checkout accepted' })}>
+        <p>
+          {t('cart:mockCheckoutWasAcceptedPaymentIs', {
+            defaultValue:
+              'Mock checkout was accepted. Payment is pending; learning access is not available yet.',
+          })}
+        </p>
       </Notice>
     );
-  if (checkout.phase === 'recovery_candidates')
+  if (feedback.kind === 'recovery_required')
     return (
-      <Notice tone="info" title={t('learning:paymentPending')}>
-        <p>{t('cart:weCouldNotConfirmCheckoutCheck')}</p>
-        <ul aria-label={t('learning:paymentPending')}>
-          {checkout.recoveryCandidates.map((candidate) => (
-            <li key={candidate.enrollmentId}>
-              <strong>{candidate.course.title}</strong>
-            </li>
-          ))}
-        </ul>
-        <Button variant="secondary" onClick={() => checkout.resumeRecovery()}>
-          {t('cart:resumePaymentCheck')}
+      <Notice
+        tone="error"
+        title={t('cart:checkoutStatusNeedsChecking', {
+          defaultValue: 'Checkout status needs checking',
+        })}
+      >
+        <p>
+          {t('cart:weCouldNotConfirmCheckoutCheck', {
+            defaultValue:
+              'We could not confirm checkout. Check the cart status for updated guidance.',
+          })}
+        </p>
+        <Button variant="secondary" disabled={pending} onClick={onRecoverCheckout}>
+          {t('cart:checkCheckoutStatus')}
         </Button>
       </Notice>
     );
-  const integrityUnknown = checkout.phase === 'checkout_integrity_unknown';
-  const visibleResults = integrityUnknown
-    ? checkout.results.filter((result) => result.kind !== 'integrity_unknown')
-    : checkout.results;
-  if (!integrityUnknown && visibleResults.length === 0) return null;
+  if (feedback.kind === 'checkout_status_unknown')
+    return (
+      <Notice
+        tone="error"
+        title={t('cart:checkoutStatusRemainsUnknown', {
+          defaultValue: 'Checkout status remains unknown',
+        })}
+      >
+        <p>
+          {t('cart:checkoutStatusUncertain', {
+            defaultValue:
+              'Your cart still cannot prove whether checkout partially completed. Do not start another checkout action.',
+          })}
+        </p>
+      </Notice>
+    );
+  if (feedback.kind === 'unauthorized')
+    return (
+      <Notice tone="error" title={t('cart:signInRequired', { defaultValue: 'Sign in required' })}>
+        <p>
+          {t('cart:signInAgainBeforeContinuingCheckout', {
+            defaultValue: 'Sign in again before continuing checkout.',
+          })}
+        </p>
+        <Link to={\`/login?returnTo=\${encodeURIComponent('/cart')}\`}>
+          {t('navigation:logIn', { defaultValue: 'Log in' })}
+        </Link>
+      </Notice>
+    );
+  if (feedback.kind === 'not_authorized')
+    return (
+      <Notice
+        tone="error"
+        title={t('cart:checkoutUnavailable', { defaultValue: 'Checkout unavailable' })}
+      >
+        <p>
+          {t('cart:thisCheckoutIsNotAvailableFor', {
+            defaultValue: 'This checkout is not available for the current account.',
+          })}
+        </p>
+      </Notice>
+    );
+  if (feedback.kind === 'conflict')
+    return (
+      <Notice
+        tone="error"
+        title={t('cart:enrollmentChanged', { defaultValue: 'Enrollment changed' })}
+      >
+        <p>
+          {t('cart:yourEnrollmentChangedCheckMyLearning', {
+            defaultValue:
+              'Your enrollment changed. Checkout cannot confirm a payment result or learning access.',
+          })}
+        </p>
+      </Notice>
+    );
+  if (feedback.kind === 'cart_changed')
+    return (
+      <Notice tone="error" title={t('cart:cartChanged', { defaultValue: 'Cart changed' })}>
+        <p>
+          {t('cart:yourCartIsNoLongerReady', {
+            defaultValue:
+              'Your cart is no longer ready for this checkout. Refresh it before trying again.',
+          })}
+        </p>
+      </Notice>
+    );
   return (
-    <div className={styles.checkoutResults} aria-live="polite">
-      {integrityUnknown ? (
-        <Notice tone="error" title={t('cart:paymentResultNeedsChecking')}>
-          <p>{t('cart:doNotStartAnotherPayment')}</p>
-        </Notice>
-      ) : null}
-      {visibleResults.map((result) => {
-        const courseTitle = courseTitles.get(result.courseId) ?? String(result.courseId);
-        if (result.kind === 'active')
-          return (
-            <Notice key={result.enrollmentId} tone="success" title={t('cart:paymentCompleted')}>
-              <p>
-                <strong>{courseTitle}</strong> — {t('cart:learningIsNowAvailable')}
-              </p>
-            </Notice>
-          );
-        if (result.kind === 'restored')
-          return (
-            <Notice key={result.enrollmentId} tone="error" title={t('cart:paymentFailed')}>
-              <p>
-                <strong>{courseTitle}</strong> — {t('cart:courseReturnedToCart')}
-              </p>
-              {!integrityUnknown ? (
-                <Button
-                  variant="secondary"
-                  aria-label={`${t('cart:retryMockPayment')}: ${courseTitle}`}
-                  onClick={() => onRetryPayment(result.courseId)}
-                >
-                  {t('cart:retryMockPayment')}
-                </Button>
-              ) : null}
-            </Notice>
-          );
-        return (
-          <Notice
-            key={result.enrollmentId}
-            tone="error"
-            title={t('cart:paymentResultNeedsChecking')}
-          >
-            <p>
-              {courseTitle} — {t('cart:doNotStartAnotherPayment')}
-            </p>
-          </Notice>
-        );
-      })}
-    </div>
+    <Notice
+      tone="error"
+      title={t('cart:checkoutUnavailable', { defaultValue: 'Checkout unavailable' })}
+    >
+      <p>
+        {t('cart:checkoutIsCurrentlyUnavailableTryAgain', {
+          defaultValue: 'Checkout is currently unavailable. Try again later.',
+        })}
+      </p>
+    </Notice>
   );
 }
 
@@ -259,7 +292,7 @@ function CartRecoveryAction({
 }: CartRecoveryActionProps) {
   if (failure.action.kind === 'login')
     return (
-      <Link to={`/login?returnTo=${encodeURIComponent('/cart')}`}>{t('navigation:logIn')}</Link>
+      <Link to={\`/login?returnTo=\${encodeURIComponent('/cart')}\`}>{t('navigation:logIn')}</Link>
     );
   if (failure.action.kind === 'catalog')
     return (
@@ -300,6 +333,7 @@ export function CartPage() {
   const { i18n, t } = useTranslation();
   const location = useLocation();
   const { cart, clear, feedback, isBusy, isPendingClear, remove, retry } = useCartWorkflow();
+  const checkout = useCheckoutCart('cart');
   const [clearOpen, setClearOpen] = useState(false);
   const [removeFocusTarget, setRemoveFocusTarget] = useState<RemoveFocusTarget | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -312,32 +346,16 @@ export function CartPage() {
   const [isRecoveryRetrying, setIsRecoveryRetrying] = useState(false);
   const [isSummaryJumpVisible, setIsSummaryJumpVisible] = useState(false);
   const checkoutNoticeRef = useRef<HTMLDivElement>(null);
-  const recoveryStartedRef = useRef(false);
-  const cartHasContainedItemsRef = useRef(false);
-  const courseTitlesRef = useRef(new Map<number, string>());
   const statusMessage = mutationStatusMessage(t, feedback?.success, feedback?.kind);
   const currentCart = cart.data;
-  const checkout = useCartCompositeCheckout(
-    currentCart?.items.map((item) => ({ courseId: item.courseId, price: item.course.price })) ?? [],
-  );
   const returnTarget = cartReturnTarget(location.state);
-  useEffect(() => {
-    if (currentCart)
-      for (const item of currentCart.items)
-        courseTitlesRef.current.set(item.courseId, item.course.title);
-    for (const candidate of checkout.recoveryCandidates)
-      courseTitlesRef.current.set(candidate.courseId, candidate.course.title);
-    if (currentCart?.items.length) cartHasContainedItemsRef.current = true;
-    if (
-      !currentCart ||
-      currentCart.items.length > 0 ||
-      cartHasContainedItemsRef.current ||
-      recoveryStartedRef.current
-    )
-      return;
-    recoveryStartedRef.current = true;
-    checkout.discoverRecovery();
-  }, [checkout, currentCart]);
+  const checkoutRecovery: CartRecovery = {
+    refetchCart: async (): Promise<Cart> => {
+      const result = await cart.refetch({ throwOnError: true });
+      if (!result.data) throw new Error('Cart recovery did not return cart data');
+      return result.data;
+    },
+  };
 
   useLayoutEffect(() => {
     if (!recoveryFocusPendingRef.current || !cart.isSuccess || !currentCart) return;
@@ -364,7 +382,7 @@ export function CartPage() {
       const action = trackedAction?.isConnected
         ? trackedAction
         : document.querySelector<HTMLButtonElement>(
-            `[data-cart-remove-course-id="${nextItem.courseId}"]`,
+            \`[data-cart-remove-course-id="\${nextItem.courseId}"]\`,
           );
       action?.focus();
     } else headingRef.current?.focus();
@@ -372,12 +390,8 @@ export function CartPage() {
   }, [currentCart, feedback, isBusy, removeFocusTarget]);
 
   useEffect(() => {
-    if (
-      (checkout.results.length > 0 || checkout.phase === 'checkout_integrity_unknown') &&
-      !checkout.pending
-    )
-      checkoutNoticeRef.current?.focus();
-  }, [checkout.pending, checkout.phase, checkout.results.length]);
+    if (checkout.feedback !== null && !checkout.pending) checkoutNoticeRef.current?.focus();
+  }, [checkout.feedback, checkout.pending]);
 
   useEffect(() => {
     const summaryHeading = summaryHeadingRef.current;
@@ -440,6 +454,23 @@ export function CartPage() {
     remove(courseId);
   };
 
+  if (!cart.data && checkout.feedback?.kind === 'unauthorized') {
+    return (
+      <section className={styles.state} aria-labelledby="cart-sign-in-heading">
+        <h1 id="cart-sign-in-heading" ref={headingRef} tabIndex={-1}>
+          {t('common:cart')}
+        </h1>
+        <div ref={checkoutNoticeRef} tabIndex={-1}>
+          <CheckoutFeedbackNotice
+            feedback={checkout.feedback}
+            pending={checkout.pending}
+            onRecoverCheckout={checkout.recoverCheckout}
+          />
+        </div>
+      </section>
+    );
+  }
+
   if (!cart.data && cart.isPending && !isRecoveryRetrying) {
     return (
       <SkeletonGroup className={styles.loading} label={t('a11y:loadingCart')}>
@@ -497,10 +528,10 @@ export function CartPage() {
           {t('cart:yourCartIsEmpty')}
         </h1>
         <div ref={checkoutNoticeRef} tabIndex={-1}>
-          <CompositeCheckoutNotice
-            checkout={checkout}
-            courseTitles={courseTitlesRef.current}
-            onRetryPayment={(courseId) => checkout.retryRestoredCourse(courseId)}
+          <CheckoutFeedbackNotice
+            feedback={checkout.feedback}
+            pending={checkout.pending}
+            onRecoverCheckout={checkout.recoverCheckout}
           />
         </div>
         <p>
@@ -562,10 +593,10 @@ export function CartPage() {
         </div>
       </header>
       <div ref={checkoutNoticeRef} tabIndex={-1}>
-        <CompositeCheckoutNotice
-          checkout={checkout}
-          courseTitles={courseTitlesRef.current}
-          onRetryPayment={(courseId) => checkout.retryRestoredCourse(courseId)}
+        <CheckoutFeedbackNotice
+          feedback={checkout.feedback}
+          pending={checkout.pending}
+          onRecoverCheckout={checkout.recoverCheckout}
         />
       </div>
       {loadFailure ? (
@@ -593,9 +624,9 @@ export function CartPage() {
               <section className={styles.item} key={item.id} role="listitem">
                 <Link
                   className={styles.preview}
-                  to={`/courses/${item.courseId}`}
+                  to={\`/courses/\${item.courseId}\`}
                   aria-label={t('cart:preview', {
-                    defaultValue: `Preview ${item.course.title}`,
+                    defaultValue: \`Preview \${item.course.title}\`,
                     courseTitle: item.course.title,
                   })}
                 >
@@ -606,7 +637,7 @@ export function CartPage() {
                 <div className={styles.courseInfo}>
                   <p className={styles.label}>{t('cart:courseLabel')}</p>
                   <h2>
-                    <Link className={styles.courseLink} to={`/courses/${item.courseId}`}>
+                    <Link className={styles.courseLink} to={\`/courses/\${item.courseId}\`}>
                       {item.course.title}
                     </Link>
                   </h2>
@@ -633,7 +664,7 @@ export function CartPage() {
                       variant="ghost"
                       className={styles.removeButton}
                       aria-label={t('cart:remove', {
-                        defaultValue: `Remove ${item.course.title}`,
+                        defaultValue: \`Remove \${item.course.title}\`,
                         courseTitle: item.course.title,
                       })}
                       data-cart-remove-course-id={item.courseId}
@@ -642,17 +673,6 @@ export function CartPage() {
                       <Trash2 size={20} aria-hidden="true" />
                     </Button>
                   </div>
-                  <Button
-                    variant="secondary"
-                    className={styles.failureAction}
-                    aria-label={`${t('cart:simulatePaymentFailure')}: ${item.course.title}`}
-                    disabled={
-                      isBusy || checkout.pending || checkout.phase === 'checkout_integrity_unknown'
-                    }
-                    onClick={() => checkout.start([{ courseId: item.courseId, outcome: 'failed' }])}
-                  >
-                    {t('cart:simulatePaymentFailure')}
-                  </Button>
                 </div>
               </section>
             ))}
@@ -684,16 +704,16 @@ export function CartPage() {
           )}
           <Button
             fullWidth
-            onClick={() => checkout.start()}
-            disabled={isBusy || checkout.pending || checkout.phase === 'checkout_integrity_unknown'}
+            onClick={() => checkout.checkout(checkoutRecovery)}
+            disabled={isBusy || checkout.pending || checkout.checkoutBlocked}
             state={checkout.pending ? 'loading' : 'idle'}
             loadingLabel={t('cart:checkingOut', { defaultValue: 'Checking out…' })}
           >
-            {t('cart:completeMockPayment')}
+            {t('cart:mockCheckout')}
           </Button>
           <p className={styles.mockCheckoutDisclosure}>
             <ShieldX size={20} aria-hidden="true" />
-            <span>{t('cart:insecureCheckout')}</span>
+            <span>{t('cart:insecureCheckout', { defaultValue: 'Insecure checkout' })}</span>
           </p>
         </aside>
       </div>
@@ -715,4 +735,6 @@ export function CartPage() {
       />
     </article>
   );
-}
+}`
+  .replaceAll('\\`', '`')
+  .replaceAll('\\${', '${');

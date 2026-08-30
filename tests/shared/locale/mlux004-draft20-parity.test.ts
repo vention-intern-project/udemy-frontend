@@ -3,10 +3,13 @@ import { GENERATED_LOCALE_RESOURCES } from '../../../src/shared/locale/generated
 
 import { describe, expect, it } from 'vitest';
 
+import { CRF_002_UNIT_IDS } from './fixtures/crf002-unit-ids';
+
 type GeneratedResources = Record<string, Record<string, Record<string, string>>>;
 
 const generatedResources = GENERATED_LOCALE_RESOURCES as GeneratedResources;
-const CURRENT_CORPUS_OCCURRENCE_COUNT = 768;
+const RECORDED_DRAFT37_OCCURRENCE_COUNT = 768;
+const CURRENT_CORPUS_OCCURRENCE_COUNT = RECORDED_DRAFT37_OCCURRENCE_COUNT + CRF_002_UNIT_IDS.length;
 
 function placeholders(value: string): readonly string[] {
   return [...value.matchAll(/\{\{?\s*([A-Za-z][A-Za-z0-9_]*)\s*}}?/g)]
@@ -23,6 +26,11 @@ describe('canonical registry source parity', () => {
     expect(
       new Set(registry.units.flatMap((unit) => unit.occurrences.map(({ id }) => id))).size,
     ).toBe(CURRENT_CORPUS_OCCURRENCE_COUNT);
+    expect(
+      registry.units
+        .filter((unit) => unit.migrationProvenance.ownerTasks.includes('CRF-002'))
+        .map((unit) => unit.id),
+    ).toEqual(CRF_002_UNIT_IDS);
   });
 
   it('keeps every source occurrence attached to one canonical unit and current revision', () => {

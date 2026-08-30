@@ -709,14 +709,14 @@ export async function runAuthWorkflowReflowScenario(
       occurrences: 2,
     },
   );
-  if (width === 768 && pageScaleFactor === 1) {
-    // Deliberate navigation after the successful 768px/default-scale pass can abort the in-flight decorative Learning empty-state image.
-    allowOptionalRequestFailure(page, {
-      method: 'GET',
-      path: '/src/pages/learning-list-page/assets/my-learning-empty-state-ui022.png',
-      errorText: 'net::ERR_ABORTED',
-    });
-  }
+  // Each authenticated success intentionally advances from Learning into the
+  // next independent workflow state. That navigation may abort this sole
+  // decorative Learning empty-state asset before it finishes loading.
+  allowOptionalRequestFailure(page, {
+    method: 'GET',
+    path: '/src/pages/learning-list-page/assets/my-learning-empty-state-ui022.png',
+    errorText: 'net::ERR_ABORTED',
+  });
   await page.setViewportSize({ width, height: 800 });
   const cdp = pageScaleFactor === 1 ? null : await page.context().newCDPSession(page);
   const workflows: AuthWorkflow[] = ['signup', 'login', 'forgot', 'reset'];

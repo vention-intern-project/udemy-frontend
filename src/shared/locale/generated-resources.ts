@@ -357,7 +357,17 @@ export const GENERATED_LOCALE_RESOURCES = {
       "cartChangedLatestCouldNotLoad": "Your cart changed, but the latest cart could not be loaded. Refresh to see the current cart.",
       "cartLoadFailed": "We could not load your cart",
       "unableToUpdateCart": "Unable to update cart",
-      "clear": "Clear"
+      "clear": "Clear",
+      "completeMockPayment": "Complete mock payment",
+      "simulatePaymentFailure": "Simulate payment failure",
+      "paymentCompleted": "Payment completed",
+      "learningIsNowAvailable": "Learning is now available.",
+      "paymentFailed": "Payment failed",
+      "courseReturnedToCart": "The course was returned to your cart.",
+      "retryMockPayment": "Retry mock payment",
+      "resumePaymentCheck": "Check pending payment",
+      "paymentResultNeedsChecking": "Payment result needs checking",
+      "doNotStartAnotherPayment": "We could not safely confirm every payment result. Do not start another payment."
     },
     "catalog": {
       "courseResultsUpdated": "Course results updated.",
@@ -944,7 +954,17 @@ export const GENERATED_LOCALE_RESOURCES = {
       "cartChangedLatestCouldNotLoad": "Корзина изменилась, но не удалось загрузить последние данные. Обновите страницу, чтобы увидеть текущую корзину.",
       "cartLoadFailed": "Не удалось загрузить корзину",
       "unableToUpdateCart": "Не удалось обновить корзину",
-      "clear": "Очистить"
+      "clear": "Очистить",
+      "completeMockPayment": "Завершить тестовый платёж",
+      "simulatePaymentFailure": "Сымитировать ошибку платежа",
+      "paymentCompleted": "Платёж завершён",
+      "learningIsNowAvailable": "Обучение теперь доступно.",
+      "paymentFailed": "Платёж не прошёл",
+      "courseReturnedToCart": "Курс возвращён в вашу корзину.",
+      "retryMockPayment": "Повторить тестовый платёж",
+      "resumePaymentCheck": "Проверить ожидающий платёж",
+      "paymentResultNeedsChecking": "Нужно проверить результат платежа",
+      "doNotStartAnotherPayment": "Не удалось безопасно подтвердить все результаты платежа. Не начинайте новый платёж."
     },
     "catalog": {
       "courseResultsUpdated": "Результаты поиска курсов обновлены.",
@@ -1535,7 +1555,17 @@ export const GENERATED_LOCALE_RESOURCES = {
       "cartChangedLatestCouldNotLoad": "Savatingiz o‘zgardi, ammo yangilangan savatni yuklab bo‘lmadi. Joriy savatni ko‘rish uchun sahifani yangilang.",
       "cartLoadFailed": "Savatni yuklab bo‘lmadi",
       "unableToUpdateCart": "Savatni yangilab bo‘lmadi",
-      "clear": "Tozalash"
+      "clear": "Tozalash",
+      "completeMockPayment": "Sinov to‘lovini yakunlash",
+      "simulatePaymentFailure": "To‘lov xatosini taqlid qilish",
+      "paymentCompleted": "To‘lov yakunlandi",
+      "learningIsNowAvailable": "Ta’lim endi mavjud.",
+      "paymentFailed": "To‘lov amalga oshmadi",
+      "courseReturnedToCart": "Kurs savatingizga qaytarildi.",
+      "retryMockPayment": "Sinov to‘lovini qayta urinib ko‘rish",
+      "resumePaymentCheck": "Kutilayotgan to‘lovni tekshirish",
+      "paymentResultNeedsChecking": "To‘lov natijasini tekshirish kerak",
+      "doNotStartAnotherPayment": "Har bir to‘lov natijasini xavfsiz tasdiqlab bo‘lmadi. Yangi to‘lovni boshlamang."
     },
     "catalog": {
       "courseResultsUpdated": "Kurs natijalari yangilandi.",

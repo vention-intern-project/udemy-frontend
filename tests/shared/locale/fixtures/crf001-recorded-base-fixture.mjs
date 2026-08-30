@@ -1,5 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 
+import { CRF_002_PATCH } from './crf002-recorded-delta-fixture.mjs';
+
 export const RECORDED_BASE_REQUEST = Object.freeze({
   base: {
     commit: '3aa975e4bdb8571942e736acb78e2acadec74ed7',
@@ -866,8 +868,10 @@ index 617d55a..6b8a72c 100644
        "courseLabel": "Kurs",
 `;
 
-function reverseUnifiedPatch(source, patch) {
+export function reverseUnifiedPatch(source, patch) {
   const sourceLines = source.split('\n');
+  const normalizedPatchLine = (line) =>
+    line.replace(/sha256:[a-f0-9]{64}/g, 'sha256:<source-fingerprint>');
   const hunks = patch
     .split('\n@@ ')
     .slice(1)
@@ -888,14 +892,40 @@ function reverseUnifiedPatch(source, patch) {
       return { next, previous, position: Number(match[2]) - 1 };
     });
   for (const hunk of hunks.reverse()) {
-    const actual = sourceLines.slice(hunk.position, hunk.position + hunk.next.length);
-    if (actual.join('\n') !== hunk.next.join('\n'))
-      throw new Error(
-        'test fixture cannot reconstruct the recorded base from the checked-in artifact',
+    const normalizedNext = hunk.next.map(normalizedPatchLine);
+    const matchingPositions = [];
+    const matchesAt = (position) =>
+      position >= 0 &&
+      position <= sourceLines.length - normalizedNext.length &&
+      normalizedPatchLine(sourceLines[position]) === normalizedNext[0] &&
+      normalizedNext.every(
+        (line, index) => normalizedPatchLine(sourceLines[position + index]) === line,
       );
-    sourceLines.splice(hunk.position, hunk.next.length, ...hunk.previous);
+    if (matchesAt(hunk.position)) matchingPositions.push(hunk.position);
+    else {
+      const exactText = hunk.next.join('\n');
+      const joinedSource = sourceLines.join('\n');
+      const exactOffset = joinedSource.indexOf(exactText);
+      if (exactOffset >= 0 && (exactOffset === 0 || joinedSource[exactOffset - 1] === '\n'))
+        matchingPositions.push(joinedSource.slice(0, exactOffset).split('\n').length - 1);
+    }
+    const position = matchingPositions.sort(
+      (left, right) => Math.abs(left - hunk.position) - Math.abs(right - hunk.position),
+    )[0];
+    if (position === undefined)
+      throw new Error(
+        `test fixture cannot reconstruct the recorded base from the checked-in artifact near line ${hunk.position + 1}`,
+      );
+    sourceLines.splice(position, hunk.next.length, ...hunk.previous);
   }
   return sourceLines.join('\n');
+}
+
+function patchForPath(patch, path) {
+  const start = patch.indexOf(`diff --git a/${path} b/${path}`);
+  if (start < 0) throw new Error(`recorded CRF-002 delta does not contain ${path}`);
+  const next = patch.indexOf('\ndiff --git ', start + 1);
+  return patch.slice(start, next < 0 ? undefined : next);
 }
 
 export async function writeRecordedBaseArtifacts({ registryBaselinePath, generatedBaselinePath }) {
@@ -903,8 +933,22 @@ export async function writeRecordedBaseArtifacts({ registryBaselinePath, generat
     readFile('localization/corpus/registry.json', 'utf8'),
     readFile('src/shared/locale/generated-resources.ts', 'utf8'),
   ]);
+  const registryBeforeCrf001 = reverseUnifiedPatch(
+    reverseUnifiedPatch(
+      currentRegistry,
+      patchForPath(CRF_002_PATCH, 'localization/corpus/registry.json'),
+    ),
+    REGISTRY_PATCH,
+  );
+  const outputBeforeCrf001 = reverseUnifiedPatch(
+    reverseUnifiedPatch(
+      currentOutput,
+      patchForPath(CRF_002_PATCH, 'src/shared/locale/generated-resources.ts'),
+    ),
+    GENERATED_PATCH,
+  );
   await Promise.all([
-    writeFile(registryBaselinePath, reverseUnifiedPatch(currentRegistry, REGISTRY_PATCH), 'utf8'),
-    writeFile(generatedBaselinePath, reverseUnifiedPatch(currentOutput, GENERATED_PATCH), 'utf8'),
+    writeFile(registryBaselinePath, registryBeforeCrf001, 'utf8'),
+    writeFile(generatedBaselinePath, outputBeforeCrf001, 'utf8'),
   ]);
 }

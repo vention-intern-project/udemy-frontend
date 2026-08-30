@@ -13,7 +13,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAppQueryClient } from '../../src/app/query';
 import type { Cart } from '../../src/entities/cart';
 import { SessionProvider, type AccessTokenStore } from '../../src/features/auth-session';
-import { CartPage } from '../../src/pages/cart-page';
+import { CartPage, CompositeCheckoutNotice } from '../../src/pages/cart-page/CartPage';
+import type { CartCompositeCheckoutWorkflow } from '../../src/features/checkout-cart';
 import { ApiError, type ApiClient, type ApiRequestOptions } from '../../src/shared/api';
 import { localeRuntime } from '../../src/shared/locale';
 import { QueryClientProvider } from '@tanstack/react-query';
@@ -104,7 +105,7 @@ const CART_RESIDUAL_COPY = {
     courseCount: '2 courses',
     courseLabel: 'Course',
     empty: 'Your cart is empty',
-    mockCheckout: 'Mock checkout',
+    mockCheckout: 'Complete mock payment',
     orderSummary: 'Order summary',
     price: 'Price',
     total: 'Total',
@@ -117,7 +118,7 @@ const CART_RESIDUAL_COPY = {
     courseCount: '2 курса',
     courseLabel: 'Курс',
     empty: 'Ваша корзина пуста',
-    mockCheckout: 'Тестовое оформление',
+    mockCheckout: 'Завершить тестовый платёж',
     orderSummary: 'Итоги заказа',
     price: 'Цена',
     total: 'Итого',
@@ -130,7 +131,7 @@ const CART_RESIDUAL_COPY = {
     courseCount: '2 ta kurs',
     courseLabel: 'Kurs',
     empty: 'Savatingiz bo‘sh',
-    mockCheckout: 'Sinov buyurtmasi',
+    mockCheckout: 'Sinov to‘lovini yakunlash',
     orderSummary: 'Buyurtma yakuni',
     price: 'Narx',
     total: 'Jami',
@@ -656,14 +657,20 @@ describe('CartPage', () => {
       const user = userEvent.setup();
       screen.getByRole('button', { name: 'Remove Second course' }).focus();
       await interact(() => user.tab());
+      expect(screen.getByRole('button', { name: 'Simulate payment failure: Second course' })).toBe(
+        document.activeElement,
+      );
+      await interact(() => user.tab());
       expect(jump).toBe(document.activeElement);
       await interact(() => user.tab());
-      expect(screen.getByRole('button', { name: 'Mock checkout' })).toBe(document.activeElement);
+      expect(screen.getByRole('button', { name: 'Complete mock payment' })).toBe(
+        document.activeElement,
+      );
       fireEvent.click(jump);
       expect(summaryHeading).toBe(document.activeElement);
       expect(scrollIntoView).toHaveBeenCalledTimes(1);
       expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' });
-      expect(screen.getByRole('button', { name: 'Mock checkout' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Complete mock payment' })).toBeTruthy();
     } finally {
       if (originalInnerHeight) Object.defineProperty(window, 'innerHeight', originalInnerHeight);
       else delete (window as { innerHeight?: number }).innerHeight;
@@ -792,123 +799,23 @@ describe('CartPage', () => {
     }
   });
 
-  it('submits one labelled mock checkout, requires explicit cart recovery after an unknown result, and never reports payment success', async () => {
-    let checkoutCalls = 0;
-    let rejectCheckout: ((reason?: unknown) => void) | undefined;
-    const pendingCheckout = new Promise<unknown>((_resolve, reject) => {
-      rejectCheckout = reject;
-    });
-    const request: ApiClient['request'] = async <TResponse, TBody>(
-      options: ApiRequestOptions<TBody, TResponse>,
-    ) => {
-      if (options.path === '/me') return decode(options, student);
-      if (options.path === '/cart' && options.method === 'GET')
-        return decode(options, cartWithItems);
-      if (options.path === '/cart/checkout') {
-        checkoutCalls += 1;
-        return decode(options, await pendingCheckout);
-      }
-      if (options.path === '/enrollments/my')
-        return decode(options, {
-          items: [],
-          page: 1,
-          page_size: 20,
-          total: 0,
-          pages: 0,
-          has_next: false,
-          has_previous: false,
-        });
-      throw new Error(`Unexpected request ${options.method} ${options.path}`);
-    };
-    await renderCart(request);
-    const user = userEvent.setup();
-    const checkout = await screen.findByRole('button', { name: 'Mock checkout' });
-    await interact(() => user.dblClick(checkout));
-    expect(checkoutCalls).toBe(1);
-    expect(screen.getByRole('article').getAttribute('aria-busy')).toBe('true');
-    expect(
-      (screen.getByRole('button', { name: 'Checking out…' }) as HTMLButtonElement).disabled,
-    ).toBe(true);
-    await act(async () => {
-      rejectCheckout?.(new ApiError({ kind: 'offline', status: null, message: 'private' }));
-    });
-    expect(
-      await screen.findByText(
-        'We could not confirm checkout. Check the cart status for updated guidance.',
-      ),
-    ).toBeTruthy();
-    const recovery = screen.getByRole('button', { name: 'Check checkout status' });
-    expect(
-      (screen.getByRole('button', { name: 'Mock checkout' }) as HTMLButtonElement).disabled,
-    ).toBe(true);
-    await interact(() => user.click(recovery));
-    expect(
-      await screen.findByText(
-        'Your cart still cannot prove whether checkout partially completed. Do not start another checkout action.',
-      ),
-    ).toBeTruthy();
-    expect(screen.queryByRole('link', { name: 'Check My Learning' })).toBeNull();
-    expect(
-      (screen.getByRole('button', { name: 'Mock checkout' }) as HTMLButtonElement).disabled,
-    ).toBe(true);
-    await interact(() => user.click(screen.getByRole('button', { name: 'Mock checkout' })));
-    expect(checkoutCalls).toBe(1);
-    expect(screen.queryByText(/payment success/i)).toBeNull();
-  });
-
-  it('keeps a dispatched 5xx checkout locked before and after unchanged-cart reconciliation', async () => {
-    let checkoutCalls = 0;
-    const request: ApiClient['request'] = async <TResponse, TBody>(
-      options: ApiRequestOptions<TBody, TResponse>,
-    ) => {
-      if (options.path === '/me') return decode(options, student);
-      if (options.path === '/cart' && options.method === 'GET')
-        return decode(options, cartWithItems);
-      if (options.path === '/cart/checkout') {
-        checkoutCalls += 1;
-        throw new ApiError({ kind: 'server', status: 503, message: 'private' });
-      }
-      if (options.path === '/enrollments/my')
-        return decode(options, {
-          items: [],
-          page: 1,
-          page_size: 20,
-          total: 0,
-          pages: 0,
-          has_next: false,
-          has_previous: false,
-        });
-      throw new Error(`Unexpected request ${options.method} ${options.path}`);
-    };
-    await renderCart(request);
-    const user = userEvent.setup();
-
-    const checkout = await screen.findByRole('button', { name: 'Mock checkout' });
-    await interact(() => user.click(checkout));
-    expect(await screen.findByText('Checkout status needs checking')).toBeTruthy();
-    expect(
-      (screen.getByRole('button', { name: 'Mock checkout' }) as HTMLButtonElement).disabled,
-    ).toBe(true);
-    await interact(() => user.click(checkout));
-    checkout.focus();
-    await interact(() => user.keyboard('{Enter}'));
-    expect(checkoutCalls).toBe(1);
-
-    await interact(() => user.click(screen.getByRole('button', { name: 'Check checkout status' })));
-    expect(
-      await screen.findByText(
-        'Your cart still cannot prove whether checkout partially completed. Do not start another checkout action.',
-      ),
-    ).toBeTruthy();
-    expect(
-      (screen.getByRole('button', { name: 'Mock checkout' }) as HTMLButtonElement).disabled,
-    ).toBe(true);
-    await interact(() => user.click(screen.getByRole('button', { name: 'Mock checkout' })));
-    expect(checkoutCalls).toBe(1);
-  });
-
-  it('presents a known checkout acknowledgement as payment pending after cart reconciliation', async () => {
+  it('keeps a restored failed payment visible and exposes a course-specific retry action', async () => {
     let cartReads = 0;
+    const pendingEnrollment = {
+      id: 70,
+      user_id: 1,
+      course_id: 7,
+      status: 'pending_payment',
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+      course: {
+        id: 7,
+        title: 'Long accessible course title',
+        description: null,
+        price: '19.990',
+        currency: 'USD',
+      },
+    };
     const request: ApiClient['request'] = async <TResponse, TBody>(
       options: ApiRequestOptions<TBody, TResponse>,
     ) => {
@@ -918,90 +825,230 @@ describe('CartPage', () => {
         return decode(
           options,
           cartReads === 1
-            ? cartWithItems
-            : { id: 1, items: [], total_price: '0.00', currency: 'USD', item_count: 0 },
+            ? { ...cartWithItems, items: [cartWithItems.items[0]], item_count: 1 }
+            : cartReads === 2
+              ? { id: 1, items: [], total_price: '0.00', currency: 'USD', item_count: 0 }
+              : {
+                  id: 1,
+                  items: [cartWithItems.items[0]],
+                  total_price: '19.990',
+                  currency: 'USD',
+                  item_count: 1,
+                },
         );
       }
       if (options.path === '/cart/checkout')
-        return decode(options, { message: 'Checkout successful.', enrolled_courses: 2 });
-      throw new Error(`Unexpected request ${options.method} ${options.path}`);
-    };
-    await renderCart(request);
-    const user = userEvent.setup();
-    const checkout = await screen.findByRole('button', { name: 'Mock checkout' });
-    await interact(() => user.click(checkout));
-    expect(
-      await screen.findByText(
-        'Mock checkout was accepted. Payment is pending; learning access is not available yet.',
-      ),
-    ).toBeTruthy();
-    expect(screen.queryByText(/payment success/i)).toBeNull();
-    expect(screen.queryByRole('link', { name: 'Check My Learning' })).toBeNull();
-  });
-
-  it.each([
-    {
-      name: 'unauthorized',
-      error: new ApiError({ kind: 'unauthorized', status: 401, message: 'private' }),
-      expected: 'Sign in required',
-    },
-    {
-      name: 'forbidden',
-      error: new ApiError({ kind: 'forbidden', status: 403, message: 'private' }),
-      expected: 'Checkout unavailable',
-    },
-    {
-      name: 'not found',
-      error: new ApiError({ kind: 'not_found', status: 404, message: 'private' }),
-      expected: 'Checkout unavailable',
-    },
-    {
-      name: 'conflict',
-      error: new ApiError({ kind: 'conflict', status: 409, message: 'private' }),
-      expected: 'Enrollment changed',
-    },
-    {
-      name: 'cart changed',
-      error: new ApiError({ kind: 'bad_request', status: 400, message: 'private' }),
-      expected: 'Cart changed',
-    },
-    {
-      name: 'unavailable',
-      error: new ApiError({ kind: 'server', status: 503, message: 'private' }),
-      expected: 'Checkout status needs checking',
-    },
-    {
-      name: 'malformed response',
-      error: new ApiError({ kind: 'invalid_response', status: null, message: 'private' }),
-      expected: 'Checkout status needs checking',
-    },
-  ])('renders a privacy-safe distinct $name checkout state', async ({ error, expected }) => {
-    const request: ApiClient['request'] = async <TResponse, TBody>(
-      options: ApiRequestOptions<TBody, TResponse>,
-    ) => {
-      if (options.path === '/me') return decode(options, student);
-      if (options.path === '/cart' && options.method === 'GET')
-        return decode(options, cartWithItems);
-      if (options.path === '/cart/checkout') throw error;
+        return decode(options, { message: 'accepted', enrolled_courses: 1 });
       if (options.path === '/enrollments/my')
         return decode(options, {
-          items: [],
+          items: [pendingEnrollment],
           page: 1,
-          page_size: 20,
-          total: 0,
-          pages: 0,
+          page_size: 100,
+          total: 1,
+          pages: 1,
           has_next: false,
           has_previous: false,
+        });
+      if (options.path === '/payments/complete')
+        return decode(options, { enrollment_id: 70, status: 'cancelled', message: 'cancelled' });
+      if (options.path === '/cart/items')
+        return decode(options, {
+          id: 10,
+          course_id: 7,
+          added_at: '2026-01-01T00:00:00Z',
+          course: {
+            id: 7,
+            title: 'Long accessible course title',
+            price: '19.990',
+            currency: 'USD',
+          },
         });
       throw new Error(`Unexpected request ${options.method} ${options.path}`);
     };
     await renderCart(request);
     const user = userEvent.setup();
-    const checkout = await screen.findByRole('button', { name: 'Mock checkout' });
-    await interact(() => user.click(checkout));
-    expect(await screen.findByText(expected)).toBeTruthy();
-    expect(screen.queryByText('private')).toBeNull();
+    const simulateFailure = await screen.findByRole('button', {
+      name: 'Simulate payment failure: Long accessible course title',
+    });
+    await interact(() => user.click(simulateFailure));
+    expect(await screen.findByText('Payment failed')).toBeTruthy();
+    expect(screen.getByRole('alert').textContent).toContain(
+      'The course was returned to your cart.',
+    );
+    expect(
+      screen.getByRole('button', { name: 'Retry mock payment: Long accessible course title' }),
+    ).toBeTruthy();
+    expect(screen.queryByText('Checkout accepted')).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Check My Learning' })).toBeNull();
   });
+
+  it('keeps recovery and the completed result visible when the cart is empty', async () => {
+    const counts = { checkout: 0, enrollmentReads: 0, payments: 0 };
+    const pendingEnrollment = {
+      id: 70,
+      user_id: 1,
+      course_id: 7,
+      status: 'pending_payment',
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+      course: {
+        id: 7,
+        title: 'Recovered empty-cart course',
+        description: null,
+        price: '19.990',
+        currency: 'USD',
+      },
+    };
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/cart' && options.method === 'GET')
+        return decode(options, {
+          id: 1,
+          items: [],
+          total_price: '0.00',
+          currency: 'USD',
+          item_count: 0,
+        });
+      if (options.path === '/enrollments/my') {
+        counts.enrollmentReads += 1;
+        return decode(options, {
+          items: [pendingEnrollment],
+          page: 1,
+          page_size: 100,
+          total: 1,
+          pages: 1,
+          has_next: false,
+          has_previous: false,
+        });
+      }
+      if (options.path === '/cart/checkout') {
+        counts.checkout += 1;
+        throw new Error('Recovery must not create another checkout.');
+      }
+      if (options.path === '/payments/complete') {
+        counts.payments += 1;
+        return decode(options, { enrollment_id: 70, status: 'active', message: 'paid' });
+      }
+      throw new Error(`Unexpected request ${options.method} ${options.path}`);
+    };
+    await renderCart(request);
+    const user = userEvent.setup();
+
+    expect(await screen.findByRole('heading', { name: 'Your cart is empty' })).toBeTruthy();
+    expect(await screen.findByText('Payment pending')).toBeTruthy();
+    expect(screen.getByRole('list', { name: 'Payment pending' }).textContent).toContain(
+      'Recovered empty-cart course',
+    );
+    const resume = await screen.findByRole('button', { name: 'Check pending payment' });
+    await interact(() => user.click(resume));
+
+    expect(await screen.findByText('Payment completed')).toBeTruthy();
+    expect(screen.getByText('Recovered empty-cart course')).toBeTruthy();
+    expect(counts).toEqual({ checkout: 0, enrollmentReads: 2, payments: 1 });
+    expect(screen.queryByText('Checkout accepted')).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Check My Learning' })).toBeNull();
+  });
+
+  it('renders every server-proven recovery candidate in the populated-Cart notice', () => {
+    const resumeRecovery = vi.fn();
+    const checkout: CartCompositeCheckoutWorkflow = {
+      phase: 'recovery_candidates',
+      completionPlan: [],
+      results: [],
+      recoveryCandidates: [
+        {
+          enrollmentId: 70,
+          courseId: 7,
+          course: {
+            id: 7,
+            title: 'Recovered alongside cart course',
+            description: null,
+            price: '19.990',
+            currency: 'USD',
+          },
+        },
+        {
+          enrollmentId: 71,
+          courseId: 9,
+          course: {
+            id: 9,
+            title: 'Second recovered course',
+            description: null,
+            price: '10.00',
+            currency: 'USD',
+          },
+        },
+      ],
+      pending: false,
+      start: vi.fn(),
+      retryRestoredCourse: vi.fn(),
+      discoverRecovery: vi.fn(),
+      resumeRecovery,
+    };
+    render(
+      <I18nextProvider i18n={localeRuntime}>
+        <CompositeCheckoutNotice
+          checkout={checkout}
+          courseTitles={new Map([[8, 'Unrelated cart course']])}
+          onRetryPayment={vi.fn()}
+        />
+      </I18nextProvider>,
+    );
+
+    const candidates = screen.getByRole('list', { name: 'Payment pending' });
+    expect(candidates.textContent).toContain('Recovered alongside cart course');
+    expect(candidates.textContent).toContain('Second recovered course');
+    expect(screen.getByRole('button', { name: 'Check pending payment' })).toBeTruthy();
+  });
+
+  it('keeps a restored result visible but omits its retry while integrity is unknown', () => {
+    const retry = vi.fn();
+    const checkout: CartCompositeCheckoutWorkflow = {
+      phase: 'checkout_integrity_unknown',
+      completionPlan: [],
+      results: [
+        { enrollmentId: 70, courseId: 7, kind: 'restored' },
+        { enrollmentId: 80, courseId: 8, kind: 'integrity_unknown' },
+      ],
+      recoveryCandidates: [],
+      pending: false,
+      start: vi.fn(),
+      retryRestoredCourse: vi.fn(),
+      discoverRecovery: vi.fn(),
+      resumeRecovery: vi.fn(),
+    };
+    render(
+      <I18nextProvider i18n={localeRuntime}>
+        <CompositeCheckoutNotice
+          checkout={checkout}
+          courseTitles={
+            new Map([
+              [7, 'Proven active course'],
+              [8, 'Uncertain course'],
+            ])
+          }
+          onRetryPayment={retry}
+        />
+      </I18nextProvider>,
+    );
+
+    const warning = screen.getByText('Payment result needs checking', { exact: true });
+    const provenResult = screen.getByText('Payment failed', { exact: true });
+    expect(screen.getByText('Proven active course')).toBeTruthy();
+    expect(screen.queryByText('Uncertain course')).toBeNull();
+    expect(
+      screen.queryByRole('button', {
+        name: 'Retry mock payment: Proven active course',
+      }),
+    ).toBeNull();
+    expect(retry).not.toHaveBeenCalled();
+    expect(
+      warning.compareDocumentPosition(provenResult) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it('renders the exact long server total without decimal recomputation', async () => {
     const totalPrice = '1000000000000000000000019.0001';
     const request: ApiClient['request'] = async <TResponse, TBody>(
@@ -1070,16 +1117,16 @@ describe('CartPage', () => {
     expect(titleGroup?.className).toContain('titleRow');
     expect(titleGroup?.parentElement?.className).toContain('toolbar');
     expect(titleGroup?.parentElement?.contains(clearCart)).toBe(true);
-    const checkout = screen.getByRole('button', { name: 'Mock checkout' });
+    const checkout = screen.getByRole('button', { name: 'Complete mock payment' });
     expect(checkout).toBeTruthy();
     const disclosure = within(summary).getByText('Insecure checkout');
     expect(disclosure.tagName).toBe('SPAN');
-    expect(disclosure.parentElement?.previousElementSibling?.contains(checkout)).toBe(true);
-    const disclosureIcon = disclosure.parentElement?.querySelector('svg.lucide-shield-x');
-    expect(disclosureIcon?.getAttribute('aria-hidden')).toBe('true');
-    expect(
-      disclosure.parentElement?.querySelector('button, a, input, select, textarea'),
-    ).toBeNull();
+    expect(disclosure.parentElement?.tagName).toBe('P');
+    expect(disclosure.parentElement?.children).toHaveLength(2);
+    expect(disclosure.parentElement?.children[0]?.tagName.toLowerCase()).toBe('svg');
+    expect(disclosure.parentElement?.children[0]?.getAttribute('aria-hidden')).toBe('true');
+    expect(disclosure.parentElement?.children[1]).toBe(disclosure);
+    expect(summary.contains(checkout)).toBe(true);
   });
 
   it('does not display a converted or collapsed Total for mixed authoritative row currencies', async () => {
@@ -1447,7 +1494,10 @@ describe('CartPage', () => {
       };
       await renderCart(request);
       const user = userEvent.setup();
-      const remove = await screen.findByRole('button', { name: /Long accessible course title/ });
+      const remove = await screen
+        .findAllByRole('button', { name: /Long accessible course title/ })
+        .then((buttons) => buttons.find((button) => button.dataset.cartRemoveCourseId === '7'));
+      if (!remove) throw new Error('Expected the course-specific remove action.');
 
       await interact(() => user.click(remove));
 

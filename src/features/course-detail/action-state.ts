@@ -137,9 +137,9 @@ function conflictDisposition(error: ApiError): CourseMutationDisposition {
   return unavailableDisposition('courseStateChangedAvailabilityRefreshed', 'preflight');
 }
 
-type PriceKind = 'free' | 'paid' | 'invalid';
+export type CoursePriceKind = 'free' | 'paid' | 'invalid';
 
-function priceKind(price: string): PriceKind {
+export function classifyCoursePrice(price: string): CoursePriceKind {
   if (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(price)) return 'invalid';
   return /^0(?:\.0+)?$/.test(price) ? 'free' : 'paid';
 }
@@ -151,7 +151,7 @@ export function coursePrimaryAction({
 }: CoursePrimaryActionInput): CoursePrimaryActionState {
   if (course.publishedAt === null)
     return { kind: 'disabled', labelKey: 'course:courseIsNotPublished' };
-  const price = priceKind(course.price);
+  const price = classifyCoursePrice(course.price);
   if (price === 'invalid') return { kind: 'disabled', labelKey: 'course:actionUnavailable' };
   if (session.status !== 'authenticated') {
     return price === 'free'

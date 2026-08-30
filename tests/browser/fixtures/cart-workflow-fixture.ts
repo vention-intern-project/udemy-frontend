@@ -126,6 +126,17 @@ export async function routeCartApi(page: Page, handler: CartApiRouteHandler) {
 
 export async function installCartAdmissionRoutes(page: Page, handler: CartApiRouteHandler) {
   await page.route('**/me', (route) => fulfillCartJson(route, student));
+  await page.route('**/enrollments/my?page=1&page_size=100', (route) =>
+    fulfillCartJson(route, {
+      items: [],
+      page: 1,
+      page_size: 100,
+      total: 0,
+      pages: 0,
+      has_next: false,
+      has_previous: false,
+    }),
+  );
   await routeCartApi(page, handler);
 }
 
