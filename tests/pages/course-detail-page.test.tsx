@@ -655,11 +655,21 @@ describe('CourseDetailPage', () => {
   it('keeps an authenticated session without a cache epoch in non-actionable preflight state', async () => {
     let preflightReads = 0;
     let writes = 0;
+    const reviews = {
+      items: [],
+      page: 1,
+      page_size: 20,
+      total: 0,
+      pages: 0,
+      has_next: false,
+      has_previous: false,
+    };
     const request: ApiClient['request'] = async <TResponse, TBody>(
       options: ApiRequestOptions<TBody, TResponse>,
     ) => {
       if (options.path === '/courses/7') return decode(options, course);
       if (options.path === '/courses/7/lessons') return decode(options, outline(null));
+      if (options.path === '/courses/7/reviews') return decode(options, reviews);
       if (options.path === '/cart' || options.path === '/enrollments/my') {
         preflightReads += 1;
         return decode(options, options.path === '/cart' ? emptyCart : emptyEnrollments);
@@ -710,6 +720,7 @@ describe('CourseDetailPage', () => {
     expect(preflightReads).toBe(0);
     await userEvent.setup().click(action);
     expect(writes).toBe(0);
+    await screen.findByText('No reviews yet.');
     useSessionSpy.mockRestore();
   });
 
