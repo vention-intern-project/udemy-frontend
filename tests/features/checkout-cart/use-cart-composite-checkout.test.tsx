@@ -413,7 +413,7 @@ describe('useCartCompositeCheckout', () => {
     expect(counts).toEqual(terminalCounts);
   });
 
-  it('isolates a restored-course retry so checkout and completion exclude another Cart course', async () => {
+  it('rejects an idle restored-course retry before it mutates Cart or payment state', async () => {
     const checkoutCourseSets: number[][] = [];
     const paymentBodies: Array<{ enrollment_id: number; status: 'success' | 'failed' }> = [];
     const removedCourseIds: number[] = [];
@@ -468,11 +468,108 @@ describe('useCartCompositeCheckout', () => {
       }
       throw new Error(`Unexpected request ${options.method} ${options.path}`);
     };
-    const { result } = renderHook(() => useCartCompositeCheckout([paidCourse, secondPaidCourse]), {
+    const { result } = renderHook(
+      ({ courses }: { courses: CartCompositeSnapshotInput[] }) => useCartCompositeCheckout(courses),
+      { initialProps: { courses: [paidCourse] }, wrapper: createWrapper(request) },
+    );
+
+    await waitFor(() => expect(result.current.phase).toBe('idle'));
+    act(() => result.current.retryRestoredCourse(7));
+    await Promise.resolve();
+
+    expect(checkoutCourseSets).toEqual([]);
+    expect(removedCourseIds).toEqual([]);
+    expect(restoredCourseIds).toEqual([]);
+    expect(paymentBodies).toEqual([]);
+    expect(result.current.phase).toBe('idle');
+    expect(result.current.results).toEqual([]);
+  });
+
+  it('isolates a verified restored-course retry so checkout and completion exclude another Cart course', async () => {
+    const checkoutCourseSets: number[][] = [];
+    const paymentBodies: Array<{ enrollment_id: number; status: 'success' | 'failed' }> = [];
+    const removedCourseIds: number[] = [];
+    const restoredCourseIds: number[] = [];
+    let cartCourseIds = [7, 8];
+    let enrollmentStatus: 'pending_payment' | 'active' | 'cancelled' = 'pending_payment';
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/cart/checkout') {
+        checkoutCourseSets.push([...cartCourseIds]);
+        cartCourseIds = [];
+        enrollmentStatus = 'pending_payment';
+        return decode(options, { message: 'acknowledged', enrolled_courses: 1 });
+      }
+      if (options.path === '/enrollments/my')
+        return decode(
+          options,
+          enrollmentList(enrollmentStatus === 'active' ? 'active' : 'pending_payment'),
+        );
+      if (options.path === '/cart') {
+        return decode(options, {
+          ...emptyCart(),
+          items: cartCourseIds.map((courseId) => ({
+            id: courseId,
+            course_id: courseId,
+            added_at: '2026-01-01T00:00:00Z',
+            course: { id: courseId, title: `Course ${courseId}`, price: '9.99', currency: 'USD' },
+          })),
+          item_count: cartCourseIds.length,
+        });
+      }
+      if (options.path === '/payments/complete') {
+        const body = options.body as { enrollment_id: number; status: 'success' | 'failed' };
+        paymentBodies.push(body);
+        enrollmentStatus = body.status === 'success' ? 'active' : 'cancelled';
+        return decode(options, {
+          enrollment_id: 70,
+          status: enrollmentStatus,
+          message: 'terminal',
+        });
+      }
+      if (options.path.startsWith('/cart/items/')) {
+        const pathSegments = options.path.split('/');
+        const courseId = Number(pathSegments[pathSegments.length - 1]);
+        removedCourseIds.push(courseId);
+        cartCourseIds = cartCourseIds.filter((id) => id !== courseId);
+        return decode(options, undefined);
+      }
+      if (options.path === '/cart/items' && options.method === 'POST') {
+        const body = options.body as { course_id: number };
+        restoredCourseIds.push(body.course_id);
+        cartCourseIds = [...cartCourseIds, body.course_id];
+        return decode(options, {
+          id: body.course_id,
+          course_id: body.course_id,
+          added_at: '2026-01-01T00:00:00Z',
+          course: {
+            id: body.course_id,
+            title: `Course ${body.course_id}`,
+            price: '9.99',
+            currency: 'USD',
+          },
+        });
+      }
+      throw new Error(`Unexpected request ${options.method} ${options.path}`);
+    };
+    const courses = [paidCourse];
+    const { result } = renderHook(() => useCartCompositeCheckout(courses), {
       wrapper: createWrapper(request),
     });
 
     await waitFor(() => expect(result.current.phase).toBe('idle'));
+    act(() => result.current.start([{ courseId: 7, outcome: 'failed' }]));
+    await waitFor(() => expect(result.current.phase).toBe('checkout_completed'));
+    expect(result.current.results).toEqual([{ enrollmentId: 70, courseId: 7, kind: 'restored' }]);
+
+    courses.push(secondPaidCourse);
+    checkoutCourseSets.length = 0;
+    paymentBodies.length = 0;
+    removedCourseIds.length = 0;
+    restoredCourseIds.length = 0;
+    cartCourseIds = [7, 8];
     act(() => result.current.retryRestoredCourse(7));
     await waitFor(() => expect(result.current.phase).toBe('checkout_completed'));
 
@@ -483,21 +580,31 @@ describe('useCartCompositeCheckout', () => {
     expect(result.current.results).toEqual([{ enrollmentId: 70, courseId: 7, kind: 'active' }]);
   });
 
-  it('compensates already removed unrelated courses before locking a failed isolated retry', async () => {
+  it('compensates every possibly removed unrelated course before locking a failed verified retry', async () => {
     const removedCourseIds: number[] = [];
     const restoredCourseIds: number[] = [];
     const counts = { cart: 0, checkout: 0, enrollments: 0, payment: 0 };
     let cartCourseIds = [7, 8, 9];
+    let enrollmentStatus: 'pending_payment' | 'cancelled' = 'pending_payment';
     const request: ApiClient['request'] = async <TResponse, TBody>(
       options: ApiRequestOptions<TBody, TResponse>,
     ) => {
       if (options.path === '/me') return decode(options, student);
-      if (options.path === '/cart/items/8' && options.method === 'DELETE') {
+      if (options.path === '/cart/checkout') {
+        counts.checkout += 1;
+        cartCourseIds = [];
+        return decode(options, { message: 'acknowledged', enrolled_courses: 1 });
+      }
+      if (options.path === '/enrollments/my') {
+        counts.enrollments += 1;
+        return decode(options, enrollmentList('pending_payment'));
+      }
+      if (options.path === '/cart/items/8') {
         removedCourseIds.push(8);
         cartCourseIds = [7, 9];
         return decode(options, undefined);
       }
-      if (options.path === '/cart/items/9' && options.method === 'DELETE') {
+      if (options.path === '/cart/items/9') {
         removedCourseIds.push(9);
         cartCourseIds = [7];
         throw new ApiError({ kind: 'offline', status: 0, message: 'remove lost' });
@@ -516,38 +623,45 @@ describe('useCartCompositeCheckout', () => {
       if (options.path === '/cart' && options.method === 'GET') {
         counts.cart += 1;
         return decode(options, {
-          id: 1,
+          ...emptyCart(),
           items: cartCourseIds.map((courseId) => ({
             id: courseId,
             course_id: courseId,
             added_at: '2026-01-01T00:00:00Z',
             course: { id: courseId, title: 'Retained course', price: '9.99', currency: 'USD' },
           })),
-          total_price: '0',
-          currency: 'USD',
           item_count: cartCourseIds.length,
         });
       }
-      if (options.path === '/cart/checkout') {
-        counts.checkout += 1;
-        throw new Error('Checkout must not run.');
-      }
-      if (options.path === '/enrollments/my') {
-        counts.enrollments += 1;
-        throw new Error('Admission must not run.');
-      }
       if (options.path === '/payments/complete') {
         counts.payment += 1;
-        throw new Error('Payment must not run.');
+        enrollmentStatus = 'cancelled';
+        return decode(options, {
+          enrollment_id: 70,
+          status: enrollmentStatus,
+          message: 'declined',
+        });
       }
       throw new Error(`Unexpected request ${options.method} ${options.path}`);
     };
-    const { result } = renderHook(
-      () => useCartCompositeCheckout([paidCourse, secondPaidCourse, thirdPaidCourse]),
-      { wrapper: createWrapper(request) },
-    );
+    const courses = [paidCourse];
+    const { result } = renderHook(() => useCartCompositeCheckout(courses), {
+      wrapper: createWrapper(request),
+    });
 
     await waitFor(() => expect(result.current.phase).toBe('idle'));
+    act(() => result.current.start([{ courseId: 7, outcome: 'failed' }]));
+    await waitFor(() => expect(result.current.phase).toBe('checkout_completed'));
+    expect(result.current.results).toEqual([{ enrollmentId: 70, courseId: 7, kind: 'restored' }]);
+
+    courses.push(secondPaidCourse, thirdPaidCourse);
+    removedCourseIds.length = 0;
+    restoredCourseIds.length = 0;
+    counts.cart = 0;
+    counts.checkout = 0;
+    counts.enrollments = 0;
+    counts.payment = 0;
+    cartCourseIds = [7, 8, 9];
     act(() => result.current.retryRestoredCourse(7));
     await waitFor(() => expect(result.current.phase).toBe('checkout_integrity_unknown'));
 
@@ -557,47 +671,101 @@ describe('useCartCompositeCheckout', () => {
     expect(counts).toEqual({ cart: 1, checkout: 0, enrollments: 0, payment: 0 });
   });
 
-  it('best-effort restores an unrelated course after unmount interrupts isolated retry proof', async () => {
+  it('best-effort restores an unrelated course after unmount interrupts verified retry isolation proof', async () => {
     let resolveIsolatedCart: ((value: unknown) => void) | undefined;
     const isolatedCart = new Promise<unknown>((resolve) => {
       resolveIsolatedCart = resolve;
     });
     const counts = { removed: 0, restored: 0, checkout: 0, payment: 0 };
+    let cartCourseIds = [7, 8];
+    let retryProofPending = false;
+    let enrollmentStatus: 'pending_payment' | 'cancelled' = 'pending_payment';
     const request: ApiClient['request'] = async <TResponse, TBody>(
       options: ApiRequestOptions<TBody, TResponse>,
     ) => {
       if (options.path === '/me') return decode(options, student);
-      if (options.path === '/cart/items/8' && options.method === 'DELETE') {
+      if (options.path === '/cart/checkout') {
+        counts.checkout += 1;
+        cartCourseIds = [];
+        return decode(options, { message: 'acknowledged', enrolled_courses: 1 });
+      }
+      if (options.path === '/enrollments/my')
+        return decode(options, enrollmentList('pending_payment'));
+      if (options.path === '/cart/items/8') {
         counts.removed += 1;
+        cartCourseIds = [7];
         return decode(options, undefined);
       }
-      if (options.path === '/cart' && options.method === 'GET')
-        return decode(options, await isolatedCart);
-      if (options.path === '/cart/items' && options.method === 'POST') {
-        counts.restored += 1;
+      if (options.path === '/cart' && options.method === 'GET') {
+        if (retryProofPending) return decode(options, await isolatedCart);
         return decode(options, {
-          id: 8,
-          course_id: 8,
-          added_at: '2026-01-01T00:00:00Z',
-          course: { id: 8, title: 'Second composite course', price: '9.99', currency: 'USD' },
+          ...emptyCart(),
+          items: cartCourseIds.map((courseId) => ({
+            id: courseId,
+            course_id: courseId,
+            added_at: '2026-01-01T00:00:00Z',
+            course: {
+              id: courseId,
+              title: 'Second composite course',
+              price: '9.99',
+              currency: 'USD',
+            },
+          })),
+          item_count: cartCourseIds.length,
         });
       }
-      if (options.path === '/cart/checkout') counts.checkout += 1;
-      if (options.path === '/payments/complete') counts.payment += 1;
+      if (options.path === '/cart/items' && options.method === 'POST') {
+        counts.restored += 1;
+        const body = options.body as { course_id: number };
+        cartCourseIds = [...cartCourseIds, body.course_id];
+        return decode(options, {
+          id: body.course_id,
+          course_id: body.course_id,
+          added_at: '2026-01-01T00:00:00Z',
+          course: {
+            id: body.course_id,
+            title: 'Second composite course',
+            price: '9.99',
+            currency: 'USD',
+          },
+        });
+      }
+      if (options.path === '/payments/complete') {
+        counts.payment += 1;
+        enrollmentStatus = 'cancelled';
+        return decode(options, {
+          enrollment_id: 70,
+          status: enrollmentStatus,
+          message: 'declined',
+        });
+      }
       throw new Error(`Unexpected request ${options.method} ${options.path}`);
     };
-    const { result, unmount } = renderHook(
-      () => useCartCompositeCheckout([paidCourse, secondPaidCourse]),
-      { wrapper: createWrapper(request) },
-    );
+    const courses = [paidCourse];
+    const hook = renderHook(() => useCartCompositeCheckout(courses), {
+      wrapper: createWrapper(request),
+    });
 
-    await waitFor(() => expect(result.current.phase).toBe('idle'));
-    act(() => result.current.retryRestoredCourse(7));
+    await waitFor(() => expect(hook.result.current.phase).toBe('idle'));
+    act(() => hook.result.current.start([{ courseId: 7, outcome: 'failed' }]));
+    await waitFor(() => expect(hook.result.current.phase).toBe('checkout_completed'));
+    expect(hook.result.current.results).toEqual([
+      { enrollmentId: 70, courseId: 7, kind: 'restored' },
+    ]);
+
+    courses.push(secondPaidCourse);
+    counts.removed = 0;
+    counts.restored = 0;
+    counts.checkout = 0;
+    counts.payment = 0;
+    cartCourseIds = [7, 8];
+    retryProofPending = true;
+    act(() => hook.result.current.retryRestoredCourse(7));
     await waitFor(() => expect(counts.removed).toBe(1));
-    unmount();
+    hook.unmount();
     await act(async () => {
       resolveIsolatedCart?.({
-        id: 1,
+        ...emptyCart(),
         items: [
           {
             id: 7,
@@ -606,8 +774,6 @@ describe('useCartCompositeCheckout', () => {
             course: { id: 7, title: 'Composite course', price: '19.99', currency: 'USD' },
           },
         ],
-        total_price: '19.99',
-        currency: 'USD',
         item_count: 1,
       });
     });
@@ -667,7 +833,10 @@ describe('useCartCompositeCheckout', () => {
     expect(result.current.results).toEqual([
       { enrollmentId: 70, courseId: 7, kind: 'integrity_unknown' },
     ]);
-    act(() => result.current.start());
+    act(() => {
+      result.current.start();
+      result.current.retryRestoredCourse(7);
+    });
     expect(counts).toEqual({
       checkout: 1,
       enrollments: 1,

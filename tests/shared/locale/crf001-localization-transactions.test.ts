@@ -26,6 +26,10 @@ const {
   writeRecordedBaseArtifacts,
   // @ts-expect-error The dependency-free Node localization fixture has no TypeScript declaration.
 } = await import('./fixtures/crf001-recorded-base-fixture.mjs');
+const {
+  CRF_001_CART_PAGE_SOURCE,
+  // @ts-expect-error The fixture is a dependency-free Node module with no TypeScript declaration.
+} = await import('./fixtures/crf001-cart-page-source-fixture.mjs');
 
 interface TransactionTargets {
   readonly generatedBaselinePath: string;
@@ -91,6 +95,8 @@ async function createSourceFixture(): Promise<SourceFixture> {
   const sourceRoot = join(await mkdtemp(join(tmpdir(), 'learnhub-crf001-source-')), 'src');
   temporaryDirectories.push(dirname(sourceRoot));
   await cp(resolve('src'), sourceRoot, { recursive: true });
+  const cartPageSource = `${CRF_001_CART_PAGE_SOURCE.replace(/^\n/, '')}\n`;
+  await writeFile(join(sourceRoot, 'pages/cart-page/CartPage.tsx'), cartPageSource, 'utf8');
   return { sourceRoot };
 }
 

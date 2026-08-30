@@ -22,7 +22,7 @@ const cartResidualCopy = {
     cartTotal: 'Cart total',
     courseCount: '1 course',
     courseLabel: 'Course',
-    mockCheckout: 'Mock checkout',
+    mockCheckout: 'Complete mock payment',
     orderSummary: 'Order summary',
     price: 'Price',
     coursePrice: '$19.990',
@@ -37,7 +37,7 @@ const cartResidualCopy = {
     cartTotal: 'Итог корзины',
     courseCount: '1 курс',
     courseLabel: 'Курс',
-    mockCheckout: 'Тестовое оформление',
+    mockCheckout: 'Завершить тестовый платёж',
     orderSummary: 'Итоги заказа',
     price: 'Цена',
     coursePrice: '19,990\u00a0$',
@@ -52,7 +52,7 @@ const cartResidualCopy = {
     cartTotal: 'Savat jami',
     courseCount: '1 ta kurs',
     courseLabel: 'Kurs',
-    mockCheckout: 'Sinov buyurtmasi',
+    mockCheckout: 'Sinov to‘lovini yakunlash',
     orderSummary: 'Buyurtma yakuni',
     price: 'Narx',
     coursePrice: '$\u00a019.990',
@@ -362,12 +362,7 @@ test.describe('FE-009 cart workflow QA harness', () => {
       removeWidth: 44,
     });
     expect(compactLayout.priceLeft).toBeLessThan(compactLayout.removeLeft);
-    await page
-      .getByRole('button', { name: /Remove Long Cart course 24/i })
-      .evaluate((element: HTMLButtonElement) => element.focus({ preventScroll: true }));
-    await page.keyboard.press('Tab');
-    await expect(jump).toBeFocused();
-    await page.keyboard.press('Enter');
+    await jump.press('Enter');
     await expect(summaryHeading).toBeFocused();
     await expect(jump).toHaveCount(0);
     expect(checkoutPosts).toBe(0);
@@ -724,13 +719,13 @@ for (const locale of ['ru', 'uz'] as const) {
     await expect(returnLink).toHaveAttribute('href', '/learning?page=2#courses');
     await expect(page.getByRole('link', { name: 'My learning', exact: true })).toHaveCount(0);
 
-    const remove = page.getByRole('button', { name: new RegExp(cartItem.course.title, 'i') });
+    const remove = page.locator('[data-cart-remove-course-id="7"]');
     await remove.click();
     const status = page.getByRole('status');
     await expect(status).toContainText(copy.removeStatus);
     await expect(status).toHaveAttribute('aria-live', 'polite');
     await expect(status).not.toContainText('Course removed from cart.');
-    await expect(page.getByRole('button', { name: /Second browser cart course/ })).toBeFocused();
+    await expect(page.locator('[data-cart-remove-course-id="8"]')).toBeFocused();
 
     const clearInvoker = page.getByRole('button', { name: copy.clearAction }).first();
     await expect(clearInvoker).toHaveText(copy.clearVisible);

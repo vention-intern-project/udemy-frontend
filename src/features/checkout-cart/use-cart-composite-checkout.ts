@@ -134,8 +134,6 @@ export function useCartCompositeCheckout(
   const [recoveryCandidates, setRecoveryCandidates] =
     useState<readonly CartCompositeRecoveryCandidate[]>(emptyRecoveryCandidates);
 
-  subjectRef.current = subject;
-
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -148,6 +146,7 @@ export function useCartCompositeCheckout(
   }, []);
 
   useLayoutEffect(() => {
+    subjectRef.current = subject;
     activeAttemptRef.current?.controller.abort();
     activeAttemptRef.current = null;
     recoveryDiscoveryRef.current?.controller.abort();
@@ -453,10 +452,10 @@ export function useCartCompositeCheckout(
       phase === 'checkout_completed' &&
       results.some((result) => result.courseId === courseId && result.kind === 'restored');
     if (
+      !isVerifiedRestoredRetry ||
       subject === null ||
       activeAttemptRef.current !== null ||
-      recoveryDiscoveryRef.current !== null ||
-      (writeLockedRef.current && !isVerifiedRestoredRetry)
+      recoveryDiscoveryRef.current !== null
     )
       return;
     const retryCourse = courses.find((course) => course.courseId === courseId);
@@ -476,7 +475,7 @@ export function useCartCompositeCheckout(
     // A verified cancelled result restored this exact course to Cart. This explicit,
     // per-course action is the only terminal boundary allowed to re-arm a write.
     // Unknown outcomes and all other terminal states retain their fail-closed lock.
-    if (isVerifiedRestoredRetry) writeLockedRef.current = false;
+    writeLockedRef.current = false;
     const retainedCourses = courses.filter((course) => course.courseId !== courseId);
     attemptSequenceRef.current += 1;
     const attempt: CartCompositeLiveAttempt = {

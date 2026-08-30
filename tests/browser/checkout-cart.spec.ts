@@ -102,7 +102,6 @@ function isCartCompositeApiPath(path: string): boolean {
     path === '/cart/checkout' ||
     path === '/cart/items' ||
     path.startsWith('/cart/items/') ||
-    path === '/enrollments/my' ||
     path.startsWith('/enrollments/') ||
     path === '/payments/complete'
   );

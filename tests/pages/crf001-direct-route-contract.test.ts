@@ -58,9 +58,9 @@ describe('CRF-001 direct-route and Cart contract', () => {
   it('does not keep a My Learning continuation in uncorrelated Cart notices', async () => {
     const source = await readSource('pages/cart-page/CartPage.tsx');
 
-    expect(source).toContain('learning access is not available yet.');
-    expect(source).toContain('Do not start another checkout action.');
-    expect(source).toContain('cannot confirm a payment result or learning access.');
+    expect(source).toContain("t('cart:paymentResultNeedsChecking')");
+    expect(source).toContain("t('cart:doNotStartAnotherPayment')");
+    expect(source).toContain("t('cart:courseReturnedToCart')");
     expect(source).not.toContain("t('cart:checkMyLearning'");
   });
 });

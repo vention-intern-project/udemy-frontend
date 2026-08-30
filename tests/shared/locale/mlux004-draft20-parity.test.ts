@@ -6,7 +6,20 @@ import { describe, expect, it } from 'vitest';
 type GeneratedResources = Record<string, Record<string, Record<string, string>>>;
 
 const generatedResources = GENERATED_LOCALE_RESOURCES as GeneratedResources;
-const CURRENT_CORPUS_OCCURRENCE_COUNT = 768;
+const RECORDED_DRAFT37_OCCURRENCE_COUNT = 768;
+const CRF_002_UNIT_IDS = [
+  'MLUX-C0544',
+  'MLUX-C0545',
+  'MLUX-C0546',
+  'MLUX-C0547',
+  'MLUX-C0548',
+  'MLUX-C0549',
+  'MLUX-C0550',
+  'MLUX-C0551',
+  'MLUX-C0552',
+  'MLUX-C0553',
+] as const;
+const CURRENT_CORPUS_OCCURRENCE_COUNT = RECORDED_DRAFT37_OCCURRENCE_COUNT + CRF_002_UNIT_IDS.length;
 
 function placeholders(value: string): readonly string[] {
   return [...value.matchAll(/\{\{?\s*([A-Za-z][A-Za-z0-9_]*)\s*}}?/g)]
@@ -23,6 +36,11 @@ describe('canonical registry source parity', () => {
     expect(
       new Set(registry.units.flatMap((unit) => unit.occurrences.map(({ id }) => id))).size,
     ).toBe(CURRENT_CORPUS_OCCURRENCE_COUNT);
+    expect(
+      registry.units
+        .filter((unit) => unit.migrationProvenance.ownerTasks.includes('CRF-002'))
+        .map((unit) => unit.id),
+    ).toEqual(CRF_002_UNIT_IDS);
   });
 
   it('keeps every source occurrence attached to one canonical unit and current revision', () => {

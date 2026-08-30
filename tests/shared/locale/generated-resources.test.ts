@@ -7,17 +7,39 @@ const generated = GENERATED_LOCALE_RESOURCES as Record<
   string,
   Record<string, Record<string, string>>
 >;
-const CURRENT_CORPUS_UNIT_COUNT = 545;
+const RECORDED_DRAFT37_UNIT_COUNT = 545;
+const CRF_002_UNIT_IDS = [
+  'MLUX-C0544',
+  'MLUX-C0545',
+  'MLUX-C0546',
+  'MLUX-C0547',
+  'MLUX-C0548',
+  'MLUX-C0549',
+  'MLUX-C0550',
+  'MLUX-C0551',
+  'MLUX-C0552',
+  'MLUX-C0553',
+] as const;
+const CURRENT_CORPUS_UNIT_COUNT = RECORDED_DRAFT37_UNIT_COUNT + CRF_002_UNIT_IDS.length;
 
 describe('generated canonical localization resources', () => {
   it('binds the committed canonical registry to exact DRAFT-37 migration facts', () => {
     expect(registry).toMatchObject({
       corpusVersion: 'MLUX-001-DRAFT-37',
       source: { sha256: 'C9E208FC5F1AEF55E709290C67270B79E1CBCE4831E7FBCB20555AB5CF8A73AE' },
-      summary: { translationUnits: 545, sourceOccurrences: 768, mergedDuplicateRows: 223 },
+      summary: {
+        translationUnits: CURRENT_CORPUS_UNIT_COUNT,
+        sourceOccurrences: 768 + CRF_002_UNIT_IDS.length,
+        mergedDuplicateRows: 223,
+      },
     });
     expect(registry.exclusions).toHaveLength(12);
     expect(registry.units).toHaveLength(CURRENT_CORPUS_UNIT_COUNT);
+    expect(
+      registry.units
+        .filter((unit) => unit.migrationProvenance.ownerTasks.includes('CRF-002'))
+        .map((unit) => unit.id),
+    ).toEqual(CRF_002_UNIT_IDS);
     for (const { locales } of registry.units) {
       for (const locale of [locales.ru, locales.uz]) {
         if (locale.status !== 'draft') continue;

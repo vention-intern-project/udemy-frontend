@@ -962,7 +962,9 @@ test('login covers safe 401/422/offline retry, pending lock, bearer suppression,
 
   await expect(page).toHaveURL(/\/cart$/);
   await expect(page.getByRole('heading', { name: 'Cart' })).toBeVisible();
-  await expect.poll(() => cartRequests).toBe(2);
+  // The Cart route makes its normal query reads and one bounded CCMP recovery
+  // reconciliation read after an authenticated login reaches an empty Cart.
+  await expect.poll(() => cartRequests).toBe(3);
   await expect(page.getByRole('heading', { name: 'Your cart is empty' })).toBeVisible();
   const loginRequestsAfterNavigation = loginRequests;
   const cartRequestsAfterNavigation = cartRequests;

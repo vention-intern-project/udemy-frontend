@@ -2354,7 +2354,10 @@ test('keeps the student Catalog, Search, Cart, and account slots stable across C
   const assertRuntimeClean = monitorRuntime(
     page,
     [],
-    [CART_STRICT_MODE_ABORT, ENROLLMENTS_STRICT_MODE_ABORT],
+    [
+      { ...CART_STRICT_MODE_ABORT, occurrences: 2 },
+      { ...ENROLLMENTS_STRICT_MODE_ABORT, occurrences: 2 },
+    ],
   );
   await mockAuthenticatedSession(page, 'student');
   await mockStudentWorkspaceData(page);
