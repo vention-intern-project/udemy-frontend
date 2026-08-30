@@ -3,22 +3,12 @@ import { GENERATED_LOCALE_RESOURCES } from '../../../src/shared/locale/generated
 
 import { describe, expect, it } from 'vitest';
 
+import { CRF_002_UNIT_IDS } from './fixtures/crf002-unit-ids';
+
 type GeneratedResources = Record<string, Record<string, Record<string, string>>>;
 
 const generatedResources = GENERATED_LOCALE_RESOURCES as GeneratedResources;
 const RECORDED_DRAFT37_OCCURRENCE_COUNT = 768;
-const CRF_002_UNIT_IDS = [
-  'MLUX-C0544',
-  'MLUX-C0545',
-  'MLUX-C0546',
-  'MLUX-C0547',
-  'MLUX-C0548',
-  'MLUX-C0549',
-  'MLUX-C0550',
-  'MLUX-C0551',
-  'MLUX-C0552',
-  'MLUX-C0553',
-] as const;
 const CURRENT_CORPUS_OCCURRENCE_COUNT = RECORDED_DRAFT37_OCCURRENCE_COUNT + CRF_002_UNIT_IDS.length;
 
 function placeholders(value: string): readonly string[] {

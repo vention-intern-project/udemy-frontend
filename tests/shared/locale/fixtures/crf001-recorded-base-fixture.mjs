@@ -868,7 +868,7 @@ index 617d55a..6b8a72c 100644
        "courseLabel": "Kurs",
 `;
 
-function reverseUnifiedPatch(source, patch, { allowReboundFingerprints = false } = {}) {
+export function reverseUnifiedPatch(source, patch) {
   const sourceLines = source.split('\n');
   const normalizedPatchLine = (line) =>
     line.replace(/sha256:[a-f0-9]{64}/g, 'sha256:<source-fingerprint>');
@@ -904,18 +904,11 @@ function reverseUnifiedPatch(source, patch, { allowReboundFingerprints = false }
     if (matchesAt(hunk.position)) matchingPositions.push(hunk.position);
     else {
       const exactText = hunk.next.join('\n');
-      const exactOffset = sourceLines.join('\n').indexOf(exactText);
-      if (exactOffset >= 0)
-        matchingPositions.push(sourceLines.join('\n').slice(0, exactOffset).split('\n').length - 1);
+      const joinedSource = sourceLines.join('\n');
+      const exactOffset = joinedSource.indexOf(exactText);
+      if (exactOffset >= 0 && (exactOffset === 0 || joinedSource[exactOffset - 1] === '\n'))
+        matchingPositions.push(joinedSource.slice(0, exactOffset).split('\n').length - 1);
     }
-    if (matchingPositions.length === 0 && allowReboundFingerprints)
-      for (
-        let position = 0;
-        position <= sourceLines.length - normalizedNext.length;
-        position += 1
-      ) {
-        if (matchesAt(position)) matchingPositions.push(position);
-      }
     const position = matchingPositions.sort(
       (left, right) => Math.abs(left - hunk.position) - Math.abs(right - hunk.position),
     )[0];

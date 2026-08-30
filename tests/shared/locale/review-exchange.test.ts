@@ -8,6 +8,7 @@ import { promisify } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import draft37Registry from '../../../localization/corpus/registry.json';
+import { CRF_002_UNIT_IDS } from './fixtures/crf002-unit-ids';
 
 const {
   createCorpusReviewReport,
@@ -26,6 +27,7 @@ const {
 } = await import('../../../scripts/localization/review-exchange.mjs');
 const {
   RECORDED_BASE_REQUEST,
+  reverseUnifiedPatch,
   writeRecordedBaseArtifacts,
   // @ts-expect-error The dependency-free Node localization fixture has no TypeScript declaration.
 } = await import('./fixtures/crf001-recorded-base-fixture.mjs');
@@ -43,10 +45,10 @@ const REQUESTED_AT = '2026-08-25T00:00:00.000Z';
 const REVIEWED_AT = '2026-08-25T00:01:00.000Z';
 const IMPORTED_AT = '2026-08-25T00:02:00.000Z';
 const TASK_ID = 'FE-067';
-// DRAFT-37 keeps its engine-owned historical subset, while this suite validates the
-// current canonical corpus and therefore includes the authorized CRF-002 units.
-const CURRENT_CORPUS_UNIT_COUNT = 555;
+// Current-corpus assertions include the authorized CRF-002 units. DRAFT-37 and
+// legacy-artifact assertions remain pinned to their recorded historical counts below.
 const HISTORICAL_CORPUS_UNIT_COUNT = 545;
+const CURRENT_CORPUS_UNIT_COUNT = HISTORICAL_CORPUS_UNIT_COUNT + CRF_002_UNIT_IDS.length;
 const SUPPLIED_LEGACY_ARTIFACT_ROW_COUNT = 346;
 const CURRENT_LEGACY_ARTIFACT_UNREVIEWED_UNIT_COUNT =
   CURRENT_CORPUS_UNIT_COUNT - SUPPLIED_LEGACY_ARTIFACT_ROW_COUNT;
@@ -457,6 +459,25 @@ async function immutableHistoricalCorpus(): Promise<typeof draft37Registry> {
 }
 
 describe('localization review exchange', () => {
+  it('rejects a reverse-patch exact-text match that begins mid-line', () => {
+    const patch = [
+      'diff --git a/example.txt b/example.txt',
+      'index 0000000..1111111 100644',
+      '--- a/example.txt',
+      '+++ b/example.txt',
+      '@@ -1,2 +1,2 @@',
+      '-target',
+      '-next',
+      '+target',
+      '+next',
+      '',
+    ].join('\n');
+
+    expect(() => reverseUnifiedPatch('prefix target\nnext\n', patch)).toThrow(
+      'test fixture cannot reconstruct the recorded base',
+    );
+  });
+
   it('round-trips a deterministic fixed-schema CSV with exact review identity fields', () => {
     const corpus = corpusInReview();
     const options = { locales: ['uz', 'ru'], taskId: TASK_ID, unitIds: ['MLUX-C0001'] };
