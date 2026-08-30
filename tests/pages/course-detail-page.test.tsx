@@ -703,7 +703,7 @@ describe('CourseDetailPage', () => {
     };
     const useSessionSpy = vi.spyOn(authSession, 'useSession').mockReturnValue(session);
     const queryClient = createAppQueryClient();
-    render(
+    const view = render(
       <I18nextProvider i18n={localeRuntime}>
         <QueryClientProvider client={queryClient}>
           <MemoryRouter initialEntries={['/courses/7']}>
@@ -721,6 +721,7 @@ describe('CourseDetailPage', () => {
     await userEvent.setup().click(action);
     expect(writes).toBe(0);
     await screen.findByText('No reviews yet.');
+    view.unmount();
     useSessionSpy.mockRestore();
   });
 
