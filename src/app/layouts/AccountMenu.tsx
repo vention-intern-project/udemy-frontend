@@ -39,7 +39,7 @@ const ACCOUNT_ROLE_PRESENTATION: Record<UserRole, AccountRolePresentation> = {
 export function AccountMenu({ user, showLanguage = false }: AccountMenuProps) {
   const { clearSession } = useSession();
   const { t } = useTranslation();
-  const { locale, setLocale } = useLocale();
+  const { clearStoredLocale, locale, setLocale } = useLocale();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [pinned, setPinned] = useState(false);
@@ -236,6 +236,7 @@ export function AccountMenu({ user, showLanguage = false }: AccountMenuProps) {
                 className={styles.accountMenuLogout}
                 type="button"
                 onClick={() => {
+                  clearStoredLocale();
                   clearSession();
                   navigate('/');
                 }}

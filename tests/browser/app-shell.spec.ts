@@ -2156,14 +2156,24 @@ test('keeps the accepted instructor navigation and initials marker at desktop wi
 test('shows authenticated account details on hover and clears the session through Log out', async ({
   page,
 }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('learnhub.locale', 'ru');
+    localStorage.setItem('browser-oracle-unrelated-key', 'preserve-me');
+  });
   await mockAuthenticatedSession(page, 'student');
   await mockStudentWorkspaceData(page);
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/learning');
+  const assertRuntimeClean = monitorRuntime(
+    page,
+    [],
+    [CART_STRICT_MODE_ABORT, ENROLLMENTS_STRICT_MODE_ABORT],
+  );
+  await expect(page.locator('html')).toHaveAttribute('lang', 'ru');
 
-  const account = page.getByRole('button', { name: 'Account menu for Sam User' });
+  const account = page.getByRole('button', { name: 'Меню аккаунта: Sam User' });
   await account.hover();
-  const accountDetails = page.getByRole('group', { name: 'Account details for Sam User' });
+  const accountDetails = page.getByRole('group', { name: 'Данные аккаунта: Sam User' });
   await expect(accountDetails).toBeVisible();
   await expect(page.getByRole('menu')).toHaveCount(0);
   const [accountBox, menuBox] = await Promise.all([
@@ -2183,7 +2193,7 @@ test('shows authenticated account details on hover and clears the session throug
   await expect(accountDetails.locator('[data-part="account-menu-profile"]')).toBeVisible();
   await expect(accountDetails.getByText('student@example.com')).toBeVisible();
   await expect(accountDetails.getByText('Sam User')).toBeVisible();
-  const role = accountDetails.getByText('Student', { exact: true });
+  const role = accountDetails.getByText('Студент', { exact: true });
   await expect(role).toBeVisible();
   await expect(role).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await expect(role).toHaveCSS(
@@ -2198,7 +2208,7 @@ test('shows authenticated account details on hover and clears the session throug
   if (!emailBox || !roleBox) throw new Error('Account-menu role geometry is unavailable.');
   expect(roleBox.x).toBeGreaterThanOrEqual(emailBox.x);
   expect(roleBox.y).toBeGreaterThanOrEqual(emailBox.y + emailBox.height);
-  const logout = accountDetails.getByRole('button', { name: 'Log out' });
+  const logout = accountDetails.getByRole('button', { name: 'Выйти' });
   await expect(logout.locator('svg')).toBeVisible();
   await expect(logout).toHaveCSS('border-top-style', 'none');
   await expect(logout).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
@@ -2207,8 +2217,14 @@ test('shows authenticated account details on hover and clears the session throug
   await logout.click();
 
   await expect(page).toHaveURL('/');
-  await expect(page.getByRole('link', { name: 'Log in' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Войти' })).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('learnhub.access-token'))).toBeNull();
+  expect(await page.evaluate(() => localStorage.getItem('learnhub.locale'))).toBeNull();
+  expect(await page.evaluate(() => localStorage.getItem('browser-oracle-unrelated-key'))).toBe(
+    'preserve-me',
+  );
+  await expect(page.locator('html')).toHaveAttribute('lang', 'ru');
+  assertRuntimeClean();
 });
 
 test('keeps a clicked account menu open until Escape or an outside click', async ({ page }) => {

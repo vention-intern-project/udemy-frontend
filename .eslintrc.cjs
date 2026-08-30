@@ -24,7 +24,13 @@ module.exports = {
   ignorePatterns: ['dist', 'node_modules', 'playwright-report', 'test-results'],
   overrides: [
     {
-      files: ['src/**/*.{ts,tsx}', 'tests/**/*.{ts,tsx}', 'vite.config.ts'],
+      files: [
+        'src/**/*.{ts,tsx}',
+        'tests/**/*.{ts,tsx}',
+        'config/**/*.ts',
+        'vite.config.ts',
+        'vitest.config.ts',
+      ],
       parser: '@typescript-eslint/parser',
       parserOptions: {
         ecmaVersion: 'latest',
@@ -70,7 +76,9 @@ module.exports = {
       files: [
         'tests/browser/playwright.config.ts',
         'tests/browser/primitives-server.ts',
+        'config/**/*.ts',
         'vite.config.ts',
+        'vitest.config.ts',
       ],
       env: { node: true },
     },

@@ -40,7 +40,7 @@ describe('catalog URL query contract', () => {
       max_price: 30,
       sort: '-price',
       page: 2,
-      page_size: 20,
+      page_size: 24,
     });
   });
 
@@ -80,7 +80,7 @@ describe('catalog URL query contract', () => {
     expect(toCourseListQuery(defaultQuery)).toMatchObject({
       sort: 'created_at',
       page: 1,
-      page_size: 20,
+      page_size: 24,
     });
 
     const ascendingLegacy = parseCatalogQuery(new URLSearchParams('sort=id'));
@@ -110,7 +110,7 @@ describe('catalog URL query contract', () => {
       max_price: undefined,
       sort: '-price',
       page: 2,
-      page_size: 20,
+      page_size: 24,
     });
   });
 });

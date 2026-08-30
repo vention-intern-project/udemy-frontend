@@ -74,7 +74,7 @@ test('opens a published Catalog course through a successful Course Detail respon
   const course = permittedCourse();
   assertClean.allowOptionalRequestFailure({
     method: 'GET',
-    path: '/courses?page=1&page_size=20&sort=created_at',
+    path: '/courses?page=1&page_size=24&sort=created_at',
     errorText: 'net::ERR_ABORTED',
   });
   assertClean.allowRequestFailure({
@@ -150,7 +150,7 @@ test('renders a semantic full-width catalog hero at scrollable physical client e
   const assertClean = await monitor(page);
   assertClean.allowRequestFailure({
     method: 'GET',
-    path: '/courses?page=1&page_size=20&sort=created_at',
+    path: '/courses?page=1&page_size=24&sort=created_at',
     errorText: 'net::ERR_ABORTED',
   });
   const { requests } = await installCatalogHeroScenario(page);
@@ -385,7 +385,7 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
   const assertClean = await monitor(page);
   assertClean.allowRequestFailure({
     method: 'GET',
-    path: '/courses?page=1&page_size=20&sort=created_at',
+    path: '/courses?page=1&page_size=24&sort=created_at',
     errorText: 'net::ERR_ABORTED',
   });
   assertClean.allowRequestFailure({
@@ -1346,7 +1346,7 @@ test('keeps a fine-pointer hover-open Sort popup open through trigger click and 
   const assertClean = await monitor(page);
   assertClean.allowRequestFailure({
     method: 'GET',
-    path: '/courses?page=2&page_size=20&sort=created_at',
+    path: '/courses?page=2&page_size=24&sort=created_at',
     errorText: 'net::ERR_ABORTED',
   });
   const requests: string[] = [];
@@ -1434,12 +1434,12 @@ test('keeps Catalog result geometry stable while changed Sort and price requests
   const assertClean = await monitor(page);
   assertClean.allowRequestFailure({
     method: 'GET',
-    path: '/courses?page=2&page_size=20&sort=-created_at',
+    path: '/courses?page=2&page_size=24&sort=-created_at',
     errorText: 'net::ERR_ABORTED',
   });
   assertClean.allowRequestFailure({
     method: 'GET',
-    path: '/courses?page=1&page_size=20&sort=-created_at',
+    path: '/courses?page=1&page_size=24&sort=-created_at',
     errorText: 'net::ERR_ABORTED',
   });
   const refreshScenario = await installCatalogRefreshScenario(page);
@@ -1710,7 +1710,7 @@ test('navigates every enabled control for an authoritative high final page', asy
   const assertClean = await monitor(page);
   assertClean.allowRequestFailure({
     method: 'GET',
-    path: '/courses?page=99&page_size=20&sort=created_at',
+    path: '/courses?page=99&page_size=24&sort=created_at',
     errorText: 'net::ERR_ABORTED',
   });
   const requests: string[] = [];
@@ -1759,7 +1759,7 @@ test('keeps anonymous published Catalog links semantic and contained across the 
   assertClean.allowRequestFailure(
     {
       method: 'GET',
-      path: '/courses?page=1&page_size=20&sort=created_at',
+      path: '/courses?page=1&page_size=24&sort=created_at',
       errorText: 'net::ERR_ABORTED',
     },
     20,
@@ -1866,7 +1866,7 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   const assertClean = await monitor(page);
   assertClean.allowRequestFailure({
     method: 'GET',
-    path: '/courses?page=2&page_size=20&search_query=React&min_price=5&sort=-created_at',
+    path: '/courses?page=2&page_size=24&search_query=React&min_price=5&sort=-created_at',
     errorText: 'net::ERR_ABORTED',
   });
   const requests: string[] = [];
@@ -2034,7 +2034,7 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
     page.locator('[data-part="course-card-metadata"]').getByText('Ada Lovelace', { exact: true }),
   ).toBeVisible();
   await expect(page.getByText('1 lesson available', { exact: true })).toBeVisible();
-  expect(requests[0]).toContain('page_size=20');
+  expect(requests[0]).toContain('page_size=24');
 
   const filters = page.getByRole('form', { name: 'Course filters' });
   await expect(filters.getByRole('heading', { name: 'Filters' })).toHaveCount(0);
@@ -2449,7 +2449,7 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
       catalogResponse.request().method() === 'GET' &&
       new URL(catalogResponse.url()).pathname === '/courses' &&
       new URL(catalogResponse.url()).search ===
-        '?page=1&page_size=20&search_query=TypeScript&min_price=5&sort=title' &&
+        '?page=1&page_size=24&search_query=TypeScript&min_price=5&sort=title' &&
       catalogResponse.status() >= 200 &&
       catalogResponse.status() < 300,
   );
@@ -2483,7 +2483,7 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
           return (
             url.pathname === '/courses' &&
             url.search ===
-              '?page=1&page_size=20&search_query=JavaScript&min_price=10&max_price=20&sort=title'
+              '?page=1&page_size=24&search_query=JavaScript&min_price=10&max_price=20&sort=title'
           );
         }).length,
     )
@@ -2617,12 +2617,12 @@ test('remembers catalog searches in an accessible local combobox without changin
   const assertClean = await monitor(page);
   assertClean.allowRequestFailure({
     method: 'GET',
-    path: '/courses?page=2&page_size=20&min_price=5&sort=title',
+    path: '/courses?page=2&page_size=24&min_price=5&sort=title',
     errorText: 'net::ERR_ABORTED',
   });
   assertClean.allowRequestFailure({
     method: 'GET',
-    path: '/courses?page=1&page_size=20&search_query=TypeScript&min_price=5&sort=title',
+    path: '/courses?page=1&page_size=24&search_query=TypeScript&min_price=5&sort=title',
     errorText: 'net::ERR_ABORTED',
   });
   const requests: string[] = [];
@@ -2773,7 +2773,7 @@ test('canonicalizes an inverted range and honors single-page pagination availabi
   const assertClean = await monitor(page);
   assertClean.allowRequestFailure({
     method: 'GET',
-    path: '/courses?page=1&page_size=20&search_query=React&sort=created_at',
+    path: '/courses?page=1&page_size=24&search_query=React&sort=created_at',
     errorText: 'net::ERR_ABORTED',
   });
   const requests: string[] = [];
@@ -2808,7 +2808,7 @@ test('keeps an inverted price range invalid, then submits a corrected value with
   const assertClean = await monitor(page);
   assertClean.allowRequestFailure({
     method: 'GET',
-    path: '/courses?page=1&page_size=20&sort=created_at',
+    path: '/courses?page=1&page_size=24&sort=created_at',
     errorText: 'net::ERR_ABORTED',
   });
   const requests: string[] = [];
@@ -2854,7 +2854,7 @@ test('keeps an inverted price range invalid, then submits a corrected value with
   expect(requests).toHaveLength(requestCountBeforeInvalidSubmit + 1);
   const correctedRequest = requests[requests.length - 1];
   expect(correctedRequest).toContain('min_price=5');
-  expect(correctedRequest).toContain('page_size=20');
+  expect(correctedRequest).toContain('page_size=24');
 
   const requestCountBeforeNegativeMaximum = requests.length;
   await priceTrigger.click();
@@ -2899,7 +2899,7 @@ test('contains a right-exhausted left course tooltip without horizontal document
   const assertClean = await monitor(page);
   assertClean.allowRequestFailure({
     method: 'GET',
-    path: '/courses?page=1&page_size=20&sort=created_at',
+    path: '/courses?page=1&page_size=24&sort=created_at',
     errorText: 'net::ERR_ABORTED',
   });
   const longUnbrokenTitle =
@@ -3219,7 +3219,7 @@ test('renders the DD-174 quiet cart state and Details disclosure without changin
   const assertClean = await monitor(page);
   assertClean.allowRequestFailure({
     method: 'GET',
-    path: '/courses?page=1&page_size=20&sort=created_at',
+    path: '/courses?page=1&page_size=24&sort=created_at',
     errorText: 'net::ERR_ABORTED',
   });
   assertClean.allowRequestFailure({ method: 'GET', path: '/cart', errorText: 'net::ERR_ABORTED' });
@@ -3308,7 +3308,7 @@ test('renders the DD-045 CourseCard action and status system without changing ac
   const assertClean = await monitor(page);
   assertClean.allowRequestFailure({
     method: 'GET',
-    path: '/courses?page=1&page_size=20&sort=created_at',
+    path: '/courses?page=1&page_size=24&sort=created_at',
     errorText: 'net::ERR_ABORTED',
   });
   assertClean.allowRequestFailure({ method: 'GET', path: '/cart', errorText: 'net::ERR_ABORTED' });
@@ -3631,7 +3631,7 @@ test('keeps pending enrollment protected and recovers cancelled paid Catalog cou
   const assertClean = await monitor(page);
   assertClean.allowRequestFailure({
     method: 'GET',
-    path: '/courses?page=1&page_size=20&sort=created_at',
+    path: '/courses?page=1&page_size=24&sort=created_at',
     errorText: 'net::ERR_ABORTED',
   });
   assertClean.allowRequestFailure({ method: 'GET', path: '/cart', errorText: 'net::ERR_ABORTED' });
@@ -3670,7 +3670,7 @@ test('recovers only authoritative preflight after a successful Catalog mutation 
   assertClean.allowHttpFailure({ method: 'GET', path: '/cart', status: 500 }, 2);
   assertClean.allowRequestFailure({
     method: 'GET',
-    path: '/courses?page=1&page_size=20&sort=created_at',
+    path: '/courses?page=1&page_size=24&sort=created_at',
     errorText: 'net::ERR_ABORTED',
   });
   assertClean.allowRequestFailure({ method: 'GET', path: '/cart', errorText: 'net::ERR_ABORTED' });
@@ -3920,7 +3920,7 @@ test('allows only the exact simulated offline request failure and retries succes
   const assertClean = await monitor(page);
   assertClean.allowRequestFailure({
     method: 'GET',
-    path: '/courses?page=1&page_size=20&sort=created_at',
+    path: '/courses?page=1&page_size=24&sort=created_at',
     errorText: 'net::ERR_ABORTED',
   });
   await page.route('**/courses**', async (route) => {
@@ -3961,7 +3961,7 @@ test('A124 keeps one delayed, hoverable and pinnable controlled popover with a c
   const assertClean = await monitor(page);
   assertClean.allowRequestFailure({
     method: 'GET',
-    path: '/courses?page=1&page_size=20&sort=created_at',
+    path: '/courses?page=1&page_size=24&sort=created_at',
     errorText: 'net::ERR_ABORTED',
   });
   const courses = [
@@ -4111,7 +4111,7 @@ test('Keeps the labelled whole-card route and omits Details for compact or coars
   const assertClean = await monitor(page);
   assertClean.allowRequestFailure({
     method: 'GET',
-    path: '/courses?page=1&page_size=20&sort=created_at',
+    path: '/courses?page=1&page_size=24&sort=created_at',
     errorText: 'net::ERR_ABORTED',
   });
   await page.addInitScript(() => {
@@ -4194,7 +4194,7 @@ test('Keeps compact fine-pointer hover and focus free of dangling disclosure ARI
   const assertClean = await monitor(page);
   assertClean.allowRequestFailure({
     method: 'GET',
-    path: '/courses?page=1&page_size=20&sort=created_at',
+    path: '/courses?page=1&page_size=24&sort=created_at',
     errorText: 'net::ERR_ABORTED',
   });
   await page.route('**/courses**', async (route) => {
@@ -4224,7 +4224,7 @@ test('localizes the Price disclosure trigger and fields without changing respons
   assertClean.allowRequestFailure(
     {
       method: 'GET',
-      path: '/courses?page=1&page_size=20&sort=created_at',
+      path: '/courses?page=1&page_size=24&sort=created_at',
       errorText: 'net::ERR_ABORTED',
     },
     6,
@@ -4394,7 +4394,7 @@ test('renders the D20 Catalog vertical slice in Russian and Uzbek without changi
   assertClean.allowRequestFailure(
     {
       method: 'GET',
-      path: '/courses?page=1&page_size=20&sort=created_at',
+      path: '/courses?page=1&page_size=24&sort=created_at',
       errorText: 'net::ERR_ABORTED',
     },
     4,

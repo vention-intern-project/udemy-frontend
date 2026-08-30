@@ -9,6 +9,7 @@ export type TranslatedLocale = Exclude<Locale, 'en'>;
 export interface LocaleStorage {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
+  removeItem(key: string): void;
 }
 
 export interface LocaleResolverInput {
@@ -19,6 +20,7 @@ export interface LocaleResolverInput {
 export interface LocaleStore {
   get(): Locale | null;
   set(locale: Locale): boolean;
+  remove(): boolean;
 }
 
 export interface LocaleLookup<TKey extends string> {
@@ -34,6 +36,7 @@ export type LocaleTranslations<TKey extends string> = Readonly<
 export interface LocaleContextValue {
   readonly locale: Locale;
   setLocale(locale: Locale): void;
+  clearStoredLocale(): void;
 }
 
 export interface LocaleProviderProps {
