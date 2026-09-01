@@ -8,8 +8,6 @@ import { promisify } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import draft37Registry from '../../../localization/corpus/registry.json';
-import { CRF_002_UNIT_IDS } from './fixtures/crf002-unit-ids';
-
 const {
   createCorpusReviewReport,
   createReviewCsv,
@@ -45,10 +43,19 @@ const REQUESTED_AT = '2026-08-25T00:00:00.000Z';
 const REVIEWED_AT = '2026-08-25T00:01:00.000Z';
 const IMPORTED_AT = '2026-08-25T00:02:00.000Z';
 const TASK_ID = 'FE-067';
-// Current-corpus assertions include the authorized CRF-002 units. DRAFT-37 and
+// Current-corpus assertions use the accepted current registry size. DRAFT-37 and
 // legacy-artifact assertions remain pinned to their recorded historical counts below.
 const HISTORICAL_CORPUS_UNIT_COUNT = 545;
-const CURRENT_CORPUS_UNIT_COUNT = HISTORICAL_CORPUS_UNIT_COUNT + CRF_002_UNIT_IDS.length;
+const CURRENT_CORPUS_UNIT_COUNT = 584;
+const CURRENT_UNREVIEWED_UNIT_COUNT = 570;
+const CURRENT_REVIEW_STATUS_COUNTS = {
+  'approved-effective': 12,
+  'unchanged-approved': 2,
+  'stale-source': 0,
+  unreviewed: CURRENT_UNREVIEWED_UNIT_COUNT,
+  malformed: 0,
+  rejected: 0,
+} as const;
 const SUPPLIED_LEGACY_ARTIFACT_ROW_COUNT = 346;
 const CURRENT_LEGACY_ARTIFACT_UNREVIEWED_UNIT_COUNT =
   CURRENT_CORPUS_UNIT_COUNT - SUPPLIED_LEGACY_ARTIFACT_ROW_COUNT;
@@ -113,7 +120,11 @@ function requestCandidateReview(
 
 function corpusInReviewFor(locales: readonly ReviewLocale[]) {
   const corpus = structuredClone(draft37Registry);
-  const unit = corpus.units.find(({ id }) => id === 'MLUX-C0001');
+  const unit = corpus.units.find(
+    (candidate) =>
+      candidate.unitLifecycle === 'active' &&
+      locales.every((locale) => candidate.locales[locale].status === 'draft'),
+  );
   if (!unit) throw new Error('fixture unit is missing');
   for (const locale of locales)
     unit.locales[locale] = requestCandidateReview(unit.locales[locale], unit.id, locales);
@@ -367,11 +378,15 @@ function dualLocaleDecisionCsv(
   decisions: ReviewDecisionByLocale,
   localeOrder: readonly ReviewLocale[],
 ) {
+  const unit = corpus.units.find(({ locales }) =>
+    (['ru', 'uz'] as const).every((locale) => locales[locale].status === 'review_requested'),
+  );
+  if (!unit) throw new Error('dual-locale fixture unit is missing');
   const rows = parseReviewCsv(
     createReviewCsv(corpus, {
       locales: ['ru', 'uz'],
       taskId: TASK_ID,
-      unitIds: ['MLUX-C0001'],
+      unitIds: [unit.id],
     }),
   ).rows.map((row: Record<string, string>) => {
     const locale = row.locale as ReviewLocale;
@@ -380,7 +395,10 @@ function dualLocaleDecisionCsv(
     return {
       ...row,
       verdict: decision.verdict,
-      replacement: decision.replacement ?? '',
+      replacement:
+        decision.replacement === undefined
+          ? ''
+          : `${row.candidate} ${decision.replacement.replace(/\{\{identity\}\}/g, '').trim()}`.trim(),
       reviewerId: requiresReviewer ? `native-${locale}` : '',
       reviewerName: requiresReviewer ? `Native ${locale.toUpperCase()} Reviewer` : '',
       reviewerAttestation: requiresReviewer ? 'native-review' : '',
@@ -403,7 +421,8 @@ function expectOneAffectedUnitInState(result: ReturnType<typeof preflight>, expe
 
   const corpusReport = createCorpusReviewReport(result.corpus);
   expect(corpusReport.counts[expectedState]).toBe(
-    expectedState === 'unreviewed' ? CURRENT_CORPUS_UNIT_COUNT : 1,
+    CURRENT_REVIEW_STATUS_COUNTS[expectedState as keyof typeof CURRENT_REVIEW_STATUS_COUNTS] +
+      (expectedState === 'unreviewed' ? 0 : 1),
   );
 }
 
@@ -930,7 +949,7 @@ describe('localization review exchange', () => {
     const original = parseReviewCsv(valid).rows[0];
     expectOneAffectedUnitInState(
       preflight(corpus, serializeReviewCsv([original, structuredClone(original)])),
-      'unreviewed',
+      'approved-effective',
     );
     expect(() =>
       preflight(
@@ -1034,7 +1053,9 @@ describe('localization review exchange', () => {
       '2026-08-25T00:03:00.000Z';
 
     expect(() => preflight(corpus, serializeReviewCsv(parsed.rows))).toThrow(/after import/);
-    const unit = corpus.units.find(({ id }) => id === 'MLUX-C0001');
+    const unit = corpus.units.find(({ locales }) =>
+      (['ru', 'uz'] as const).every((locale) => locales[locale].status === 'review_requested'),
+    );
     expect(unit?.locales.ru.status).toBe('review_requested');
     expect(unit?.locales.uz.status).toBe('review_requested');
   });
@@ -1644,8 +1665,8 @@ describe('localization review exchange', () => {
       byState: { 'stale-source': 0, malformed: 0, rejected: 0 },
     });
     expect(report.inheritedPendingDebt).toEqual({
-      total: CURRENT_CORPUS_UNIT_COUNT,
-      byState: { unreviewed: CURRENT_CORPUS_UNIT_COUNT },
+      total: CURRENT_UNREVIEWED_UNIT_COUNT,
+      byState: { unreviewed: CURRENT_UNREVIEWED_UNIT_COUNT },
     });
     expect(reportReviewStatus({ unreviewed: 1 }).counts.unreviewed).toBe(1);
   });
@@ -1716,7 +1737,10 @@ describe('localization review exchange', () => {
         0,
       );
       expect(classifiedTotal).toBe(CURRENT_CORPUS_UNIT_COUNT);
-      expect(report.counts).toMatchObject({ unreviewed: CURRENT_CORPUS_UNIT_COUNT, malformed: 0 });
+      expect(report.counts).toMatchObject({
+        unreviewed: CURRENT_UNREVIEWED_UNIT_COUNT,
+        malformed: 0,
+      });
       expect(report.globalViolations).toEqual([...report.globalViolations].sort());
       expect(
         report.globalViolations.filter((violation: string) => violation.startsWith('MLUX-C0001:')),
@@ -1750,7 +1774,10 @@ describe('localization review exchange', () => {
         0,
       );
       expect(classifiedTotal).toBe(CURRENT_CORPUS_UNIT_COUNT);
-      expect(report.counts).toMatchObject({ unreviewed: CURRENT_CORPUS_UNIT_COUNT, malformed: 0 });
+      expect(report.counts).toMatchObject({
+        unreviewed: CURRENT_UNREVIEWED_UNIT_COUNT,
+        malformed: 0,
+      });
       expect(report.globalViolations).toEqual([...report.globalViolations].sort());
       expect(
         report.globalViolations.filter((violation: string) => violation.startsWith('MLUX-C0001:')),
@@ -1776,7 +1803,7 @@ describe('localization review exchange', () => {
 
     expect(classifiedTotal).toBe(CURRENT_CORPUS_UNIT_COUNT);
     expect(report.counts).toMatchObject({
-      unreviewed: CURRENT_CORPUS_UNIT_COUNT - 1,
+      unreviewed: CURRENT_UNREVIEWED_UNIT_COUNT - 1,
       malformed: 1,
     });
     expect(report.globalViolations).toEqual([...report.globalViolations].sort());

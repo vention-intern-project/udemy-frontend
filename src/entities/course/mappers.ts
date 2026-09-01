@@ -18,6 +18,7 @@ import type {
   LessonOutline,
   LessonMediaLocator,
   LessonOutlineItem,
+  LessonSubtitleLocator,
   LessonType,
 } from './model';
 import {
@@ -121,6 +122,10 @@ function decodeLessonDetail(value: unknown): LessonDetailDto {
     title: readString(item.title, 'lesson title'),
     lesson_type: mapLessonTypeDto(item.lesson_type),
     download_url: readNullableString(item.download_url, 'lesson download_url'),
+    subtitle_status:
+      item.subtitle_status === undefined
+        ? false
+        : readBoolean(item.subtitle_status, 'lesson subtitle_status'),
     description: readNullableString(item.description, 'lesson description'),
     is_published: readBoolean(item.is_published, 'lesson is_published'),
     created_at: readString(item.created_at, 'lesson created_at'),
@@ -199,12 +204,20 @@ export function mapLessonMediaLocator(downloadUrl: string | null): LessonMediaLo
   return { filename };
 }
 
-function mapLessonOutlineItem(dto: LessonDetailDto): LessonOutlineItem {
+function mapLessonSubtitleLocator(
+  dto: LessonDetailDto,
+  courseId: number,
+): LessonSubtitleLocator | null {
+  return dto.subtitle_status ? { courseId, lessonId: dto.id } : null;
+}
+
+function mapLessonOutlineItem(dto: LessonDetailDto, courseId: number): LessonOutlineItem {
   return {
     id: dto.id,
     title: dto.title,
     lessonType: mapLessonTypeDto(dto.lesson_type),
     mediaLocator: mapLessonMediaLocator(dto.download_url),
+    subtitleLocator: mapLessonSubtitleLocator(dto, courseId),
     description: dto.description,
     isPublished: dto.is_published,
   };
@@ -220,12 +233,15 @@ export function mapCourseDetailDto(dto: CourseDetailDto): CourseDetail {
     price: dto.price,
     currency: dto.currency,
     publishedAt: dto.published_at,
-    lessons: dto.lessons.map(mapLessonOutlineItem),
+    lessons: dto.lessons.map((lesson) => mapLessonOutlineItem(lesson, dto.id)),
   };
 }
 
-export function mapLessonListDto(dto: LessonListDto): LessonOutline {
-  return { items: dto.items.map(mapLessonOutlineItem), total: dto.total };
+export function mapLessonListDto(dto: LessonListDto, courseId: number): LessonOutline {
+  return {
+    items: dto.items.map((lesson) => mapLessonOutlineItem(lesson, courseId)),
+    total: dto.total,
+  };
 }
 
 export function decodeCourseListDto(value: unknown): CourseListDto {

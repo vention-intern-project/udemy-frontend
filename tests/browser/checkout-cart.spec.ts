@@ -98,6 +98,7 @@ async function noContent(route: Route): Promise<void> {
 function isCartCompositeApiPath(path: string): boolean {
   return (
     path === '/me' ||
+    path === '/courses' ||
     path === '/cart' ||
     path === '/cart/checkout' ||
     path === '/cart/items' ||
@@ -168,6 +169,23 @@ class CartCompositeFixture {
         return route.fallback();
       const record = this.record(route);
       if (record.path === '/me') return json(route, student);
+      if (record.path === '/courses' && record.method === 'GET')
+        return json(route, {
+          has_next: false,
+          has_previous: false,
+          items: Object.values(courses).map((course) => ({
+            ...course,
+            currency: 'USD',
+            description: null,
+            instructor: { id: 1, name: 'Ada', surname: 'Lovelace' },
+            lessons: [{ id: 1, title: 'Intro' }],
+            published_at: '2026-01-01T00:00:00Z',
+          })),
+          page: 1,
+          page_size: 24,
+          pages: 1,
+          total: Object.keys(courses).length,
+        });
       if (record.path === '/cart' && record.method === 'GET')
         return json(route, cartOf(this.cartCourseIds));
       if (record.path === '/cart/checkout' && record.method === 'POST') {
@@ -258,6 +276,8 @@ test('proves the whole Cart payment once and focuses the terminal result without
   const diagnostics: string[] = [];
   page.on('pageerror', (error) => diagnostics.push(error.message));
   await openCart(page, fixture);
+  await page.clock.install();
+  await page.clock.pauseAt(new Date('2030-01-01T00:00:00Z'));
   const action = page.getByRole('button', { name: 'Complete mock payment', exact: true });
   const disclosureText = page.getByText('Insecure checkout', { exact: true });
   await expect(disclosureText).toHaveJSProperty('tagName', 'SPAN');
@@ -279,32 +299,128 @@ test('proves the whole Cart payment once and focuses the terminal result without
       .first()
       .locator('xpath=ancestor::div[@tabindex="-1"][1]'),
   ).toBeFocused();
+  await page.clock.fastForward(7_999);
+  await expect(page.getByText('Payment completed', { exact: true })).toHaveCount(2);
+  await page.clock.fastForward(1);
+  await expect(page.getByText('Payment completed', { exact: true })).toHaveCount(0);
   expect(diagnostics).toEqual([]);
 });
 
-test('restores only the failed course and retries it from a mixed Cart', async ({ page }) => {
+test('clears successful payment confirmation when Cart unmounts', async ({ page }) => {
+  const fixture = new CartCompositeFixture({ cartCourseIds: [7] });
+  await openCart(page, fixture);
+  await page.getByRole('button', { name: 'Complete mock payment', exact: true }).click();
+  await expect(page.getByText('Payment completed', { exact: true })).toBeVisible();
+
+  await page.getByRole('link', { name: 'My learning', exact: true }).click();
+  await expect(page).toHaveURL('/learning');
+  await page.getByRole('link', { name: /^Cart/ }).click();
+  await expect(page).toHaveURL('/cart');
+
+  await expect(page.getByText('Payment completed', { exact: true })).toHaveCount(0);
+  expect(fixture.count('/payments/complete', 'POST')).toBe(1);
+});
+
+test('dismisses a deleted failed course and retries the remaining restored course', async ({
+  page,
+}) => {
   const fixture = new CartCompositeFixture({
     cartCourseIds: [7, 8],
     unrelatedCourseIdAfterRestore: 9,
   });
   await openCart(page, fixture);
-  await page
-    .getByRole('button', { name: 'Simulate payment failure: Advanced TypeScript Architecture' })
-    .click();
-  await expect(page.getByText('Payment failed', { exact: true })).toBeVisible();
-  expect(fixture.cartCourseIds).toEqual([7, 9]);
+  await page.clock.install();
+  await page.clock.pauseAt(new Date('2030-01-01T00:00:00Z'));
+  await page.getByRole('button', { name: 'Simulate payment failure', exact: true }).click();
+  await expect(page).toHaveURL('/cart');
+  await expect(page.getByText('Payment pending', { exact: true })).toBeVisible();
+  await expect(page.getByRole('list', { name: 'Cart courses' }).getByRole('listitem')).toHaveCount(
+    2,
+  );
+  await expect(page.getByRole('heading', { name: 'Your cart is empty' })).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: 'Remove Advanced TypeScript Architecture' }),
+  ).toBeDisabled();
+  expect(fixture.count('/payments/complete', 'POST')).toBe(0);
+  await page.clock.fastForward(6_999);
+  await expect(page).toHaveURL('/cart');
+  await expect(page.getByText('Payment pending', { exact: true })).toBeVisible();
+  expect(fixture.count('/payments/complete', 'POST')).toBe(0);
+  await page.clock.fastForward(1);
+  await expect(page.getByRole('list', { name: 'Cart courses' }).getByRole('listitem')).toHaveCount(
+    3,
+  );
+  await expect(page.getByText('Payment failed', { exact: true })).toHaveCount(2);
+  for (const courseTitle of ['Advanced TypeScript Architecture', 'FastAPI and Async SQLAlchemy']) {
+    const courseCard = page
+      .getByRole('link', { name: courseTitle, exact: true })
+      .locator('xpath=ancestor::*[@role="listitem"][1]');
+    const recovery = courseCard.getByRole('alert');
+    await expect(recovery).toContainText('Payment failed');
+    await expect(recovery).toContainText('The course was returned to your cart.');
+    await expect(recovery).toHaveCSS('background-color', 'rgb(254, 242, 242)');
+    await expect(recovery).toHaveCSS('border-left-width', '4px');
+    await expect(recovery).toHaveCSS('border-left-color', 'rgb(185, 28, 28)');
+  }
+  expect(fixture.cartCourseIds).toEqual([7, 9, 8]);
   expect(fixture.count('/payments/complete', 'POST')).toBe(2);
+  const summary = page.getByRole('complementary', { name: 'Cart total' });
+  await expect(
+    summary.getByText('Payment retry required · 2 courses', { exact: true }),
+  ).toBeVisible();
+  await expect(
+    summary.getByRole('button', { name: 'Complete mock payment', exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    summary.getByRole('button', { name: 'Simulate payment failure', exact: true }),
+  ).toHaveCount(0);
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await overflow(page)).toMatchObject({ client: 390, document: 390 });
+  await expect(
+    page
+      .getByRole('link', { name: 'Advanced TypeScript Architecture', exact: true })
+      .locator('xpath=ancestor::*[@role="listitem"][1]')
+      .getByRole('alert'),
+  ).toHaveCSS('flex-direction', 'column');
+  const firstRecovery = page
+    .getByRole('link', { name: 'Advanced TypeScript Architecture', exact: true })
+    .locator('xpath=ancestor::*[@role="listitem"][1]')
+    .getByRole('alert');
+  await expect(firstRecovery.getByText('Payment failed', { exact: true })).toBeVisible();
+  await expect(
+    firstRecovery.getByText('The course was returned to your cart.', { exact: true }),
+  ).toBeVisible();
   await page
-    .getByRole('button', { name: 'Retry mock payment: Advanced TypeScript Architecture' })
+    .getByRole('button', { name: 'Remove Advanced TypeScript Architecture', exact: true })
     .click();
+  await expect(
+    page.getByRole('link', { name: 'Advanced TypeScript Architecture', exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByText('Payment failed', { exact: true })).toHaveCount(1);
+  await expect(
+    summary.getByText('Payment retry required · 1 course', { exact: true }),
+  ).toBeVisible();
+
+  const retry = page.getByRole('button', {
+    name: 'Retry mock payment: FastAPI and Async SQLAlchemy',
+  });
+  await expect(retry).toHaveText('Retry payment');
+  await expect(retry).toBeEnabled();
+  await expect(retry).toHaveCSS('background-color', 'rgb(91, 63, 214)');
+  await retry.click();
   await expect(page.getByText('Payment completed', { exact: true })).toBeVisible();
+  await expect(summary.getByText('Payment retry required', { exact: false })).toHaveCount(0);
+  await expect(
+    summary.getByRole('button', { name: 'Complete mock payment', exact: true }),
+  ).toBeVisible();
   expect(fixture.count('/cart/checkout', 'POST')).toBe(2);
+  expect(fixture.count('/cart/items/7', 'DELETE')).toBe(1);
   expect(fixture.count('/cart/items/9', 'DELETE')).toBe(1);
   expect(fixture.count('/cart/items', 'POST')).toBeGreaterThanOrEqual(2);
   const paymentBodies = fixture.bodies('/payments/complete') as readonly {
     enrollment_id: number;
   }[];
-  expect(paymentBodies.map((body) => body.enrollment_id)).toEqual([77, 78, 77]);
+  expect(paymentBodies.map((body) => body.enrollment_id)).toEqual([77, 78, 78]);
 });
 
 test('admits loss only from full truth, locks ambiguity, and preserves a proven prefix', async ({
@@ -347,10 +463,10 @@ test('admits loss only from full truth, locks ambiguity, and preserves a proven 
   await expect(page.getByText('Payment failed', { exact: true })).toBeVisible();
   await expect(
     page
-      .getByRole('alert')
-      .filter({ hasText: 'Payment failed' })
-      .getByText('Advanced TypeScript Architecture', { exact: true }),
-  ).toBeVisible();
+      .getByRole('link', { name: 'Advanced TypeScript Architecture', exact: true })
+      .locator('xpath=ancestor::*[@role="listitem"][1]')
+      .getByRole('alert'),
+  ).toContainText('The course was returned to your cart.');
   await expect(page.getByText('FastAPI and Async SQLAlchemy', { exact: true })).toHaveCount(0);
   await expect(
     page.getByRole('button', {
@@ -403,9 +519,9 @@ test('discovers all empty-Cart pending candidates and resumes exact identities w
 });
 
 const localizedFailureControls: Readonly<Record<FixtureLocale, string>> = {
-  en: 'Simulate payment failure: Advanced TypeScript Architecture',
-  ru: 'Сымитировать ошибку платежа: Advanced TypeScript Architecture',
-  uz: 'To‘lov xatosini taqlid qilish: Advanced TypeScript Architecture',
+  en: 'Simulate payment failure',
+  ru: 'Сымитировать ошибку платежа',
+  uz: 'To‘lov xatosini taqlid qilish',
 };
 
 for (const locale of ['en', 'ru', 'uz'] as const) {

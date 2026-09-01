@@ -1,7 +1,15 @@
 import { createServer } from 'vite';
 import { resolveAppShellTestPort } from './app-shell-harness';
 
-export default async function startAppShellServer() {
+export type AppShellServerCleanup = () => Promise<void>;
+
+export interface AppShellServerStartupObserver {
+  readonly onCleanupReady: (cleanup: AppShellServerCleanup) => void;
+}
+
+export async function startAppShellViteServer(
+  observer?: AppShellServerStartupObserver,
+): Promise<AppShellServerCleanup> {
   const port = resolveAppShellTestPort();
   const server = await createServer({
     clearScreen: false,
@@ -27,14 +35,48 @@ export default async function startAppShellServer() {
     },
   });
 
+  let resolveCleanupRequested: () => void = () => {};
+  const cleanupRequested = new Promise<void>((resolve) => {
+    resolveCleanupRequested = resolve;
+  });
+  let cleanupStarted = false;
+  let cleanupPromise: Promise<void> | undefined;
+  const cleanup: AppShellServerCleanup = () => {
+    if (!cleanupPromise) {
+      cleanupStarted = true;
+      resolveCleanupRequested();
+      cleanupPromise = Promise.resolve()
+        .then(() => server.close())
+        .catch((error: unknown) => {
+          if ((error as NodeJS.ErrnoException).code !== 'ERR_SERVER_NOT_RUNNING') throw error;
+        });
+    }
+    return cleanupPromise;
+  };
+  const waitWhileActive = <T>(operation: () => Promise<T>): Promise<T> => {
+    if (cleanupStarted)
+      return Promise.reject(new Error('AppShell Vite server startup was cancelled'));
+    return Promise.race([
+      operation(),
+      cleanupRequested.then(() => {
+        throw new Error('AppShell Vite server startup was cancelled');
+      }),
+    ]);
+  };
+
   try {
-    await server.listen();
-    await server.environments.client.warmupRequest('/src/main.tsx');
-    await server.environments.client.waitForRequestsIdle();
+    observer?.onCleanupReady(cleanup);
+    await waitWhileActive(() => server.listen());
+    await waitWhileActive(() => server.environments.client.warmupRequest('/src/main.tsx'));
+    await waitWhileActive(() => server.environments.client.waitForRequestsIdle());
   } catch (error) {
-    await server.close();
+    await cleanup();
     throw error;
   }
 
-  return async () => server.close();
+  return cleanup;
+}
+
+export default async function startAppShellServer() {
+  return startAppShellViteServer();
 }

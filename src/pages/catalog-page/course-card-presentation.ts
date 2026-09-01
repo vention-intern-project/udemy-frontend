@@ -1,4 +1,4 @@
-import { CircleCheck, ShoppingCart, Trash2, UserPlus, type LucideIcon } from 'lucide-react';
+import { CircleCheck, ShoppingCart, Trash2, type LucideIcon } from 'lucide-react';
 
 import type { ButtonVariant } from '@shared/ui/primitives';
 import { LOCALE_RESOURCES, formatLocaleCurrency, resolveLocale } from '@shared/locale';
@@ -17,11 +17,12 @@ export function courseActionVisual(
     case 'add-to-cart':
       return { Icon: ShoppingCart, buttonVariant: 'primary' };
     case 'enroll-free':
-      return { Icon: UserPlus, buttonVariant: 'primary' };
+      return { Icon: null, buttonVariant: 'primary' };
     case 'enrolled':
       return { Icon: CircleCheck, buttonVariant: 'secondary' };
     case 'remove':
       return { Icon: Trash2, buttonVariant: 'secondary' };
+    case 'payment-processing':
     case 'neutral':
       return { Icon: null, buttonVariant: 'primary' };
   }

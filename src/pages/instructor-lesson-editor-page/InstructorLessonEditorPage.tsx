@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
+import { ChevronLeft, CircleCheck, FileText, UploadCloud } from 'lucide-react';
 
 import type { LessonType } from '@entities/course';
 import {
@@ -24,6 +25,7 @@ import {
 import { useSession } from '@features/auth-session';
 import {
   Button,
+  ContextualNavigationLink,
   Input,
   Notice,
   Select,
@@ -101,7 +103,7 @@ export function InstructorLessonEditorPage() {
     useState<InstructorLessonUploadObservation | null>(null);
   const uploadObserverRef = useRef<InstructorLessonUploadStatusObserver | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
-  const lessonTypeRef = useRef<HTMLSelectElement>(null);
+  const lessonTypeRef = useRef<HTMLButtonElement>(null);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
   const publishedRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -352,20 +354,29 @@ export function InstructorLessonEditorPage() {
     setUploadFailure(null);
     upload.mutate();
   };
+  const hasUnsavedChanges =
+    form !== null &&
+    lesson.data !== undefined &&
+    (form.title !== lesson.data.title ||
+      form.lessonType !== lesson.data.lessonType ||
+      form.description !== (lesson.data.description ?? '') ||
+      form.isPublished !== lesson.data.isPublished);
   return (
     <article className={styles.page} aria-busy={update.isPending || upload.isPending}>
       <header className={styles.header}>
-        <div>
-          <p className={styles.eyebrow}>{t('instructor:lessonEditorInstructorWorkspace')}</p>
-          <h1>{t('routes:editLessonTitle')}</h1>
-        </div>
-        <Link className={styles.backLink} to={`/instructor/courses/${lesson.data.courseId}/edit`}>
-          {t('instructor:lessonEditorBackToCourse')}
-        </Link>
+        <ContextualNavigationLink
+          className={styles.backLink}
+          to={`/instructor/courses/${lesson.data.courseId}/edit`}
+        >
+          <ChevronLeft aria-hidden="true" focusable="false" size={18} />
+          <span>{t('instructor:lessonEditorBackToCourse')}</span>
+        </ContextualNavigationLink>
+        <h1>{t('routes:editLessonTitle')}</h1>
+        <p className={styles.eyebrow}>{t('instructor:lessonEditorInstructorWorkspace')}</p>
       </header>
       <section className={styles.panel} aria-labelledby="lesson-details-heading">
         <h2 id="lesson-details-heading">{t('instructor:lessonEditorLessonDetails')}</h2>
-        <form className={styles.form} onSubmit={submit}>
+        <form id="lesson-details-form" className={styles.form} onSubmit={submit}>
           <Input
             ref={titleRef}
             label={t('instructor:courseEditorLessonTitle')}
@@ -382,8 +393,8 @@ export function InstructorLessonEditorPage() {
             name="lesson-type"
             value={form.lessonType}
             error={resolvedFormFailure?.fields.lessonType}
-            onChange={(event) => {
-              setForm({ ...form, lessonType: event.target.value as LessonType });
+            onValueChange={(value) => {
+              setForm({ ...form, lessonType: value as LessonType });
             }}
           >
             <option value="video">{t('instructor:courseEditorVideo')}</option>
@@ -422,21 +433,15 @@ export function InstructorLessonEditorPage() {
               <Notice tone="error">{resolvedFormFailure?.summary}</Notice>
             </div>
           ) : null}
-          <Button
-            type="submit"
-            state={update.isPending ? 'loading' : 'idle'}
-            loadingLabel={t('instructor:lessonEditorSavingLesson')}
-          >
-            {t('instructor:lessonEditorSaveLesson')}
-          </Button>
         </form>
       </section>
       <section className={styles.panel} aria-labelledby="upload-heading">
         <h2 id="upload-heading">{t('instructor:lessonEditorUploadLessonFile')}</h2>
         {rule === null ? (
-          <Notice tone="info">
-            {t('instructor:lessonEditorFileUploadIsUnavailableForTextLessons')}
-          </Notice>
+          <div className={styles.uploadUnavailable}>
+            <FileText aria-hidden="true" focusable="false" size={24} />
+            <p>{t('instructor:lessonEditorFileUploadIsUnavailableForTextLessons')}</p>
+          </div>
         ) : uploadObservation === 'queued' ? (
           <Notice tone="info" title={t('instructor:lessonEditorUploadStatusQueued')} />
         ) : uploadObservation === 'processing' ? (
@@ -453,16 +458,41 @@ export function InstructorLessonEditorPage() {
           </Notice>
         ) : (
           <form className={styles.form} onSubmit={submitUpload}>
-            <Input
-              ref={fileRef}
-              label={t('instructor:lessonEditorLessonFile')}
-              name="file"
-              type="file"
-              accept={rule.accept}
-              helpText={rule.description}
-              error={resolvedUploadFailure?.fields.file}
-              onChange={selectFile}
-            />
+            <div className={styles.uploadField}>
+              <label className={styles.fileLabel} htmlFor="lesson-upload-file">
+                {t('instructor:lessonEditorLessonFile')}
+              </label>
+              <div className={styles.uploadPicker}>
+                <input
+                  ref={fileRef}
+                  id="lesson-upload-file"
+                  className={styles.uploadInput}
+                  name="file"
+                  type="file"
+                  accept={rule.accept}
+                  aria-invalid={resolvedUploadFailure?.fields.file ? true : undefined}
+                  aria-describedby={
+                    resolvedUploadFailure?.fields.file
+                      ? 'lesson-upload-file-help lesson-upload-file-error'
+                      : 'lesson-upload-file-help'
+                  }
+                  onChange={selectFile}
+                />
+                <UploadCloud aria-hidden="true" focusable="false" size={28} />
+                <span className={styles.uploadPrompt}>
+                  {t('instructor:lessonEditorUploadLessonFile')}
+                </span>
+                <span id="lesson-upload-file-help" className={styles.uploadHelp}>
+                  {rule.description}
+                </span>
+                {file ? <span className={styles.fileName}>{file.name}</span> : null}
+              </div>
+              {resolvedUploadFailure?.fields.file ? (
+                <span id="lesson-upload-file-error" className={styles.fieldError} role="alert">
+                  {resolvedUploadFailure.fields.file}
+                </span>
+              ) : null}
+            </div>
             {uploadFailure && Object.keys(uploadFailure.fields).length === 0 ? (
               <div ref={uploadErrorRef} tabIndex={-1} role="alert">
                 <Notice tone="error">{resolvedUploadFailure?.summary}</Notice>
@@ -479,6 +509,24 @@ export function InstructorLessonEditorPage() {
           </form>
         )}
       </section>
+      <div className={styles.pageActions}>
+        {hasUnsavedChanges || update.isPending ? (
+          <Button
+            type="submit"
+            form="lesson-details-form"
+            className={update.isPending ? styles.pendingPrimaryAction : undefined}
+            disabled={update.isPending}
+            aria-busy={update.isPending}
+          >
+            {t('instructor:lessonEditorSaveLesson')}
+          </Button>
+        ) : (
+          <span className={styles.savedState} role="status" aria-live="polite" aria-atomic="true">
+            <CircleCheck aria-hidden="true" focusable="false" size={20} />
+            {t('instructor:lessonEditorAllChangesSaved')}
+          </span>
+        )}
+      </div>
     </article>
   );
 }

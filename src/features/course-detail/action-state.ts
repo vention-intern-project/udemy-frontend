@@ -12,6 +12,7 @@ export type CoursePreflightState =
   | 'not-required'
   | 'loading'
   | 'eligible'
+  | 'payment-pending'
   | 'already-enrolled'
   | 'already-in-cart'
   | 'unavailable';
@@ -19,6 +20,7 @@ export type CoursePreflightState =
 export type CourseActionTranslationKey =
   | 'catalog:addToCart'
   | 'catalog:enrollFree'
+  | 'catalog:paymentProcessingShort'
   | 'course:actionUnavailable'
   | 'course:alreadyEnrolled'
   | 'course:alreadyInCart'
@@ -52,6 +54,7 @@ export type CoursePrimaryActionState =
         | 'course:actionUnavailable'
         | 'course:alreadyEnrolled'
         | 'course:alreadyInCart'
+        | 'catalog:paymentProcessingShort'
         | 'course:checkingAvailability'
         | 'course:courseIsNotPublished'
         | 'course:unavailableForAccount';
@@ -177,6 +180,8 @@ export function coursePrimaryAction({
   if (session.user.role !== 'student')
     return { kind: 'disabled', labelKey: 'course:unavailableForAccount' };
   if (preflight === 'loading') return { kind: 'disabled', labelKey: 'course:checkingAvailability' };
+  if (preflight === 'payment-pending')
+    return { kind: 'disabled', labelKey: 'catalog:paymentProcessingShort' };
   if (preflight === 'already-enrolled')
     return { kind: 'disabled', labelKey: 'course:alreadyEnrolled' };
   if (preflight === 'already-in-cart')

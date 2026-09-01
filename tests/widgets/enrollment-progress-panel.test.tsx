@@ -19,6 +19,7 @@ const emptyOutline: LessonOutline = { total: 0, items: [] };
 
 function outlineWithLessonType(
   lessonType: LessonOutline['items'][number]['lessonType'],
+  isPublished = true,
 ): LessonOutline {
   return {
     total: 1,
@@ -28,8 +29,9 @@ function outlineWithLessonType(
         title: 'Localized lesson type',
         description: null,
         lessonType,
-        isPublished: true,
+        isPublished,
         mediaLocator: null,
+        subtitleLocator: null,
       },
     ],
   };
@@ -74,6 +76,34 @@ afterEach(async () => {
 describe('EnrollmentProgressPanel lesson completion activation', () => {
   const completedLessonState = (): LessonCompletionState => ({ status: 'known', completed: true });
   const lessonOutline = outlineWithLessonType('text');
+
+  it.each([
+    ['en', 'Complete', 'Complete lesson'],
+    ['ru', 'Завершить', 'Завершить урок'],
+    ['uz', 'Yakunlash', 'Darsni yakunlash'],
+  ] as const)(
+    'uses compact visible complete copy and the complete accessible name in %s',
+    (locale, visibleLabel, accessibleName) => {
+      renderPanel(locale, undefined, lessonOutline);
+
+      const complete = screen.getByRole('button', { name: accessibleName });
+      expect(complete.textContent).toBe(visibleLabel);
+    },
+  );
+
+  it.each([
+    ['en', 'Undo', 'Undo completion'],
+    ['ru', 'Отменить', 'Отменить завершение'],
+    ['uz', 'Bekor qilish', 'Yakunlashni bekor qilish'],
+  ] as const)(
+    'uses compact visible undo copy and the complete accessible name in %s',
+    (locale, visibleLabel, accessibleName) => {
+      renderPanel(locale, undefined, lessonOutline, completedLessonState);
+
+      const undo = screen.getByRole('button', { name: accessibleName });
+      expect(undo.textContent).toBe(visibleLabel);
+    },
+  );
 
   it.each(['pointer', 'Enter', 'Space'] as const)(
     'requests the existing incomplete transition from Undo completion by %s',
@@ -124,24 +154,31 @@ describe('EnrollmentProgressPanel DRAFT-21 lesson-count noun localization', () =
   });
 
   it.each([
-    ['en', 'video', 'Video'],
-    ['ru', 'video', 'Видео'],
-    ['ru', 'text', 'Текст'],
-    ['uz', 'text', 'Matn'],
-    ['uz', 'pdf', 'PDF'],
+    ['en', 'video', 'Video lesson'],
+    ['en', 'text', 'Text lesson'],
+    ['ru', 'video', 'Видеоурок'],
+    ['ru', 'text', 'Текстовый урок'],
+    ['ru', 'pdf', 'PDF-урок'],
+    ['uz', 'text', 'Matnli dars'],
+    ['uz', 'pdf', 'PDF dars'],
   ] as const)(
     'localizes the visible %s lesson-type presentation for %s',
     (locale, lessonType, expected) => {
       renderPanel(locale, undefined, outlineWithLessonType(lessonType));
 
+      expect(screen.getByText(expected, { exact: true })).toBeTruthy();
       expect(
-        screen.getByText(
-          (_, node) =>
-            node?.tagName === 'SPAN' && node.textContent?.startsWith(`${expected} `) === true,
-        ),
-      ).toBeTruthy();
+        screen.queryByText(/Listed metadata|Перечисленные данные|Ro‘yxatdagi ma’lumotlar/),
+      ).toBeNull();
     },
   );
+
+  it('uses a learner-facing availability phrase for an unpublished lesson', () => {
+    renderPanel('ru', undefined, outlineWithLessonType('text', false));
+
+    expect(screen.getByText('Текстовый урок · Скоро будет доступно', { exact: true })).toBeTruthy();
+    expect(screen.queryByText('Данные черновика')).toBeNull();
+  });
 
   it.each([
     [
@@ -191,7 +228,7 @@ describe('EnrollmentProgressPanel DRAFT-21 lesson-count noun localization', () =
     [
       'uz',
       'Ta’lim jarayoni yuklanmoqda',
-      'Ta’lim jarayoni mavjud emas',
+      'O‘zlashtirish holati mavjud emas',
       'Bu kurs uchun dars ma’lumotlari mavjud emas.',
     ],
   ] as const)(

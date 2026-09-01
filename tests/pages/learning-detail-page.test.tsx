@@ -728,7 +728,8 @@ describe('LearningDetailPage', () => {
     expect(action.getAttribute('aria-disabled')).toBe('true');
     expect((action as HTMLButtonElement).disabled).toBe(false);
     expect(action.querySelector('[data-part="spinner"]')).toBeNull();
-    expect(action.textContent).toContain('Undo completion');
+    expect(action.textContent).toContain('Undo');
+    expect(action.getAttribute('aria-label')).toBe('Undo completion');
     const pendingStatus = screen.getByRole('status');
     expect(pendingStatus.textContent).toContain('Updating lesson progress.');
     expect(pendingStatus.getAttribute('aria-live')).toBe('polite');

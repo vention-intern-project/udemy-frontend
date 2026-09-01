@@ -162,7 +162,7 @@ const AUTH_BACK_TO_LOGIN_COPY: Readonly<Record<AuthResidualLocale, AuthBackToLog
     resetPassword: 'Reset password',
   },
   ru: {
-    backToLogin: 'Вернуться ко входу',
+    backToLogin: 'Вернуться на страницу входа',
     logInWithNewPassword: 'Войти с новым паролем',
     resetPassword: 'Сбросить пароль',
   },
@@ -997,6 +997,33 @@ test('login rejects an external returnTo and falls back to the role home', async
   await page.getByLabel(/^Password/).press('Enter');
   await expect(page).toHaveURL(/\/learning$/);
   await expect(page).not.toHaveURL(/evil\.example/);
+});
+
+test('login ignores an Instructor returnTo for a student account', async ({ page }) => {
+  allowRequestFailures(
+    page,
+    { method: 'GET', path: '/cart', errorText: 'net::ERR_ABORTED' },
+    {
+      method: 'GET',
+      path: AUTH_MY_LEARNING_COLLECTION_PATH,
+      errorText: 'net::ERR_ABORTED',
+    },
+  );
+  await page.route('**/me', (route) => fulfillJson(route, 200, profile));
+  await page.route('**/login', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    await fulfillJson(route, 200, { access_token: 'student-after-instructor-token' });
+  });
+
+  await page.goto('/login?returnTo=%2Finstructor%2Fcourses');
+  await page.getByLabel(/^Email/).fill('learner@example.com');
+  await page.getByLabel(/^Password/).fill('password');
+  await page.getByLabel(/^Password/).press('Enter');
+
+  await expect(page).toHaveURL(/\/learning$/);
+  await expect(
+    page.getByRole('heading', { name: 'You do not have access to this page' }),
+  ).toHaveCount(0);
 });
 
 test('forgot password covers safe 422, offline retry, pending double-submit lock, and neutral success', async ({

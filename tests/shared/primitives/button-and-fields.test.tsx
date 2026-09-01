@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import type { PropsWithChildren, ReactNode } from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -136,6 +136,64 @@ describe('form primitives', () => {
     const textarea = screen.getByRole('textbox', { name: 'Description' });
     const helpId = textarea.getAttribute('aria-describedby');
     expect(document.getElementById(helpId ?? '')?.textContent).toBe('Describe the course');
+  });
+
+  it('renders Select as the shared listbox pattern with a selected radio option', async () => {
+    const onValueChange = vi.fn();
+    renderWithLocale(
+      <Select label="Lesson type" defaultValue="video" onValueChange={onValueChange}>
+        <option value="video">Video</option>
+        <option value="text">Text</option>
+        <option value="pdf">PDF</option>
+      </Select>,
+    );
+
+    const trigger = screen.getByRole('combobox', { name: 'Lesson type' });
+    expect(trigger.tagName).toBe('BUTTON');
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+
+    fireEvent.click(trigger);
+
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    expect(trigger.querySelector('[data-part="select-chevron"]')).toBeTruthy();
+    const listbox = screen.getByRole('listbox', { name: 'Lesson type' });
+    expect(listbox.getAttribute('data-placement')).toBe('bottom');
+    expect(screen.getByRole('option', { name: 'Video' }).getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    expect(
+      screen.getByRole('option', { name: 'Video' }).querySelector('[data-part="select-radio"]'),
+    ).toBeTruthy();
+
+    fireEvent.pointerDown(screen.getByRole('option', { name: 'Text' }), { button: 0 });
+
+    expect(onValueChange).toHaveBeenCalledWith('text');
+    expect(trigger.textContent).toContain('Text');
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('supports keyboard selection and restores focus after Escape', async () => {
+    const onValueChange = vi.fn();
+    renderWithLocale(
+      <Select label="Lesson type" defaultValue="video" onValueChange={onValueChange}>
+        <option value="video">Video</option>
+        <option value="text">Text</option>
+        <option value="pdf">PDF</option>
+      </Select>,
+    );
+
+    const trigger = screen.getByRole('combobox', { name: 'Lesson type' });
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+    fireEvent.keyDown(screen.getByRole('listbox'), { key: 'Enter' });
+
+    expect(onValueChange).toHaveBeenCalledWith('text');
+    expect(document.activeElement).toBe(trigger);
+
+    fireEvent.keyDown(trigger, { key: 'Enter' });
+    fireEvent.keyDown(screen.getByRole('listbox'), { key: 'Escape' });
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
   });
 
   it('preserves caller aria-invalid values unless an error forces invalid state', () => {

@@ -648,7 +648,7 @@ describe('CourseDetailPage', () => {
     {
       locale: 'ru' as const,
       price: '0.00',
-      label: 'Записаться бесплатно',
+      label: 'Записаться',
       mutationPath: '/enrollments',
       mutationResponse: enrollmentMutation,
     },

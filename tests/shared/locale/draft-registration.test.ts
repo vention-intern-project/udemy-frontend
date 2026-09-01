@@ -93,8 +93,10 @@ async function temporaryTargets(corpus = preRegistrationFixture()) {
 
 function exhaustedFixture() {
   const corpus = preRegistrationFixture();
-  const source = corpus.units.find((unit) => unit.id === 'MLUX-C0001');
-  if (!source) throw new Error('draft registration fixture requires MLUX-C0001');
+  const source = corpus.units.find(
+    (unit) => unit.locales.ru.status === 'draft' && unit.locales.uz.status === 'draft',
+  );
+  if (!source) throw new Error('draft registration fixture requires a draft source unit');
   const terminal = structuredClone(source);
   terminal.id = 'MLUX-C9999';
   terminal.key = 'draftRegistrationExhaustedId';

@@ -10,6 +10,8 @@ type GeneratedResources = Record<string, Record<string, Record<string, string>>>
 const resources = GENERATED_LOCALE_RESOURCES as GeneratedResources;
 const RECORDED_DRAFT37_UNIT_COUNT = 545;
 const RECORDED_DRAFT37_OCCURRENCE_COUNT = 768;
+const FE_068_UNIT_COUNT = 20;
+const INSTRUCTOR_UI_UNIT_COUNT = 9;
 const CRF_002_UNIT_IDS = [
   'MLUX-C0544',
   'MLUX-C0545',
@@ -22,8 +24,16 @@ const CRF_002_UNIT_IDS = [
   'MLUX-C0552',
   'MLUX-C0553',
 ] as const;
-const CURRENT_CORPUS_UNIT_COUNT = RECORDED_DRAFT37_UNIT_COUNT + CRF_002_UNIT_IDS.length;
-const CURRENT_CORPUS_OCCURRENCE_COUNT = RECORDED_DRAFT37_OCCURRENCE_COUNT + CRF_002_UNIT_IDS.length;
+const CURRENT_CORPUS_UNIT_COUNT =
+  RECORDED_DRAFT37_UNIT_COUNT +
+  CRF_002_UNIT_IDS.length +
+  FE_068_UNIT_COUNT +
+  INSTRUCTOR_UI_UNIT_COUNT;
+const CURRENT_CORPUS_OCCURRENCE_COUNT =
+  RECORDED_DRAFT37_OCCURRENCE_COUNT +
+  CRF_002_UNIT_IDS.length +
+  FE_068_UNIT_COUNT +
+  INSTRUCTOR_UI_UNIT_COUNT;
 
 describe('canonical DRAFT-37 corpus parity', () => {
   it('keeps the exact canonical migration identity and one source-to-runtime owner', () => {

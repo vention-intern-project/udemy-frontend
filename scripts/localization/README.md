@@ -106,6 +106,16 @@ invalid input fails before mutation. Review-request metadata never changes rende
 resources. After success, use the ordinary bounded export below; its rows carry the live
 `review_requested` status and `requestedAt` for human review and ordinary CSV import.
 
+An explicitly authorized post-migration task may adopt clean legacy drafts while requesting review:
+
+```powershell
+npm run localization:review:request -- <registryPath> <generatedOutputPath> <taskId> <ru,uz> <unitIdsJsonPath> <requestedAt> --adopt-legacy
+```
+
+This option accepts only active clean drafts whose owners are all legacy `MLUX-*` tasks. It adds
+the requesting `FE-*` or `CRF-*` task to provenance in the same atomic transaction and rejects a
+unit already owned by another post-migration task. Without the flag, ownership remains mandatory.
+
 ## Export a standard CSV pack
 
 ```powershell

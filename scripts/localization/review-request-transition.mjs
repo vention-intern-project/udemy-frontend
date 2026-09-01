@@ -30,13 +30,15 @@ function validRequestedAt(value) {
   );
 }
 
-function validateRequest({ taskId, locales, unitIds, requestedAt }) {
+function validateRequest({ taskId, locales, unitIds, requestedAt, adoptLegacyOwners }) {
   if (typeof taskId !== 'string' || !TASK_ID.test(taskId))
     throw new Error('taskId must be an exact FE-NNN or CRF-NNN value');
   exactSortedStrings(locales, 'locales', (locale) => REVIEW_LOCALES.has(locale));
   exactSortedStrings(unitIds, 'unitIds', (unitId) => UNIT_ID.test(unitId));
   if (!validRequestedAt(requestedAt))
     throw new Error('requestedAt must be a UTC RFC3339 millisecond instant');
+  if (typeof adoptLegacyOwners !== 'boolean')
+    throw new Error('adoptLegacyOwners must be a boolean');
 }
 
 function reviewRequestBoundary({ taskId, locales, unitIds, requestedAt }) {
@@ -47,11 +49,9 @@ function same(value, other) {
   return JSON.stringify(value) === JSON.stringify(other);
 }
 
-function assertCurrentCandidate(unit, locale, taskId) {
+function assertCurrentCandidate(unit, locale) {
   if (!unit || unit.unitLifecycle !== 'active')
     throw new Error(`unknown or retired unit: ${unit?.id}`);
-  if (!unit.migrationProvenance?.ownerTasks?.includes(taskId))
-    throw new Error(`unit is not owned by task: ${unit.id}`);
   const candidate = unit.locales?.[locale];
   if (!candidate || candidate.status !== 'draft')
     throw new Error(`candidate is not a clean draft: ${unit.id}/${locale}`);
@@ -79,26 +79,35 @@ function isExactReplayCandidate(candidate, boundary) {
   );
 }
 
-function classifyBoundary(corpus, { taskId, locales, unitIds, requestedAt }) {
+function classifyBoundary(corpus, { taskId, locales, unitIds, requestedAt, adoptLegacyOwners }) {
   const boundary = reviewRequestBoundary({ taskId, locales, unitIds, requestedAt });
   const units = new Map(corpus.units.map((unit) => [unit.id, unit]));
   const selected = unitIds.map((unitId) => {
     const unit = units.get(unitId);
     if (!unit || unit.unitLifecycle !== 'active')
       throw new Error(`unknown or retired unit: ${unitId}`);
-    if (!unit.migrationProvenance?.ownerTasks?.includes(taskId))
-      throw new Error(`unit is not owned by task: ${unitId}`);
-    return { unit, unitId };
+    const ownerTasks = unit.migrationProvenance?.ownerTasks;
+    const owned = ownerTasks?.includes(taskId) === true;
+    if (!owned && !adoptLegacyOwners) throw new Error(`unit is not owned by task: ${unitId}`);
+    if (!owned && ownerTasks?.some((ownerTask) => TASK_ID.test(ownerTask)))
+      throw new Error(`unit is owned by another post-migration task: ${unitId}`);
+    return { unit, unitId, adoptOwner: !owned };
   });
-  const candidates = selected.flatMap(({ unit, unitId }) =>
-    locales.map((locale) => ({ unit, unitId, locale, candidate: unit.locales?.[locale] })),
+  const candidates = selected.flatMap(({ unit, unitId, adoptOwner }) =>
+    locales.map((locale) => ({
+      unit,
+      unitId,
+      locale,
+      candidate: unit.locales?.[locale],
+      adoptOwner,
+    })),
   );
   const replayed = candidates.filter(({ candidate }) =>
     isExactReplayCandidate(candidate, boundary),
   );
   if (replayed.length === candidates.length) return { boundary, candidates, replayed: true };
   if (replayed.length > 0) throw new Error('review-request boundary has partial replay state');
-  for (const { unit, locale } of candidates) assertCurrentCandidate(unit, locale, taskId);
+  for (const { unit, locale } of candidates) assertCurrentCandidate(unit, locale);
   return { boundary, candidates, replayed: false };
 }
 
@@ -109,9 +118,10 @@ export async function requestLocaleReviews({
   locales,
   unitIds,
   requestedAt,
+  adoptLegacyOwners = false,
   fileSystem,
 }) {
-  validateRequest({ taskId, locales, unitIds, requestedAt });
+  validateRequest({ taskId, locales, unitIds, requestedAt, adoptLegacyOwners });
   await assertDistinctFileTargets({ registryPath, outputPath, fileSystem });
   const [registrySource, currentOutput] = await Promise.all([
     readFile(registryPath, 'utf8'),
@@ -123,7 +133,13 @@ export async function requestLocaleReviews({
     throw new Error(`current corpus validation failed:\n${currentViolations.join('\n')}`);
   const currentGenerated = serializeGeneratedResources(corpus);
   if (currentOutput !== currentGenerated) throw new Error('generated output is out of date');
-  const classified = classifyBoundary(corpus, { taskId, locales, unitIds, requestedAt });
+  const classified = classifyBoundary(corpus, {
+    taskId,
+    locales,
+    unitIds,
+    requestedAt,
+    adoptLegacyOwners,
+  });
   if (classified.replayed)
     return { requestedCount: 0, replayedCount: classified.candidates.length, wrote: false };
 
@@ -131,6 +147,8 @@ export async function requestLocaleReviews({
   const nextById = new Map(next.units.map((unit) => [unit.id, unit]));
   for (const unitId of unitIds) {
     const unit = nextById.get(unitId);
+    if (!unit.migrationProvenance.ownerTasks.includes(taskId))
+      unit.migrationProvenance.ownerTasks.push(taskId);
     for (const locale of locales)
       unit.locales[locale] = requestLocaleCandidateReview(
         unit.locales[locale],

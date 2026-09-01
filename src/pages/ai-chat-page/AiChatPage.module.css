@@ -284,6 +284,9 @@
 .chatArea {
   display: grid;
   gap: var(--spacing-4);
+  width: 100%;
+  max-width: 48rem;
+  margin-inline: auto;
   min-width: 0;
 }
 .chatFrame {
@@ -359,7 +362,9 @@
   z-index: var(--z-dropdown);
   inset-block-start: calc(100% + var(--spacing-1));
   inset-inline-start: 50%;
+  inline-size: max-content;
   min-inline-size: 8.5rem;
+  max-inline-size: calc(100vw - var(--spacing-8));
   padding: var(--spacing-1);
   background: var(--color-surface);
   border: var(--border-width) solid var(--border-default);
@@ -382,6 +387,7 @@
   font: inherit;
   font-size: var(--type-body-sm-size);
   text-align: start;
+  white-space: nowrap;
   cursor: pointer;
 }
 .actionMenuItem svg {
@@ -448,9 +454,6 @@
     transition: none;
   }
 }
-.page > :last-child {
-  max-width: 48rem;
-}
 @media (max-width: 999px) {
   .page {
     grid-template-columns: minmax(0, 1fr);
@@ -461,6 +464,8 @@
   .compactSuggestedActions {
     display: grid;
     gap: var(--spacing-2);
+    width: min(100%, 48rem);
+    margin-inline: auto;
   }
 }
 @media (max-width: 767px) {
@@ -530,10 +535,12 @@
     resize: none;
   }
 }
-@media (min-width: 768px) {
+@media (min-width: 1000px) {
   .chatArea {
     padding-block-start: calc(var(--control-height-md) + var(--spacing-2));
   }
+}
+@media (min-width: 768px) {
   .heroContent {
     max-width: var(--container-max-catalog);
     padding-inline: var(--gutter-desktop);

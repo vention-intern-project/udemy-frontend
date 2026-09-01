@@ -11,6 +11,7 @@ import {
   useSession,
   type AccessTokenStore,
 } from '../../src/features/auth-session';
+import { requestInstructorCourseCreateDisclosure } from '../../src/features/instructor-courses';
 import { InstructorCoursesPage } from '../../src/pages/instructor-courses-page';
 import { LocaleProvider, type Locale } from '../../src/shared/locale';
 import {
@@ -111,11 +112,23 @@ function decode<TResponse, TBody>(
 
 describe('InstructorCoursesPage', () => {
   it.each([
-    ['ru', 'Ваши курсы', 'Навигация по страницам ваших курсов'],
-    ['uz', 'Kurslaringiz', 'Kurslaringiz sahifalari'],
+    [
+      'ru',
+      'Курсы преподавателя',
+      'Создавайте курсы, добавляйте уроки и управляйте записями студентов.',
+      'Ваши курсы',
+      'Навигация по страницам ваших курсов',
+    ],
+    [
+      'uz',
+      'O‘qituvchi kurslari',
+      'Kurslar yarating, darslar qo‘shing va talabalarning kursga yozilishlarini boshqaring.',
+      'Kurslaringiz',
+      'Kurslaringiz sahifalari',
+    ],
   ] as const)(
-    'localizes the collection semantic unit in %s',
-    async (locale, collectionLabel, paginationLabel) => {
+    'localizes the page introduction and collection semantic unit in %s',
+    async (locale, pageTitle, pageDescription, collectionLabel, paginationLabel) => {
       const firstPage = {
         ...courseList,
         items: Array.from({ length: 20 }, (_, index) => ({
@@ -132,6 +145,8 @@ describe('InstructorCoursesPage', () => {
         return decode(options, firstPage);
       };
       await renderPage({ request }, tokenStore, false, '/', locale);
+      expect(await screen.findByRole('heading', { level: 1, name: pageTitle })).toBeTruthy();
+      expect(screen.getByText(pageDescription)).toBeTruthy();
       expect(await screen.findByRole('heading', { level: 2, name: collectionLabel })).toBeTruthy();
       expect(screen.getByRole('list', { name: collectionLabel })).toBeTruthy();
       expect(screen.getByRole('navigation', { name: paginationLabel })).toBeTruthy();
@@ -223,22 +238,39 @@ describe('InstructorCoursesPage', () => {
         name: existingCourseActionsLabel,
       });
       expect(within(existingActions).getByRole('link', { name: editLabel })).toBeTruthy();
-      expect(within(existingActions).getByRole('link', { name: enrollmentsLabel })).toBeTruthy();
+      const existingMenuTrigger = within(existingActions).getByRole('button', {
+        name: existingCourseActionsLabel,
+      });
+      await act(async () => {
+        await userEvent.setup().click(existingMenuTrigger);
+      });
+      expect(
+        within(existingActions).getByRole('menuitem', { name: enrollmentsLabel }),
+      ).toBeTruthy();
+      act(() => {
+        fireEvent.keyDown(document, { key: 'Escape' });
+      });
+      expect(document.activeElement).toBe(existingMenuTrigger);
 
-      const title = screen.getByRole('textbox');
+      act(() => requestInstructorCourseCreateDisclosure());
+      const title = await screen.findByRole('textbox');
       await act(async () => {
         await userEvent.setup().type(title, 'Localized course');
         fireEvent.submit(title.closest('form') as HTMLFormElement);
       });
 
-      expect(await screen.findByText(createdTitle)).toBeTruthy();
+      const createdHeading = await screen.findByText(createdTitle);
+      const creationStatus = createdHeading.closest('[role="status"]');
+      expect(creationStatus?.className).toContain('creationNotice');
+      expect(creationStatus?.querySelector('svg')).toBeTruthy();
       const createdActions = screen.getByRole('navigation', { name: newCourseActionsLabel });
       expect(within(createdActions).getByRole('link', { name: editLabel })).toBeTruthy();
-      expect(within(createdActions).getByRole('link', { name: enrollmentsLabel })).toBeTruthy();
+      expect(within(createdActions).queryByRole('link', { name: enrollmentsLabel })).toBeNull();
     },
   );
 
   it('submits a verified 255-character title', async () => {
+    const setTimeoutSpy = vi.spyOn(window, 'setTimeout');
     const createRequests: ApiRequestOptions[] = [];
     const collectionRequests: ApiRequestOptions[] = [];
     const request: ApiClient['request'] = async (options) => {
@@ -279,7 +311,19 @@ describe('InstructorCoursesPage', () => {
     ).toBe('/instructor/courses/17/edit');
     expect(
       within(collectionActions)
-        .getByRole('link', { name: 'Course enrollments' })
+        .getByRole('button', { name: 'Verified collection course actions' })
+        .getAttribute('aria-expanded'),
+    ).toBe('false');
+    await act(async () => {
+      await user.click(
+        within(collectionActions).getByRole('button', {
+          name: 'Verified collection course actions',
+        }),
+      );
+    });
+    expect(
+      within(collectionActions)
+        .getByRole('menuitem', { name: 'Course enrollments' })
         .getAttribute('href'),
     ).toBe('/instructor/courses/17/enrollments');
     expect(collectionRequests).toHaveLength(2);
@@ -287,24 +331,189 @@ describe('InstructorCoursesPage', () => {
       { page: 1, page_size: 20 },
       { page: 1, page_size: 20 },
     ]);
+    expect(screen.queryByRole('textbox', { name: 'Course title' })).toBeNull();
+    act(() => requestInstructorCourseCreateDisclosure());
     const title = await screen.findByRole('textbox', { name: 'Course title' });
     expect(title.id).toBe('instructor-course-title');
+    const createForm = title.closest('form');
+    if (!createForm) throw new Error('Expected the create course form');
     await act(async () => {
       await user.type(title, 'A'.repeat(255));
-      await user.click(screen.getByRole('button', { name: 'Create course' }));
+      await user.click(within(createForm).getByRole('button', { name: 'Create course' }));
     });
     await waitFor(() => expect(createRequests).toHaveLength(1));
     expect(createRequests[0]?.body).toEqual({ title: 'A'.repeat(255) });
     const newCourseActions = await screen.findByRole('navigation', { name: 'New course actions' });
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 5000);
     expect(
       within(newCourseActions).getByRole('link', { name: 'Edit course' }).getAttribute('href'),
     ).toBe('/instructor/courses/7/edit');
-    expect(
-      within(newCourseActions)
-        .getByRole('link', { name: 'Course enrollments' })
-        .getAttribute('href'),
-    ).toBe('/instructor/courses/7/enrollments');
+    expect(within(newCourseActions).queryByRole('link', { name: 'Course enrollments' })).toBeNull();
+    expect(screen.queryByRole('textbox', { name: 'Course title' })).toBeNull();
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Dismiss notification' }));
+    });
+    expect(screen.queryByText('Course created')).toBeNull();
     await waitFor(() => expect(collectionRequests).toHaveLength(3));
+  });
+
+  it.each([
+    ['Enter', 'Course enrollments'],
+    [' ', 'Course enrollments'],
+    ['ArrowDown', 'Course enrollments'],
+    ['ArrowUp', 'Delete course'],
+  ] as const)('opens the course actions menu with %s and focuses %s', async (key, itemName) => {
+    const request: ApiClient['request'] = async (options) => {
+      if (options.path === '/me') return decode(options, instructor);
+      return decode(options, courseList);
+    };
+    await renderPage({ request });
+    const trigger = await screen.findByRole('button', {
+      name: 'Verified collection course actions',
+    });
+    trigger.focus();
+
+    await act(async () => {
+      await userEvent.setup().keyboard(key === ' ' ? ' ' : `{${key}}`);
+    });
+
+    const focusedItem = await screen.findByRole('menuitem', { name: itemName });
+    await waitFor(() => expect(document.activeElement).toBe(focusedItem));
+  });
+
+  it('focuses the first menuitem after pointer opening and wraps directional navigation', async () => {
+    const request: ApiClient['request'] = async (options) => {
+      if (options.path === '/me') return decode(options, instructor);
+      return decode(options, courseList);
+    };
+    await renderPage({ request });
+    const user = userEvent.setup();
+    const trigger = await screen.findByRole('button', {
+      name: 'Verified collection course actions',
+    });
+    await act(async () => {
+      await user.click(trigger);
+    });
+    const enrollments = screen.getByRole('menuitem', { name: 'Course enrollments' });
+    const deleteCourse = screen.getByRole('menuitem', { name: 'Delete course' });
+    await waitFor(() => expect(document.activeElement).toBe(enrollments));
+
+    await act(async () => {
+      await user.keyboard('{ArrowDown}');
+    });
+    expect(document.activeElement).toBe(deleteCourse);
+    await act(async () => {
+      await user.keyboard('{ArrowDown}');
+    });
+    expect(document.activeElement).toBe(enrollments);
+    await act(async () => {
+      await user.keyboard('{ArrowUp}');
+    });
+    expect(document.activeElement).toBe(deleteCourse);
+    await act(async () => {
+      await user.keyboard('{Home}');
+    });
+    expect(document.activeElement).toBe(enrollments);
+    await act(async () => {
+      await user.keyboard('{End}');
+    });
+    expect(document.activeElement).toBe(deleteCourse);
+    await act(async () => {
+      await user.keyboard('{Escape}');
+    });
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it('closes on Tab and Shift+Tab without trapping native sequential focus', async () => {
+    const request: ApiClient['request'] = async (options) => {
+      if (options.path === '/me') return decode(options, instructor);
+      return decode(options, courseList);
+    };
+    await renderPage({ request });
+    const user = userEvent.setup();
+    const trigger = await screen.findByRole('button', {
+      name: 'Verified collection course actions',
+    });
+
+    await act(async () => {
+      await user.click(trigger);
+    });
+    const firstItem = screen.getByRole('menuitem', { name: 'Course enrollments' });
+    await waitFor(() => expect(document.activeElement).toBe(firstItem));
+    await act(async () => {
+      await user.tab();
+    });
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
+    expect(document.activeElement).not.toBe(trigger);
+
+    trigger.focus();
+    await act(async () => {
+      await user.keyboard('{ArrowDown}');
+    });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole('menuitem', { name: 'Course enrollments' }),
+      ),
+    );
+    await act(async () => {
+      await user.tab({ shift: true });
+    });
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it('activates the focused destructive menuitem through the keyboard', async () => {
+    const request: ApiClient['request'] = async (options) => {
+      if (options.path === '/me') return decode(options, instructor);
+      return decode(options, courseList);
+    };
+    await renderPage({ request });
+    const user = userEvent.setup();
+    const trigger = await screen.findByRole('button', {
+      name: 'Verified collection course actions',
+    });
+    trigger.focus();
+
+    await act(async () => {
+      await user.keyboard('{ArrowUp}');
+    });
+    const deleteAction = await screen.findByRole('menuitem', { name: 'Delete course' });
+    await waitFor(() => expect(document.activeElement).toBe(deleteAction));
+    await act(async () => {
+      await user.keyboard('{Enter}');
+    });
+
+    expect(await screen.findByRole('dialog', { name: 'Delete this course?' })).toBeTruthy();
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it('offers the verified course deletion through the compact overflow menu and confirmation', async () => {
+    const deleteRequests: ApiRequestOptions[] = [];
+    const request: ApiClient['request'] = async (options) => {
+      if (options.path === '/me') return decode(options, instructor);
+      if (options.path === '/courses/my') return decode(options, courseList);
+      deleteRequests.push(options);
+      return decode(options, { message: 'deleted' });
+    };
+    await renderPage({ request });
+    const user = userEvent.setup();
+    expect(await screen.findByText('Verified collection course')).toBeTruthy();
+    expect(screen.queryByText('Returned by the instructor collection.')).toBeNull();
+
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Verified collection course actions' }));
+    });
+    const deleteAction = screen.getByRole('menuitem', { name: 'Delete course' });
+    await act(async () => {
+      await user.click(deleteAction);
+    });
+    expect(await screen.findByRole('dialog', { name: 'Delete this course?' })).toBeTruthy();
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Delete course' }));
+    });
+    await waitFor(() => expect(deleteRequests).toHaveLength(1));
+    expect(deleteRequests[0]?.path).toBe('/courses/17');
   });
 
   it('uses named arrow directions, preserves the verified query, and hides unavailable direction slots', async () => {
@@ -356,6 +565,50 @@ describe('InstructorCoursesPage', () => {
     expect(pageTwoRequests[0]?.query).toEqual({ page: 2, page_size: 20 });
   });
 
+  it('focuses the collection heading only after a user-requested page settles', async () => {
+    let resolveSecondPage: (() => void) | undefined;
+    const firstPage = {
+      ...courseList,
+      items: Array.from({ length: 20 }, (_, index) => ({
+        ...courseList.items[0],
+        id: index + 1,
+        title: `Instructor course ${index + 1}`,
+      })),
+      total: 21,
+      pages: 2,
+      has_next: true,
+    };
+    const secondPage = {
+      ...firstPage,
+      items: [{ ...courseList.items[0], id: 18, title: 'Second instructor course' }],
+      page: 2,
+      has_next: false,
+      has_previous: true,
+    };
+    const request: ApiClient['request'] = async (options) => {
+      if (options.path === '/me') return decode(options, instructor);
+      if (options.query?.page !== 2) return decode(options, firstPage);
+      await new Promise<void>((resolve) => {
+        resolveSecondPage = resolve;
+      });
+      return decode(options, secondPage);
+    };
+
+    await renderPage({ request });
+    const heading = await screen.findByRole('heading', { level: 2, name: 'Your courses' });
+    expect(document.activeElement).not.toBe(heading);
+
+    const nextPage = screen.getByRole('button', { name: 'Go to next page' });
+    await act(async () => {
+      await userEvent.setup().click(nextPage);
+    });
+    expect(document.activeElement).not.toBe(heading);
+
+    await act(async () => resolveSecondPage?.());
+    expect(await screen.findByText('Second instructor course')).toBeTruthy();
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+  });
+
   it('blocks an oversized or whitespace-only title locally and returns keyboard focus to the field', async () => {
     const createRequests: ApiRequestOptions[] = [];
     const request: ApiClient['request'] = async (options) => {
@@ -377,6 +630,7 @@ describe('InstructorCoursesPage', () => {
     await renderPage({ request });
     const user = userEvent.setup();
     expect(await screen.findByText('You have not created any courses yet.')).toBeTruthy();
+    act(() => requestInstructorCourseCreateDisclosure());
     const title = await screen.findByRole('textbox', { name: 'Course title' });
     await act(async () => {
       fireEvent.change(title, { target: { value: 'A'.repeat(256) } });
@@ -404,11 +658,14 @@ describe('InstructorCoursesPage', () => {
     });
     await renderPage({ request } as ApiClient);
     const user = userEvent.setup();
+    act(() => requestInstructorCourseCreateDisclosure());
     const title = await screen.findByRole('textbox', { name: 'Course title' });
     expect(title.getAttribute('name')).toBe('title');
+    const createForm = title.closest('form');
+    if (!createForm) throw new Error('Expected the create course form');
     await act(async () => {
       await user.type(title, 'A course');
-      await user.click(screen.getByRole('button', { name: 'Create course' }));
+      await user.click(within(createForm).getByRole('button', { name: 'Create course' }));
     });
     const summary = await screen.findByRole('alert');
     await waitFor(() => expect(document.activeElement).toBe(summary));
@@ -551,6 +808,7 @@ describe('InstructorCoursesPage', () => {
       });
     });
     await renderPage(createApiClient({ baseUrl: 'https://api.example.test', fetch }));
+    act(() => requestInstructorCourseCreateDisclosure());
     const title = await screen.findByRole('textbox', { name: 'Course title' });
     await act(async () => {
       fireEvent.change(title, { target: { value: 'A course' } });

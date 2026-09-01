@@ -216,8 +216,8 @@ describe('course chat interaction lifecycle', () => {
     },
   );
 
-  it('keeps footer collision work inactive below 768px and starts it only after desktop entry', () => {
-    const media = mockDesktopMediaQuery(false);
+  it('keeps footer collision work active below 768px and cleans it on unmount', () => {
+    mockDesktopMediaQuery(false);
     const requestAnimationFrame = vi.fn();
     const disconnectResizeObserver = vi.fn();
     vi.stubGlobal('requestAnimationFrame', requestAnimationFrame);
@@ -233,18 +233,14 @@ describe('course chat interaction lifecycle', () => {
     );
     footerForGeometryTest();
 
-    render(launcher());
+    const { unmount } = render(launcher());
     const root = screen.getByLabelText('Course assistant');
 
-    expect(requestAnimationFrame).not.toHaveBeenCalled();
-    expect(root.style.insetBlockEnd).toBe('');
-
-    media.setMatches(true);
     expect(requestAnimationFrame).toHaveBeenCalledTimes(1);
+    expect(root.style.getPropertyValue('--course-chat-footer-clearance')).toBe('');
 
-    media.setMatches(false);
+    unmount();
     expect(disconnectResizeObserver).toHaveBeenCalledTimes(1);
-    expect(root.style.insetBlockEnd).toBe('');
   });
 
   it('keeps a 16px visible-footer gap from the normal anchor and restores it at or beyond the gap', () => {
@@ -265,27 +261,27 @@ describe('course chat interaction lifecycle', () => {
     rootRect.mockReturnValue(geometryRect(760, 880));
     window.dispatchEvent(new Event('resize'));
     flushGeometryFrames(frameCallbacks);
-    expect(root.style.insetBlockEnd).toBe('calc(var(--spacing-8) + 16px)');
+    expect(root.style.getPropertyValue('--course-chat-footer-clearance')).toBe('16px');
 
     rootRect.mockReturnValue(geometryRect(744, 864));
     window.dispatchEvent(new Event('resize'));
     flushGeometryFrames(frameCallbacks);
-    expect(root.style.insetBlockEnd).toBe('calc(var(--spacing-8) + 16px)');
+    expect(root.style.getPropertyValue('--course-chat-footer-clearance')).toBe('16px');
 
     vi.spyOn(footer, 'getBoundingClientRect').mockReturnValue(geometryRect(840, 1_020));
     window.dispatchEvent(new Event('resize'));
     flushGeometryFrames(frameCallbacks);
-    expect(root.style.insetBlockEnd).toBe('calc(var(--spacing-8) + 56px)');
+    expect(root.style.getPropertyValue('--course-chat-footer-clearance')).toBe('56px');
 
     rootRect.mockReturnValue(geometryRect(704, 824));
     window.dispatchEvent(new Event('resize'));
     flushGeometryFrames(frameCallbacks);
-    expect(root.style.insetBlockEnd).toBe('calc(var(--spacing-8) + 56px)');
+    expect(root.style.getPropertyValue('--course-chat-footer-clearance')).toBe('56px');
 
     vi.spyOn(footer, 'getBoundingClientRect').mockReturnValue(geometryRect(896, 1_100));
     window.dispatchEvent(new Event('resize'));
     flushGeometryFrames(frameCallbacks);
-    expect(root.style.insetBlockEnd).toBe('');
+    expect(root.style.getPropertyValue('--course-chat-footer-clearance')).toBe('');
   });
 
   it.each([
@@ -310,10 +306,10 @@ describe('course chat interaction lifecycle', () => {
       const root = screen.getByLabelText('Course assistant');
       vi.spyOn(root, 'getBoundingClientRect').mockReturnValue(geometryRect(760, 880));
       flushGeometryFrames(frameCallbacks);
-      expect(root.style.insetBlockEnd).toBe('calc(var(--spacing-8) + 76px)');
+      expect(root.style.getPropertyValue('--course-chat-footer-clearance')).toBe('76px');
 
       await interact(() => user.click(screen.getByRole('button', { name: navigationLabel })));
-      expect(root.style.insetBlockEnd).toBe('');
+      expect(root.style.getPropertyValue('--course-chat-footer-clearance')).toBe('');
       expect(frameCallbacks).toHaveLength(1);
     },
   );

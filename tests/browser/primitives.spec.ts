@@ -137,7 +137,9 @@ for (const viewport of viewports) {
     const invalidInput = page.getByRole('textbox', { name: 'Instructor email' });
     await expect(invalidInput).toHaveAttribute('aria-invalid', 'true');
     await expect(page.getByText('Enter a valid email address.', { exact: true })).toBeVisible();
-    await expect(page.getByRole('combobox', { name: 'Course level' })).toHaveValue('intermediate');
+    await expect(page.getByRole('combobox', { name: 'Course level' })).toContainText(
+      'Intermediate',
+    );
     await expect(page.getByRole('textbox', { name: 'Course description' })).toBeVisible();
 
     await expect(
@@ -196,6 +198,40 @@ for (const viewport of viewports) {
     runtime.assertClean();
   });
 }
+
+test('opens the shared Select below its trigger with violet chevron and radio selection', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+
+  const trigger = page.getByRole('combobox', { name: 'Course level' });
+  await trigger.click();
+
+  const listbox = page.getByRole('listbox', { name: 'Course level' });
+  await expect(listbox).toBeVisible();
+  await expect(listbox).toHaveAttribute('data-placement', 'bottom');
+  const triggerBox = await trigger.boundingBox();
+  const listboxBox = await listbox.boundingBox();
+  expect(triggerBox).not.toBeNull();
+  expect(listboxBox).not.toBeNull();
+  expect(listboxBox!.y).toBeGreaterThanOrEqual(triggerBox!.y + triggerBox!.height);
+
+  const chevron = trigger.locator('[data-part="select-chevron"]');
+  await expect(chevron).toHaveCSS('color', 'rgb(91, 63, 214)');
+  const selectedOption = page.getByRole('option', { name: 'Intermediate' });
+  await expect(selectedOption).toHaveAttribute('aria-selected', 'true');
+  await expect(selectedOption).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+  await expect(selectedOption.locator('[data-part="select-radio"]')).toHaveCSS(
+    'border-color',
+    'rgb(91, 63, 214)',
+  );
+
+  await page.getByRole('option', { name: 'Advanced' }).click();
+  await expect(trigger).toContainText('Advanced');
+  await expect(listbox).toBeHidden();
+  await expect(trigger).toBeFocused();
+});
 
 test('supports native keyboard activation and visible forward/reverse focus', async ({ page }) => {
   const runtime = monitorRuntime(page);

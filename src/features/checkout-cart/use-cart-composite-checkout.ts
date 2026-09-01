@@ -69,10 +69,19 @@ export interface CartCompositeCheckoutWorkflow {
   readonly results: readonly CartCompositeCourseResult[];
   readonly recoveryCandidates: readonly CartCompositeRecoveryCandidate[];
   readonly pending: boolean;
-  start(selections?: readonly CartCompositeOutcomeSelection[]): void;
+  start(
+    selections?: readonly CartCompositeOutcomeSelection[],
+    options?: CartCompositeCheckoutStartOptions,
+  ): void;
   retryRestoredCourse(courseId: number): void;
+  dismissRestoredCourses(courseIds: readonly number[]): void;
+  dismissSuccessfulCourses(courseIds: readonly number[]): void;
   discoverRecovery(): void;
   resumeRecovery(selections?: readonly CartCompositeOutcomeSelection[]): void;
+}
+
+export interface CartCompositeCheckoutStartOptions {
+  readonly completionDelayMs?: number;
 }
 
 interface CartCompositeLiveAttempt {
@@ -80,7 +89,23 @@ interface CartCompositeLiveAttempt {
   readonly subject: SessionCacheEpoch;
   readonly snapshot: ReadyCartCompositeSnapshot;
   readonly controller: AbortController;
+  readonly completionDelayMs: number;
   mayHaveMutated: boolean;
+}
+
+function waitForCompletionDelay(delayMs: number, signal: AbortSignal): Promise<void> {
+  if (delayMs <= 0) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const timeoutId = globalThis.setTimeout(() => {
+      signal.removeEventListener('abort', handleAbort);
+      resolve();
+    }, delayMs);
+    function handleAbort(): void {
+      globalThis.clearTimeout(timeoutId);
+      reject(new DOMException('Checkout completion delay aborted', 'AbortError'));
+    }
+    signal.addEventListener('abort', handleAbort, { once: true });
+  });
 }
 
 function subjectFor(session: SessionContextValue): SessionCacheEpoch | null {
@@ -373,6 +398,8 @@ export function useCartCompositeCheckout(
     }
     setCompletionPlan(admission.completionPlan);
     setPhase('checkout_admitted');
+    await waitForCompletionDelay(attempt.completionDelayMs, attempt.controller.signal);
+    if (!isCurrent(attempt)) return;
     const terminalResults: CartCompositeCourseResult[] = [];
     for (const item of admission.completionPlan) {
       if (!isCurrent(attempt)) return;
@@ -395,7 +422,10 @@ export function useCartCompositeCheckout(
     );
   }
 
-  function start(selections: readonly CartCompositeOutcomeSelection[] = []): void {
+  function start(
+    selections: readonly CartCompositeOutcomeSelection[] = [],
+    options: CartCompositeCheckoutStartOptions = {},
+  ): void {
     if (
       subject === null ||
       activeAttemptRef.current !== null ||
@@ -418,6 +448,10 @@ export function useCartCompositeCheckout(
       subject,
       snapshot,
       controller: new AbortController(),
+      completionDelayMs:
+        Number.isFinite(options.completionDelayMs) && (options.completionDelayMs ?? 0) > 0
+          ? Math.floor(options.completionDelayMs ?? 0)
+          : 0,
       mayHaveMutated: true,
     };
     activeAttemptRef.current = attempt;
@@ -483,6 +517,7 @@ export function useCartCompositeCheckout(
       subject,
       snapshot,
       controller: new AbortController(),
+      completionDelayMs: 0,
       mayHaveMutated: true,
     };
     activeAttemptRef.current = attempt;
@@ -560,6 +595,50 @@ export function useCartCompositeCheckout(
     })();
   }
 
+  function dismissRestoredCourses(courseIds: readonly number[]): void {
+    const dismissedCourseIds = new Set(courseIds);
+    if (
+      phase !== 'checkout_completed' ||
+      activeAttemptRef.current !== null ||
+      recoveryDiscoveryRef.current !== null ||
+      !results.some(
+        (result) => dismissedCourseIds.has(result.courseId) && result.kind === 'restored',
+      )
+    )
+      return;
+
+    const retainedResults = results.filter(
+      (result) => !dismissedCourseIds.has(result.courseId) || result.kind !== 'restored',
+    );
+    setResults(retainedResults);
+    setCompletionPlan((current) =>
+      current.filter((item) => !dismissedCourseIds.has(item.courseId)),
+    );
+    writeLockedRef.current = retainedResults.some((result) => result.kind === 'restored');
+    if (retainedResults.length === 0) setPhase('idle');
+  }
+
+  function dismissSuccessfulCourses(courseIds: readonly number[]): void {
+    const dismissedCourseIds = new Set(courseIds);
+    if (
+      phase !== 'checkout_completed' ||
+      activeAttemptRef.current !== null ||
+      recoveryDiscoveryRef.current !== null ||
+      !results.some((result) => dismissedCourseIds.has(result.courseId) && result.kind === 'active')
+    )
+      return;
+
+    const retainedResults = results.filter(
+      (result) => !dismissedCourseIds.has(result.courseId) || result.kind !== 'active',
+    );
+    setResults(retainedResults);
+    setCompletionPlan((current) =>
+      current.filter((item) => !dismissedCourseIds.has(item.courseId)),
+    );
+    writeLockedRef.current = retainedResults.length > 0;
+    if (retainedResults.length === 0) setPhase('idle');
+  }
+
   function discoverRecovery(): void {
     if (
       subject === null ||
@@ -634,6 +713,7 @@ export function useCartCompositeCheckout(
       subject,
       snapshot,
       controller: new AbortController(),
+      completionDelayMs: 0,
       mayHaveMutated: false,
     };
     activeAttemptRef.current = attempt;
@@ -672,6 +752,8 @@ export function useCartCompositeCheckout(
     pending: isCartCompositePending(phase),
     start,
     retryRestoredCourse,
+    dismissRestoredCourses,
+    dismissSuccessfulCourses,
     discoverRecovery,
     resumeRecovery,
   };

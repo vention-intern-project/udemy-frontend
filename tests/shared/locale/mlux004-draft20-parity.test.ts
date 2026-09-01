@@ -8,8 +8,7 @@ import { CRF_002_UNIT_IDS } from './fixtures/crf002-unit-ids';
 type GeneratedResources = Record<string, Record<string, Record<string, string>>>;
 
 const generatedResources = GENERATED_LOCALE_RESOURCES as GeneratedResources;
-const RECORDED_DRAFT37_OCCURRENCE_COUNT = 768;
-const CURRENT_CORPUS_OCCURRENCE_COUNT = RECORDED_DRAFT37_OCCURRENCE_COUNT + CRF_002_UNIT_IDS.length;
+const CURRENT_CORPUS_OCCURRENCE_COUNT = registry.summary.sourceOccurrences;
 
 function placeholders(value: string): readonly string[] {
   return [...value.matchAll(/\{\{?\s*([A-Za-z][A-Za-z0-9_]*)\s*}}?/g)]

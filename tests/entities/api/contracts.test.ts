@@ -106,6 +106,7 @@ type ExpectedContractMap = {
   'API-039': { input: { path: PathCourse; body: ReviewCreateDto }; response: ReviewDto };
   'API-040': { input: { path: PathCourse; body: ReviewUpdateDto }; response: ReviewDto };
   'API-041': { input: { path: PathCourse }; response: DeleteMessageDto };
+  'API-042': { input: { path: PathCourseLesson }; response: ApiBinaryResponse };
 };
 
 type IsExact<TLeft, TRight> =
@@ -386,6 +387,13 @@ const AUDITED_OPERATION_TABLE = [
     path: '/courses/:courseId/reviews',
     requestMode: 'none',
     responseMode: 'json',
+  },
+  {
+    id: 'API-042',
+    method: 'GET',
+    path: '/courses/:courseId/lessons/:lessonId/subtitles',
+    requestMode: 'none',
+    responseMode: 'binary',
   },
 ] as const satisfies readonly AuditedOperation[];
 

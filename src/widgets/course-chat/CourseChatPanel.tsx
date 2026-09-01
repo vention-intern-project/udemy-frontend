@@ -66,22 +66,6 @@ interface AssistantStatusProps {
 const AUTO_SCROLL_BOTTOM_THRESHOLD_PX = 24;
 const COMPACT_VIEWPORT_QUERY = '(max-width: 999px)';
 
-function isOutsideVisibleViewport(input: HTMLTextAreaElement) {
-  const inputRect = input.getBoundingClientRect();
-  const viewport = globalThis.visualViewport;
-  const left = viewport?.offsetLeft ?? 0;
-  const top = viewport?.offsetTop ?? 0;
-  const right = left + (viewport?.width ?? document.documentElement.clientWidth);
-  const bottom = top + (viewport?.height ?? document.documentElement.clientHeight);
-
-  return (
-    inputRect.left < left ||
-    inputRect.right > right ||
-    inputRect.top < top ||
-    inputRect.bottom > bottom
-  );
-}
-
 function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
   const isLearner = message.author === 'learner';
   return (
@@ -184,8 +168,8 @@ export function CourseChatContent({
 
     const frame = globalThis.requestAnimationFrame(() => {
       const input = inputRef.current;
-      if (input !== null && isOutsideVisibleViewport(input)) {
-        input.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
+      if (input !== null) {
+        input.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' });
       }
     });
     return () => globalThis.cancelAnimationFrame(frame);

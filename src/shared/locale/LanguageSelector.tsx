@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Globe2 } from 'lucide-react';
+import { ChevronDown, Globe2 } from 'lucide-react';
 import {
   useEffect,
   useId,
@@ -9,6 +9,8 @@ import {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import type { ExclusiveDisclosureControl } from '@shared/types';
+
 import { NATIVE_LOCALE_METADATA } from './metadata';
 import { SUPPORTED_LOCALES } from './types';
 import { useLocale } from './LocaleProvider';
@@ -18,7 +20,9 @@ export interface LanguageSelectorProps {
   readonly menuClassName: string;
   readonly optionClassName: string;
   readonly selectedOptionClassName: string;
+  readonly selectionIndicatorClassName: string;
   readonly mobile?: boolean;
+  readonly exclusiveDisclosure?: ExclusiveDisclosureControl;
 }
 
 type HoverCloseTimer = ReturnType<typeof setTimeout>;
@@ -32,7 +36,9 @@ export function LanguageSelector({
   menuClassName,
   optionClassName,
   selectedOptionClassName,
+  selectionIndicatorClassName,
   mobile = false,
+  exclusiveDisclosure,
 }: LanguageSelectorProps) {
   const { t } = useTranslation();
   const { locale, setLocale } = useLocale();
@@ -62,6 +68,7 @@ export function LanguageSelector({
     if (!supportsHover(event)) return;
     cancelHoverClose();
     if (openModeRef.current !== 'persistent') openModeRef.current = 'hover';
+    exclusiveDisclosure?.requestOpen();
     setOpen(true);
   }
 
@@ -84,6 +91,7 @@ export function LanguageSelector({
     cancelHoverClose();
     const shouldClose = open && openModeRef.current === 'persistent';
     openModeRef.current = shouldClose ? null : 'persistent';
+    if (!shouldClose) exclusiveDisclosure?.requestOpen();
     setOpen(!shouldClose);
   }
 
@@ -93,6 +101,16 @@ export function LanguageSelector({
     },
     [],
   );
+
+  useEffect(() => {
+    if (!exclusiveDisclosure?.closeRequested) return;
+    if (hoverCloseTimerRef.current !== null) {
+      clearTimeout(hoverCloseTimerRef.current);
+      hoverCloseTimerRef.current = null;
+    }
+    openModeRef.current = null;
+    setOpen(false);
+  }, [exclusiveDisclosure?.closeRequested]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -136,6 +154,7 @@ export function LanguageSelector({
       return;
     }
     openModeRef.current = 'persistent';
+    exclusiveDisclosure?.requestOpen();
     setOpen(true);
   }
 
@@ -190,8 +209,8 @@ export function LanguageSelector({
                   triggerRef.current?.focus({ preventScroll: true });
                 }}
               >
+                <span className={selectionIndicatorClassName} aria-hidden="true" />
                 <span>{label}</span>
-                {selected ? <Check aria-label={t('common:selected')} size={16} /> : null}
               </button>
             );
           })}

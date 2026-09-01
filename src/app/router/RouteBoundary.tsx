@@ -3,7 +3,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 
 import { useSession, sanitizeInternalReturnTo } from '../../features/auth-session';
 import type { AppRouteDefinition } from './route-registry';
-import { homeForRole } from './route-registry';
+import { homeForRole, routeForPath } from './route-registry';
 import { ForbiddenState } from './RouteStates';
 
 interface RouteBoundaryProps {
@@ -32,7 +32,17 @@ export function RouteBoundary({ route, children }: RouteBoundaryProps) {
       new URLSearchParams(location.search).get('returnTo'),
       globalThis.location?.origin,
     );
-    return <Navigate replace to={returnTo ?? homeForRole(state.user.role)} />;
+    const returnRoute = returnTo
+      ? routeForPath(new URL(returnTo, globalThis.location?.origin).pathname)
+      : undefined;
+    const canReturnToRoute =
+      returnRoute?.access === 'public' || returnRoute?.access === state.user.role;
+    return (
+      <Navigate
+        replace
+        to={canReturnToRoute && returnTo ? returnTo : homeForRole(state.user.role)}
+      />
+    );
   }
 
   if (state.status !== 'authenticated') {

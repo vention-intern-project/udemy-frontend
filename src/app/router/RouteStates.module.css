@@ -44,6 +44,34 @@ p.eyebrow {
 
 .linkButton {
   margin-top: var(--spacing-3);
+  color: var(--action-secondary-fg);
+  background: var(--action-secondary-bg);
+}
+
+.linkButton:visited {
+  color: var(--action-secondary-fg);
+}
+
+.linkButton:hover {
+  color: var(--action-secondary-fg);
+  background: var(--action-secondary-bg-hover);
+}
+
+.linkButton:active {
+  color: var(--action-secondary-fg);
+  background: var(--action-secondary-bg-pressed);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+  align-items: center;
+  margin-top: var(--spacing-4);
+}
+
+.actions .linkButton {
+  margin-top: 0;
 }
 
 .card .forbiddenLink {

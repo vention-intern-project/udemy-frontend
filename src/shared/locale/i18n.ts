@@ -1,4 +1,4 @@
-import i18next, { type i18n } from 'i18next';
+import i18next, { type i18n, type Resource } from 'i18next';
 import { initReactI18next } from 'react-i18next';
 
 import { LOCALE_RESOURCES } from './resources';
@@ -12,6 +12,18 @@ export interface LocaleMissingKeyDiagnostic {
 
 export interface LocaleRuntimeDiagnostics {
   readonly missingKeys: LocaleMissingKeyDiagnostic[];
+}
+
+export function syncLocaleResources(runtime: i18n, resources: Resource): void {
+  for (const locale of SUPPORTED_LOCALES) {
+    const localeResources = resources[locale];
+    if (!localeResources) continue;
+    for (const [namespace, bundle] of Object.entries(localeResources)) {
+      runtime.removeResourceBundle(locale, namespace);
+      runtime.addResourceBundle(locale, namespace, bundle, true, true);
+    }
+  }
+  runtime.emit('languageChanged', runtime.resolvedLanguage ?? runtime.language);
 }
 
 function initializeLocaleRuntime(
@@ -62,3 +74,9 @@ export function createLocaleRuntime(
 }
 
 export const localeRuntime = initializeLocaleRuntime(undefined, null, true);
+
+if (import.meta.hot)
+  import.meta.hot.accept('./resources', (nextResourcesModule) => {
+    if (nextResourcesModule)
+      syncLocaleResources(localeRuntime, nextResourcesModule.LOCALE_RESOURCES);
+  });

@@ -40,6 +40,7 @@ export interface LessonDto {
   title: string;
   lesson_type: LessonTypeDto;
   download_url: string | null;
+  subtitle_status?: boolean;
   description: string | null;
   is_published: boolean;
   created_at: string;

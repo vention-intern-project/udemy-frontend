@@ -51,7 +51,7 @@ export function RenderErrorState({ onRetry }: RetryStateProps) {
       <div className={styles.card} role="alert" aria-labelledby="render-error-title">
         <h1 id="render-error-title">{t('routes:renderErrorHeading')}</h1>
         <p>{t('routes:renderErrorDescription')}</p>
-        <div>
+        <div className={styles.actions}>
           <Button onClick={onRetry}>{t('routes:tryAgain')}</Button>
           <ContextualNavigationLink className={styles.linkButton} to="/">
             {t('routes:backToCatalog')}

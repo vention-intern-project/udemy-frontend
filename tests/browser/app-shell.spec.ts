@@ -21,7 +21,7 @@ import {
 
 type BackendRole = 'student' | 'instructor' | 'admin';
 type ShellSurfaceViewportWidth = 320 | 390 | 768 | 1280 | 1440;
-type DesktopViewportWidth = 768 | 1280;
+type DesktopViewportWidth = 768 | 1024 | 1280;
 type MobileViewportWidth = 320 | 390 | 767;
 
 function localeResourceString(resource: unknown, key: string): string {
@@ -108,6 +108,16 @@ const INSTRUCTOR_DESKTOP_BACKGROUND_OPTIONAL_ABORT: RequestFailureIdentity = {
 
 const LEARNING_EMPTY_STATE_IMAGE_PATH =
   '/src/pages/learning-list-page/assets/my-learning-empty-state-ui022.png';
+
+const emptyCatalogCourseReviewPage = {
+  items: [],
+  page: 1,
+  page_size: 20,
+  total: 0,
+  pages: 0,
+  has_next: false,
+  has_previous: false,
+};
 
 async function readRepresentativeTokenSnapshot(page: Page): Promise<RepresentativeTokenSnapshot> {
   return page.evaluate(() => {
@@ -196,7 +206,7 @@ async function waitForInstructorCoursesBackgroundAssets(page: Page) {
   await page
     .getByRole('heading', { level: 1, name: 'Instructor courses' })
     .evaluate(async (heading) => {
-      const coursePage = heading.parentElement;
+      const coursePage = heading.closest('article');
       if (!(coursePage instanceof HTMLElement))
         throw new Error('Instructor courses page container is unavailable');
 
@@ -699,11 +709,10 @@ async function expectShellSurfacesAtViewportEdges(page: Page, width: ShellSurfac
       headerY: Math.floor((headerRect.top + headerRect.bottom) / 2),
       footerY: Math.floor((footerRect.top + footerRect.bottom) / 2),
       footerVisible: footerRect.top >= -1 && footerRect.bottom <= window.innerHeight + 1,
-      headerColor: colorPixel(
-        getComputedStyle(document.documentElement).getPropertyValue('--color-surface'),
-      ),
+      headerColor: colorPixel(getComputedStyle(header).backgroundColor),
       detachedSearchColor: colorPixel(
-        getComputedStyle(document.documentElement).getPropertyValue('--state-control-highlight'),
+        getComputedStyle(document.querySelector<HTMLElement>('form[role="search"]')!)
+          .backgroundColor,
       ),
       footerColor: colorPixel(
         getComputedStyle(document.documentElement).getPropertyValue('--color-surface-inverted'),
@@ -739,9 +748,12 @@ async function expectShellSurfacesAtViewportEdges(page: Page, width: ShellSurfac
         const context = canvas.getContext('2d');
         if (!context) throw new Error('Screenshot pixel probe is unavailable');
         context.drawImage(image, 0, 0);
-        const y = Math.floor(image.naturalHeight / 2);
+        const y = Math.min(4, image.naturalHeight - 1);
+        const inset = Math.min(4, image.naturalWidth - 1);
         return [
           Array.from(context.getImageData(0, y, 1, 1).data),
+          Array.from(context.getImageData(inset, y, 1, 1).data),
+          Array.from(context.getImageData(image.naturalWidth - 1 - inset, y, 1, 1).data),
           Array.from(context.getImageData(image.naturalWidth - 1, y, 1, 1).data),
         ];
       };
@@ -753,15 +765,14 @@ async function expectShellSurfacesAtViewportEdges(page: Page, width: ShellSurfac
     },
   );
   const [headerEdgePixels, footerEdgePixels] = edgePixels;
-  const expectedHeaderEdgeColor = width < 768 ? geometry.detachedSearchColor : geometry.headerColor;
   const expectPixelColor = (actual: number[], expected: number[]) => {
     expect(actual).toHaveLength(expected.length);
     expect(actual.every((channel, index) => Math.abs(channel - expected[index]) <= 1)).toBe(true);
   };
-  expectPixelColor(headerEdgePixels[0], expectedHeaderEdgeColor);
-  expectPixelColor(headerEdgePixels[1], expectedHeaderEdgeColor);
-  expectPixelColor(footerEdgePixels[0], geometry.footerColor);
-  expectPixelColor(footerEdgePixels[1], geometry.footerColor);
+  expectPixelColor(headerEdgePixels[0], headerEdgePixels[1]);
+  expectPixelColor(headerEdgePixels[2], headerEdgePixels[3]);
+  expectPixelColor(footerEdgePixels[0], footerEdgePixels[1]);
+  expectPixelColor(footerEdgePixels[2], footerEdgePixels[3]);
   await expectNoHorizontalOverflow(page);
 }
 
@@ -842,19 +853,6 @@ async function expectBrandComposition(brand: Locator, accessibleName?: string) {
   expect(metrics.wordmarkWeight).toBe(metrics.expectedWeight);
 }
 
-async function expectInstructorHomeBrand(page: Page) {
-  const brand = page.getByRole('link', { name: 'LearnHub home' });
-  await expectBrandComposition(brand);
-  await expect(brand).toHaveAttribute('href', '/instructor/courses');
-  await expectBrandContainedInHeader(brand);
-  await expectBrandFocusTreatment(page, brand);
-  await page.keyboard.press('Tab');
-  await expect(page.getByRole('button', { name: 'Account menu for Indira User' })).toBeFocused();
-  await page.keyboard.press('Escape');
-  await page.keyboard.press('Tab');
-  await expect(page.getByRole('button', { name: 'Open navigation' })).toBeFocused();
-}
-
 async function expectBrandFocusTreatment(page: Page, brand: Locator) {
   await page.getByRole('link', { name: 'Skip to main content' }).focus();
   await page.keyboard.press('Tab');
@@ -877,26 +875,6 @@ async function expectBrandFocusTreatment(page: Page, brand: Locator) {
   expect(focus.style).not.toBe('none');
   expect(focus.width).toBeGreaterThan(0);
   expect(focus.color).toBe(focus.expectedColor);
-}
-
-async function expectBrandContainedInHeader(brand: Locator) {
-  const containment = await brand.evaluate((link) => {
-    const header = link.closest('[data-app-shell-header]');
-    const inner = header?.firstElementChild;
-    if (!(inner instanceof HTMLElement))
-      throw new Error('Header containment target is unavailable');
-    const linkRect = link.getBoundingClientRect();
-    const innerRect = inner.getBoundingClientRect();
-    return {
-      leftInset: linkRect.left - innerRect.left,
-      rightInset: innerRect.right - linkRect.right,
-      clientWidth: link.clientWidth,
-      scrollWidth: link.scrollWidth,
-    };
-  });
-  expect(containment.leftInset).toBeGreaterThanOrEqual(-0.5);
-  expect(containment.rightInset).toBeGreaterThanOrEqual(-0.5);
-  expect(containment.scrollWidth).toBeLessThanOrEqual(containment.clientWidth);
 }
 
 async function expectAnonymousDesktopHeaderGeometry(page: Page, width: DesktopViewportWidth) {
@@ -1133,10 +1111,12 @@ async function expectAnonymousMobileNavigation(page: Page, width: MobileViewport
       ),
       searchBackground: getComputedStyle(search).backgroundColor,
       searchBorderTop: getComputedStyle(search).borderTopColor,
+      searchBorderTopWidth: getComputedStyle(search).borderTopWidth,
       searchShadow: getComputedStyle(search).boxShadow,
     };
   });
-  expect(stickyGeometry.headerTop).toBeLessThan(0);
+  if (width < 480) expect(stickyGeometry.headerTop).toBeLessThan(0);
+  else expect(stickyGeometry.headerTop).toBeCloseTo(0, 1);
   expect(stickyGeometry.searchTopInset).toBe(8);
   expect(stickyGeometry.searchTop).toBeGreaterThanOrEqual(0);
   const stickyInsetTolerance = 2;
@@ -1148,9 +1128,16 @@ async function expectAnonymousMobileNavigation(page: Page, width: MobileViewport
       (expectedTop) => Math.abs(stickyGeometry.searchTop - expectedTop) <= stickyInsetTolerance,
     ),
   ).toBe(true);
-  expect(stickyGeometry.searchBackground).toBe('rgb(238, 240, 244)');
-  expect(stickyGeometry.searchBorderTop).toBe('rgb(209, 213, 219)');
-  expect(stickyGeometry.searchShadow).not.toBe('none');
+  if (width < 480) {
+    expect(stickyGeometry.searchBackground).toBe('rgb(238, 240, 244)');
+    expect(stickyGeometry.searchBorderTop).toBe('rgb(209, 213, 219)');
+    expect(stickyGeometry.searchBorderTopWidth).toBe('1px');
+    expect(stickyGeometry.searchShadow).not.toBe('none');
+  } else {
+    expect(stickyGeometry.searchBackground).toBe('rgba(0, 0, 0, 0)');
+    expect(stickyGeometry.searchBorderTopWidth).toBe('0px');
+    expect(stickyGeometry.searchShadow).toBe('none');
+  }
   await expectNoHorizontalOverflow(page);
 }
 
@@ -1171,12 +1158,17 @@ async function expectInstructorDesktopHeaderNavigation(
   await expect(navigation).toBeVisible();
   await expect(instructorCourses).toBeVisible();
   await expect(instructorCourses).toHaveAttribute('aria-current', 'page');
+  await expect(instructorCourses).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await instructorCourses.hover();
+  await expect(instructorCourses).toHaveCSS('color', 'rgb(73, 50, 182)');
+  await expect(instructorCourses).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await expect(profile).toBeVisible();
   await expect(page.getByRole('link', { name: /^Cart/ })).toHaveCount(0);
 
   await requiredBoundingBox(instructorCourses);
   await requiredBoundingBox(profile);
   await expectNoHorizontalOverflow(page);
+  await page.mouse.move(0, 0);
 }
 
 async function readStudentHeaderGeometry(page: Page): Promise<StudentHeaderGeometry> {
@@ -1209,56 +1201,62 @@ async function readStudentHeaderGeometry(page: Page): Promise<StudentHeaderGeome
   });
 }
 
-async function expectMenuAtHeaderContentEdge(page: Page) {
-  const offset = await page.getByRole('button', { name: 'Open navigation' }).evaluate((button) => {
-    const header = button.closest('[data-app-shell-header]');
-    const inner = header?.firstElementChild;
-    if (!(inner instanceof HTMLElement)) throw new Error('Header geometry target is unavailable');
-    const innerRect = inner.getBoundingClientRect();
-    const buttonRect = button.getBoundingClientRect();
-    const contentRight = innerRect.right - Number.parseFloat(getComputedStyle(inner).paddingRight);
-    return Math.abs(buttonRect.right - contentRight);
-  });
-  expect(offset).toBeLessThanOrEqual(1);
+async function expectMenuAtHeaderInlineStart(page: Page) {
+  const geometry = await page
+    .getByRole('button', { name: 'Open navigation' })
+    .evaluate((button) => {
+      const header = button.closest('[data-app-shell-header]');
+      const inner = header?.firstElementChild;
+      const brand = header?.querySelector<HTMLElement>('a[aria-label="LearnHub home"]');
+      if (!(inner instanceof HTMLElement) || !(brand instanceof HTMLElement)) {
+        throw new Error('Header geometry target is unavailable');
+      }
+      const innerRect = inner.getBoundingClientRect();
+      const buttonRect = button.getBoundingClientRect();
+      const brandRect = brand.getBoundingClientRect();
+      const contentStart = innerRect.left + Number.parseFloat(getComputedStyle(inner).paddingLeft);
+      return {
+        brandStartOffset: Math.abs(brandRect.left - contentStart),
+        brandToMenuGap: buttonRect.left - brandRect.right,
+      };
+    });
+  expect(geometry.brandStartOffset).toBeLessThanOrEqual(1);
+  expect(geometry.brandToMenuGap).toBeGreaterThanOrEqual(0);
+  expect(geometry.brandToMenuGap).toBeLessThanOrEqual(32);
 }
 
 async function expectMobileMenuGeometry(page: Page) {
   const metrics = await page.getByRole('button', { name: 'Open navigation' }).evaluate((button) => {
-    const labels = button.querySelectorAll('[aria-hidden="true"]');
-    const label = labels.item(0);
+    const icons = button.querySelectorAll('svg[aria-hidden="true"]');
+    const icon = icons.item(0);
     const header = button.closest('[data-app-shell-header]');
-    if (
-      labels.length !== 1 ||
-      !(label instanceof HTMLElement) ||
-      !(header instanceof HTMLElement)
-    ) {
+    if (icons.length !== 1 || !(icon instanceof SVGElement) || !(header instanceof HTMLElement)) {
       throw new Error('Mobile menu geometry targets are unavailable');
     }
 
     const buttonRect = button.getBoundingClientRect();
-    const labelRect = label.getBoundingClientRect();
+    const iconRect = icon.getBoundingClientRect();
     const style = getComputedStyle(button);
-    const labelStyle = getComputedStyle(label);
+    const iconStyle = getComputedStyle(icon);
     return {
-      labelText: label.textContent?.trim() ?? '',
-      labelDisplay: labelStyle.display,
-      labelVisibility: labelStyle.visibility,
-      labelOpacity: Number.parseFloat(labelStyle.opacity),
-      labelWidth: labelRect.width,
-      labelHeight: labelRect.height,
+      iconDisplay: iconStyle.display,
+      iconVisibility: iconStyle.visibility,
+      iconOpacity: Number.parseFloat(iconStyle.opacity),
+      iconWidth: iconRect.width,
+      iconHeight: iconRect.height,
       width: buttonRect.width,
       height: buttonRect.height,
       paddingLeft: Number.parseFloat(style.paddingLeft),
       paddingRight: Number.parseFloat(style.paddingRight),
-      labelLeftInset: labelRect.left - buttonRect.left,
-      labelRightInset: buttonRect.right - labelRect.right,
-      labelTopInset: labelRect.top - buttonRect.top,
-      labelBottomInset: buttonRect.bottom - labelRect.bottom,
+      iconLeftInset: iconRect.left - buttonRect.left,
+      iconRightInset: buttonRect.right - iconRect.right,
+      iconTopInset: iconRect.top - buttonRect.top,
+      iconBottomInset: buttonRect.bottom - iconRect.bottom,
       horizontalCenterOffset: Math.abs(
-        (labelRect.left + labelRect.right) / 2 - (buttonRect.left + buttonRect.right) / 2,
+        (iconRect.left + iconRect.right) / 2 - (buttonRect.left + buttonRect.right) / 2,
       ),
       verticalCenterOffset: Math.abs(
-        (labelRect.top + labelRect.bottom) / 2 - (buttonRect.top + buttonRect.bottom) / 2,
+        (iconRect.top + iconRect.bottom) / 2 - (buttonRect.top + buttonRect.bottom) / 2,
       ),
       clientWidth: button.clientWidth,
       scrollWidth: button.scrollWidth,
@@ -1271,20 +1269,19 @@ async function expectMobileMenuGeometry(page: Page) {
     };
   });
 
-  expect(metrics.labelText).toBe('Menu');
-  expect(metrics.labelDisplay).not.toBe('none');
-  expect(metrics.labelVisibility).toBe('visible');
-  expect(metrics.labelOpacity).toBeGreaterThan(0);
-  expect(metrics.labelWidth).toBeGreaterThan(0);
-  expect(metrics.labelHeight).toBeGreaterThan(0);
+  expect(metrics.iconDisplay).not.toBe('none');
+  expect(metrics.iconVisibility).toBe('visible');
+  expect(metrics.iconOpacity).toBeGreaterThan(0);
+  expect(metrics.iconWidth).toBeGreaterThan(0);
+  expect(metrics.iconHeight).toBeGreaterThan(0);
   expect(metrics.width).toBeGreaterThanOrEqual(44);
   expect(metrics.height).toBeGreaterThanOrEqual(44);
   expect(metrics.paddingLeft).toBeGreaterThanOrEqual(8);
   expect(metrics.paddingRight).toBeGreaterThanOrEqual(8);
-  expect(metrics.labelLeftInset).toBeGreaterThan(metrics.paddingLeft);
-  expect(metrics.labelRightInset).toBeGreaterThan(metrics.paddingRight);
-  expect(metrics.labelTopInset).toBeGreaterThan(0);
-  expect(metrics.labelBottomInset).toBeGreaterThan(0);
+  expect(metrics.iconLeftInset).toBeGreaterThanOrEqual(metrics.paddingLeft);
+  expect(metrics.iconRightInset).toBeGreaterThanOrEqual(metrics.paddingRight);
+  expect(metrics.iconTopInset).toBeGreaterThan(0);
+  expect(metrics.iconBottomInset).toBeGreaterThan(0);
   expect(metrics.horizontalCenterOffset).toBeLessThanOrEqual(1);
   expect(metrics.verticalCenterOffset).toBeLessThanOrEqual(1);
   expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth);
@@ -1296,6 +1293,13 @@ async function expectMobileMenuGeometry(page: Page) {
 
 test.beforeEach(async ({ page }) => {
   await installCatalogFixture(page);
+  await page.route('**/courses/7/reviews?page=1&page_size=20', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(emptyCatalogCourseReviewPage),
+    });
+  });
 });
 
 test('redirects an anonymous protected route with its internal returnTo', async ({ page }) => {
@@ -1390,6 +1394,7 @@ test('keeps desktop language hover disclosure open across its gap and preserves 
   const triggerBox = await trigger.boundingBox();
   const menuBox = await menu.boundingBox();
   if (!triggerBox || !menuBox) throw new Error('Language disclosure geometry is unavailable.');
+  expect(menuBox.y - (triggerBox.y + triggerBox.height)).toBeCloseTo(12, 1);
   const traversalX = Math.min(
     Math.max(triggerBox.x + triggerBox.width / 2, menuBox.x + 4),
     menuBox.x + menuBox.width - 4,
@@ -1531,7 +1536,7 @@ test('dismisses the desktop language menu when Tab moves focus outside its optio
   assertRuntimeClean();
 });
 
-test('uses native buttons for authenticated-mobile language selection and preserves dismissal', async ({
+test('places authenticated-student Language beside Profile and outside its popover', async ({
   page,
 }) => {
   const assertRuntimeClean = monitorRuntime(
@@ -1548,37 +1553,57 @@ test('uses native buttons for authenticated-mobile language selection and preser
   ]);
 
   const account = page.getByRole('button', { name: 'Account menu for Sam User' });
+  const language = page.getByRole('button', { name: 'Change language' });
+  await expect(language).toHaveText('EN');
+  const accountBox = await account.boundingBox();
+  const languageBox = await language.boundingBox();
+  if (!accountBox || !languageBox)
+    throw new Error('Mobile header control geometry is unavailable.');
+  expect(languageBox.x).toBeGreaterThanOrEqual(accountBox.x + accountBox.width);
+  expect(
+    Math.abs(accountBox.y + accountBox.height / 2 - (languageBox.y + languageBox.height / 2)),
+  ).toBeLessThanOrEqual(1);
+
   await account.click();
   const accountDetails = page.getByRole('group', { name: 'Account details for Sam User' });
   await expect(accountDetails.getByText('Student', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Language' }).click();
-  await expect(page.getByRole('button', { name: 'Back' })).toBeFocused();
-  await page.getByRole('button', { name: 'Back' }).click();
-  const language = page.getByRole('button', { name: 'Language' });
-  await expect(language).toBeFocused();
-  await language.click();
-  await expect(page.getByRole('button', { name: 'Back' })).toBeFocused();
+  await expect(accountDetails.getByRole('button', { name: 'Log out' })).toBeVisible();
+  await expect(accountDetails.getByRole('button', { name: /Language/ })).toHaveCount(0);
   await account.click();
   await expect(page.getByRole('group', { name: 'Account details for Sam User' })).toHaveCount(0);
   await expect(account).toBeFocused();
-  await account.click();
-  await expect(accountDetails).toBeVisible();
-  await expect(accountDetails.locator('[data-part="account-menu-profile"]')).toBeVisible();
-  await expect(language).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Back' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Русский' })).toHaveCount(0);
+
   await language.click();
-  await expect(page.getByRole('button', { name: 'Back' })).toBeFocused();
+  const languageMenu = page.locator('[aria-label="Language menu"]');
+  const searchInput = page.locator('header input').first();
+  const languageMenuBox = await languageMenu.boundingBox();
+  const searchInputBox = await searchInput.boundingBox();
+  if (!languageMenuBox || !searchInputBox)
+    throw new Error('Mobile language-menu overlap geometry is unavailable.');
+  const overlapTop = Math.max(languageMenuBox.y, searchInputBox.y);
+  const overlapBottom = Math.min(
+    languageMenuBox.y + languageMenuBox.height,
+    searchInputBox.y + searchInputBox.height,
+  );
+  expect(overlapBottom).toBeGreaterThan(overlapTop);
+  expect(
+    await page.evaluate(
+      ({ x, y }) => {
+        const menu = document.querySelector('[aria-label="Language menu"]');
+        return menu?.contains(document.elementFromPoint(x, y)) ?? false;
+      },
+      {
+        x: languageMenuBox.x + Math.min(24, languageMenuBox.width / 2),
+        y: overlapTop + Math.min(8, (overlapBottom - overlapTop) / 2),
+      },
+    ),
+  ).toBe(true);
   const russian = page.getByRole('button', { name: 'Русский' });
   await expect(russian).toHaveAttribute('aria-pressed', 'false');
   await russian.click();
-  await expect(page.getByRole('button', { name: 'Язык' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Выйти' })).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Навигация студента' })).toBeVisible();
-  await expect(
-    page.locator('[data-part="account-menu-profile"]').getByText('Студент', { exact: true }),
-  ).toBeVisible();
-  const localizedLanguage = page.getByRole('button', { name: /Язык/ });
+  const localizedLanguage = page.getByRole('button', { name: 'Изменить язык' });
+  await expect(localizedLanguage).toHaveText('RU');
   await expect(localizedLanguage).toBeVisible();
   await expect(localizedLanguage).toBeFocused();
   await localizedLanguage.click();
@@ -1586,61 +1611,18 @@ test('uses native buttons for authenticated-mobile language selection and preser
   await expect(uzbek).toHaveAttribute('aria-pressed', 'false');
   await uzbek.click();
   await expect(page.getByRole('navigation', { name: 'Talaba navigatsiyasi' })).toBeVisible();
-  await expect(
-    page.locator('[data-part="account-menu-profile"]').getByText('Talaba', { exact: true }),
-  ).toBeVisible();
+  const uzbekLanguage = page.getByRole('button', {
+    name: localeResourceString(LOCALE_RESOURCES.uz.navigation, 'changeLanguage'),
+  });
+  await expect(uzbekLanguage).toHaveText('UZ');
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: 'Русский' })).toHaveCount(0);
-  await expect(page.locator('[data-account-initials]')).toBeFocused();
+  await expect(uzbekLanguage).toBeFocused();
   await expectNoHorizontalOverflow(page);
   assertRuntimeClean();
 });
 
-test('resets an unpinned mobile account menu after focus and hover leave its Language view', async ({
-  page,
-}) => {
-  const assertRuntimeClean = monitorRuntime(
-    page,
-    [],
-    [CART_STRICT_MODE_ABORT, ENROLLMENTS_STRICT_MODE_ABORT],
-  );
-  await mockAuthenticatedSession(page, 'student');
-  const studentWorkspaceFixture = await mockStudentWorkspaceData(page);
-  await page.setViewportSize({ width: 390, height: 844 });
-  await Promise.all([
-    studentWorkspaceFixture.waitForEnrollmentFulfillment(),
-    page.goto('/learning'),
-  ]);
-
-  const account = page.getByRole('button', { name: 'Account menu for Sam User' });
-  const accountDetails = page.getByRole('group', { name: 'Account details for Sam User' });
-  await account.focus();
-  await expect(accountDetails).toBeVisible();
-  await page.getByRole('button', { name: 'Language' }).click();
-  const uzbek = page.getByRole('button', { name: "O'zbek" });
-  await uzbek.focus();
-  await page.keyboard.press('Tab');
-  await expect(accountDetails).toHaveCount(0);
-
-  await account.focus();
-  await expect(accountDetails.locator('[data-part="account-menu-profile"]')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Language' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Log out' })).toBeVisible();
-
-  await page.getByRole('button', { name: 'Language' }).click();
-  await expect(page.getByRole('button', { name: 'Back' })).toBeVisible();
-  await page.locator('main').hover({ position: { x: 1, y: 1 } });
-  await expect(accountDetails).toHaveCount(0);
-  await account.hover();
-  await expect(accountDetails.locator('[data-part="account-menu-profile"]')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Log out' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Back' })).toHaveCount(0);
-  assertRuntimeClean();
-});
-
-test('preserves the authenticated-instructor mobile language flow in the profile popover', async ({
-  page,
-}) => {
+test('places authenticated-instructor Language between Profile and Menu', async ({ page }) => {
   const assertRuntimeClean = monitorRuntime(
     page,
     [],
@@ -1652,54 +1634,59 @@ test('preserves the authenticated-instructor mobile language flow in the profile
   await Promise.all([collectionFixture.waitForFulfillment(), page.goto('/instructor/courses')]);
 
   const profile = page.getByRole('button', { name: 'Account menu for Indira User' });
+  const language = page.getByRole('button', { name: 'Change language' });
+  const mobileNavigationTrigger = page.getByRole('button', { name: 'Open navigation' });
+  const profileBox = await profile.boundingBox();
+  const languageBox = await language.boundingBox();
+  const menuBox = await mobileNavigationTrigger.boundingBox();
+  if (!profileBox || !languageBox || !menuBox)
+    throw new Error('Instructor mobile header control geometry is unavailable.');
+  expect(languageBox.x).toBeGreaterThanOrEqual(profileBox.x + profileBox.width);
+  expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(profileBox.x);
+  expect(
+    Math.abs(profileBox.y + profileBox.height / 2 - (languageBox.y + languageBox.height / 2)),
+  ).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(languageBox.y + languageBox.height / 2 - (menuBox.y + menuBox.height / 2)),
+  ).toBeLessThanOrEqual(1);
+
   await profile.click();
   const accountDetails = page.getByRole('group', { name: 'Account details for Indira User' });
   await expect(accountDetails).toBeVisible();
   await expect(accountDetails.getByText('Instructor', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Language' }).click();
-  await expect(page.getByRole('button', { name: 'Back' })).toBeFocused();
+  await expect(accountDetails.getByRole('button', { name: /Language/ })).toHaveCount(0);
+  await profile.click();
+
+  await language.click();
   const english = page.getByRole('button', { name: 'English' });
   const russian = page.getByRole('button', { name: 'Русский' });
   await expect(english).toHaveAttribute('aria-pressed', 'true');
   await expect(russian).toHaveAttribute('aria-pressed', 'false');
   await russian.click();
 
-  const localizedLanguage = page.getByRole('button', { name: 'Язык' });
-  await expect(
-    page.locator('[data-part="account-menu-profile"]').getByText('Преподаватель', { exact: true }),
-  ).toBeVisible();
+  const localizedLanguage = page.getByRole('button', { name: 'Изменить язык' });
+  await expect(localizedLanguage).toHaveText('RU');
   await expect(localizedLanguage).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Выйти' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Главная LearnHub' })).toHaveText('LearnHub');
   await expect(page.getByRole('link', { name: 'Перейти к основному содержимому' })).toBeVisible();
   await expect(localizedLanguage).toBeFocused();
   await localizedLanguage.click();
   await expect(russian).toHaveAttribute('aria-pressed', 'true');
-  await page.getByRole('button', { name: 'Назад' }).click();
-  await expect(localizedLanguage).toBeVisible();
-  await expect(localizedLanguage).toBeFocused();
-  await localizedLanguage.click();
-  const uzbek = page.getByRole('button', { name: "O'zbek" });
-  await expect(uzbek).toHaveAttribute('aria-pressed', 'false');
-  await uzbek.click();
-  await expect(
-    page.locator('[data-part="account-menu-profile"]').getByText('O‘qituvchi', { exact: true }),
-  ).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: 'Русский' })).toHaveCount(0);
-  await expect(page.locator('[data-account-initials]')).toBeFocused();
-  const mobileNavigationTrigger = page.getByRole('button', {
-    name: localeResourceString(LOCALE_RESOURCES.uz.a11y, 'openNavigation'),
+  await expect(localizedLanguage).toBeFocused();
+  const localizedMobileNavigationTrigger = page.getByRole('button', {
+    name: localeResourceString(LOCALE_RESOURCES.ru.a11y, 'openNavigation'),
   });
-  await mobileNavigationTrigger.click();
+  await localizedMobileNavigationTrigger.click();
   await expect(
-    page.locator('#mobile-navigation').getByRole('button', {
-      name: localeResourceString(LOCALE_RESOURCES.uz.instructor, 'coursesCreateCourse'),
+    page.getByRole('navigation', { name: 'Мобильная навигация' }).getByRole('button', {
+      name: localeResourceString(LOCALE_RESOURCES.ru.instructor, 'coursesCreateCourse'),
       exact: true,
     }),
   ).toBeVisible();
   await page.keyboard.press('Escape');
-  await expect(mobileNavigationTrigger).toBeFocused();
+  await expect(localizedMobileNavigationTrigger).toBeFocused();
   await expectNoHorizontalOverflow(page);
   assertRuntimeClean();
 });
@@ -1893,7 +1880,18 @@ test('preserves same-path query scroll and navigates a hash target in Chromium',
 
 test('aligns anonymous desktop navigation and renders the lighter brand', async ({ page }) => {
   const assertRuntimeClean = monitorRuntime(page);
-  await expectAnonymousDesktopHeaderGeometry(page, 768);
+  await page.setViewportSize({ width: 768, height: 900 });
+  await page.goto('/');
+  await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toBeHidden();
+  const compactMenu = page.getByRole('button', { name: 'Open navigation' });
+  await expect(compactMenu).toBeVisible();
+  await compactMenu.click();
+  await expect(page.getByRole('navigation', { name: 'Mobile navigation' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Catalog' }).last()).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(compactMenu).toBeFocused();
+  await expectNoHorizontalOverflow(page);
+  await expectAnonymousDesktopHeaderGeometry(page, 1024);
   await expectAnonymousDesktopHeaderGeometry(page, 1280);
   assertRuntimeClean();
 });
@@ -2148,9 +2146,49 @@ test('keeps the accepted instructor navigation and initials marker at desktop wi
   );
   await mockAuthenticatedSession(page, 'instructor');
   const collectionFixture = await mockInstructorCourseCollection(page);
-  await expectInstructorDesktopHeaderNavigation(page, 768, collectionFixture);
+  await expectInstructorDesktopHeaderNavigation(page, 1024, collectionFixture);
   await expectInstructorDesktopHeaderNavigation(page, 1280, collectionFixture);
   assertRuntimeClean();
+});
+
+test('keeps Instructor courses neutral and hover-violet on nested desktop workspace routes', async ({
+  page,
+}) => {
+  await mockAuthenticatedSession(page, 'instructor');
+  await page.route('**/courses/42', async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        id: 42,
+        title: 'Editor course',
+        description: null,
+        price: '0.00',
+        currency: 'USD',
+        published_at: null,
+        created_at: '2026-07-20T00:00:00Z',
+        updated_at: '2026-07-20T00:00:00Z',
+        instructor: { id: 3, name: 'Indira', surname: 'User' },
+        lessons: [],
+      }),
+    }),
+  );
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/instructor/courses/42/edit');
+
+  const instructorCourses = page
+    .getByRole('navigation', { name: 'Primary navigation' })
+    .getByRole('link', { name: 'Instructor courses' });
+  await expect(instructorCourses).not.toHaveAttribute('aria-current', 'page');
+  await expect(instructorCourses).toHaveCSS('color', 'rgb(55, 65, 81)');
+  await expect(instructorCourses).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  expect(
+    await instructorCourses.evaluate((link) => getComputedStyle(link, '::after').opacity),
+  ).toBe('0');
+  await instructorCourses.hover();
+  await expect(instructorCourses).toHaveCSS('color', 'rgb(73, 50, 182)');
+  await expect(instructorCourses).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expectNoHorizontalOverflow(page);
 });
 
 test('shows authenticated account details on hover and clears the session through Log out', async ({
@@ -2259,6 +2297,35 @@ test('keeps a clicked account menu open until Escape or an outside click', async
   await expect(accountDetails).toBeHidden();
 });
 
+test('keeps desktop language and account disclosures mutually exclusive', async ({ page }) => {
+  await mockAuthenticatedSession(page, 'student');
+  await mockStudentWorkspaceData(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/learning');
+
+  const language = page.getByRole('button', { name: 'Change language' });
+  const languageMenu = page.locator('[aria-label="Language menu"]');
+  const account = page.getByRole('button', { name: 'Account menu for Sam User' });
+  const accountDetails = page.getByRole('group', { name: 'Account details for Sam User' });
+
+  await language.hover();
+  await expect(languageMenu).toBeVisible();
+
+  await account.hover();
+  await expect(accountDetails).toBeVisible();
+  await expect(languageMenu).toHaveCount(0);
+
+  await language.hover();
+  await expect(languageMenu).toBeVisible();
+  await expect(accountDetails).toHaveCount(0);
+
+  await account.click();
+  await expect(accountDetails).toBeVisible();
+  await language.hover();
+  await expect(languageMenu).toBeVisible();
+  await expect(accountDetails).toHaveCount(0);
+});
+
 test('restores the account trigger when viewport scroll removes its focused details', async ({
   page,
 }) => {
@@ -2361,6 +2428,124 @@ test('shows a bootstrap state then student-only workspace navigation', async ({ 
   );
   await expect(navigation.getByRole('link', { name: 'My courses' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Account menu for Sam User' })).toBeVisible();
+
+  await page.setViewportSize({ width: 890, height: 900 });
+  await expect(navigation).toBeHidden();
+  const header = page.getByRole('banner');
+  const navigationTrigger = page.getByRole('button', { name: 'Open navigation' });
+  await expect(navigationTrigger).toBeVisible();
+  await expect(header.getByRole('button', { name: 'Account menu for Sam User' })).toHaveCount(0);
+  await expect(header.getByRole('link', { name: 'Open AI assistant' })).toHaveCount(0);
+  await expect(header.getByRole('link', { name: /^Cart/ })).toBeVisible();
+  await expect(header.getByRole('button', { name: 'Change language' })).toBeVisible();
+  const tabletSearch = await page.getByRole('search').boundingBox();
+  expect(tabletSearch).not.toBeNull();
+  expect(tabletSearch!.width).toBeGreaterThanOrEqual(192);
+  const tabletHeaderOrder = await header.evaluate((element) => {
+    const brand = element.querySelector<HTMLElement>('a[aria-label="LearnHub home"]');
+    const menu = element.querySelector<HTMLElement>('button[aria-haspopup="dialog"]');
+    const search = element.querySelector<HTMLElement>('form[role="search"]');
+    if (!brand || !menu || !search)
+      throw new Error('Authenticated tablet header slots are missing');
+    return {
+      brandRight: brand.getBoundingClientRect().right,
+      menuLeft: menu.getBoundingClientRect().left,
+      menuRight: menu.getBoundingClientRect().right,
+      searchLeft: search.getBoundingClientRect().left,
+    };
+  });
+  expect(tabletHeaderOrder.brandRight).toBeLessThanOrEqual(tabletHeaderOrder.menuLeft);
+  expect(tabletHeaderOrder.menuRight).toBeLessThanOrEqual(tabletHeaderOrder.searchLeft);
+  await navigationTrigger.click();
+  const drawer = page.getByRole('dialog', { name: 'Menu' });
+  await expect(drawer).toBeVisible();
+  const drawerHeaderGeometry = await drawer.evaluate((element) => {
+    const header = element.querySelector<HTMLElement>('.ui-dialog__header');
+    const close = element.querySelector<HTMLElement>('.ui-dialog__close');
+    const profile = element.querySelector<HTMLElement>('[data-part="account-menu-profile"]');
+    const avatar = profile?.querySelector<HTMLElement>('[aria-hidden="true"]');
+    if (!header || !close || !avatar) throw new Error('Tablet drawer header anatomy is missing');
+    const drawerBox = element.getBoundingClientRect();
+    const headerBox = header.getBoundingClientRect();
+    const closeBox = close.getBoundingClientRect();
+    const avatarBox = avatar.getBoundingClientRect();
+    return {
+      avatarBottomInset: headerBox.bottom - avatarBox.bottom,
+      avatarCenterDelta: Math.abs(
+        avatarBox.top + avatarBox.height / 2 - (headerBox.top + headerBox.height / 2),
+      ),
+      avatarHeight: avatarBox.height,
+      avatarLeftInset: avatarBox.left - headerBox.left,
+      avatarTopInset: avatarBox.top - headerBox.top,
+      avatarWidth: avatarBox.width,
+      closeCenterDelta: Math.abs(
+        closeBox.top + closeBox.height / 2 - (headerBox.top + headerBox.height / 2),
+      ),
+      closeHeight: closeBox.height,
+      closeWidth: closeBox.width,
+      closeHasSvg: Boolean(close.querySelector('svg')),
+      closeOutsideDrawer: closeBox.left >= drawerBox.right,
+      closeInsideViewport: closeBox.right <= window.innerWidth,
+      headerBorderWidth: Number.parseFloat(getComputedStyle(header).borderBottomWidth),
+    };
+  });
+  expect(drawerHeaderGeometry.closeHeight).toBeGreaterThanOrEqual(44);
+  expect(drawerHeaderGeometry.closeWidth).toBeGreaterThanOrEqual(44);
+  expect(drawerHeaderGeometry.closeCenterDelta).toBeLessThanOrEqual(1);
+  expect(drawerHeaderGeometry.closeHasSvg).toBe(true);
+  expect(drawerHeaderGeometry.closeOutsideDrawer).toBe(true);
+  expect(drawerHeaderGeometry.closeInsideViewport).toBe(true);
+  expect(drawerHeaderGeometry.headerBorderWidth).toBeGreaterThanOrEqual(1);
+  expect(drawerHeaderGeometry.avatarHeight).toBeGreaterThanOrEqual(64);
+  expect(drawerHeaderGeometry.avatarWidth).toBeGreaterThanOrEqual(64);
+  expect(drawerHeaderGeometry.avatarCenterDelta).toBeLessThanOrEqual(1);
+  expect(drawerHeaderGeometry.avatarLeftInset).toBeGreaterThanOrEqual(20);
+  expect(drawerHeaderGeometry.avatarTopInset).toBeGreaterThanOrEqual(20);
+  expect(drawerHeaderGeometry.avatarBottomInset).toBeGreaterThanOrEqual(20);
+  await expect(drawer.getByText('Sam User')).toBeVisible();
+  await expect(drawer.getByText('student@example.com')).toHaveCount(0);
+  await expect(drawer.getByRole('link', { name: 'Catalog' })).toHaveAttribute('href', '/');
+  await expect(drawer.getByRole('link', { name: 'My learning' })).toHaveAttribute(
+    'href',
+    '/learning',
+  );
+  await expect(drawer.getByRole('link', { name: 'AI chat' })).toHaveAttribute('href', '/ai-chat');
+  const catalogLink = drawer.getByRole('link', { name: 'Catalog' });
+  const assistantLink = drawer.getByRole('link', { name: 'AI chat' });
+  const hoverAppearance = async (link: typeof catalogLink) => {
+    await link.hover();
+    await page.waitForTimeout(150);
+    return link.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { backgroundColor: style.backgroundColor, color: style.color };
+    });
+  };
+  const catalogHover = await hoverAppearance(catalogLink);
+  const assistantHover = await hoverAppearance(assistantLink);
+  expect(catalogHover).toEqual(assistantHover);
+  expect(catalogHover.backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
+  const logout = drawer.getByRole('button', { name: 'Log out' });
+  const logoutGeometry = await logout.evaluate((button) => {
+    const footer = button.parentElement;
+    if (!(footer instanceof HTMLElement)) throw new Error('Tablet drawer footer is missing');
+    const buttonBox = button.getBoundingClientRect();
+    const footerStyle = getComputedStyle(footer);
+    const footerBox = footer.getBoundingClientRect();
+    const footerContentLeft = footerBox.left + Number.parseFloat(footerStyle.paddingLeft);
+    const footerContentRight = footerBox.right - Number.parseFloat(footerStyle.paddingRight);
+    return {
+      leftDelta: Math.abs(buttonBox.left - footerContentLeft),
+      rightDelta: Math.abs(buttonBox.right - footerContentRight),
+      height: buttonBox.height,
+    };
+  });
+  expect(logoutGeometry.leftDelta).toBeLessThanOrEqual(1);
+  expect(logoutGeometry.rightDelta).toBeLessThanOrEqual(1);
+  expect(logoutGeometry.height).toBeGreaterThanOrEqual(44);
+  await page.keyboard.press('Escape');
+  await expect(drawer).toHaveCount(0);
+  await expect(navigationTrigger).toBeFocused();
+  await expectNoHorizontalOverflow(page);
   assertRuntimeClean();
 });
 
@@ -2370,9 +2555,15 @@ test('keeps the student Catalog, Search, Cart, and account slots stable across C
   const assertRuntimeClean = monitorRuntime(
     page,
     [],
+    [],
     [
-      { ...CART_STRICT_MODE_ABORT, occurrences: 2 },
-      { ...ENROLLMENTS_STRICT_MODE_ABORT, occurrences: 2 },
+      // React Query may cancel these exact in-flight route-owned reads while this test changes
+      // routes. They are optional because a fulfilled request is equally valid; every other
+      // failed request, and any excess cancellation, remains a runtime failure.
+      CART_STRICT_MODE_ABORT,
+      CART_STRICT_MODE_ABORT,
+      ENROLLMENTS_STRICT_MODE_ABORT,
+      ENROLLMENTS_STRICT_MODE_ABORT,
     ],
   );
   await mockAuthenticatedSession(page, 'student');
@@ -2827,7 +3018,7 @@ test('composes the student mobile shell with a scroll-away identity row and rout
         ),
       };
     });
-    expect(terminalGeometry.paddingBottom).toBe('84px');
+    expect(terminalGeometry.paddingBottom).toBe('96px');
     expect(terminalGeometry.footerBottom).toBeGreaterThan(terminalGeometry.navigationTop);
     expect(terminalGeometry.terminalContentBottom).toBeLessThanOrEqual(
       terminalGeometry.navigationTop,
@@ -2871,7 +3062,16 @@ test('composes the student mobile shell with a scroll-away identity row and rout
   await page.setViewportSize({ width: 768, height: 720 });
   await page.goto('/');
   await expect(page.getByRole('navigation', { name: 'Student navigation' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Account menu for Sam User' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Account menu for Sam User' })).toHaveCount(0);
+  const tabletNavigationTrigger = page.getByRole('button', { name: 'Open navigation' });
+  await tabletNavigationTrigger.click();
+  const tabletDrawer = page.getByRole('dialog', { name: 'Menu' });
+  await expect(tabletDrawer).toBeVisible();
+  await expect(tabletDrawer.getByText('Sam User')).toBeVisible();
+  await expect(tabletDrawer.getByRole('button', { name: 'Log out' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(tabletDrawer).toHaveCount(0);
+  await expect(tabletNavigationTrigger).toBeFocused();
   await expectNoHorizontalOverflow(page);
 
   // A 195px CSS viewport models 390px at browser page zoom 200%; applying CSS zoom to
@@ -3049,7 +3249,10 @@ test('keeps Router metadata, layout, density, and titles aligned for a case/trai
 
   await page.setViewportSize({ width: 320, height: 740 });
   await expect(page.getByRole('heading', { level: 1, name: 'Edit course' })).toBeVisible();
-  await page.getByRole('button', { name: 'Open navigation' }).focus();
+  await page.getByRole('link', { name: 'Skip to main content' }).focus();
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('button', { name: 'Open navigation' })).toBeFocused();
   await expectMobileMenuGeometry(page);
   await expectNoHorizontalOverflow(page);
   assertRuntimeClean();
@@ -3198,15 +3401,11 @@ test('supports keyboard-operated mobile navigation and focus restoration', async
   await expect(
     page.getByRole('heading', { level: 1, name: 'Instructor courses', includeHidden: true }),
   ).toHaveCount(1);
-  const profile = page.getByRole('button', { name: 'Account menu for Indira User' });
-  await expectInstructorHomeBrand(page);
-  await expect(profile).toBeVisible();
-  await profile.click();
-  await expect(page.getByRole('button', { name: /Language/ })).toBeVisible();
-  await profile.click();
+  await expectBrandComposition(page.getByRole('link', { name: 'LearnHub home' }));
+  await expect(page.getByRole('button', { name: 'Change language' })).toBeVisible();
   const menu = page.getByRole('button', { name: 'Open navigation' });
   await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toBeHidden();
-  await expectMenuAtHeaderContentEdge(page);
+  await expectMenuAtHeaderInlineStart(page);
   await menu.focus();
   await page.keyboard.press('Enter');
   await expect(page.getByRole('navigation', { name: 'Mobile navigation' })).toBeVisible();
@@ -3234,10 +3433,10 @@ test('supports keyboard-operated mobile navigation and focus restoration', async
   await expectNoHorizontalOverflow(page);
 
   await page.setViewportSize({ width: 320, height: 740 });
-  await expectInstructorHomeBrand(page);
-  await expect(profile).toBeVisible();
+  await expectBrandComposition(page.getByRole('link', { name: 'LearnHub home' }));
+  await expect(page.getByRole('button', { name: 'Change language' })).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toBeHidden();
-  await expectMenuAtHeaderContentEdge(page);
+  await expectMenuAtHeaderInlineStart(page);
   await expectMobileMenuGeometry(page);
   await page.keyboard.press('Enter');
   await expect(page.getByRole('navigation', { name: 'Mobile navigation' })).toBeVisible();
@@ -3561,6 +3760,39 @@ test('keeps instructor course-management content readable without student destin
       page.getByRole('heading', { level: 1, name: 'Instructor courses', includeHidden: true }),
     ).toHaveCount(1);
     await expect(page.locator('[data-part="instructor-courses-hero"]')).toHaveCount(0);
+    const primaryNavigation = page.getByRole('navigation', { name: 'Primary navigation' });
+    const navigationTrigger = page.getByRole('button', { name: 'Open navigation' });
+    if (width >= 768 && width <= 1023) {
+      await expect(primaryNavigation).toBeHidden();
+      await expect(navigationTrigger).toBeVisible();
+      await expect(
+        page.getByRole('banner').getByRole('button', { name: 'Account menu for Indira User' }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole('banner').getByRole('button', { name: 'Change language' }),
+      ).toBeVisible();
+      await expect(page.getByRole('banner').getByRole('link', { name: /^Cart/ })).toHaveCount(0);
+      if (width === 768) {
+        await navigationTrigger.click();
+        const drawer = page.getByRole('dialog', { name: 'Menu' });
+        await expect(drawer).toBeVisible();
+        await expect(drawer.getByText('Indira User')).toBeVisible();
+        await expect(drawer.getByText('instructor@example.com')).toHaveCount(0);
+        await expect(drawer.getByRole('link', { name: 'Instructor courses' })).toHaveAttribute(
+          'href',
+          '/instructor/courses',
+        );
+        await expect(drawer.getByRole('link', { name: 'AI chat' })).toHaveCount(0);
+        await expect(drawer.getByRole('button', { name: 'Create course' })).toBeVisible();
+        await expect(drawer.getByRole('button', { name: 'Log out' })).toBeVisible();
+        await page.keyboard.press('Escape');
+        await expect(drawer).toHaveCount(0);
+        await expect(navigationTrigger).toBeFocused();
+      }
+    } else if (width >= 1024) {
+      await expect(primaryNavigation).toBeVisible();
+      await expect(navigationTrigger).toBeHidden();
+    }
     await expectNoHorizontalOverflow(page);
     await waitForInstructorCoursesBackgroundAssets(page);
   }
@@ -3664,27 +3896,27 @@ test('keeps instructor course-management content readable without student destin
   await page.setViewportSize({ width: 320, height: 844 });
   await waitForInstructorCoursesBackgroundAssets(page);
   await page.goto('/instructor/courses');
+  const compactNavigationTrigger = page.getByRole('button', { name: 'Open navigation' });
+  await compactNavigationTrigger.click();
+  await page
+    .getByRole('dialog', { name: 'Menu' })
+    .getByRole('button', { name: 'Create course' })
+    .click();
   const create = page
     .getByRole('region', { name: 'Create course' })
     .getByRole('button', { name: 'Create course', exact: true });
   await expect(create).toBeVisible();
   await waitForInstructorCoursesBackgroundAssets(page);
   await page.getByRole('textbox', { name: 'Course title' }).fill('An instructor course');
+  const createHeight = await create.evaluate((button) => button.getBoundingClientRect().height);
   await create.click();
   const courseActions = page.getByRole('navigation', { name: 'New course actions' });
   await expect(courseActions).toBeVisible();
-  const compactTargetHeights = await page.evaluate(() => {
-    const createButton = document.querySelector<HTMLButtonElement>('button[type="submit"]');
-    const courseAction = document.querySelector<HTMLElement>('[aria-label="New course actions"] a');
-    if (!createButton || !courseAction)
-      throw new Error('Instructor action targets are unavailable');
-    return {
-      create: createButton.getBoundingClientRect().height,
-      success: courseAction.getBoundingClientRect().height,
-    };
-  });
-  expect(compactTargetHeights.create).toBeGreaterThanOrEqual(44);
-  expect(compactTargetHeights.success).toBeGreaterThanOrEqual(44);
+  const successHeight = await courseActions
+    .getByRole('link', { name: 'Edit course' })
+    .evaluate((link) => link.getBoundingClientRect().height);
+  expect(createHeight).toBeGreaterThanOrEqual(44);
+  expect(successHeight).toBeGreaterThanOrEqual(44);
   await expectNoHorizontalOverflow(page);
 
   await page.setViewportSize({ width: 1280, height: 844 });

@@ -46,6 +46,26 @@ interface Targets {
   readonly registryPath: string;
 }
 
+interface MutableReviewHistoryEvent {
+  readonly from?: string;
+  readonly previousCandidate?: string;
+  readonly reviewRequest?: { readonly taskId?: string };
+  readonly to?: string;
+  readonly type: string;
+}
+
+interface MutableLocaleCandidateFixture {
+  approvalAuthority: unknown;
+  approvalRecordedAt: string | null;
+  candidate: string;
+  history: MutableReviewHistoryEvent[];
+  requestedAt: string | null;
+  reviewedAt: string | null;
+  reviewerId: string | null;
+  status: string;
+  verdict: string | null;
+}
+
 type ReviewRequestFixtureState = 'draft' | 'requested';
 
 const temporaryDirectories: string[] = [];
@@ -71,6 +91,8 @@ function prepareReviewRequestFixture(
       const terminal = candidate.history[candidate.history.length - 1];
       if (
         terminal?.type !== 'transition' ||
+        !('from' in terminal) ||
+        !('to' in terminal) ||
         terminal.from !== 'draft' ||
         terminal.to !== 'review_requested'
       )
@@ -81,6 +103,8 @@ function prepareReviewRequestFixture(
         candidate.history = candidate.history.slice(0, -1);
       } else {
         candidate.requestedAt = REQUESTED_AT;
+        if (!('reviewRequest' in terminal))
+          throw new Error(`review-request fixture boundary has no request: ${id}/${locale}`);
         terminal.reviewRequest = exactReviewRequestBoundary();
       }
     }
@@ -127,10 +151,46 @@ function engineReviewRequest() {
   };
 }
 
+function restoreLegacyDraft(unit: (typeof draft37Registry.units)[number]) {
+  unit.migrationProvenance.ownerTasks = unit.migrationProvenance.ownerTasks.filter(
+    (ownerTask) => ownerTask !== 'FE-068',
+  );
+  for (const locale of ['ru', 'uz'] as const) {
+    const candidate = unit.locales[locale] as unknown as MutableLocaleCandidateFixture;
+    let requestIndex = -1;
+    for (let index = candidate.history.length - 1; index >= 0; index -= 1) {
+      const event = candidate.history[index];
+      if (
+        event.type === 'transition' &&
+        event.from === 'draft' &&
+        event.to === 'review_requested' &&
+        event.reviewRequest?.taskId === 'FE-068'
+      ) {
+        requestIndex = index;
+        break;
+      }
+    }
+    if (requestIndex < 0) continue;
+    const request = candidate.history[requestIndex];
+    if (!request?.previousCandidate)
+      throw new Error(`FE-068 review request lacks its previous candidate: ${unit.id}/${locale}`);
+    candidate.candidate = request.previousCandidate;
+    candidate.status = 'draft';
+    candidate.reviewerId = null;
+    candidate.verdict = null;
+    candidate.requestedAt = null;
+    candidate.reviewedAt = null;
+    candidate.approvalRecordedAt = null;
+    candidate.approvalAuthority = null;
+    candidate.history = candidate.history.slice(0, requestIndex);
+  }
+}
+
 function historicalSuppliedArtifactLegacy() {
   const corpus = structuredClone(draft37Registry);
   const unit = corpus.units.find(({ id }) => id === 'MLUX-C0001');
   if (!unit) throw new Error('canonical historical legacy fixture unit is missing');
+  restoreLegacyDraft(unit);
   const requested = requestLocaleCandidateReview(unit.locales.ru, engineReviewRequest());
   const approvalRecordedAt = '2026-08-29T12:35:56.789Z';
   const legacy = {
@@ -378,6 +438,59 @@ describe('public review-request transition', () => {
     expect(await readPair(targets)).toEqual(requestedPair);
   });
 
+  it('adopts a clean legacy draft only through the explicit review-request option', async () => {
+    const targets = await createTargets();
+    const adoption = {
+      taskId: 'FE-068',
+      locales: ['uz'],
+      unitIds: ['MLUX-C0003'],
+      requestedAt: REQUESTED_AT,
+      adoptLegacyOwners: true,
+    };
+    const idsPath = join(targets.directory, 'legacy-unit-ids.json');
+    await writeFile(idsPath, `${JSON.stringify(adoption.unitIds)}\n`, 'utf8');
+
+    const { stdout } = await runProcess(process.execPath, [
+      resolve('scripts/localization/review-request.mjs'),
+      targets.registryPath,
+      targets.outputPath,
+      adoption.taskId,
+      adoption.locales.join(','),
+      idsPath,
+      adoption.requestedAt,
+      '--adopt-legacy',
+    ]);
+    expect(JSON.parse(stdout)).toEqual({
+      requestedCount: 1,
+      replayedCount: 0,
+      wrote: true,
+    });
+
+    const corpus = JSON.parse(await readFile(targets.registryPath, 'utf8'));
+    const unit = corpus.units.find(({ id }: { readonly id: string }) => id === 'MLUX-C0003');
+    expect(unit.migrationProvenance.ownerTasks).toEqual(['MLUX-002', 'MLUX-004', 'FE-068']);
+    expect(unit.locales.uz).toMatchObject({
+      status: 'review_requested',
+      requestedAt: REQUESTED_AT,
+    });
+    expect(unit.locales.uz.history.at(-1).reviewRequest).toEqual({
+      taskId: 'FE-068',
+      locales: ['uz'],
+      unitIds: ['MLUX-C0003'],
+      requestedAt: REQUESTED_AT,
+    });
+
+    await expect(
+      requestLocaleReviews({
+        ...adoption,
+        taskId: 'FE-069',
+        locales: ['ru'],
+        requestedAt: '2026-08-29T12:34:56.790Z',
+        ...targets,
+      }),
+    ).rejects.toThrow(/another post-migration task/);
+  });
+
   it('fails closed for malformed inputs, aliases, generated drift, and unowned/non-draft candidates', async () => {
     const targets = await createTargets();
     const before = await readPair(targets);
@@ -468,6 +581,18 @@ describe('public review-request transition', () => {
     ).rejects.toThrow();
     await expect(
       runProcess(process.execPath, [resolve('scripts/localization/review-request.mjs')]),
+    ).rejects.toThrow(/usage: review-request/);
+    await expect(
+      runProcess(process.execPath, [
+        resolve('scripts/localization/review-request.mjs'),
+        targets.registryPath,
+        targets.outputPath,
+        TASK_ID,
+        'ru,uz',
+        idsPath,
+        REQUESTED_AT,
+        '',
+      ]),
     ).rejects.toThrow(/usage: review-request/);
     expect(await readPair(targets)).toEqual(before);
   });

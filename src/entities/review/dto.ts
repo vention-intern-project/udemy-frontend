@@ -1,5 +1,7 @@
 import type { PaginationDto } from '@shared/api';
 
+export const REVIEW_COMMENT_MAX_LENGTH = 1000;
+
 export interface ReviewDto {
   id: number;
   course_id: number;

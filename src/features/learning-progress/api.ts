@@ -139,7 +139,7 @@ export async function requestLessonOutline(
         throw new TypeError('Invalid lesson outline cursor');
       if (dto.pages > MAX_OUTLINE_PAGES)
         throw new TypeError('Lesson outline exceeds the supported workspace size');
-      const result = mapLessonListDto(dto);
+      const result = mapLessonListDto(dto, courseId);
       return {
         items: result.items,
         page: dto.page,

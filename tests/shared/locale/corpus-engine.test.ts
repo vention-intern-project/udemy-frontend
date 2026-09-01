@@ -23,12 +23,8 @@ import type {
 
 import draft37Registry from '../../../localization/corpus/registry.json';
 
-import { CRF_002_UNIT_IDS } from './fixtures/crf002-unit-ids';
-
-const RECORDED_DRAFT37_UNIT_COUNT = 545;
-const RECORDED_DRAFT37_OCCURRENCE_COUNT = 768;
-const CURRENT_CORPUS_UNIT_COUNT = RECORDED_DRAFT37_UNIT_COUNT + CRF_002_UNIT_IDS.length;
-const CURRENT_CORPUS_OCCURRENCE_COUNT = RECORDED_DRAFT37_OCCURRENCE_COUNT + CRF_002_UNIT_IDS.length;
+const CURRENT_CORPUS_UNIT_COUNT = 584;
+const CURRENT_CORPUS_OCCURRENCE_COUNT = 807;
 
 const {
   SUPPLIED_REVIEW_ARTIFACT,
@@ -2641,7 +2637,7 @@ describe('canonical localization corpus engine', () => {
   it.each([
     ['src/pages/course-detail-page', 'CourseOutline.tsx'],
     ['src/pages/instructor-course-editor-page', 'InstructorCourseEditorPage.tsx'],
-    ['src/widgets/enrollment-progress-panel', 'EnrollmentProgressPanel.tsx'],
+    ['src/pages/instructor-lesson-editor-page', 'InstructorLessonEditorPage.tsx'],
   ])(
     'detects the established direct indexed-map translation consumer in %s',
     async (_sourceRoot, filename) => {
@@ -2671,7 +2667,7 @@ describe('canonical localization corpus engine', () => {
       expect.arrayContaining([
         'MLUX-C0205: retired unit has source consumer CourseOutline.tsx',
         'MLUX-C0205: retired unit has source consumer InstructorCourseEditorPage.tsx',
-        'MLUX-C0205: retired unit has source consumer EnrollmentProgressPanel.tsx',
+        'MLUX-C0205: retired unit has source consumer InstructorLessonEditorPage.tsx',
       ]),
     );
   });
@@ -3634,13 +3630,13 @@ describe('canonical localization corpus engine', () => {
     expect(await retiredConsumerViolations(corpus, 'src')).toEqual([]);
     expect(performance.now() - activeStartedAt).toBeLessThan(10_000);
     expect(corpus.consumerGrammar.version).toBe(1);
-    expect(corpus.consumerGrammar.translatorWrappers).toHaveLength(15);
+    expect(corpus.consumerGrammar.translatorWrappers).toHaveLength(14);
     expect(corpus.consumerGrammar.translatorForwarders).toHaveLength(2);
     expect(corpus.consumerGrammar.translatorDependencies).toHaveLength(1);
     expect(corpus.consumerGrammar.dynamicKeyFamilies).toHaveLength(23);
     expect(
       corpus.consumerGrammar.dynamicKeyFamilies.flatMap((family) => family.consumers),
-    ).toHaveLength(49);
+    ).toHaveLength(48);
     for (const unit of corpus.units) {
       unit.unitLifecycle = 'retired';
       unit.occurrences = [];

@@ -4,6 +4,7 @@ import {
   createCourseReview,
   deleteCourseReview,
   normalizeReviewPage,
+  requestCourseRatingSummary,
   requestCourseReviews,
   requestCurrentReview,
   updateCourseReview,
@@ -33,6 +34,44 @@ const list = {
 function sessionFor(response: unknown) {
   const request = vi.fn(async <TResponse, TBody>(options: ApiRequestOptions<TBody, TResponse>) => {
     if (!options.decode) throw new Error('Expected decoder');
+    return options.decode(response);
+  });
+  return {
+    request,
+    session: {
+      requestPublic: request,
+      requestOptional: request,
+      requestRequired: request,
+    } as unknown as SessionContextValue,
+  };
+}
+
+function reviewPage(page: number, total: number, ratingOffset = 0) {
+  const pages = Math.ceil(total / 20);
+  const start = (page - 1) * 20;
+  const itemCount = Math.min(20, total - start);
+  return {
+    items: Array.from({ length: itemCount }, (_, index) => ({
+      ...review,
+      id: start + index + 1,
+      rating: ((start + index + ratingOffset) % 5) + 1,
+    })),
+    page,
+    page_size: 20,
+    total,
+    pages,
+    has_next: page < pages,
+    has_previous: page > 1,
+  };
+}
+
+function sessionForPages(pages: ReadonlyMap<number, unknown>) {
+  const request = vi.fn(async <TResponse, TBody>(options: ApiRequestOptions<TBody, TResponse>) => {
+    if (!options.decode) throw new Error('Expected decoder');
+    const page = options.query?.page;
+    if (typeof page !== 'number') throw new Error('Expected page query');
+    const response = pages.get(page);
+    if (!response) throw new Error(`Missing page ${page}`);
     return options.decode(response);
   });
   return {
@@ -96,5 +135,62 @@ describe('course review API', () => {
         dedupeKey: 'course:7:review:update',
       }),
     );
+  });
+
+  it('collects all seven pages before deriving a 124-review rating summary', async () => {
+    const pages = new Map<number, unknown>();
+    for (let page = 1; page <= 7; page += 1) pages.set(page, reviewPage(page, 124));
+    const requests = sessionForPages(pages);
+
+    const summary = await requestCourseRatingSummary(
+      requests.session,
+      7,
+      new AbortController().signal,
+    );
+
+    const ratings = Array.from({ length: 124 }, (_, index) => (index % 5) + 1);
+    expect(summary).toEqual({
+      reviewCount: 124,
+      averageRating: ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length,
+    });
+    expect(requests.request).toHaveBeenCalledTimes(7);
+    expect(requests.request.mock.calls.map(([options]) => options.query?.page)).toEqual([
+      1, 2, 3, 4, 5, 6, 7,
+    ]);
+  });
+
+  it('rejects the complete rating summary when one review belongs to another course', async () => {
+    const wrongCoursePage = reviewPage(1, 2);
+    wrongCoursePage.items[1] = { ...wrongCoursePage.items[1], course_id: 8 };
+    const requests = sessionForPages(new Map([[1, wrongCoursePage]]));
+
+    await expect(
+      requestCourseRatingSummary(requests.session, 7, new AbortController().signal),
+    ).rejects.toThrow('Server returned an invalid review response');
+    expect(requests.request).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns a proven empty summary but rejects duplicate or over-bound collections', async () => {
+    const empty = sessionForPages(new Map([[1, reviewPage(1, 0)]]));
+    await expect(
+      requestCourseRatingSummary(empty.session, 7, new AbortController().signal),
+    ).resolves.toEqual({ reviewCount: 0, averageRating: null });
+
+    const duplicateSecondPage = reviewPage(2, 21);
+    duplicateSecondPage.items[0] = { ...duplicateSecondPage.items[0], id: 1 };
+    const duplicate = sessionForPages(
+      new Map([
+        [1, reviewPage(1, 21)],
+        [2, duplicateSecondPage],
+      ]),
+    );
+    await expect(
+      requestCourseRatingSummary(duplicate.session, 7, new AbortController().signal),
+    ).rejects.toThrow('Invalid course rating summary pagination');
+
+    const overBound = sessionForPages(new Map([[1, reviewPage(1, 201)]]));
+    await expect(
+      requestCourseRatingSummary(overBound.session, 7, new AbortController().signal),
+    ).rejects.toThrow('Invalid course rating summary pagination');
   });
 });

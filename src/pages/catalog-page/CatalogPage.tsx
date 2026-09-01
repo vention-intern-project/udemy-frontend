@@ -13,6 +13,7 @@ import {
 import { useSession } from '@features/auth-session';
 import { CatalogFilterBar } from '@widgets/catalog-filter-bar';
 import { Button, Notice, Pagination, Skeleton, VisuallyHidden } from '@shared/ui/primitives';
+import type { ExclusiveDisclosureControl } from '@shared/types';
 
 import styles from './CatalogPage.module.css';
 import { CourseCard } from './CourseCard';
@@ -21,6 +22,7 @@ import { useCatalogCourseActions } from './useCatalogCourseActions';
 
 type CourseDisclosureId = number;
 type RefreshAnnouncementKey = 'updatingCourseResults' | 'courseResultsUpdated';
+type ToolbarDisclosure = 'price' | 'sort';
 
 type DisclosureDismissOptions = {
   returnFocus?: boolean;
@@ -38,13 +40,15 @@ interface CatalogPaginationSnapshot {
 }
 
 function resolveBrowserSelectedFocusTarget(target: HTMLElement) {
-  if (target.isConnected) return target;
+  if (target.closest('#catalog-price-disclosure'))
+    return document.querySelector<HTMLElement>('[data-part="catalog-price-trigger"]');
   if (
     target instanceof HTMLInputElement &&
     (target.name === 'min_price' || target.name === 'max_price')
   ) {
-    return document.querySelector<HTMLElement>(`input[name="${target.name}"]`);
+    return document.querySelector<HTMLElement>('[data-part="catalog-price-trigger"]');
   }
+  if (target.isConnected) return target;
   if (
     target.dataset.part === 'catalog-sort-trigger' ||
     target.dataset.part === 'catalog-sort-listbox'
@@ -60,6 +64,21 @@ function getActiveCatalogSortListbox() {
     activeElement.dataset.part === 'catalog-sort-listbox'
     ? activeElement
     : null;
+}
+
+function getActiveCatalogPriceField() {
+  const activeElement = document.activeElement;
+  return activeElement instanceof HTMLInputElement &&
+    (activeElement.name === 'min_price' || activeElement.name === 'max_price')
+    ? activeElement
+    : null;
+}
+
+function getActiveCatalogPriceDisclosureControl() {
+  const activeElement = document.activeElement;
+  const isPriceDisclosureControl =
+    activeElement instanceof HTMLElement && activeElement.closest('#catalog-price-disclosure');
+  return isPriceDisclosureControl ? activeElement : null;
 }
 
 function restoreBrowserSelectedFocus(target: HTMLElement) {
@@ -108,6 +127,17 @@ export function CatalogPage() {
   const [lastKnownPagination, setLastKnownPagination] = useState<CatalogPaginationSnapshot | null>(
     null,
   );
+  const [activeToolbarDisclosure, setActiveToolbarDisclosure] = useState<ToolbarDisclosure | null>(
+    null,
+  );
+  const priceDisclosureControl: ExclusiveDisclosureControl = {
+    closeRequested: activeToolbarDisclosure === 'sort',
+    requestOpen: () => setActiveToolbarDisclosure('price'),
+  };
+  const sortDisclosureControl: ExclusiveDisclosureControl = {
+    closeRequested: activeToolbarDisclosure === 'price',
+    requestOpen: () => setActiveToolbarDisclosure('sort'),
+  };
   const search = searchParams.toString();
   const query = useMemo(() => parseCatalogQuery(new URLSearchParams(search)), [search]);
   const queryKey = useMemo(() => serializeCatalogQuery(query), [query]);
@@ -143,7 +173,11 @@ export function CatalogPage() {
         setSearchParams(serializeCatalogQuery(next));
       };
       if (!blurSource) {
-        commitNavigation(getActiveCatalogSortListbox());
+        commitNavigation(
+          getActiveCatalogSortListbox() ??
+            getActiveCatalogPriceField() ??
+            getActiveCatalogPriceDisclosureControl(),
+        );
         return;
       }
       globalThis.queueMicrotask(() => {
@@ -248,6 +282,9 @@ export function CatalogPage() {
   const isChangedCriteriaLoading =
     isInitialLoading && lastKnownResultTotal?.presentationKey !== presentationKey;
   const visibleResultsTotal = currentResults?.total ?? retainedResultsTotal;
+  const displayedResultsTotal =
+    visibleResultsTotal ??
+    (isChangedCriteriaLoading ? (lastKnownResultTotal?.total ?? null) : null);
   const retainedPagination =
     lastKnownPagination?.criteriaKey === criteriaKey ? lastKnownPagination : null;
   const visiblePagination = currentResults
@@ -267,13 +304,28 @@ export function CatalogPage() {
       : null;
   const courseActions = useCatalogCourseActions(results?.items ?? []);
   const localizedResultCount =
-    visibleResultsTotal === null ? null : t('catalog:resultCount', { count: visibleResultsTotal });
-  const resultCountText = visibleResultsTotal === null ? null : String(visibleResultsTotal);
+    displayedResultsTotal === null
+      ? null
+      : t('catalog:resultCount', { count: displayedResultsTotal });
+  const resultCountText = displayedResultsTotal === null ? null : String(displayedResultsTotal);
   const resultCountSuffix =
     localizedResultCount && resultCountText && localizedResultCount.startsWith(resultCountText)
       ? localizedResultCount.slice(resultCountText.length)
       : localizedResultCount;
+  const loadingCourseResultsLabel = t('catalog:loadingCourseResults', {
+    defaultValue: 'Loading course results…',
+  });
   const showHeroFuture = i18n.resolvedLanguage !== 'uz';
+  const heroTitleLead = t('catalog:masterTheSkillsShapingThe');
+  const heroTitleFuture = t('catalog:future');
+  const russianHeroPhraseStart =
+    i18n.resolvedLanguage === 'ru' ? heroTitleLead.lastIndexOf(' ') : -1;
+  const heroTitlePrefix =
+    russianHeroPhraseStart > 0 ? heroTitleLead.slice(0, russianHeroPhraseStart) : heroTitleLead;
+  const heroTitleContinuation =
+    russianHeroPhraseStart > 0
+      ? `${heroTitleLead.slice(russianHeroPhraseStart + 1)} ${heroTitleFuture}`
+      : heroTitleFuture;
 
   useLayoutEffect(() => {
     if (!currentResults) return;
@@ -331,11 +383,11 @@ export function CatalogPage() {
       <div className={styles.hero} data-part="catalog-hero">
         <div className={styles.heroContent}>
           <h1 id="catalog-page-title">
-            {t('catalog:masterTheSkillsShapingThe')}
+            {heroTitlePrefix}
             {showHeroFuture ? (
               <>
                 {' '}
-                <span className={styles.headingBreak}>{t('catalog:future')}</span>
+                <span className={styles.headingBreak}>{heroTitleContinuation}</span>
               </>
             ) : null}
           </h1>
@@ -375,15 +427,18 @@ export function CatalogPage() {
                       })
                     : null}
                 </VisuallyHidden>
-                <h2 id="catalog-results-title">
-                  {isChangedCriteriaLoading ? (
-                    t('catalog:loadingCourseResults', { defaultValue: 'Loading course results…' })
-                  ) : visibleResultsTotal !== null ? (
+                <h2
+                  id="catalog-results-title"
+                  aria-label={isChangedCriteriaLoading ? loadingCourseResultsLabel : undefined}
+                >
+                  {displayedResultsTotal !== null ? (
                     <>
                       <span>{t('catalog:found')} </span>
-                      <strong className={styles.resultsTotal}>{visibleResultsTotal}</strong>
+                      <strong className={styles.resultsTotal}>{displayedResultsTotal}</strong>
                       <span className={styles.resultsSuffix}>{resultCountSuffix}</span>
                     </>
+                  ) : isChangedCriteriaLoading ? (
+                    loadingCourseResultsLabel
                   ) : (
                     t('catalog:courseResultsUnavailable', {
                       defaultValue: 'Course results unavailable.',
@@ -391,13 +446,18 @@ export function CatalogPage() {
                   )}
                 </h2>
                 <div className={styles.toolbarControls} data-part="catalog-toolbar-controls">
-                  <CatalogFilterBar query={query} onApply={navigate} />
+                  <CatalogFilterBar
+                    query={query}
+                    onApply={navigate}
+                    exclusiveDisclosure={priceDisclosureControl}
+                  />
                   <div className={styles.sortToolbar} data-part="catalog-sort-toolbar">
                     <div className={styles.sortField}>
                       <SortControl
                         value={query.sort}
                         onChange={(sort) => navigate({ ...query, sort, page: 1 })}
                         onPointerOptionCommit={suppressTransientHoverAfterPointerSort}
+                        exclusiveDisclosure={sortDisclosureControl}
                       />
                     </div>
                   </div>

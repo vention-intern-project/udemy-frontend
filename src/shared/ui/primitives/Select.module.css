@@ -1,66 +1,138 @@
+.root {
+  position: relative;
+  min-width: 0;
+}
+
 .control {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   box-sizing: border-box;
   width: 100%;
   min-height: var(--control-height-md);
-  padding: var(--spacing-2) var(--input-padding-h);
+  padding: var(--spacing-2) var(--spacing-3) var(--spacing-2) var(--input-padding-h);
   color: var(--text-primary);
   background: var(--color-surface);
   border: var(--border-width) solid var(--border-default);
   border-radius: var(--radius-md);
   font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.control:hover:not(:disabled) {
+  background: var(--color-canvas);
 }
 
 .control[aria-invalid='true'] {
   border-color: var(--feedback-error);
 }
+
 .control:disabled {
   color: var(--state-disabled-text);
   background: var(--state-disabled-bg);
   cursor: not-allowed;
 }
-.control:focus-visible {
+
+.control:focus-visible,
+.rootOpen .control {
+  border-color: var(--action-primary-bg);
   outline: var(--focus-ring-width) solid var(--focus-ring);
   outline-offset: var(--focus-ring-offset);
 }
 
-@supports (appearance: base-select) and selector(::picker(select)) {
-  .control,
-  .control::picker(select) {
-    appearance: base-select;
-  }
+.value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
-  .control::picker-icon {
-    width: 1.25rem;
-    height: 1.25rem;
-    color: var(--border-default);
-    transition:
-      color var(--duration-fast) var(--easing-standard),
-      rotate var(--duration-fast) var(--easing-standard);
-  }
+.chevron {
+  flex: none;
+  color: var(--text-muted);
+  pointer-events: none;
+  transition:
+    color var(--duration-fast) var(--easing-standard),
+    transform var(--duration-fast) var(--easing-standard);
+}
 
-  .control:open::picker-icon {
-    color: var(--text-secondary);
-    rotate: 180deg;
-  }
+.rootOpen .chevron,
+.control:hover:not(:disabled) .chevron,
+.control:focus-visible .chevron {
+  color: var(--action-primary-bg);
+}
 
-  .control::picker(select) {
-    margin-block-start: var(--spacing-1);
-    padding: var(--spacing-1);
-    background: var(--color-surface-elevated);
-    border: var(--border-width) solid var(--border-default);
-    border-radius: var(--radius-md);
-    box-shadow: var(--shadow-2);
-  }
+.rootOpen .chevron {
+  transform: rotate(180deg);
+}
 
-  .control option {
-    padding: var(--spacing-2) var(--spacing-3);
-    border-radius: var(--radius-sm);
-    color: var(--text-primary);
-    background: var(--color-surface);
-  }
+.listbox {
+  position: absolute;
+  z-index: var(--z-dropdown);
+  top: calc(100% + var(--spacing-2));
+  right: 0;
+  left: 0;
+  display: grid;
+  box-sizing: border-box;
+  max-height: min(15rem, 50vh);
+  padding: var(--spacing-2);
+  overflow-y: auto;
+  color: var(--text-primary);
+  background: var(--color-surface-elevated);
+  border: var(--border-width) solid var(--action-primary-bg);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-2);
+}
 
-  .control option:hover,
-  .control option:focus-visible {
-    background: var(--state-control-highlight);
+.listbox:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  min-width: 0;
+  min-height: var(--control-height-md);
+  padding: var(--spacing-2) var(--spacing-3);
+  color: var(--text-primary);
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.option:hover,
+.optionActive:not([aria-selected='true']) {
+  background: var(--state-control-highlight);
+}
+
+.optionDisabled {
+  color: var(--state-disabled-text);
+  cursor: not-allowed;
+}
+
+.radio {
+  flex: 0 0 1rem;
+  box-sizing: border-box;
+  width: 1rem;
+  height: 1rem;
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-full);
+}
+
+.option[aria-selected='true'] .radio {
+  background: radial-gradient(
+    circle at center,
+    var(--action-primary-bg) 0 3px,
+    var(--color-surface) 3px
+  );
+  border-color: var(--action-primary-bg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chevron {
+    transition: none;
   }
 }

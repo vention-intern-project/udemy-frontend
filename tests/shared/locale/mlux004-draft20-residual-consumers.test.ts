@@ -77,7 +77,9 @@ const DRAFT20_RESIDUAL_CONSUMERS: readonly ResidualConsumerExpectation[] = [
       "t('learning:updatingLessonProgress')",
       "t('a11y:loadingLearningProgress')",
       "t('learning:lessonAvailability'",
-      "t('course:lessonMarker')",
+      "t('learning:videoLessonType')",
+      "t('learning:textLessonType')",
+      "t('learning:pdfLessonType')",
       "t('learning:lessonCount'",
     ],
     residualRawJsx: [
