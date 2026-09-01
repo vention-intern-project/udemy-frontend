@@ -14,6 +14,7 @@ import {
   requestCurrentReview,
   updateCourseReview,
 } from './api';
+import { courseRatingSummaryQueryKey } from './useCourseRatingSummary';
 
 function reviewListQueryKey(courseId: number, page: number) {
   return queryKeys.public.operation('API-037', `course:${courseId}:reviews:${page}`);
@@ -55,6 +56,10 @@ export function useCourseReviews(courseId: number) {
         queryKey: currentReviewQueryKey(subject, courseId),
         exact: true,
       });
+    await queryClient.invalidateQueries({
+      queryKey: courseRatingSummaryQueryKey(courseId),
+      exact: true,
+    });
   };
   const create = useMutation({
     mutationFn: (body: ReviewCreateDto) => createCourseReview(session, courseId, body),

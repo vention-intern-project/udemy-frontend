@@ -1,29 +1,29 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import type { LessonMediaLocator, LessonType } from '@entities/course';
+import type { LessonMediaLocator, LessonSubtitleLocator, LessonType } from '@entities/course';
 import { useSession } from '@features/auth-session';
 import { ApiError } from '@shared/api';
 
-import { requestAuthorizedLessonMedia } from './api';
+import { requestAuthorizedLessonMedia, requestAuthorizedLessonSubtitles } from './api';
 import type { AuthorizedLessonMediaKind, AuthorizedLessonMediaState } from './model';
 
-const VIDEO_CONTENT_TYPES = new Set<string>([
-  'video/mp4',
-  'video/webm',
-  'video/quicktime',
-]);
+const VIDEO_CONTENT_TYPES = new Set<string>(['video/mp4', 'video/webm', 'video/quicktime']);
 
 interface ActiveMediaRequest {
   readonly id: number;
   readonly controller: AbortController;
   objectUrl: string | null;
+  subtitleObjectUrl: string | null;
 }
 
 function mediaKindFor(lessonType: LessonType): AuthorizedLessonMediaKind | null {
   return lessonType === 'video' || lessonType === 'pdf' ? lessonType : null;
 }
 
-function hasSupportedContentType(kind: AuthorizedLessonMediaKind, contentType: string | null): boolean {
+function hasSupportedContentType(
+  kind: AuthorizedLessonMediaKind,
+  contentType: string | null,
+): boolean {
   return kind === 'video'
     ? contentType !== null && VIDEO_CONTENT_TYPES.has(contentType)
     : contentType === 'application/pdf';
@@ -49,6 +49,7 @@ export interface AuthorizedLessonMediaController {
 export function useAuthorizedLessonMedia(
   lessonType: LessonType,
   locator: LessonMediaLocator | null,
+  subtitleLocator: LessonSubtitleLocator | null = null,
 ): AuthorizedLessonMediaController {
   const session = useSession();
   const [state, setState] = useState<AuthorizedLessonMediaState>({ status: 'idle' });
@@ -56,6 +57,9 @@ export function useAuthorizedLessonMedia(
   const nextRequestIdRef = useRef(0);
   const kind = mediaKindFor(lessonType);
   const filename = locator?.filename ?? null;
+  const subtitleCourseId = subtitleLocator?.courseId ?? null;
+  const subtitleLessonId = subtitleLocator?.lessonId ?? null;
+  const subtitlesEnabled = import.meta.env.VITE_LESSON_SUBTITLES_ENABLED === 'true';
 
   const disposeActive = useCallback(() => {
     const active = activeRef.current;
@@ -63,6 +67,7 @@ export function useAuthorizedLessonMedia(
     activeRef.current = null;
     active.controller.abort();
     if (active.objectUrl !== null) URL.revokeObjectURL(active.objectUrl);
+    if (active.subtitleObjectUrl !== null) URL.revokeObjectURL(active.subtitleObjectUrl);
   }, []);
 
   useEffect(() => () => disposeActive(), [disposeActive]);
@@ -70,7 +75,7 @@ export function useAuthorizedLessonMedia(
   useEffect(() => {
     disposeActive();
     setState({ status: 'idle' });
-  }, [disposeActive, filename, kind, session.requestRequired]);
+  }, [disposeActive, filename, kind, session.requestRequired, subtitleCourseId, subtitleLessonId]);
 
   const load = useCallback(() => {
     if (kind === null || locator === null) return;
@@ -80,6 +85,7 @@ export function useAuthorizedLessonMedia(
       id: nextRequestIdRef.current + 1,
       controller: new AbortController(),
       objectUrl: null,
+      subtitleObjectUrl: null,
     };
     nextRequestIdRef.current = active.id;
     activeRef.current = active;
@@ -102,7 +108,35 @@ export function useAuthorizedLessonMedia(
           return;
         }
         active.objectUrl = objectUrl;
-        setState({ status: 'available', objectUrl, kind, presentation: 'loading_metadata' });
+        setState({
+          status: 'available',
+          objectUrl,
+          subtitleObjectUrl: null,
+          kind,
+          presentation: 'loading_metadata',
+        });
+        // Subtitle requests remain opt-in while the API access contract is being completed.
+        if (subtitlesEnabled && subtitleLocator !== null) {
+          void requestAuthorizedLessonSubtitles(session, subtitleLocator, active.controller.signal)
+            .then((subtitleResponse) => {
+              if (activeRef.current !== active || subtitleResponse.contentType !== 'text/vtt')
+                return;
+              const subtitleObjectUrl = URL.createObjectURL(subtitleResponse.blob);
+              if (activeRef.current !== active) {
+                URL.revokeObjectURL(subtitleObjectUrl);
+                return;
+              }
+              active.subtitleObjectUrl = subtitleObjectUrl;
+              setState((current) =>
+                current.status === 'available' &&
+                current.kind === 'video' &&
+                current.objectUrl === objectUrl
+                  ? { ...current, subtitleObjectUrl }
+                  : current,
+              );
+            })
+            .catch(() => undefined);
+        }
       })
       .catch((error: unknown) => {
         if (activeRef.current !== active) return;
@@ -110,16 +144,16 @@ export function useAuthorizedLessonMedia(
         const nextState = failureStateFor(error);
         if (nextState.status !== 'idle') setState(nextState);
       });
-  }, [disposeActive, kind, locator, session]);
+  }, [disposeActive, kind, locator, session, subtitleLocator, subtitlesEnabled]);
 
   const markVideoReady = useCallback((objectUrl: string) => {
     const active = activeRef.current;
     if (active?.objectUrl !== objectUrl) return;
-    setState((current) => current.status === 'available'
-      && current.kind === 'video'
-      && current.objectUrl === objectUrl
-      ? { ...current, presentation: 'ready' }
-      : current);
+    setState((current) =>
+      current.status === 'available' && current.kind === 'video' && current.objectUrl === objectUrl
+        ? { ...current, presentation: 'ready' }
+        : current,
+    );
   }, []);
 
   const reportVideoError = useCallback((objectUrl: string) => {
@@ -127,8 +161,11 @@ export function useAuthorizedLessonMedia(
     if (active?.objectUrl !== objectUrl) return;
     activeRef.current = null;
     active.objectUrl = null;
+    const subtitleObjectUrl = active.subtitleObjectUrl;
+    active.subtitleObjectUrl = null;
     active.controller.abort();
     URL.revokeObjectURL(objectUrl);
+    if (subtitleObjectUrl !== null) URL.revokeObjectURL(subtitleObjectUrl);
     setState({ status: 'error' });
   }, []);
 

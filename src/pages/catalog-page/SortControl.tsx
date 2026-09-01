@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { ArrowDownUp } from 'lucide-react';
+import { ArrowDownUp, ChevronDown } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { CATALOG_SORT_VALUES, type CatalogSort } from '@features/catalog-discovery';
+import type { ExclusiveDisclosureControl } from '@shared/types';
 
 import styles from './SortControl.module.css';
 
@@ -21,9 +22,15 @@ interface SortControlProps {
   value: CatalogSort;
   onChange: (sort: CatalogSort) => void;
   onPointerOptionCommit(clientX: number, clientY: number): void;
+  readonly exclusiveDisclosure?: ExclusiveDisclosureControl;
 }
 
-export function SortControl({ value, onChange, onPointerOptionCommit }: SortControlProps) {
+export function SortControl({
+  value,
+  onChange,
+  onPointerOptionCommit,
+  exclusiveDisclosure,
+}: SortControlProps) {
   const { t } = useTranslation();
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -38,6 +45,9 @@ export function SortControl({ value, onChange, onPointerOptionCommit }: SortCont
     const label = SORT_LABEL[sort];
     return t(label.key, { defaultValue: label.defaultValue });
   };
+  const optionLabels = CATALOG_SORT_VALUES.map(labelFor);
+  const selectedLabel = optionLabels[selectedIndex] ?? labelFor(value);
+  const mobileTriggerLabel = t('catalog:sort', { defaultValue: 'Sort:' }).replace(/:\s*$/u, '');
   const activeOptionId = activeIndex === null ? undefined : `${listboxId}-option-${activeIndex}`;
 
   const setActive = useCallback((index: number | null) => {
@@ -49,7 +59,9 @@ export function SortControl({ value, onChange, onPointerOptionCommit }: SortCont
       focusListboxRef.current = false;
       setOpen(false);
       setActive(null);
-      if (restoreFocus) requestAnimationFrame(() => triggerRef.current?.focus());
+      if (restoreFocus) {
+        requestAnimationFrame(() => triggerRef.current?.focus({ preventScroll: true }));
+      }
     },
     [setActive],
   );
@@ -57,18 +69,22 @@ export function SortControl({ value, onChange, onPointerOptionCommit }: SortCont
     (index = selectedIndex, focusListbox = false) => {
       focusListboxRef.current = focusListbox;
       setActive(index);
+      exclusiveDisclosure?.requestOpen();
       setOpen(true);
     },
-    [selectedIndex, setActive],
+    [exclusiveDisclosure, selectedIndex, setActive],
   );
 
   useEffect(() => {
     close();
   }, [close, value]);
+  useEffect(() => {
+    if (exclusiveDisclosure?.closeRequested) close();
+  }, [close, exclusiveDisclosure?.closeRequested]);
   const setListboxRef = useCallback((element: HTMLDivElement | null) => {
     if (element && focusListboxRef.current) {
       focusListboxRef.current = false;
-      element.focus();
+      element.focus({ preventScroll: true });
     }
   }, []);
   useEffect(() => {
@@ -121,8 +137,8 @@ export function SortControl({ value, onChange, onPointerOptionCommit }: SortCont
         data-part="catalog-sort-trigger"
         type="button"
         aria-label={t('catalog:sortBy', {
-          defaultValue: `Sort by: ${labelFor(value)}`,
-          sortLabel: labelFor(value),
+          defaultValue: `Sort by: ${selectedLabel}`,
+          sortLabel: selectedLabel,
         })}
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -151,8 +167,23 @@ export function SortControl({ value, onChange, onPointerOptionCommit }: SortCont
         }}
       >
         <ArrowDownUp className={styles.sortIcon} aria-hidden="true" focusable="false" />
-        <span>{labelFor(value)}</span>
-        <span className={styles.chevron} data-part="catalog-sort-chevron" aria-hidden="true" />
+        <span className={styles.mobileTriggerLabel}>{mobileTriggerLabel}</span>
+        <span className={styles.triggerLabel}>
+          <span className={styles.triggerLabelCurrent}>{selectedLabel}</span>
+          <span className={styles.triggerLabelSizer} aria-hidden="true">
+            {CATALOG_SORT_VALUES.map((sort, index) => (
+              <span key={sort}>{optionLabels[index]}</span>
+            ))}
+          </span>
+        </span>
+        <ChevronDown
+          className={styles.chevron}
+          data-part="catalog-sort-chevron"
+          aria-hidden="true"
+          focusable="false"
+          size={16}
+          strokeWidth={1.75}
+        />
       </button>
       {open ? (
         <div
@@ -207,7 +238,7 @@ export function SortControl({ value, onChange, onPointerOptionCommit }: SortCont
               onClick={(event) => select(index, event.detail !== 0, event.clientX, event.clientY)}
             >
               <span className={styles.radio} data-part="catalog-sort-radio" aria-hidden="true" />
-              {labelFor(sort)}
+              {optionLabels[index]}
             </div>
           ))}
         </div>

@@ -34,7 +34,6 @@ export type CatalogCourseActionLabelKey =
   | CourseActionTranslationKey
   | 'catalog:adding'
   | 'catalog:enrolled'
-  | 'catalog:enrollForFree'
   | 'catalog:enrolling'
   | 'catalog:notPublished'
   | 'catalog:removing'
@@ -59,6 +58,7 @@ export type CatalogCourseActionPresentation =
   | 'enroll-free'
   | 'enrolled'
   | 'neutral'
+  | 'payment-processing'
   | 'remove';
 
 export interface CatalogCourseActionState {
@@ -127,7 +127,7 @@ function queryPreflight(
   if (cartError || enrollmentsError) return 'unavailable';
   const enrollmentPreflight = enrollmentCourseActionPreflight(enrollments, courseId);
   if (enrollmentPreflight === 'active-entitlement') return 'already-enrolled';
-  if (enrollmentPreflight === 'pending-protected') return 'unavailable';
+  if (enrollmentPreflight === 'pending-protected') return 'payment-pending';
   if (cartCourseIds.includes(courseId)) return 'already-in-cart';
   if (enrollmentPreflight === 'cancelled-recovery' && /^0(?:\.0+)?$/.test(coursePrice))
     return 'unavailable';
@@ -408,7 +408,7 @@ export function useCatalogCourseActions(courses: readonly CatalogCourse[]) {
           kind: 'link',
           labelKey:
             primaryAction.labelKey === 'course:enrollForFree'
-              ? 'catalog:enrollForFree'
+              ? 'catalog:enrollFree'
               : primaryAction.labelKey,
           to: primaryAction.to,
           disabled: false,
@@ -472,6 +472,18 @@ export function useCatalogCourseActions(courses: readonly CatalogCourse[]) {
           feedback,
           inCart: false,
           presentation: 'enrolled',
+        };
+      }
+      if (preflight === 'payment-pending') {
+        return {
+          kind: 'button',
+          labelKey: 'catalog:paymentProcessingShort',
+          to: null,
+          disabled: true,
+          pending: true,
+          feedback,
+          inCart: false,
+          presentation: 'payment-processing',
         };
       }
       return {

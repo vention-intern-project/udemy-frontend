@@ -40,7 +40,8 @@ export type SelectedApiOperationId =
   | 'API-038'
   | 'API-039'
   | 'API-040'
-  | 'API-041';
+  | 'API-041'
+  | 'API-042';
 
 export type ApiOperationRequestMode = 'none' | 'query' | 'json' | 'multipart';
 export type ApiOperationResponseMode = 'json' | 'binary' | 'void';
@@ -443,6 +444,16 @@ export const API_OPERATION_BY_ID = {
     mutationDedupe: 'supported',
     requestMode: 'none',
     responseMode: 'json',
+    assumptionTags: [],
+  },
+  'API-042': {
+    id: 'API-042',
+    method: 'GET',
+    path: '/courses/:courseId/lessons/:lessonId/subtitles',
+    retry: 'safe_read',
+    mutationDedupe: 'not_applicable',
+    requestMode: 'none',
+    responseMode: 'binary',
     assumptionTags: [],
   },
 } as const satisfies ApiOperationRegistry;

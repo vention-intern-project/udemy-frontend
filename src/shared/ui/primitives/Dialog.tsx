@@ -195,6 +195,7 @@ export interface DialogProps {
   onClose: () => void;
   initialFocusRef?: RefObject<HTMLElement>;
   closeLabel?: string;
+  closeContent?: ReactNode;
   showCloseButton?: boolean;
   closeOnBackdrop?: boolean;
   busy?: boolean;
@@ -217,6 +218,7 @@ export function Dialog({
   onClose,
   initialFocusRef,
   closeLabel,
+  closeContent,
   showCloseButton = true,
   closeOnBackdrop = true,
   busy = false,
@@ -346,7 +348,7 @@ export function Dialog({
               onClick={onClose}
               disabled={busy}
             >
-              ×
+              {closeContent ?? '×'}
             </button>
           ) : null}
         </div>

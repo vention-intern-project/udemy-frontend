@@ -13,6 +13,7 @@ export interface AvailableVideoLessonMediaState {
   readonly status: 'available';
   readonly kind: 'video';
   readonly objectUrl: string;
+  readonly subtitleObjectUrl: string | null;
   readonly presentation: AuthorizedVideoPresentationStatus;
 }
 

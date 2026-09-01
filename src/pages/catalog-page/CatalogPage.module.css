@@ -68,6 +68,23 @@
   }
 }
 
+@media (max-width: 359px) {
+  .heroContent {
+    padding-block: var(--spacing-6);
+  }
+
+  .hero h1 {
+    font-size: 26px;
+    line-height: 32px;
+  }
+
+  .hero p {
+    margin-top: var(--spacing-2);
+    font-size: var(--type-body-sm-size);
+    line-height: var(--type-body-sm-lh);
+  }
+}
+
 @media (min-width: 1100px) {
   .hero {
     min-block-size: 18rem;
@@ -215,6 +232,7 @@
 
   .headingBreak {
     display: block;
+    white-space: nowrap;
   }
 
   .hero p {
@@ -264,9 +282,25 @@
     padding-bottom: var(--spacing-8);
   }
 
-  /* Keep the compact 128px Min/Max controls usable without shrinking either field. */
-  .toolbarControls [data-part='catalog-filter-form'] fieldset {
-    grid-template-columns: repeat(2, minmax(8rem, 1fr));
+  .toolbarControls {
+    display: contents;
+  }
+
+  .toolbarControls [data-part='catalog-filter-form'] {
+    order: 1;
+    width: auto;
+    flex: 0 1 auto;
+    margin-inline-start: auto;
+    padding-inline-start: var(--spacing-4);
+  }
+
+  .sortToolbar {
+    order: 2;
+    align-self: flex-end;
+  }
+
+  .resultsHeading h2 {
+    align-self: flex-end;
   }
 
   .toolbarControls [data-part='catalog-filter-price-label'] {
@@ -281,23 +315,55 @@
   }
 }
 
-@media (max-width: 239px) {
-  .toolbarControls [data-part='catalog-filter-form'] fieldset {
-    grid-template-columns: minmax(0, 1fr);
+@media (max-width: 639px) {
+  .resultsHeading h2 {
+    flex: 1 1 100%;
+  }
+
+  .toolbarControls [data-part='catalog-filter-form'] {
+    order: 1;
+    width: min(100%, 16rem);
+    flex: 0 1 16rem;
+    margin-inline-start: 0;
+    padding-inline-start: 0;
+  }
+
+  .sortToolbar {
+    order: 2;
+    flex: 0 0 auto;
+    max-width: none;
+    margin-inline-start: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .toolbarControls {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: var(--spacing-2);
+  }
+
+  .sortToolbar {
+    grid-row: 1;
+    grid-column: 2;
+    max-width: 100%;
+    margin: 0;
+  }
+
+  .sortField {
+    width: 100%;
+  }
+
+  .sortField [data-part='catalog-sort-control'] {
+    inline-size: 100%;
   }
 }
 
 @media (min-width: 544px) and (max-width: 767px) {
-  .toolbarControls [data-part='catalog-filter-form'] fieldset {
-    grid-template-columns: repeat(2, minmax(7.5rem, 1fr));
-  }
-
   .sortField {
     gap: 0;
-  }
-
-  .page:lang(ru) .sortField [data-part='catalog-sort-control'] {
-    inline-size: 8.25rem;
   }
 }
 
@@ -309,7 +375,7 @@
   }
 }
 
-@media (max-width: 895px) {
+@media (max-width: 767px) {
   .hero::after {
     display: none;
   }
@@ -333,26 +399,12 @@
 }
 
 @media (min-width: 768px) and (max-width: 895px) {
-  .resultsHeading,
-  .toolbarControls {
-    flex-wrap: wrap;
-  }
-
-  .toolbarControls {
-    flex: 1 1 100%;
-    margin-inline-start: 0;
-  }
-
   .hero h1 {
     font-size: 36px;
   }
-
-  .headingBreak {
-    display: inline;
-  }
 }
 
-@media (min-width: 896px) {
+@media (min-width: 768px) {
   .hero {
     --catalog-hero-copy-inline-end: calc(
       max(0px, (100vw - var(--container-max-catalog)) / 2) + var(--gutter-desktop) + 37.5rem
@@ -432,7 +484,7 @@
   }
 }
 
-@media (min-width: 896px) and (max-width: 1099px) {
+@media (min-width: 768px) and (max-width: 1099px) {
   .hero {
     --catalog-hero-art-inline-size: clamp(769.8496px, calc(59.5859vw + 235.9601px), 891.4048px);
     --catalog-hero-art-block-size: clamp(270.8032px, calc(20.96vw + 83.0016px), 313.5616px);

@@ -2,9 +2,15 @@ import type { ReviewCreateDto, ReviewDto, ReviewListDto, ReviewUpdateDto } from 
 import { decodeReviewDto, decodeReviewListDto } from '@entities/review';
 import type { DeleteMessageDto } from '@entities/course';
 import { requestOperation, type SessionContextValue } from '@features/auth-session';
-import { ApiError } from '@shared/api';
+import { ApiError, collectPaginationPages } from '@shared/api';
 
 export const REVIEW_PAGE_SIZE = 20 as const;
+export const COURSE_RATING_SUMMARY_MAXIMUM_PAGES = 10 as const;
+
+export interface CourseRatingSummary {
+  readonly reviewCount: number;
+  readonly averageRating: number | null;
+}
 
 function invalidReviewResponse(cause: TypeError): ApiError {
   return new ApiError({
@@ -13,6 +19,14 @@ function invalidReviewResponse(cause: TypeError): ApiError {
     message: 'Server returned an invalid review response',
     cause,
   });
+}
+
+function assertCourseRatingSummaryCourseBinding(
+  reviews: readonly ReviewDto[],
+  courseId: number,
+): void {
+  if (reviews.some((review) => review.course_id !== courseId))
+    throw invalidReviewResponse(new TypeError('Invalid review course identity'));
 }
 
 export function normalizeReviewPage(page: number): number {
@@ -38,6 +52,39 @@ export async function requestCourseReviews(
     if (error instanceof TypeError) throw invalidReviewResponse(error);
     throw error;
   }
+}
+
+export async function requestCourseRatingSummary(
+  session: SessionContextValue,
+  courseId: number,
+  signal: AbortSignal,
+): Promise<CourseRatingSummary> {
+  const collection = await collectPaginationPages<ReviewDto>({
+    context: 'course rating summary',
+    signal,
+    maximumPages: COURSE_RATING_SUMMARY_MAXIMUM_PAGES,
+    identifyItem: (review) => review.id,
+    fetchPage: async (page) => {
+      const list = await requestCourseReviews(session, courseId, page, signal);
+      return {
+        items: list.items,
+        page: list.page,
+        pageSize: list.page_size,
+        total: list.total,
+        pages: list.pages,
+        hasNext: list.has_next,
+        hasPrevious: list.has_previous,
+      };
+    },
+  });
+
+  assertCourseRatingSummaryCourseBinding(collection.items, courseId);
+  if (collection.total === 0) return { reviewCount: 0, averageRating: null };
+  const ratingTotal = collection.items.reduce((total, review) => total + review.rating, 0);
+  return {
+    reviewCount: collection.total,
+    averageRating: ratingTotal / collection.items.length,
+  };
 }
 
 export function requestCurrentReview(

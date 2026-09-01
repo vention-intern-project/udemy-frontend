@@ -1,7 +1,7 @@
 .control {
   position: relative;
   flex: 0 1 auto;
-  inline-size: 9.25rem;
+  inline-size: max-content;
   min-width: 0;
   max-inline-size: 100%;
 }
@@ -19,7 +19,8 @@
   position: relative;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
+  gap: var(--spacing-2);
   box-sizing: border-box;
   width: 100%;
   height: var(--control-height-md);
@@ -30,9 +31,36 @@
   border: var(--border-width) solid var(--border-default);
   border-radius: var(--radius-md);
   font: inherit;
+  font-size: var(--type-label-size);
   font-weight: var(--font-weight-semibold);
+  line-height: var(--type-label-lh);
   text-align: start;
   cursor: pointer;
+}
+
+.triggerLabel {
+  display: grid;
+  min-width: 0;
+}
+
+.triggerLabelCurrent,
+.triggerLabelSizer {
+  grid-area: 1 / 1;
+}
+
+.triggerLabelCurrent,
+.triggerLabelSizer > span {
+  white-space: nowrap;
+}
+
+.triggerLabelSizer {
+  display: grid;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.triggerLabelSizer > span {
+  grid-area: 1 / 1;
 }
 
 .trigger:hover {
@@ -50,13 +78,11 @@
   top: 50%;
   right: var(--spacing-3);
   box-sizing: border-box;
-  width: 0.5rem;
-  height: 0.5rem;
+  width: 1rem;
+  height: 1rem;
   color: var(--text-muted);
   pointer-events: none;
-  border-right: 2px solid currentColor;
-  border-bottom: 2px solid currentColor;
-  transform: translateY(-50%) rotate(45deg);
+  transform: translateY(-50%);
   transform-origin: center;
   transition:
     color var(--duration-fast) var(--easing-standard),
@@ -70,11 +96,15 @@
   color: var(--text-muted);
 }
 
+.mobileTriggerLabel {
+  display: none;
+}
+
 .control:hover .chevron,
 .controlOpen .chevron,
 .control:focus-within .chevron {
   color: var(--action-primary-bg);
-  transform: translateY(-50%) rotate(225deg);
+  transform: translateY(-50%) rotate(180deg);
 }
 
 .listbox {
@@ -136,6 +166,25 @@
     var(--color-surface) 3px
   );
   border-color: var(--action-primary-bg);
+}
+
+@media (max-width: 480px) {
+  .control {
+    inline-size: 100%;
+  }
+
+  .sortIcon,
+  .triggerLabel {
+    display: none;
+  }
+
+  .mobileTriggerLabel {
+    display: inline;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -107,15 +107,18 @@ export async function requestLessonOutline(
     }
     throw error;
   }
-  const result = mapLessonListDto({
-    items: [...collection.items],
-    page: 1,
-    page_size: collection.pageSize,
-    total: collection.total,
-    pages: collection.pages,
-    has_next: false,
-    has_previous: false,
-  });
+  const result = mapLessonListDto(
+    {
+      items: [...collection.items],
+      page: 1,
+      page_size: collection.pageSize,
+      total: collection.total,
+      pages: collection.pages,
+      has_next: false,
+      has_previous: false,
+    },
+    courseId,
+  );
   return { items: result.items, total: result.total };
 }
 

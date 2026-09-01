@@ -63,13 +63,21 @@
 }
 .header,
 .lessonRow,
-.actions,
-.fieldRow {
+.actions {
   display: flex;
   gap: var(--spacing-3);
   align-items: center;
   justify-content: space-between;
   min-width: 0;
+}
+.header {
+  display: grid;
+  justify-content: start;
+  gap: var(--spacing-1);
+}
+.header p {
+  max-width: 51.25rem;
+  color: var(--text-secondary);
 }
 .header h1,
 .header p,
@@ -87,21 +95,193 @@
   border-radius: var(--radius-lg);
   background: var(--color-surface);
 }
+.courseDetailsPanel {
+  width: 100%;
+  box-sizing: border-box;
+}
+.fieldRow {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(10rem, 18.75rem));
+  gap: var(--spacing-4);
+  align-items: start;
+  min-width: 0;
+}
+.sectionHeading,
+.sectionHeadingRow,
+.lessonSummary,
+.dangerZoneCopy {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.sectionHeading {
+  gap: var(--spacing-3);
+}
+.sectionHeadingRow {
+  justify-content: space-between;
+  gap: var(--spacing-4);
+  padding-block-end: var(--spacing-4);
+  border-block-end: var(--border-width) solid var(--border-default);
+}
+.lessonDisclosureButton {
+  color: var(--action-secondary-fg);
+  border-color: var(--action-secondary-fg);
+}
+.lessonDisclosureButton > span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+.lessonDisclosureButton:hover:not(:disabled),
+.lessonDisclosureButton[aria-expanded='true'] {
+  color: var(--action-secondary-fg);
+  background: var(--action-secondary-bg-hover);
+}
+.sectionIcon,
+.lessonIcon {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  color: var(--action-secondary-fg);
+  background: var(--action-secondary-bg);
+  border-radius: var(--radius-md);
+}
+.sectionIcon {
+  width: var(--control-height-lg);
+  height: var(--control-height-lg);
+}
+.sectionIcon svg,
+.lessonIcon svg,
+.dangerZoneIcon svg {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+.formActions {
+  display: flex;
+  justify-content: flex-end;
+}
+.pendingPrimaryAction.pendingPrimaryAction:disabled {
+  color: var(--action-primary-fg);
+  background: var(--action-primary-bg);
+  border-color: transparent;
+  cursor: pointer;
+}
+.emptyLessons {
+  display: grid;
+  justify-items: start;
+  gap: var(--spacing-2);
+  padding: var(--spacing-5);
+  border-radius: var(--radius-md);
+  background: var(--color-canvas);
+}
+.emptyLessons h3,
+.emptyLessons p,
+.dangerZoneCopy p {
+  margin: 0;
+}
+.emptyLessons p,
+.dangerZoneCopy p {
+  color: var(--text-secondary);
+}
+.dangerZone {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  border-color: var(--state-error-border);
+  background: var(--state-error-bg);
+}
+.dangerZone h2 {
+  color: var(--state-error-fg);
+  font-size: var(--type-heading-sm-size);
+}
+.dangerZoneCopy {
+  gap: var(--spacing-4);
+}
+.dangerZoneCopy > div {
+  display: grid;
+  gap: var(--spacing-2);
+}
+.dangerZoneIcon {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  color: var(--state-error-fg);
+}
+.dangerZoneButton {
+  color: var(--state-error-fg);
+  background: var(--color-surface);
+  border-color: var(--state-error-border);
+}
+.dangerZoneButton > span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+.dangerZoneButton:hover:not(:disabled) {
+  color: var(--action-primary-fg);
+  background: var(--feedback-error);
+  filter: none;
+}
 .lessonList {
   padding: 0;
   margin: 0;
   list-style: none;
 }
 .lessonRow {
-  padding-block: var(--spacing-3);
+  padding-block: var(--spacing-4);
   border-block-start: var(--border-width) solid var(--border-default);
 }
-.backLink {
+.lessonRow:first-child {
+  border-block-start: 0;
+}
+.lessonSummary {
+  gap: var(--spacing-4);
+}
+.lessonIcon {
+  width: 4rem;
+  height: 4rem;
+}
+.backLink,
+.backLink:visited {
   display: inline-flex;
   min-height: var(--control-height-md);
   align-items: center;
-  color: var(--action-link);
+  gap: var(--spacing-2);
+  padding-inline: var(--spacing-4);
+  color: var(--action-secondary-fg);
+  background: var(--color-surface);
+  border: var(--border-width) solid var(--action-secondary-fg);
+  border-radius: var(--radius-md);
   overflow-wrap: anywhere;
+  text-decoration: none;
+}
+.backLink:hover {
+  color: var(--action-secondary-fg);
+  background: var(--action-secondary-bg);
+}
+.backLink:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+.lessonDeleteAction {
+  width: var(--control-height-md);
+  padding: 0;
+  color: var(--text-secondary);
+}
+.lessonDeleteAction:hover:not(:disabled) {
+  color: var(--feedback-error);
+  background: var(--feedback-error-bg);
+  border-color: var(--feedback-error);
+}
+.statusDot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-inline: var(--spacing-2);
+  background: var(--text-muted);
+  border-radius: var(--radius-full);
+}
+.statusDotPublished {
+  background: var(--feedback-success);
 }
 .checkbox {
   display: flex;
@@ -112,15 +292,106 @@
 .fieldError {
   color: var(--state-error-fg);
 }
+.uploadField {
+  display: grid;
+  gap: var(--spacing-2);
+}
+.fileLabel {
+  font-size: var(--type-body-sm-size);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--type-body-sm-lh);
+}
+.uploadPicker {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: var(--spacing-2);
+  min-height: 8rem;
+  padding: var(--spacing-5);
+  border: var(--border-width) dashed var(--action-primary-bg);
+  border-radius: var(--radius-lg);
+  color: var(--action-secondary-fg);
+  background: color-mix(in srgb, var(--action-secondary-bg) 58%, var(--color-surface));
+  text-align: center;
+}
+.uploadPicker:hover {
+  background: var(--action-secondary-bg);
+}
+.uploadPicker:focus-within {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+.uploadPicker:has(.uploadInput[aria-invalid='true']) {
+  border-color: var(--state-error-fg);
+}
+.uploadInput {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+  opacity: 0;
+}
+.uploadPrompt {
+  font-weight: var(--font-weight-semibold);
+}
+.uploadHelp {
+  color: var(--text-muted);
+  font-size: var(--type-caption-size);
+  line-height: var(--type-caption-lh);
+}
+.fileName {
+  max-width: 100%;
+  padding: var(--spacing-1) var(--spacing-2);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  background: var(--color-surface);
+  font-size: var(--type-body-sm-size);
+  line-height: var(--type-body-sm-lh);
+  overflow-wrap: anywhere;
+}
+.uploadUnavailable {
+  display: flex;
+  gap: var(--spacing-3);
+  align-items: center;
+  min-height: var(--control-height-md);
+  padding: var(--spacing-4);
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  background: var(--color-canvas);
+}
+.uploadUnavailable svg {
+  flex: none;
+  color: var(--text-muted);
+}
+.uploadUnavailable p {
+  margin: 0;
+}
 @media (max-width: 767px) {
   .header,
   .lessonRow,
-  .actions,
-  .fieldRow {
+  .actions {
     flex-direction: column;
     align-items: stretch;
   }
   .actions > * {
+    width: 100%;
+  }
+  .fieldRow,
+  .dangerZone {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .sectionHeadingRow {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .lessonSummary {
+    align-items: flex-start;
+  }
+  .formActions > *,
+  .dangerZone > :last-child {
     width: 100%;
   }
 }

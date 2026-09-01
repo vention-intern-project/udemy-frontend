@@ -2,7 +2,7 @@ import { useEffect, useId, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Check, Undo2 } from 'lucide-react';
 
-import type { LessonOutline, LessonType } from '@entities/course';
+import type { LessonOutline } from '@entities/course';
 import type { CourseProgress, LessonCompletionState } from '@features/learning-progress';
 import { lessonCompletionLabelKey } from '@features/learning-progress';
 import { LessonMediaAccess } from '@features/media-access';
@@ -55,19 +55,6 @@ interface LessonCompletionActionProps {
   readonly onSetCompletion: EnrollmentProgressPanelProps['onSetCompletion'];
 }
 
-const LESSON_TYPE_LABEL_KEYS: Record<LessonType, string> = {
-  video: 'instructor:courseEditorVideo',
-  text: 'instructor:courseEditorText',
-  pdf: 'instructor:courseEditorPdf',
-};
-
-function lessonTypeLabel(
-  lessonType: LessonType,
-  t: ReturnType<typeof useTranslation>['t'],
-): string {
-  return t(LESSON_TYPE_LABEL_KEYS[lessonType]);
-}
-
 function LessonCompletionAction({
   workspaceIdentity,
   lessonId,
@@ -109,6 +96,12 @@ function LessonCompletionAction({
     focusIntentRef.current = { workspaceIdentity, pendingObserved: false };
     setLessonCompletion(pending, lessonId, markComplete, onSetCompletion);
   };
+  const accessibleLabel = markComplete
+    ? t('learning:completeLesson', { defaultValue: 'Complete lesson' })
+    : t('learning:undoCompletion', { defaultValue: 'Undo completion' });
+  const visibleLabel = markComplete
+    ? t('learning:completeLessonShort', { defaultValue: 'Complete' })
+    : t('learning:undoCompletionShort', { defaultValue: 'Undo' });
 
   return (
     <>
@@ -116,15 +109,14 @@ function LessonCompletionAction({
         id={actionId}
         variant="ghost"
         state="idle"
+        aria-label={accessibleLabel}
         aria-disabled={pending}
         aria-busy={pending}
         className={styles.lessonCompletionAction}
         onClick={handleClick}
       >
         {markComplete ? <Check aria-hidden="true" /> : <Undo2 aria-hidden="true" />}
-        {markComplete
-          ? t('learning:completeLesson', { defaultValue: 'Complete lesson' })
-          : t('learning:undoCompletion', { defaultValue: 'Undo completion' })}
+        {visibleLabel}
       </Button>
       {pending ? (
         <VisuallyHidden role="status" aria-live="polite">
@@ -309,14 +301,24 @@ export function EnrollmentProgressPanel({
                           })}
                       </p>
                       <span>
-                        {lessonTypeLabel(lesson.lessonType, t)} {t('course:lessonMarker')}{' '}
-                        {lesson.isPublished
-                          ? t('learning:listedMetadata', { defaultValue: 'Listed metadata' })
-                          : t('course:draftMetadata', { defaultValue: 'Draft metadata' })}
+                        {lesson.lessonType === 'video'
+                          ? lesson.isPublished
+                            ? t('learning:videoLessonType')
+                            : t('learning:videoLessonComingSoon')
+                          : lesson.lessonType === 'text'
+                            ? lesson.isPublished
+                              ? t('learning:textLessonType')
+                              : t('learning:textLessonComingSoon')
+                            : lesson.isPublished
+                              ? t('learning:pdfLessonType')
+                              : t('learning:pdfLessonComingSoon')}
                       </span>
+                    </div>
+                    <div className={styles.lessonMediaAccess}>
                       <LessonMediaAccess
                         lessonType={lesson.lessonType}
                         locator={lesson.mediaLocator}
+                        subtitleLocator={lesson.subtitleLocator}
                       />
                     </div>
                     <LessonCompletionAction

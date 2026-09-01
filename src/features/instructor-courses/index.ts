@@ -13,3 +13,7 @@ export type {
   InstructorCourseCollection,
   InstructorCourseCollectionItem,
 } from './api';
+export {
+  INSTRUCTOR_COURSE_CREATE_REQUEST_EVENT,
+  requestInstructorCourseCreateDisclosure,
+} from './create-course-disclosure';

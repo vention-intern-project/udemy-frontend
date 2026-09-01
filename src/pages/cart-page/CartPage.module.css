@@ -171,10 +171,6 @@
   min-width: 0;
   align-items: end;
 }
-.failureAction {
-  grid-column: 1 / -1;
-  justify-self: start;
-}
 .courseLink {
   display: -webkit-box;
   overflow: hidden;
@@ -209,6 +205,28 @@
   color: var(--action-primary-bg);
   background: transparent;
   border-color: transparent;
+}
+.paymentRecovery {
+  display: flex;
+  gap: var(--spacing-3);
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  padding: var(--spacing-2) var(--spacing-3);
+  color: var(--feedback-error);
+  background: var(--feedback-error-bg);
+  border: 0;
+  border-inline-start: var(--spacing-1) solid var(--feedback-error);
+  border-radius: var(--radius-md);
+}
+.paymentRecoveryCopy {
+  display: grid;
+  gap: var(--spacing-1);
+  min-width: 0;
+}
+.paymentRecoveryCopy strong,
+.paymentRecoveryCopy span {
+  color: inherit;
 }
 .summary {
   display: grid;
@@ -248,6 +266,23 @@
 }
 .totalUnavailable {
   color: var(--text-secondary);
+}
+.summaryRecoveryStatus {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  min-width: 0;
+  margin: 0;
+  padding: var(--spacing-3);
+  color: var(--feedback-error);
+  background: var(--feedback-error-bg);
+  border-radius: var(--radius-md);
+  font-size: var(--type-body-sm-size);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--type-body-sm-lh);
+}
+.summaryRecoveryStatus svg {
+  flex: none;
 }
 .mockCheckoutDisclosure {
   display: flex;
@@ -359,15 +394,23 @@
       );
     align-items: center;
   }
+  .paymentRecovery {
+    grid-column: 1 / -1;
+  }
   .itemFooter {
     display: contents;
   }
-  .failureAction {
-    grid-column: 2;
-    grid-row: 2;
-    justify-self: start;
-  }
   .removeAction {
     justify-items: end;
+  }
+}
+@media (max-width: 479px) {
+  .paymentRecovery {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .paymentRecovery :global(.ui-button-wrap) {
+    align-self: start;
   }
 }
