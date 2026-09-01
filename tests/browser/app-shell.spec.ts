@@ -688,16 +688,6 @@ async function expectShellSurfacesAtViewportEdges(page: Page, width: ShellSurfac
     const rootRect = document.documentElement.getBoundingClientRect();
     const headerRect = header.getBoundingClientRect();
     const footerRect = footer.getBoundingClientRect();
-    const colorPixel = (color: string) => {
-      const canvas = document.createElement('canvas');
-      canvas.width = 1;
-      canvas.height = 1;
-      const context = canvas.getContext('2d');
-      if (!context) throw new Error('Surface color probe is unavailable');
-      context.fillStyle = color;
-      context.fillRect(0, 0, 1, 1);
-      return Array.from(context.getImageData(0, 0, 1, 1).data);
-    };
     return {
       viewport: window.innerWidth,
       viewportHeight: window.innerHeight,
@@ -709,14 +699,6 @@ async function expectShellSurfacesAtViewportEdges(page: Page, width: ShellSurfac
       headerY: Math.floor((headerRect.top + headerRect.bottom) / 2),
       footerY: Math.floor((footerRect.top + footerRect.bottom) / 2),
       footerVisible: footerRect.top >= -1 && footerRect.bottom <= window.innerHeight + 1,
-      headerColor: colorPixel(getComputedStyle(header).backgroundColor),
-      detachedSearchColor: colorPixel(
-        getComputedStyle(document.querySelector<HTMLElement>('form[role="search"]')!)
-          .backgroundColor,
-      ),
-      footerColor: colorPixel(
-        getComputedStyle(document.documentElement).getPropertyValue('--color-surface-inverted'),
-      ),
     };
   });
   expect(geometry.scrollbarGutter).toBe('auto');
@@ -770,8 +752,10 @@ async function expectShellSurfacesAtViewportEdges(page: Page, width: ShellSurfac
     expect(actual.every((channel, index) => Math.abs(channel - expected[index]) <= 1)).toBe(true);
   };
   expectPixelColor(headerEdgePixels[0], headerEdgePixels[1]);
+  expectPixelColor(headerEdgePixels[1], headerEdgePixels[2]);
   expectPixelColor(headerEdgePixels[2], headerEdgePixels[3]);
   expectPixelColor(footerEdgePixels[0], footerEdgePixels[1]);
+  expectPixelColor(footerEdgePixels[1], footerEdgePixels[2]);
   expectPixelColor(footerEdgePixels[2], footerEdgePixels[3]);
   await expectNoHorizontalOverflow(page);
 }
@@ -1129,8 +1113,12 @@ async function expectAnonymousMobileNavigation(page: Page, width: MobileViewport
     ),
   ).toBe(true);
   if (width < 480) {
-    expect(stickyGeometry.searchBackground).toBe('rgb(238, 240, 244)');
-    expect(stickyGeometry.searchBorderTop).toBe('rgb(209, 213, 219)');
+    expect(stickyGeometry.searchBackground).toBe(
+      await resolveBrowserColor(page, colorTokens['--state-control-highlight']),
+    );
+    expect(stickyGeometry.searchBorderTop).toBe(
+      await resolveBrowserColor(page, colorTokens['--border-default']),
+    );
     expect(stickyGeometry.searchBorderTopWidth).toBe('1px');
     expect(stickyGeometry.searchShadow).not.toBe('none');
   } else {
@@ -1160,7 +1148,10 @@ async function expectInstructorDesktopHeaderNavigation(
   await expect(instructorCourses).toHaveAttribute('aria-current', 'page');
   await expect(instructorCourses).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await instructorCourses.hover();
-  await expect(instructorCourses).toHaveCSS('color', 'rgb(73, 50, 182)');
+  await expect(instructorCourses).toHaveCSS(
+    'color',
+    await resolveBrowserColor(page, colorTokens['--action-primary-bg-hover']),
+  );
   await expect(instructorCourses).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await expect(profile).toBeVisible();
   await expect(page.getByRole('link', { name: /^Cart/ })).toHaveCount(0);
@@ -2514,11 +2505,32 @@ test('shows a bootstrap state then student-only workspace navigation', async ({ 
   const assistantLink = drawer.getByRole('link', { name: 'AI chat' });
   const hoverAppearance = async (link: typeof catalogLink) => {
     await link.hover();
-    await page.waitForTimeout(150);
-    return link.evaluate((element) => {
-      const style = getComputedStyle(element);
-      return { backgroundColor: style.backgroundColor, color: style.color };
-    });
+    return expect
+      .poll(
+        () =>
+          link.evaluate(async (element) => {
+            const read = () => {
+              const style = getComputedStyle(element);
+              return `${style.backgroundColor}|${style.color}`;
+            };
+            let appearance = read();
+            for (let frame = 0; frame < 3; frame += 1) {
+              await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+              const nextAppearance = read();
+              if (nextAppearance !== appearance) return null;
+              appearance = nextAppearance;
+            }
+            return appearance;
+          }),
+        { timeout: 1_000 },
+      )
+      .not.toBeNull()
+      .then(async () =>
+        link.evaluate((element) => {
+          const style = getComputedStyle(element);
+          return { backgroundColor: style.backgroundColor, color: style.color };
+        }),
+      );
   };
   const catalogHover = await hoverAppearance(catalogLink);
   const assistantHover = await hoverAppearance(assistantLink);

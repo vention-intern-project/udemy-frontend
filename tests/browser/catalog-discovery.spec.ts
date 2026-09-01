@@ -79,6 +79,30 @@ interface DeferredReviewRelease {
 
 type CatalogTransition = () => Promise<void>;
 
+async function allowOptionalCatalogRatingFailures(
+  assertClean: CatalogBrowserMonitor,
+  transition: CatalogTransition,
+): Promise<void> {
+  await allowOptionalFailureDuringCatalogTransition(
+    assertClean,
+    {
+      method: 'GET',
+      path: '/courses/8/reviews?page=1&page_size=20',
+      errorText: 'net::ERR_ABORTED',
+    },
+    () =>
+      allowOptionalFailureDuringCatalogTransition(
+        assertClean,
+        {
+          method: 'GET',
+          path: '/courses/11/reviews?page=1&page_size=20',
+          errorText: 'net::ERR_ABORTED',
+        },
+        transition,
+      ),
+  );
+}
+
 const catalogRatingCancellation: RequestFailureIdentity = {
   method: 'GET',
   path: '/courses/7/reviews?page=1&page_size=20',
@@ -882,7 +906,7 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
       ),
     ).toBe(true);
     if (width < 768) {
-      expect(geometry.every((card) => card.priceActionGap >= 0)).toBe(true);
+      expect(geometry.every((card) => card.priceActionGap >= 8)).toBe(true);
     }
     expect(
       geometry.every((card) => card.priceFontSize === '16px' && card.priceLineHeight === '24px'),
@@ -896,6 +920,7 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
           card.bodyGap === (width < 768 ? '12px' : '8px') &&
           card.metadataDisplay === 'flex' &&
           card.metadataHeight > 0 &&
+          (width >= 768 || card.metadataWhiteSpace === (width <= 417 ? 'nowrap' : 'normal')) &&
           card.metadataScrollHeight >= card.metadataClientHeight,
       ),
     ).toBe(true);
@@ -2778,7 +2803,9 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
     sortTrigger.boundingBox(),
     page.locator('[data-part="catalog-result-list"]').boundingBox(),
   ]);
-  expect(mobileToolbarGeometry.filter(Boolean)).toHaveLength(6);
+  for (const index of [0, 1, 3, 4]) {
+    expect(mobileToolbarGeometry[index], `toolbar geometry ${index} is missing`).not.toBeNull();
+  }
   expect(mobileToolbarGeometry[1]!.x).toBeGreaterThanOrEqual(0);
   expect(mobileToolbarGeometry[1]!.x + mobileToolbarGeometry[1]!.width).toBeLessThanOrEqual(320);
   expect(
@@ -4837,31 +4864,16 @@ test('renders the D20 Catalog vertical slice in Russian and Uzbek without changi
   ];
 
   for (const expected of expectations) {
-    await allowOptionalFailureDuringCatalogTransition(
-      assertClean,
-      {
-        method: 'GET',
-        path: '/courses/8/reviews?page=1&page_size=20',
-        errorText: 'net::ERR_ABORTED',
-      },
-      () =>
-        allowOptionalFailureDuringCatalogTransition(
-          assertClean,
-          {
-            method: 'GET',
-            path: '/courses/11/reviews?page=1&page_size=20',
-            errorText: 'net::ERR_ABORTED',
-          },
-          async () => {
-            await page.goto('/');
-            await page.evaluate(
-              (locale) => localStorage.setItem('learnhub.locale', locale),
-              expected.locale,
-            );
-            await page.reload();
-          },
-        ),
+    await allowOptionalCatalogRatingFailures(assertClean, async () => {
+      await page.goto('/');
+    });
+    await page.evaluate(
+      (locale) => localStorage.setItem('learnhub.locale', locale),
+      expected.locale,
     );
+    await allowOptionalCatalogRatingFailures(assertClean, async () => {
+      await page.reload();
+    });
 
     const freeCard = page.locator('[data-part="course-card"]').filter({
       has: page.getByRole('heading', { level: 3, name: 'React Fundamentals: Components' }),

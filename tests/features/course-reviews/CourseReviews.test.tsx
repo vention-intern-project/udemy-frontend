@@ -11,6 +11,12 @@ import { localeRuntime } from '@shared/locale';
 vi.mock('@features/course-reviews/useCourseReviews', () => ({ useCourseReviews: vi.fn() }));
 
 const mockUseCourseReviews = vi.mocked(useCourseReviews);
+const removedReviewCopy = new Map<string, string>();
+const reviewCopyKeys = [
+  'noReviewsDescription',
+  'reviewCommentPrompt',
+  'reviewCommentPlaceholder',
+] as const;
 
 interface ReviewPanelQueryState {
   readonly isPending: boolean;
@@ -54,22 +60,20 @@ function renderReviews(canWriteReview = true) {
 
 function removeLiveReviewCopy() {
   const courseResources = localeRuntime.getResourceBundle('en', 'course') as Record<string, string>;
-  delete courseResources.noReviewsDescription;
-  delete courseResources.reviewCommentPrompt;
-  delete courseResources.reviewCommentPlaceholder;
+  for (const key of reviewCopyKeys) {
+    const value = courseResources[key];
+    if (typeof value !== 'string') throw new Error(`Expected course locale resource ${key}.`);
+    removedReviewCopy.set(key, value);
+    delete courseResources[key];
+  }
 }
 
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
-  localeRuntime.addResource(
-    'en',
-    'course',
-    'noReviewsDescription',
-    'Be the first to share your opinion about this course. Your review can help other students make a choice.',
-  );
-  localeRuntime.addResource('en', 'course', 'reviewCommentPrompt', 'What did you like?');
-  localeRuntime.addResource('en', 'course', 'reviewCommentPlaceholder', 'Tell us more');
+  for (const [key, value] of removedReviewCopy)
+    localeRuntime.addResource('en', 'course', key, value);
+  removedReviewCopy.clear();
 });
 
 describe('CourseReviews', () => {

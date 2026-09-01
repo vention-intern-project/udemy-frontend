@@ -1,4 +1,5 @@
 import { createServer } from 'vite';
+import { createViteServerLifecycle } from './support/vite-server-lifecycle';
 
 export type AuthWorkflowsServerCleanup = () => Promise<void>;
 
@@ -20,33 +21,10 @@ export async function startAuthWorkflowsViteServer(
     },
     server: { host: '127.0.0.1', port: 4175, strictPort: true },
   });
-  let resolveCleanupRequested: () => void = () => {};
-  const cleanupRequested = new Promise<void>((resolve) => {
-    resolveCleanupRequested = resolve;
+  const { cleanup, waitWhileActive } = createViteServerLifecycle({
+    close: () => server.close(),
+    cancellationMessage: 'Auth Vite server startup was cancelled',
   });
-  let cleanupStarted = false;
-  let cleanupPromise: Promise<void> | undefined;
-  const cleanup: AuthWorkflowsServerCleanup = () => {
-    if (!cleanupPromise) {
-      cleanupStarted = true;
-      resolveCleanupRequested();
-      cleanupPromise = Promise.resolve()
-        .then(() => server.close())
-        .catch((error: unknown) => {
-          if ((error as NodeJS.ErrnoException).code !== 'ERR_SERVER_NOT_RUNNING') throw error;
-        });
-    }
-    return cleanupPromise;
-  };
-  const waitWhileActive = <T>(operation: () => Promise<T>): Promise<T> => {
-    if (cleanupStarted) return Promise.reject(new Error('Auth Vite server startup was cancelled'));
-    return Promise.race([
-      operation(),
-      cleanupRequested.then(() => {
-        throw new Error('Auth Vite server startup was cancelled');
-      }),
-    ]);
-  };
   try {
     observer?.onCleanupReady(cleanup);
     await waitWhileActive(() => server.listen());
