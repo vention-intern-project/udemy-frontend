@@ -956,25 +956,23 @@ describe('application routing and guards', () => {
     stubViewportMatchMedia({ mobile: false, tablet: true });
     renderApp('/instructor/courses', 'instructor');
     await screen.findByRole('heading', { level: 1, name: 'Instructor courses' });
+    await act(async () => {});
     const user = userEvent.setup();
     const trigger = screen.getByRole('button', { name: 'Open navigation' });
 
     await act(async () => {
       await user.click(trigger);
     });
-    expect(
-      within(screen.getByRole('dialog', { name: 'Menu' })).getByRole('button', {
-        name: 'Close navigation',
-      }),
-    ).toBe(document.activeElement);
+    const drawer = await screen.findByRole('dialog', { name: 'Menu' });
+    const closeNavigation = within(drawer).getByRole('button', { name: 'Close navigation' });
+    await waitFor(() => expect(closeNavigation).toBe(document.activeElement));
     expect(screen.getByRole('navigation', { name: 'Mobile navigation' })).toBeTruthy();
     await act(async () => {
       await user.keyboard('{Escape}');
     });
 
-    await waitFor(() =>
-      expect(screen.queryByRole('navigation', { name: 'Mobile navigation' })).toBe(null),
-    );
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Menu' })).toBe(null));
+    expect(screen.queryByRole('navigation', { name: 'Mobile navigation' })).toBeNull();
     await waitFor(() => expect(trigger).toBe(document.activeElement));
   });
 

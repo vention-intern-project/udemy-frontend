@@ -1747,9 +1747,10 @@ test('reflows the general full-page assistant at all standard application widths
 
   for (const width of [390, 768, 1024, 1440]) {
     await page.setViewportSize({ width, height: 900 });
-    await page.goto('/ai-chat');
+    await page.goto('/ai-chat', { waitUntil: 'commit' });
     await expect(page.getByRole('heading', { name: 'BETA AI Learning Assistant' })).toBeVisible();
     await expect(page.getByLabel('Message the course assistant')).toBeVisible();
+    await waitForRenderedAiChatAssets(page);
     await expectNoOverflow(page);
   }
 

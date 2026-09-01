@@ -1982,6 +1982,19 @@ describe('staged and CI decision simulations', () => {
     expect(packageJson.scripts.test).toBe('vitest run');
   });
 
+  it('gives the quality-report target checkout full history for immutable localization fixtures', async () => {
+    const workflow = (
+      await readFile(resolve('.github/workflows/frontend-quality.yml'), 'utf8')
+    ).replace(/\r\n/g, '\n');
+    const qualityReport = workflow.slice(
+      workflow.indexOf('  quality-report:\n'),
+      workflow.indexOf('  frontend-quality-required:\n'),
+    );
+
+    expect(qualityReport).toContain('ref: ${{ env.QUALITY_TARGET_SHA }}');
+    expect(qualityReport).toContain('fetch-depth: 0');
+  });
+
   it('orders aggregate guard, clean checkout, report download, and verification fail closed', async () => {
     const workflow = (
       await readFile(resolve('.github/workflows/frontend-quality.yml'), 'utf8')
