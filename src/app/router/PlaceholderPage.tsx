@@ -6,8 +6,8 @@ import styles from './PlaceholderPage.module.css';
 interface PlaceholderPageProps {
   route: AppRouteDefinition;
 }
-// this is a placeholder page for routes that are not yet implemented.
-// It displays the route title and description, and a note to use the navigation to continue exploring LearnHub.
+// This is a placeholder page for routes that are not yet implemented.
+// It displays the route title and description, plus a note to use the navigation to continue exploring LearnHub.
 export function PlaceholderPage({ route }: PlaceholderPageProps) {
   const titleId = `placeholder-title-${useId()}`;
   return (

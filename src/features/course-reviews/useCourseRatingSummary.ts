@@ -19,7 +19,7 @@ function supportsIntersectionObserver(): boolean {
 
 export function useCourseRatingSummary(courseId: number, elementRef: RefObject<HTMLElement>) {
   const session = useSession();
-  const [isNearViewport, setIsNearViewport] = useState(!supportsIntersectionObserver);
+  const [isNearViewport, setIsNearViewport] = useState(!supportsIntersectionObserver());
 
   useEffect(() => {
     if (!supportsIntersectionObserver()) {

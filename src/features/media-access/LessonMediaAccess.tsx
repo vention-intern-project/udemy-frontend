@@ -100,6 +100,7 @@ export function LessonMediaAccess({
               data-part="lesson-subtitle-track"
               default
               kind="subtitles"
+              label={t('learning:subtitleTrackLabel', { defaultValue: 'Subtitles' })}
               src={media.state.subtitleObjectUrl}
               srcLang="und"
             />

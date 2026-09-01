@@ -339,14 +339,16 @@ export function CartPage() {
     .map((result) => result.courseId);
   const successfulCourseIdsRef = useRef(successfulCourseIds);
   const dismissSuccessfulCoursesRef = useRef(checkout.dismissSuccessfulCourses);
-  successfulCourseIdsRef.current = successfulCourseIds;
-  dismissSuccessfulCoursesRef.current = checkout.dismissSuccessfulCourses;
   if (currentCart)
     for (const item of currentCart.items)
       courseTitlesRef.current.set(item.courseId, item.course.title);
   for (const candidate of checkout.recoveryCandidates)
     courseTitlesRef.current.set(candidate.courseId, candidate.course.title);
   const returnTarget = cartReturnTarget(location.state);
+  useEffect(() => {
+    successfulCourseIdsRef.current = successfulCourseIds;
+    dismissSuccessfulCoursesRef.current = checkout.dismissSuccessfulCourses;
+  }, [checkout.dismissSuccessfulCourses, successfulCourseIds]);
   useEffect(() => {
     const courseIds = checkout.results
       .filter((result) => result.kind === 'active')

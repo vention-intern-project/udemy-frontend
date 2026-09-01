@@ -198,7 +198,7 @@ export function CatalogFilterBar({
   useEffect(() => {
     if (!open) return undefined;
     const dismiss = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) dismissDraftRef.current();
+      if (!rootRef.current?.contains(event.target as Node)) dismissDraftRef.current(false);
     };
     document.addEventListener('pointerdown', dismiss, true);
     return () => document.removeEventListener('pointerdown', dismiss, true);

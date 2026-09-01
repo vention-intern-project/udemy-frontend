@@ -256,7 +256,8 @@ export const GENERATED_LOCALE_RESOURCES = {
       "videoLessonComingSoon": "Video lesson · Coming soon",
       "textLessonComingSoon": "Text lesson · Coming soon",
       "pdfLessonComingSoon": "PDF lesson · Coming soon",
-      "completeLessonShort": "Complete"
+      "completeLessonShort": "Complete",
+      "subtitleTrackLabel": "Subtitles"
     },
     "ai": {
       "invalidCourseAssistantAddress": "Invalid course assistant address",
@@ -882,7 +883,8 @@ export const GENERATED_LOCALE_RESOURCES = {
       "videoLessonComingSoon": "Видеоурок · Скоро будет доступно",
       "textLessonComingSoon": "Текстовый урок · Скоро будет доступно",
       "pdfLessonComingSoon": "PDF-урок · Скоро будет доступно",
-      "completeLessonShort": "Завершить"
+      "completeLessonShort": "Завершить",
+      "subtitleTrackLabel": "Субтитры"
     },
     "ai": {
       "invalidCourseAssistantAddress": "Неверный адрес ассистента курса",
@@ -1512,7 +1514,8 @@ export const GENERATED_LOCALE_RESOURCES = {
       "videoLessonComingSoon": "Video dars · Tez orada mavjud",
       "textLessonComingSoon": "Matnli dars · Tez orada mavjud",
       "pdfLessonComingSoon": "PDF dars · Tez orada mavjud",
-      "completeLessonShort": "Yakunlash"
+      "completeLessonShort": "Yakunlash",
+      "subtitleTrackLabel": "Subtitrlar"
     },
     "ai": {
       "invalidCourseAssistantAddress": "Kurs yordamchisi manzili noto‘g‘ri",

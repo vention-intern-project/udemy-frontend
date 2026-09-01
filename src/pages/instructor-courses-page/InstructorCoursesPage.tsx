@@ -145,6 +145,13 @@ export function InstructorCoursesPage() {
     return () => window.clearTimeout(timeout);
   }, [createdCourse, resetCreate]);
   useEffect(() => {
+    if (!createdCourse) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      collectionHeadingRef.current?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [createdCourse]);
+  useEffect(() => {
     if (create.isError) failureSummaryRef.current?.focus({ preventScroll: true });
   }, [create.isError]);
   const closeCourseMenu = useCallback(() => {
@@ -249,7 +256,7 @@ export function InstructorCoursesPage() {
         .join(' ')}
     >
       <header className={styles.pageIntro}>
-        <h1 className={styles.pageTitle}>{t('navigation:instructorCourses')}</h1>
+        <h1>{t('navigation:instructorCourses')}</h1>
         <p>{t('instructor:coursesWorkspaceDescription')}</p>
       </header>
       <section className={styles.collection} aria-labelledby="your-courses-heading">
