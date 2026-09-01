@@ -64,6 +64,7 @@ interface ConsumerGrammarFixture {
 }
 
 const temporaryDirectories: string[] = [];
+const TEMPORARY_DIRECTORY_CLEANUP_TIMEOUT_MS = 30_000;
 const taskRequest = structuredClone(RECORDED_BASE_REQUEST);
 const execFileAsync = promisify(execFile);
 const CRF_001_TARGET_CONSUMER_GRAMMAR_DIGEST =
@@ -186,7 +187,7 @@ afterEach(async () => {
       .splice(0)
       .map((directory) => rm(directory, { recursive: true, force: true })),
   );
-});
+}, TEMPORARY_DIRECTORY_CLEANUP_TIMEOUT_MS);
 
 describe('CRF-001 localization transactions', () => {
   it('revises protected CRF sources transactionally, preserves identity/history and exactly replays', async () => {

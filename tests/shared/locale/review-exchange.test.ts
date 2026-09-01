@@ -66,6 +66,7 @@ const ARTIFACT_FIXTURE = join(
   'tests/shared/locale/fixtures/review-exchange/learnhub-multilingual-review-readable.md',
 );
 const temporaryDirectories: string[] = [];
+const TEMPORARY_DIRECTORY_CLEANUP_TIMEOUT_MS = 30_000;
 const execFileAsync = promisify(execFile);
 type ReviewLocale = 'ru' | 'uz';
 type ReviewVerdict = 'approve' | 'request_changes' | 'withdraw';
@@ -103,7 +104,7 @@ afterEach(async () => {
   await Promise.all(
     temporaryDirectories.splice(0).map((path) => rm(path, { recursive: true, force: true })),
   );
-});
+}, TEMPORARY_DIRECTORY_CLEANUP_TIMEOUT_MS);
 
 function requestCandidateReview(
   candidate: Record<string, unknown>,
