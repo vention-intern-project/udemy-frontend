@@ -133,14 +133,14 @@ const { ESLint } = createRequire(import.meta.url)('eslint') as {
 };
 
 describe('quality execution provenance', () => {
-  it('uses one isolated fork only for the embedded quality-report test command', async () => {
+  it('uses one isolated fork and explicit finite timeouts for the embedded quality-report test command', async () => {
     const qualityRunner = await readFile(resolve('scripts/quality/run-quality.mjs'), 'utf8');
     const packageJson = JSON.parse(await readFile(resolve('package.json'), 'utf8')) as {
       scripts: { test: string };
     };
 
     expect(qualityRunner).toContain(
-      "'--pool=forks',\n      '--poolOptions.forks.maxForks=1',\n      '--poolOptions.forks.minForks=1',\n      '--poolOptions.forks.isolate=true',",
+      "'--pool=forks',\n      '--poolOptions.forks.maxForks=1',\n      '--poolOptions.forks.minForks=1',\n      '--poolOptions.forks.isolate=true',\n      '--testTimeout=60000',\n      '--hookTimeout=60000',",
     );
     expect(qualityRunner).not.toContain('--poolOptions.forks.singleFork=true');
     expect(packageJson.scripts.test).toBe('vitest run');
@@ -226,6 +226,114 @@ describe('quality execution provenance', () => {
     );
     expect(failure).not.toContain('json-sentinel');
     expect(failure).not.toContain('json-password-sentinel');
+  });
+
+  it('emits a privacy-safe Vitest timeout kind and allowlisted source location', () => {
+    const failure = formatFixtureCommandFailureExcerpt({
+      id: 'tests',
+      status: 'fail',
+      exitCode: 1,
+      errorCode: null,
+      stdout: [
+        ' FAIL  tests/quality/failing-example.test.ts > times out safely',
+        '\u001B[31mError:\u001B[0m Test timed out in 60000ms.',
+        'test title mentions Test timed out in 123ms without being a timeout error',
+        ' \u001B[90m❯\u001B[0m tests/quality/failing-example.test.ts:215:5',
+        ' ❯ tests/quality/runtime-secret.test.ts:999:1',
+      ].join('\n'),
+      stderr: [
+        '\u001B[31mError:\u001B[0m Hook timed out in 30000ms.',
+        ' \u001B[90m❯\u001B[0m tests/quality/second-example.spec.tsx:103:1',
+      ].join('\n'),
+    });
+
+    expect(failure).toBe(
+      'QUALITY_COMMAND_FAILURE id=tests exitCode=1 errorCode=none\n' +
+        'failure-identifiers=tests/quality/failing-example.test.ts\n' +
+        'failure-locations=tests/quality/failing-example.test.ts:215:5,tests/quality/second-example.spec.tsx:103:1\n' +
+        'failure-kinds=test-timeout:60000ms,hook-timeout:30000ms',
+    );
+    expect(failure).not.toContain('runtime-secret');
+  });
+
+  it('rejects a control byte that joins an allowlisted Vitest source location', () => {
+    const failure = formatFixtureCommandFailureExcerpt({
+      id: 'tests',
+      status: 'fail',
+      exitCode: 1,
+      errorCode: null,
+      stdout: ' ❯ tests/quality/failing-\u0000example.test.ts:9:2',
+      stderr: '',
+    });
+
+    expect(failure).toBe(
+      'QUALITY_COMMAND_FAILURE id=tests exitCode=1 errorCode=none\n' +
+        'failure-identifiers=unavailable',
+    );
+  });
+
+  it('rejects a control byte that joins canonical Vitest timeout grammar', () => {
+    const failure = formatFixtureCommandFailureExcerpt({
+      id: 'tests',
+      status: 'fail',
+      exitCode: 1,
+      errorCode: null,
+      stdout: 'Error:\u0000 Test timed out in 123ms.',
+      stderr: '',
+    });
+
+    expect(failure).toBe(
+      'QUALITY_COMMAND_FAILURE id=tests exitCode=1 errorCode=none\n' +
+        'failure-identifiers=unavailable',
+    );
+  });
+
+  it('rejects a horizontal tab that joins an allowlisted Vitest source location', () => {
+    const failure = formatFixtureCommandFailureExcerpt({
+      id: 'tests',
+      status: 'fail',
+      exitCode: 1,
+      errorCode: null,
+      stdout: 'at\ttests/quality/failing-example.test.ts:9:2',
+      stderr: '',
+    });
+
+    expect(failure).toBe(
+      'QUALITY_COMMAND_FAILURE id=tests exitCode=1 errorCode=none\n' +
+        'failure-identifiers=unavailable',
+    );
+  });
+
+  it('rejects a horizontal tab that joins canonical Vitest timeout grammar', () => {
+    const failure = formatFixtureCommandFailureExcerpt({
+      id: 'tests',
+      status: 'fail',
+      exitCode: 1,
+      errorCode: null,
+      stdout: 'Error:\tTest timed out in 123ms.',
+      stderr: '',
+    });
+
+    expect(failure).toBe(
+      'QUALITY_COMMAND_FAILURE id=tests exitCode=1 errorCode=none\n' +
+        'failure-identifiers=unavailable',
+    );
+  });
+
+  it('rejects non-canonical casing in Vitest timeout grammar', () => {
+    const failure = formatFixtureCommandFailureExcerpt({
+      id: 'tests',
+      status: 'fail',
+      exitCode: 1,
+      errorCode: null,
+      stdout: 'error: test timed out in 123ms.',
+      stderr: '',
+    });
+
+    expect(failure).toBe(
+      'QUALITY_COMMAND_FAILURE id=tests exitCode=1 errorCode=none\n' +
+        'failure-identifiers=unavailable',
+    );
   });
 
   it('normalizes supported POSIX and Windows Vitest paths, deduplicates them, and stays control-safe', () => {
