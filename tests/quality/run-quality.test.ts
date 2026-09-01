@@ -1858,6 +1858,22 @@ describe('staged and CI decision simulations', () => {
     expect(qualityReport).toContain('if-no-files-found: error');
   });
 
+  it('gives the recorded-base unit fixture full history and deterministic fork isolation only in the tests job', async () => {
+    const workflow = (
+      await readFile(resolve('.github/workflows/frontend-quality.yml'), 'utf8')
+    ).replace(/\r\n/g, '\n');
+    const packageJson = JSON.parse(await readFile(resolve('package.json'), 'utf8')) as {
+      scripts: { test: string };
+    };
+    const testsJob = workflow.slice(workflow.indexOf('  tests:\n'), workflow.indexOf('  build:\n'));
+
+    expect(testsJob).toContain('fetch-depth: 0');
+    expect(testsJob).toContain(
+      'npm test -- --pool=forks --poolOptions.forks.maxForks=1 --poolOptions.forks.minForks=1 --poolOptions.forks.isolate=true',
+    );
+    expect(packageJson.scripts.test).toBe('vitest run');
+  });
+
   it('orders aggregate guard, clean checkout, report download, and verification fail closed', async () => {
     const workflow = (
       await readFile(resolve('.github/workflows/frontend-quality.yml'), 'utf8')

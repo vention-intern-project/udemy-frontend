@@ -1224,6 +1224,10 @@
     gap: var(--spacing-2);
   }
 
+  .headerAuthenticatedMobile.headerInstructorCourses .brand {
+    gap: var(--spacing-1);
+  }
+
   .headerAuthenticatedMobile .headerCatalogEnd {
     gap: var(--spacing-2);
     margin-left: auto;
