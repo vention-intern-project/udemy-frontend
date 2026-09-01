@@ -146,6 +146,14 @@ interface PendingResourceStatusConsoleEntry {
   readonly text: string;
 }
 
+interface ReviewMobileLayoutSnapshot {
+  readonly display: string;
+  readonly emptyBottom: number;
+  readonly emptyTop: number;
+  readonly flexDirection: string;
+  readonly formTop: number;
+}
+
 interface DiagnosticAssertions {
   expectHttpFailure(failure: ExpectedHttpFailure): void;
   allowOptionalHttpFailure(failure: ExpectedHttpFailure): void;
@@ -1723,10 +1731,30 @@ test('keeps authenticated review CRUD recoverable without raw server detail and 
   expect(saveBox.width).toBeGreaterThan(desktopFormBox.width - 40);
 
   await page.setViewportSize({ width: 320, height: 900 });
-  const mobileEmptyBox = await emptyState.boundingBox();
-  const mobileFormBox = await reviewForm.boundingBox();
-  if (!mobileEmptyBox || !mobileFormBox) throw new Error('Review mobile geometry is unavailable.');
-  expect(mobileFormBox.y).toBeGreaterThan(mobileEmptyBox.y + mobileEmptyBox.height);
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+  const mobileLayout = await emptyState
+    .locator('xpath=..')
+    .evaluate<ReviewMobileLayoutSnapshot>((layout) => {
+      const empty = layout.querySelector<HTMLElement>('[data-part="reviews-empty-state"]');
+      const form = layout.querySelector<HTMLElement>('[data-part="review-form"]');
+      if (!empty || !form) throw new Error('Review mobile geometry is unavailable.');
+
+      const emptyRect = empty.getBoundingClientRect();
+      const formRect = form.getBoundingClientRect();
+      const layoutStyles = getComputedStyle(layout);
+      return {
+        display: layoutStyles.display,
+        emptyBottom: emptyRect.bottom,
+        emptyTop: emptyRect.top,
+        flexDirection: layoutStyles.flexDirection,
+        formTop: formRect.top,
+      };
+    });
+  expect(mobileLayout.display).toBe('flex');
+  expect(mobileLayout.flexDirection).toBe('column');
+  for (const value of [mobileLayout.emptyTop, mobileLayout.emptyBottom, mobileLayout.formTop])
+    expect(Number.isFinite(value)).toBe(true);
+  expect(mobileLayout.formTop).toBeGreaterThan(mobileLayout.emptyBottom);
   await expectNoHorizontalOverflow(page);
   await page.setViewportSize({ width: 1280, height: 900 });
 
