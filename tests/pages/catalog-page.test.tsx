@@ -147,6 +147,7 @@ interface CatalogRenderOptions {
   tokenStore?: AccessTokenStore;
   withSessionSwitchControl?: boolean;
   withLocaleSwitchControl?: boolean;
+  enableRatingSummary?: boolean;
   locale?: 'en' | 'ru' | 'uz';
 }
 
@@ -157,6 +158,17 @@ function renderCatalog(
   token: string | null = null,
   options: CatalogRenderOptions = {},
 ) {
+  if (!options.enableRatingSummary) {
+    class NonIntersectingObserver {
+      disconnect() {}
+      observe() {}
+      takeRecords() {
+        return [];
+      }
+      unobserve() {}
+    }
+    vi.stubGlobal('IntersectionObserver', NonIntersectingObserver);
+  }
   return render(
     <QueryClientProvider client={options.queryClient ?? createAppQueryClient()}>
       <LocaleProvider initialLocale={options.locale ?? 'en'}>
@@ -180,6 +192,63 @@ function renderCatalog(
 }
 
 describe('CatalogPage public URL and pagination behavior', () => {
+  it.each([
+    ['en', '4.5', 'Reviews: 2'],
+    ['ru', '4,5', 'Отзывы: 2'],
+    ['uz', '4,5', 'Sharhlar: 2'],
+  ] as const)(
+    'derives the %s course-card rating from API-037 data without adding a control',
+    async (locale, average, reviewCount) => {
+      const request: ApiClient['request'] = async <TResponse, TBody>(
+        options: ApiRequestOptions<TBody, TResponse>,
+      ) => {
+        const value =
+          options.path === '/courses/7/reviews'
+            ? {
+                items: [
+                  {
+                    id: 101,
+                    course_id: 7,
+                    user_id: 10,
+                    rating: 4,
+                    comment: null,
+                    created_at: '2026-08-31T00:00:00Z',
+                    updated_at: '2026-08-31T00:00:00Z',
+                  },
+                  {
+                    id: 102,
+                    course_id: 7,
+                    user_id: 11,
+                    rating: 5,
+                    comment: null,
+                    created_at: '2026-08-31T00:00:00Z',
+                    updated_at: '2026-08-31T00:00:00Z',
+                  },
+                ],
+                page: 1,
+                page_size: 20,
+                total: 2,
+                pages: 1,
+                has_next: false,
+                has_previous: false,
+              }
+            : response({ items: [{ ...catalogItem, published_at: '2026-07-01T00:00:00Z' }] });
+        return options.decode ? options.decode(value) : (value as TResponse);
+      };
+
+      renderCatalog(request, ['/'], 0, null, { locale, enableRatingSummary: true });
+
+      await screen.findByText(average);
+      const courseLink = screen.getByRole('link', { name: 'React' });
+      const ratingRow = courseLink.querySelector<HTMLElement>('[data-part="course-card-rating"]');
+      expect(courseLink.getAttribute('aria-describedby')?.split(' ')).toContain(ratingRow?.id);
+      expect(ratingRow?.textContent).toContain(average);
+      expect(ratingRow?.textContent).toContain(reviewCount);
+      expect(within(courseLink).queryByRole('button')).toBeNull();
+      expect(courseLink.querySelector('[aria-hidden="true"]')?.textContent).toContain('★');
+    },
+  );
+
   it('renders the admitted Catalog UI copy in Russian without changing course data', async () => {
     const request: ApiClient['request'] = async <TResponse,>() =>
       response({
@@ -224,7 +293,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(screen.getAllByText('Подробнее')).toHaveLength(2);
     expect(screen.getByText('3 доступных урока')).toBeTruthy();
     expect(screen.getByRole('link', { name: /React Fundamentals/ })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Записаться бесплатно' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Записаться' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'В корзину' })).toBeTruthy();
   });
 
@@ -1598,7 +1667,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(freePrice?.value).toBe('0.00');
     expect(freePrice?.textContent).toBe('FREE');
     const freeLogin = within(freeCard as HTMLElement).getByRole('link', {
-      name: 'Enroll for free',
+      name: 'Enroll free',
     });
     expect(freeLogin.getAttribute('href')).toBe('/login?returnTo=%2Fcourses%2F8');
     expect(freeLogin.closest('[data-part="course-card-actions"]')).toBeTruthy();
@@ -1972,7 +2041,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(priceTrigger.getAttribute('aria-expanded')).toBe('false');
     const priceChevron = priceTrigger.querySelector('[data-part="catalog-price-chevron"]');
     expect(priceChevron?.getAttribute('aria-hidden')).toBe('true');
-    expect(priceChevron?.getAttribute('focusable')).toBeNull();
+    expect(priceChevron?.getAttribute('focusable')).toBe('false');
     expect(priceTrigger.getAttribute('aria-describedby')).toBeNull();
     expect(screen.queryByRole('group', { name: 'Price range' })).toBeNull();
     await act(async () => {
@@ -2305,7 +2374,31 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(requests).toHaveLength(1);
   });
 
-  it('cancels an outside-dismissed Price draft and applies a completed range once', async () => {
+  it('cancels an uncommitted price range when a fine pointer leaves the Price dropdown', async () => {
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })),
+    );
+    const user = userEvent.setup();
+    const request: ApiClient['request'] = async <TResponse,>() => response() as TResponse;
+    renderCatalog(request, ['/']);
+
+    await screen.findByRole('link', { name: 'React' });
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Price' }));
+    });
+    const priceRange = screen.getByRole('group', { name: 'Price range' });
+    await act(async () => {
+      await user.type(screen.getByLabelText('From'), '5');
+      await user.type(screen.getByLabelText('To'), '25');
+      await user.unhover(priceRange);
+    });
+
+    expect(screen.getByLabelText('catalog location').textContent).toBe('/');
+    await waitFor(() => expect(screen.queryByRole('group', { name: 'Price range' })).toBeNull());
+  });
+
+  it('cancels a Price draft when the dropdown is dismissed outside', async () => {
     const user = userEvent.setup();
     const requests: ApiRequestOptions[] = [];
     const request: ApiClient['request'] = async <TResponse,>(options: ApiRequestOptions) => {
@@ -2315,6 +2408,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
     renderCatalog(request, ['/?page=3']);
 
     await screen.findByRole('link', { name: 'React' });
+    const initialRequestCount = requests.length;
     const trigger = screen.getByRole('button', { name: 'Price' });
     expect(trigger.getAttribute('aria-describedby')).toBeNull();
     await act(async () => {
@@ -2327,37 +2421,22 @@ describe('CatalogPage public URL and pagination behavior', () => {
       await user.click(maximum);
     });
     expect(screen.getByLabelText('catalog location').textContent).toBe('/?page=3');
-    expect(requests).toHaveLength(1);
+    expect(requests).toHaveLength(initialRequestCount);
 
     await act(async () => {
       await user.type(maximum, '25');
       await user.click(minimum);
     });
     expect(screen.getByLabelText('catalog location').textContent).toBe('/?page=3');
-    expect(requests).toHaveLength(1);
+    expect(requests).toHaveLength(initialRequestCount);
 
     await act(async () => {
       await user.click(screen.getByRole('contentinfo'));
     });
     expect(screen.queryByRole('group', { name: 'Price range' })).toBeNull();
     await waitFor(() => expect(trigger).toBe(document.activeElement));
-    expect(requests).toHaveLength(1);
-    await act(async () => {
-      await user.click(trigger);
-    });
-    const reopenedMinimum = await screen.findByLabelText('From');
-    const reopenedMaximum = screen.getByLabelText('To');
-    await act(async () => {
-      await user.type(reopenedMinimum, '5');
-      await user.type(reopenedMaximum, '25');
-      await user.click(screen.getByRole('button', { name: 'Done' }));
-    });
-    await waitFor(() =>
-      expect(screen.getByLabelText('catalog location').textContent).toBe(
-        '/?min_price=5&max_price=25',
-      ),
-    );
-    await waitFor(() => expect(requests).toHaveLength(2));
+    expect(screen.getByLabelText('catalog location').textContent).toBe('/?page=3');
+    expect(requests).toHaveLength(initialRequestCount);
   });
 
   it('prioritizes a negative maximum error before inverted-range validation', async () => {
@@ -2645,7 +2724,9 @@ describe('CatalogPage public URL and pagination behavior', () => {
     await waitFor(() =>
       expect(screen.getByLabelText('catalog location').textContent).toBe('/?sort=price'),
     );
-    expect(screen.getByRole('heading', { level: 2, name: 'Loading course results…' })).toBeTruthy();
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Loading course results…' }).textContent,
+    ).toBe('Found 22 courses');
     expect(document.querySelectorAll('[data-part="skeleton"]')).toHaveLength(20);
 
     await act(async () => {

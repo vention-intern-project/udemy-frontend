@@ -170,6 +170,32 @@ interface RenderAppOptions {
   readonly initialIndex?: number;
 }
 
+interface ViewportMatch {
+  readonly mobile: boolean;
+  readonly tablet: boolean;
+}
+
+function stubViewportMatchMedia({ mobile, tablet }: ViewportMatch): void {
+  vi.spyOn(window, 'matchMedia').mockImplementation(
+    (query) =>
+      ({
+        matches:
+          query === '(max-width: 767.98px)'
+            ? mobile
+            : query === '(min-width: 768px) and (max-width: 1023px)'
+              ? tablet
+              : false,
+        media: query,
+        onchange: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      }) as MediaQueryList,
+  );
+}
+
 function headerSemanticOrder(header: HTMLElement): string[] {
   return Array.from(
     header.querySelectorAll('a, button[aria-label], input, [data-account-initials]'),
@@ -320,6 +346,26 @@ describe('application routing and guards', () => {
     expect(screen.getByLabelText('current location').textContent).toBe(
       '/login?returnTo=%2Fcart%3Fcoupon%3DSAVE%23summary',
     );
+  });
+
+  it('falls back to the student home when Login returnTo targets an Instructor route', async () => {
+    renderApp('/login?returnTo=%2Finstructor%2Fcourses', 'student');
+
+    await screen.findByRole('heading', { level: 1, name: 'My learning' });
+    expect(screen.getByLabelText('current location').textContent).toBe('/learning');
+    expect(
+      screen.queryByRole('heading', { level: 1, name: 'You do not have access to this page' }),
+    ).toBeNull();
+  });
+
+  it('falls back to the Instructor home when Login returnTo targets a student route', async () => {
+    renderApp('/login?returnTo=%2Flearning', 'instructor');
+
+    await screen.findByRole('heading', { level: 1, name: 'Instructor courses' });
+    expect(screen.getByLabelText('current location').textContent).toBe('/instructor/courses');
+    expect(
+      screen.queryByRole('heading', { level: 1, name: 'You do not have access to this page' }),
+    ).toBeNull();
   });
 
   it('redirects an Instructor from the Catalog root to Instructor courses', async () => {
@@ -907,6 +953,7 @@ describe('application routing and guards', () => {
   });
 
   it('closes mobile navigation when Escape is pressed while its trigger remains focused', async () => {
+    stubViewportMatchMedia({ mobile: false, tablet: true });
     renderApp('/instructor/courses', 'instructor');
     await screen.findByRole('heading', { level: 1, name: 'Instructor courses' });
     const user = userEvent.setup();
@@ -915,7 +962,11 @@ describe('application routing and guards', () => {
     await act(async () => {
       await user.click(trigger);
     });
-    expect(trigger).toBe(document.activeElement);
+    expect(
+      within(screen.getByRole('dialog', { name: 'Menu' })).getByRole('button', {
+        name: 'Close navigation',
+      }),
+    ).toBe(document.activeElement);
     expect(screen.getByRole('navigation', { name: 'Mobile navigation' })).toBeTruthy();
     await act(async () => {
       await user.keyboard('{Escape}');
@@ -928,17 +979,22 @@ describe('application routing and guards', () => {
   });
 
   it('restores the mobile trigger after removing a hash from the current pathname and search', async () => {
+    stubViewportMatchMedia({ mobile: false, tablet: true });
     renderApp('/instructor/courses#mobile-menu-focus', 'instructor');
     await screen.findByRole('heading', { level: 1, name: 'Instructor courses' });
+    await act(async () => {});
     const user = userEvent.setup();
     const trigger = screen.getByRole('button', { name: 'Open navigation' });
 
     await act(async () => {
       await user.click(trigger);
     });
-    const currentRouteLink = within(
-      screen.getByRole('navigation', { name: 'Mobile navigation' }),
-    ).getByRole('link', { name: 'Instructor courses' });
+    const mobileNavigation = await screen.findByRole('navigation', {
+      name: 'Mobile navigation',
+    });
+    const currentRouteLink = within(mobileNavigation).getByRole('link', {
+      name: 'Instructor courses',
+    });
     await act(async () => {
       await user.click(currentRouteLink);
     });

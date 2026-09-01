@@ -1,6 +1,7 @@
 import { Buffer } from 'node:buffer';
 
 import { expect, test, type Locator, type Page, type Request } from '@playwright/test';
+import { LOCALE_RESOURCES } from '@shared/locale/resources';
 import {
   fulfillLearningJson,
   installLearningAdmissionRoutes,
@@ -8,6 +9,10 @@ import {
   installLearningStudent,
   learningEmptyCart,
 } from './fixtures/learning-progress-fixture';
+import {
+  learningProgressSubtitleOrigin,
+  startLearningProgressServer,
+} from './learning-progress-server';
 
 const student = {
   email: 'student@example.test',
@@ -163,7 +168,7 @@ const learningResidualBrowserCopy: Readonly<
     catalog: 'Каталог',
     completeMockPayment: 'Завершить тестовую оплату',
     myLearning: 'Моё обучение',
-    paymentPending: 'Платёж ожидается',
+    paymentPending: 'Ожидается оплата',
     pendingBody:
       'Платёж ожидает обработки. Обучение останется заблокированным, пока ваша запись не станет активной.',
     progressHeading: 'Прогресс обучения',
@@ -179,7 +184,7 @@ const learningResidualBrowserCopy: Readonly<
     myLearning: 'Ta’limim',
     paymentPending: 'To‘lov kutilmoqda',
     pendingBody: 'To‘lov kutilmoqda. Ro‘yxatdan o‘tishingiz faol bo‘lmaguncha ta’lim yopiq qoladi.',
-    progressHeading: 'Ta’lim jarayoni',
+    progressHeading: LOCALE_RESOURCES.uz.learning.learningProgress,
     progressSummary: '5 ta darsdan 2 tasi yakunlandi',
     progressAccessibleName: '5 ta darsdan 2 tasi yakunlandi, 40%',
     simulateMockPaymentFailure: 'Sinov to‘lovi xatosini taqlid qilish',
@@ -293,6 +298,19 @@ async function tabTo(page: Page, locator: ReturnType<Page['getByRole']>) {
   throw new Error('Keyboard traversal did not reach the expected control');
 }
 
+async function visibleActionLineCount(action: Locator): Promise<number> {
+  return action.evaluate((button) => {
+    const content = button.querySelector(':scope > span');
+    const label = Array.from(content?.childNodes ?? []).find(
+      (node) => node.nodeType === Node.TEXT_NODE && node.textContent?.trim() !== '',
+    );
+    if (label === undefined) throw new Error('Visible action label is missing.');
+    const range = document.createRange();
+    range.selectNodeContents(label);
+    return new Set(Array.from(range.getClientRects(), (rect) => Math.round(rect.top))).size;
+  });
+}
+
 interface LessonMediaGeometry {
   readonly frameWidth: number;
   readonly frameHeight: number;
@@ -304,6 +322,10 @@ interface LessonMediaGeometry {
   readonly frameTop: number;
   readonly frameRight: number;
   readonly frameBottom: number;
+  readonly containerLeft: number;
+  readonly containerRight: number;
+  readonly lessonContentLeft: number;
+  readonly lessonContentRight: number;
   readonly maxFrameWidth: number;
   readonly documentWidth: number;
   readonly bodyWidth: number;
@@ -383,6 +405,21 @@ async function expectStableLessonMediaGeometry(preview: Locator) {
     }
     const mediaRect = element.getBoundingClientRect();
     const frameRect = frame.getBoundingClientRect();
+    const containerRect = frame.parentElement?.getBoundingClientRect();
+    if (!containerRect) throw new Error('The lesson media container was not rendered.');
+    const lesson = frame.closest('li');
+    if (!(lesson instanceof HTMLElement))
+      throw new Error('The owning lesson card was not rendered.');
+    const lessonRect = lesson.getBoundingClientRect();
+    const lessonStyle = getComputedStyle(lesson);
+    const lessonContentLeft =
+      lessonRect.left +
+      Number.parseFloat(lessonStyle.borderLeftWidth) +
+      Number.parseFloat(lessonStyle.paddingLeft);
+    const lessonContentRight =
+      lessonRect.right -
+      Number.parseFloat(lessonStyle.borderRightWidth) -
+      Number.parseFloat(lessonStyle.paddingRight);
     const active = document.activeElement;
     const activeRect = active instanceof HTMLElement ? active.getBoundingClientRect() : null;
     const rootFontSize = Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
@@ -397,6 +434,10 @@ async function expectStableLessonMediaGeometry(preview: Locator) {
       frameTop: frameRect.top,
       frameRight: frameRect.right,
       frameBottom: frameRect.bottom,
+      containerLeft: containerRect.left,
+      containerRight: containerRect.right,
+      lessonContentLeft,
+      lessonContentRight,
       maxFrameWidth: rootFontSize * 56,
       documentWidth: document.documentElement.scrollWidth,
       bodyWidth: document.body.scrollWidth,
@@ -411,6 +452,18 @@ async function expectStableLessonMediaGeometry(preview: Locator) {
   expect(geometry.mediaTop).toBeGreaterThanOrEqual(geometry.frameTop - 1);
   expect(geometry.mediaRight).toBeLessThanOrEqual(geometry.frameRight + 1);
   expect(geometry.mediaBottom).toBeLessThanOrEqual(geometry.frameBottom + 1);
+  expect(
+    Math.abs(
+      geometry.frameLeft - geometry.containerLeft - (geometry.containerRight - geometry.frameRight),
+    ),
+  ).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(
+      geometry.frameLeft -
+        geometry.lessonContentLeft -
+        (geometry.lessonContentRight - geometry.frameRight),
+    ),
+  ).toBeLessThanOrEqual(1);
   expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.layoutWidth);
   expect(geometry.bodyWidth).toBeLessThanOrEqual(geometry.layoutWidth);
   expect(geometry.focusLeft).toBeGreaterThanOrEqual(geometry.frameLeft - 1);
@@ -701,6 +754,50 @@ test('renders the My learning empty state within its responsive geometry', async
   expect(diagnostics.httpFailures).toEqual([]);
 });
 
+test('keeps the populated My learning breadcrumb aligned across the desktop breakpoint', async ({
+  page,
+}) => {
+  await installStudent(page);
+  await page.route('**/*', async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.origin !== 'http://127.0.0.1:4179') return route.fallback();
+    if (url.pathname === '/me') return json(route, student);
+    if (url.pathname === '/enrollments/my')
+      return json(route, {
+        items: [enrollment],
+        page: 1,
+        page_size: 100,
+        total: 1,
+        pages: 1,
+        has_next: false,
+        has_previous: false,
+      });
+    if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/'))
+      throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
+    return route.fallback();
+  });
+
+  for (const width of [1118, 1120, 1122]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/learning');
+    await expect(page.getByRole('heading', { name: 'My learning' })).toBeVisible();
+    const geometry = await page.evaluate(() => {
+      const heading = document.querySelector('h1');
+      const article = heading?.closest('article');
+      const breadcrumb = article?.querySelector('nav[aria-label="Breadcrumb"]');
+      const backLink = breadcrumb?.querySelector('a');
+      if (!(article instanceof HTMLElement) || !(backLink instanceof HTMLAnchorElement))
+        throw new Error('The populated My learning breadcrumb is missing.');
+      return {
+        articleLeft: article.getBoundingClientRect().left,
+        breadcrumbLeft: backLink.getBoundingClientRect().left,
+      };
+    });
+    expect(geometry.breadcrumbLeft).toBeCloseTo(geometry.articleLeft, 0);
+  }
+});
+
 test('collects later active enrollment pages before client-paginating My learning', async ({
   page,
 }) => {
@@ -797,8 +894,17 @@ test('keeps aggregate progress separate from fresh lesson state, dedupes action,
     '1 of 2 lessons completed, 50%',
   );
   await expect(page.getByText('1 available now · 1 lesson coming soon')).toBeVisible();
+  await expect(page.getByText('Text lesson', { exact: true })).toBeVisible();
+  await expect(page.getByText('Listed metadata', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Draft metadata', { exact: true })).toHaveCount(0);
   await expect(page.getByText('Media unavailable in this workspace')).toHaveCount(0);
   const markComplete = page.getByRole('button', { name: 'Complete lesson' });
+  await expect(markComplete).toHaveText('Complete');
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await visibleActionLineCount(markComplete)).toBe(1);
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
   await expect(markComplete).toHaveCSS('color', 'rgb(75, 50, 181)');
   await expect(markComplete).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await expect(markComplete).toHaveCSS('border-top-width', '0px');
@@ -868,6 +974,12 @@ test('keeps aggregate progress separate from fresh lesson state, dedupes action,
   ).toBe(true);
   const markIncomplete = page.getByRole('button', { name: 'Undo completion' });
   await expect(markIncomplete).toBeVisible();
+  await expect(markIncomplete).toHaveText('Undo');
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await visibleActionLineCount(markIncomplete)).toBe(1);
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
   const completionCourseFeedbackGap = await courseContentGap();
   expect(completionCourseFeedbackGap).toBeCloseTo(initialCourseFeedbackGap, 1);
   await expect(markIncomplete.locator('svg[aria-hidden="true"]')).toHaveCount(1);
@@ -952,7 +1064,7 @@ test('keeps aggregate progress separate from fresh lesson state, dedupes action,
   expect(diagnostics.httpFailures).toEqual(['POST /courses/7/lessons/12/complete 500']);
 });
 
-test('requests authorized video only after explicit keyboard activation and renders the native preview', async ({
+test('keeps authorized video usable without requesting a subtitle track by default', async ({
   page,
 }) => {
   await installStudent(page);
@@ -960,6 +1072,7 @@ test('requests authorized video only after explicit keyboard activation and rend
     abortedRequests: [expectedGetAbort('/enrollments/4', 1)],
   });
   const mediaRequests: string[] = [];
+  const subtitleRequests: string[] = [];
   let releaseMediaResponse: () => void = () => undefined;
   const mediaResponseReleased = new Promise<void>((resolve) => {
     releaseMediaResponse = resolve;
@@ -985,6 +1098,7 @@ test('requests authorized video only after explicit keyboard activation and rend
             title: 'Authorized browser video',
             lesson_type: 'video',
             download_url: '/media/lessons/lesson%20one.mp4',
+            subtitle_status: true,
             description: null,
             is_published: true,
             created_at: '2026-01-01T00:00:00Z',
@@ -1003,6 +1117,15 @@ test('requests authorized video only after explicit keyboard activation and rend
       expect(request.headers().authorization).toBe('Bearer student-token');
       await mediaResponseReleased;
       return route.fulfill({ status: 200, contentType: 'video/mp4', body: VALID_VIDEO_MP4 });
+    }
+    if (url.pathname === '/courses/7/lessons/12/subtitles') {
+      subtitleRequests.push(url.pathname);
+      expect(request.headers().authorization).toBe('Bearer student-token');
+      return route.fulfill({
+        status: 200,
+        contentType: 'text/vtt',
+        body: 'WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nReact subtitle\n',
+      });
     }
     if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/'))
       throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
@@ -1029,6 +1152,15 @@ test('requests authorized video only after explicit keyboard activation and rend
   await expect(preview).toHaveAttribute('controls');
   await expect(preview).toHaveAttribute('preload', 'metadata');
   await expect(preview).toHaveAttribute('src', /^blob:/);
+  const subtitleTrack = preview.locator('track[kind="subtitles"]');
+  await expect(subtitleTrack).toHaveCount(0);
+  await expect
+    .poll(() =>
+      preview.evaluate((element) =>
+        element instanceof HTMLVideoElement ? element.textTracks.length : 0,
+      ),
+    )
+    .toBe(0);
   await expectNativeVideoReadiness(preview);
   await expect(page.getByRole('status')).toHaveText('Video ready.');
   for (const width of [320, 390, 768, 1280, 1440]) {
@@ -1037,8 +1169,103 @@ test('requests authorized video only after explicit keyboard activation and rend
   }
   await expectEffectivePageScaleGeometry(page, preview);
   expect(mediaRequests).toEqual(['/media/lessons/lesson%20one.mp4']);
+  expect(subtitleRequests).toEqual([]);
   expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
   expect(diagnostics.httpFailures).toEqual([]);
+});
+
+test('retains the authorized WebVTT track only in the explicit subtitle opt-in build', async ({
+  page,
+}) => {
+  const stopSubtitleServer = await startLearningProgressServer(
+    learningProgressSubtitleOrigin,
+    true,
+  );
+  try {
+    await installStudent(page);
+    const diagnostics = captureRuntimeDiagnostics(page, {
+      abortedRequests: [expectedGetAbort('/enrollments/4', 1)],
+    });
+    const mediaRequests: string[] = [];
+    const subtitleRequests: string[] = [];
+    await page.route('**/*', async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (url.origin !== learningProgressSubtitleOrigin) return route.fallback();
+      if (url.pathname === '/me') return json(route, student);
+      if (url.pathname === '/enrollments/4') return json(route, enrollment);
+      if (url.pathname === '/courses/7/progress')
+        return json(route, {
+          course_id: 7,
+          completed_lessons: 0,
+          total_lessons: 1,
+          progress_percentage: 0,
+        });
+      if (url.pathname === '/courses/7/lessons' && request.method() === 'GET')
+        return json(route, {
+          items: [
+            {
+              id: 12,
+              title: 'Authorized browser video',
+              lesson_type: 'video',
+              download_url: '/media/lessons/lesson%20one.mp4',
+              subtitle_status: true,
+              description: null,
+              is_published: true,
+              created_at: '2026-01-01T00:00:00Z',
+              updated_at: '2026-01-01T00:00:00Z',
+            },
+          ],
+          page: 1,
+          page_size: 100,
+          total: 1,
+          pages: 1,
+          has_next: false,
+          has_previous: false,
+        });
+      if (url.pathname === '/media/lessons/lesson%20one.mp4') {
+        mediaRequests.push(url.pathname);
+        expect(request.headers().authorization).toBe('Bearer student-token');
+        return route.fulfill({ status: 200, contentType: 'video/mp4', body: VALID_VIDEO_MP4 });
+      }
+      if (url.pathname === '/courses/7/lessons/12/subtitles') {
+        subtitleRequests.push(url.pathname);
+        expect(request.headers().authorization).toBe('Bearer student-token');
+        return route.fulfill({
+          status: 200,
+          contentType: 'text/vtt',
+          body: 'WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nReact subtitle\n',
+        });
+      }
+      if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/'))
+        throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
+      return route.fallback();
+    });
+
+    await page.goto(`${learningProgressSubtitleOrigin}/learning/enrollments/4`);
+    await page.getByRole('button', { name: 'Load video' }).click();
+    const preview = page.getByLabel('Lesson video preview');
+    await expect(preview).toBeVisible();
+    const subtitleTrack = preview.locator('track[kind="subtitles"]');
+    await expect(subtitleTrack).toHaveCount(1);
+    await expect(subtitleTrack).toHaveAttribute('src', /^blob:/);
+    await expect(subtitleTrack).toHaveAttribute('srclang', 'und');
+    await expect(subtitleTrack).toHaveAttribute('default', '');
+    await expect
+      .poll(() =>
+        preview.evaluate((element) =>
+          element instanceof HTMLVideoElement ? element.textTracks.length : 0,
+        ),
+      )
+      .toBe(1);
+    await expectNativeVideoReadiness(preview);
+    expect(mediaRequests).toEqual(['/media/lessons/lesson%20one.mp4']);
+    expect(subtitleRequests).toEqual(['/courses/7/lessons/12/subtitles']);
+    expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
+    expect(diagnostics.httpFailures).toEqual([]);
+  } finally {
+    await stopSubtitleServer();
+  }
 });
 
 test('recovers a same-MIME corrupt video without a false-ready state and retries with a fresh resource', async ({
@@ -1185,7 +1412,15 @@ test('renders authorized PDF in-page with basic navigation and stable geometry',
 
   await page.goto('/learning/enrollments/4');
   const loadPdf = page.getByRole('button', { name: 'Load PDF' });
+  const pdfLessonType = page.getByText('PDF lesson', { exact: true });
   expect(mediaRequests).toEqual([]);
+  const [pdfLessonTypeBox, loadPdfBox] = await Promise.all([
+    pdfLessonType.boundingBox(),
+    loadPdf.boundingBox(),
+  ]);
+  if (!pdfLessonTypeBox || !loadPdfBox)
+    throw new Error('PDF lesson action geometry is unavailable.');
+  expect(loadPdfBox.y - (pdfLessonTypeBox.y + pdfLessonTypeBox.height)).toBeGreaterThanOrEqual(7);
   await tabTo(page, loadPdf);
   await expect(loadPdf).toBeFocused();
   await page.keyboard.press('Enter');
@@ -2079,9 +2314,9 @@ test('keeps student contextual navigation consistent across the DD-259 CSS-width
   await installStudent(page);
   const diagnostics = captureRuntimeDiagnostics(page, {
     abortedRequests: [
-      expectedGetAbort('/enrollments/my', 11),
-      expectedGetAbort('/enrollments/4', 11),
-      expectedGetAbort('/cart', 22),
+      expectedGetAbort('/enrollments/my', 12),
+      expectedGetAbort('/enrollments/4', 12),
+      expectedGetAbort('/cart', 24),
       expectedGetAbort('/src/app/layouts/assets/ai-assistant-navigation-ui018-2.png', 1),
     ],
   });
@@ -2134,7 +2369,7 @@ test('keeps student contextual navigation consistent across the DD-259 CSS-width
     return route.fallback();
   });
 
-  for (const width of [320, 390, 479, 480, 767, 768, 1023, 1024, 1119, 1120, 1440]) {
+  for (const width of [320, 322, 390, 479, 480, 767, 768, 1023, 1024, 1119, 1120, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/learning');
     const listBreadcrumb = page.getByRole('navigation', { name: 'Breadcrumb' });
@@ -2148,29 +2383,57 @@ test('keeps student contextual navigation consistent across the DD-259 CSS-width
     const backLink = breadcrumb.getByRole('link', { name: 'My learning', exact: true });
     await expect(backLink).toHaveAttribute('href', '/learning');
     await expect(breadcrumb.getByRole('link')).toHaveCount(1);
-    await expect(breadcrumb.locator('[aria-current="page"]')).toHaveText(longCourseTitle);
+    const currentCourse = breadcrumb.locator('[aria-current="page"]');
+    await expect(currentCourse).toHaveText(longCourseTitle);
     await expect(breadcrumb.getByRole('link', { name: longCourseTitle })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: longCourseTitle })).toHaveText(longCourseTitle);
     await backLink.hover();
     await expect(backLink).toHaveCSS('text-decoration-line', 'underline');
     await page.mouse.move(0, 0);
     await tabTo(page, backLink);
     await expect(backLink).toBeFocused();
     await expect(backLink).toHaveCSS('text-decoration-line', 'underline');
-    const geometry = await backLink.evaluate((link) => {
+    const geometry = await breadcrumb.evaluate((navigation) => {
+      const link = navigation.querySelector('a');
+      const current = navigation.querySelector('[aria-current="page"]');
+      const separator = navigation.querySelector('[aria-hidden="true"]:not(svg)');
+      if (!(link instanceof HTMLElement) || !(current instanceof HTMLElement))
+        throw new Error('Learning Detail breadcrumb content is missing.');
       const rect = link.getBoundingClientRect();
       const icon = link.querySelector('svg')?.getBoundingClientRect();
+      const currentStyle = getComputedStyle(current);
+      const currentText = current.firstChild;
+      if (currentText === null) throw new Error('Current-course breadcrumb text is missing.');
+      const currentRange = document.createRange();
+      currentRange.selectNodeContents(currentText);
       return {
         documentWidth: document.documentElement.scrollWidth,
         bodyWidth: document.body.scrollWidth,
         layoutWidth: document.documentElement.clientWidth,
         targetHeight: rect.height,
         iconHeight: icon?.height ?? -1,
+        linkFullyVisible: link.scrollWidth <= link.clientWidth,
+        currentLineCount: new Set(
+          Array.from(currentRange.getClientRects(), (line) => Math.round(line.top)),
+        ).size,
+        currentOverflowing: current.scrollWidth > current.clientWidth,
+        currentOverflow: currentStyle.overflowX,
+        currentTextOverflow: currentStyle.textOverflow,
+        currentWhiteSpace: currentStyle.whiteSpace,
+        separatorVisible: separator?.getBoundingClientRect().width !== 0,
       };
     });
     expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.layoutWidth);
     expect(geometry.bodyWidth).toBeLessThanOrEqual(geometry.layoutWidth);
     expect(geometry.targetHeight).toBeGreaterThanOrEqual(44);
     expect(geometry.iconHeight).toBeCloseTo(20, 1);
+    expect(geometry.linkFullyVisible).toBe(true);
+    expect(geometry.currentLineCount).toBe(1);
+    expect(geometry.currentOverflow).toBe('hidden');
+    expect(geometry.currentTextOverflow).toBe('ellipsis');
+    expect(geometry.currentWhiteSpace).toBe('nowrap');
+    expect(geometry.separatorVisible).toBe(true);
+    if (width <= 322) expect(geometry.currentOverflowing).toBe(true);
   }
   expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
   expect(diagnostics.httpFailures).toEqual([]);
@@ -2420,11 +2683,19 @@ for (const locale of ['en', 'ru', 'uz'] as const) {
       await page.setViewportSize({ width, height: 900 });
       await backLink.focus();
       await expect(backLink).toBeFocused();
+      const backLabelLineCount = await backLink.locator('span').evaluate((label) => {
+        const range = document.createRange();
+        range.selectNodeContents(label);
+        return Array.from(range.getClientRects()).filter(
+          (rect) => rect.width > 0 && rect.height > 0,
+        ).length;
+      });
       const geometry = await page.evaluate(() => ({
         clientWidth: document.documentElement.clientWidth,
         documentWidth: document.documentElement.scrollWidth,
         bodyWidth: document.body.scrollWidth,
       }));
+      expect(backLabelLineCount).toBe(1);
       expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.clientWidth);
       expect(geometry.bodyWidth).toBeLessThanOrEqual(geometry.clientWidth);
     }

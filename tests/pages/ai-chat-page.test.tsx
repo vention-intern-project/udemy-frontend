@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -47,6 +47,7 @@ function renderPage(path = '/learning/enrollments/4/ai-chat', locale: Locale = '
 }
 
 afterEach(async () => {
+  cleanup();
   vi.resetAllMocks();
   vi.unstubAllGlobals();
   await localeRuntime.changeLanguage('en');
@@ -55,7 +56,7 @@ afterEach(async () => {
 describe('AiChatPage eligibility states', () => {
   it.each([
     ['ru', 'Ассистент курса', 'Доступность ассистента неизвестна', 'Предлагаемые действия'],
-    ['uz', 'Kurs yordamchisi', 'Yordamchi holati noma’lum', 'Tavsiya etilgan amallar'],
+    ['uz', 'Kurs yordamchisi', 'Yordamchining mavjudligi noma’lum', 'Tavsiya etilgan amallar'],
   ] as const)(
     'uses exact %s AI resources in the visible and accessible active-course chat state',
     (locale, courseAssistant, availabilityLabel, suggestedActions) => {
@@ -320,7 +321,7 @@ describe('AiChatPage eligibility states', () => {
     expect(screen.queryByRole('button', { name: 'Send message' })).toBeTruthy();
   });
 
-  it('reveals the compact composer only when a selected action leaves it offscreen', async () => {
+  it('reveals the compact composer after every selected action without moving it on disclosure toggle', async () => {
     useLearningWorkspaceMock.mockReturnValue(
       workspaceFor({ isPending: false, isError: false, data: activeEnrollment }),
     );
@@ -368,11 +369,17 @@ describe('AiChatPage eligibility states', () => {
 
       const trigger = screen.getByRole('button', { name: 'Suggested Actions' });
       fireEvent.click(trigger);
+      expect(scrollIntoView).not.toHaveBeenCalled();
       const compactPanel = document.getElementById(trigger.getAttribute('aria-controls') ?? '');
       fireEvent.click(
         within(compactPanel as HTMLElement).getByRole('button', { name: 'Recommend a course' }),
       );
-      expect(scrollIntoView).not.toHaveBeenCalled();
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
+      expect(scrollIntoView).toHaveBeenLastCalledWith({
+        behavior: 'auto',
+        block: 'center',
+        inline: 'nearest',
+      });
 
       isPartiallyBelowViewport = true;
       fireEvent.click(trigger);
@@ -384,10 +391,10 @@ describe('AiChatPage eligibility states', () => {
           name: 'Explain a concept',
         }),
       );
-      await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
-      expect(scrollIntoView).toHaveBeenCalledWith({
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(2));
+      expect(scrollIntoView).toHaveBeenLastCalledWith({
         behavior: 'auto',
-        block: 'nearest',
+        block: 'center',
         inline: 'nearest',
       });
       expect(document.activeElement).toBe(input);

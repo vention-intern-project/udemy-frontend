@@ -105,6 +105,13 @@ async function renderPage(
   return queryClient;
 }
 
+async function settleQueryClient(queryClient: QueryClient): Promise<void> {
+  await vi.waitFor(() => {
+    expect(queryClient.isMutating()).toBe(0);
+    expect(queryClient.isFetching()).toBe(0);
+  });
+}
+
 describe('InstructorLessonEditorPage', () => {
   it.each([
     [
@@ -114,7 +121,7 @@ describe('InstructorLessonEditorPage', () => {
       'Upload lesson file',
       'Instructor workspace',
       'Back to course',
-      'Save lesson',
+      'All changes saved',
       'Upload file',
     ],
     [
@@ -124,7 +131,7 @@ describe('InstructorLessonEditorPage', () => {
       'Загрузить файл урока',
       'Рабочая область преподавателя',
       'Вернуться к курсу',
-      'Сохранить урок',
+      'Все изменения сохранены',
       'Загрузить файл',
     ],
     [
@@ -134,12 +141,12 @@ describe('InstructorLessonEditorPage', () => {
       'Dars faylini yuklash',
       'O‘qituvchi ish maydoni',
       'Kursga qaytish',
-      'Darsni saqlash',
+      'Barcha o‘zgarishlar saqlandi',
       'Faylni yuklash',
     ],
   ] as const)(
     'renders allocated lesson editor UI in %s',
-    async (locale, title, details, upload, workspace, backToCourse, saveLesson, uploadFile) => {
+    async (locale, title, details, upload, workspace, backToCourse, savedState, uploadFile) => {
       const request: ApiClient['request'] = async (options) => {
         if (options.path === '/me') return decode(options, instructor);
         if (options.path === '/lessons/8' && options.method === 'GET')
@@ -147,12 +154,20 @@ describe('InstructorLessonEditorPage', () => {
         throw new Error(`Unexpected request: ${options.method} ${options.path}`);
       };
       await renderPage({ request }, createAppQueryClient(), locale);
-      expect(await screen.findByRole('heading', { level: 1, name: title })).toBeTruthy();
+      const pageTitle = await screen.findByRole('heading', { level: 1, name: title });
       expect(screen.getByRole('heading', { name: details })).toBeTruthy();
-      expect(screen.getByRole('heading', { name: upload })).toBeTruthy();
+      const uploadHeading = screen.getByRole('heading', { name: upload });
+      expect(uploadHeading).toBeTruthy();
       expect(screen.getByText(workspace)).toBeTruthy();
-      expect(screen.getByRole('link', { name: backToCourse })).toBeTruthy();
-      expect(screen.getByRole('button', { name: saveLesson })).toBeTruthy();
+      const returnLink = screen.getByRole('link', { name: backToCourse });
+      expect(
+        returnLink.compareDocumentPosition(pageTitle) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      const savedStatus = screen.getByRole('status');
+      expect(savedStatus.textContent).toContain(savedState);
+      expect(
+        uploadHeading.compareDocumentPosition(savedStatus) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
       expect(screen.getByRole('button', { name: uploadFile })).toBeTruthy();
     },
   );
@@ -173,6 +188,61 @@ describe('InstructorLessonEditorPage', () => {
       '/instructor/lessons/not-a-lesson/edit',
     );
     expect(await screen.findByText(invalidAddress)).toBeTruthy();
+  });
+
+  it('keeps Save lesson stable and spinner-free while preventing a duplicate PATCH', async () => {
+    let releasePatch: (() => void) | undefined;
+    const patchGate = new Promise<void>((resolve) => {
+      releasePatch = resolve;
+    });
+    let patchRequests = 0;
+    let persistedLesson = lesson;
+    const request: ApiClient['request'] = async (options) => {
+      if (options.path === '/me') return decode(options, instructor);
+      if (options.path === '/lessons/8' && options.method === 'GET') {
+        return decode(options, persistedLesson);
+      }
+      if (options.path === '/lessons/8' && options.method === 'PATCH') {
+        patchRequests += 1;
+        await patchGate;
+        persistedLesson = { ...persistedLesson, title: 'Updated lesson' };
+        return decode(options, persistedLesson);
+      }
+      throw new Error(`Unexpected request: ${options.method} ${options.path}`);
+    };
+    const queryClient = await renderPage({ request });
+    await screen.findByRole('textbox', { name: 'Lesson title' });
+    const lessonTitle = screen.getByRole('textbox', { name: 'Lesson title' });
+    const user = userEvent.setup();
+
+    expect(screen.queryByRole('button', { name: 'Save lesson' })).toBeNull();
+    expect(screen.getByRole('status').textContent).toContain('All changes saved');
+    await act(async () => {
+      await user.clear(lessonTitle);
+    });
+    await act(async () => {
+      await user.type(lessonTitle, 'Updated lesson');
+    });
+    const saveLesson = screen.getByRole('button', { name: 'Save lesson' });
+    expect(saveLesson.hasAttribute('disabled')).toBe(false);
+    expect(screen.queryByText('All changes saved')).toBeNull();
+
+    await act(async () => {
+      await user.click(saveLesson);
+    });
+    expect(saveLesson.hasAttribute('disabled')).toBe(true);
+    expect(saveLesson.getAttribute('aria-busy')).toBe('true');
+    expect(saveLesson.textContent).toBe('Save lesson');
+    expect(saveLesson.querySelector('[data-part="spinner"]')).toBeNull();
+    fireEvent.click(saveLesson);
+    expect(patchRequests).toBe(1);
+
+    await act(async () => {
+      releasePatch?.();
+      await settleQueryClient(queryClient);
+    });
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Save lesson' })).toBeNull());
+    expect(screen.getByRole('status').textContent).toContain('All changes saved');
   });
 
   it('starts status observation from the accepted acknowledgement without rendering unsupported media controls', async () => {
@@ -202,6 +272,10 @@ describe('InstructorLessonEditorPage', () => {
     expect(await screen.findByRole('heading', { name: 'Upload lesson file' })).toBeTruthy();
     const file = new File(['video'], 'lesson.mp4', { type: 'video/mp4' });
     fireEvent.change(screen.getByLabelText('Lesson file'), { target: { files: [file] } });
+    expect(screen.getByText('lesson.mp4')).toBeTruthy();
+    expect(screen.getByLabelText('Lesson file').getAttribute('aria-describedby')).toBe(
+      'lesson-upload-file-help',
+    );
     await act(async () => {
       await user.click(screen.getByRole('button', { name: 'Upload file' }));
     });
@@ -336,25 +410,30 @@ describe('InstructorLessonEditorPage', () => {
         }
         throw new Error(`Unexpected request: ${options.method} ${options.path}`);
       };
-      await renderPage({ request });
+      const queryClient = await renderPage({ request });
       const user = userEvent.setup();
       const fileInput = await screen.findByLabelText('Lesson file');
       await act(async () => {
-        await user.selectOptions(
-          screen.getByRole('combobox', { name: 'Lesson type' }),
-          unsavedType,
+        await user.click(screen.getByRole('combobox', { name: 'Lesson type' }));
+      });
+      await act(async () => {
+        await user.click(
+          screen.getByRole('option', { name: unsavedType === 'video' ? 'Video' : 'PDF' }),
         );
       });
       expect(fileInput.getAttribute('accept')).toBe(accepted);
-      fireEvent.change(fileInput, {
-        target: { files: [new File(['file'], rejectedFile)] },
+      await act(async () => {
+        fireEvent.change(fileInput, {
+          target: { files: [new File(['file'], rejectedFile)] },
+        });
       });
       expect(
         await screen.findByText('Choose a file that matches the stated type and size limit.'),
       ).toBeTruthy();
 
       await act(async () => {
-        await user.click(screen.getByRole('button', { name: 'Save lesson' }));
+        await user.click(await screen.findByRole('button', { name: 'Save lesson' }));
+        await settleQueryClient(queryClient);
       });
       await waitFor(() =>
         expect(screen.getByLabelText('Lesson file').getAttribute('accept')).toBe(
@@ -385,20 +464,27 @@ describe('InstructorLessonEditorPage', () => {
         }
         throw new Error(`Unexpected request: ${options.method} ${options.path}`);
       };
-      await renderPage({ request });
+      const queryClient = await renderPage({ request });
       const user = userEvent.setup();
       const fileInput = await screen.findByLabelText('Lesson file');
-      fireEvent.change(fileInput, { target: { files: [new File(['file'], fileName)] } });
+      await act(async () => {
+        fireEvent.change(fileInput, { target: { files: [new File(['file'], fileName)] } });
+      });
       expect(screen.getByRole('button', { name: 'Upload file' }).hasAttribute('disabled')).toBe(
         false,
       );
 
       await act(async () => {
-        await user.selectOptions(
-          screen.getByRole('combobox', { name: 'Lesson type' }),
-          updatedType,
+        await user.click(screen.getByRole('combobox', { name: 'Lesson type' }));
+      });
+      await act(async () => {
+        await user.click(
+          screen.getByRole('option', { name: updatedType === 'video' ? 'Video' : 'PDF' }),
         );
-        await user.click(screen.getByRole('button', { name: 'Save lesson' }));
+      });
+      await act(async () => {
+        await user.click(await screen.findByRole('button', { name: 'Save lesson' }));
+        await settleQueryClient(queryClient);
       });
 
       expect(
@@ -435,11 +521,18 @@ describe('InstructorLessonEditorPage', () => {
       }
       throw new Error(`Unexpected request: ${options.method} ${options.path}`);
     };
-    await renderPage({ request });
+    const queryClient = await renderPage({ request });
     const user = userEvent.setup();
     const lessonType = await screen.findByRole('combobox', { name: 'Lesson type' });
     await act(async () => {
-      await user.click(screen.getByRole('button', { name: 'Save lesson' }));
+      await user.click(lessonType);
+    });
+    await act(async () => {
+      await user.click(screen.getByRole('option', { name: 'Text' }));
+    });
+    await act(async () => {
+      await user.click(await screen.findByRole('button', { name: 'Save lesson' }));
+      await settleQueryClient(queryClient);
     });
 
     expect(await screen.findByText('Check lesson type and submit again.')).toBeTruthy();
@@ -469,12 +562,15 @@ describe('InstructorLessonEditorPage', () => {
       }
       throw new Error(`Unexpected request: ${options.method} ${options.path}`);
     };
-    await renderPage({ request });
+    const queryClient = await renderPage({ request });
     const user = userEvent.setup();
     const checkbox = await screen.findByRole('checkbox', { name: 'Publish this lesson' });
     await act(async () => {
       await user.click(checkbox);
-      await user.click(screen.getByRole('button', { name: 'Save lesson' }));
+    });
+    await act(async () => {
+      await user.click(await screen.findByRole('button', { name: 'Save lesson' }));
+      await settleQueryClient(queryClient);
     });
 
     expect(await screen.findByText('Check publish this lesson and submit again.')).toBeTruthy();

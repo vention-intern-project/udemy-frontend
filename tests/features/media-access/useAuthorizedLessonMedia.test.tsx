@@ -10,12 +10,15 @@ import { LocaleProvider, localeRuntime, type Locale } from '../../../src/shared/
 
 const mediaMocks = vi.hoisted(() => ({
   requestAuthorizedLessonMedia: vi.fn(),
+  requestAuthorizedLessonSubtitles: vi.fn(),
   renderedPdf: null as Blob | null,
 }));
 const requestAuthorizedLessonMedia = mediaMocks.requestAuthorizedLessonMedia;
+const requestAuthorizedLessonSubtitles = mediaMocks.requestAuthorizedLessonSubtitles;
 
 vi.mock('../../../src/features/media-access/api', () => ({
   requestAuthorizedLessonMedia: mediaMocks.requestAuthorizedLessonMedia,
+  requestAuthorizedLessonSubtitles: mediaMocks.requestAuthorizedLessonSubtitles,
 }));
 vi.mock('../../../src/features/media-access/LessonPdfPreview', () => ({
   default: ({ file }: { file: Blob }) => {
@@ -45,11 +48,13 @@ interface PendingMediaRequest {
 
 afterEach(async () => {
   requestAuthorizedLessonMedia.mockReset();
+  requestAuthorizedLessonSubtitles.mockReset();
   mediaMocks.renderedPdf = null;
   createObjectUrl.mockReset();
   createObjectUrl.mockReturnValue(objectUrl);
   revokeObjectUrl.mockReset();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   await localeRuntime.changeLanguage('en');
 });
 
@@ -141,6 +146,76 @@ describe('LessonMediaAccess', () => {
     view.unmount();
     expect(revokeObjectUrl).toHaveBeenCalledWith(objectUrl);
   });
+
+  it('adds and revokes an authorized WebVTT subtitle track without blocking the video', async () => {
+    vi.stubEnv('VITE_LESSON_SUBTITLES_ENABLED', 'true');
+    const videoObjectUrl = 'blob:lesson-video';
+    const subtitleObjectUrl = 'blob:lesson-subtitles';
+    createObjectUrl.mockReturnValueOnce(videoObjectUrl).mockReturnValueOnce(subtitleObjectUrl);
+    vi.stubGlobal('URL', { createObjectURL: createObjectUrl, revokeObjectURL: revokeObjectUrl });
+    requestAuthorizedLessonMedia.mockResolvedValue(admittedMediaResponse('video/mp4'));
+    requestAuthorizedLessonSubtitles.mockResolvedValue(admittedMediaResponse('text/vtt'));
+    const view = render(
+      <LessonMediaAccess
+        lessonType="video"
+        locator={{ filename: 'lesson.mp4' }}
+        subtitleLocator={{ courseId: 7, lessonId: 12 }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load video' }));
+
+    const preview = await screen.findByLabelText('Lesson video preview');
+    const track = await waitFor(() => {
+      const element = preview.querySelector('track[kind="subtitles"]');
+      expect(element).not.toBeNull();
+      return element as HTMLTrackElement;
+    });
+    expect(preview.getAttribute('src')).toBe(videoObjectUrl);
+    expect(track.getAttribute('src')).toBe(subtitleObjectUrl);
+    expect(track.getAttribute('srclang')).toBe('und');
+    expect(track.default).toBe(true);
+    expect(requestAuthorizedLessonSubtitles).toHaveBeenCalledWith(
+      expect.anything(),
+      { courseId: 7, lessonId: 12 },
+      expect.any(AbortSignal),
+    );
+
+    view.unmount();
+    expect(revokeObjectUrl).toHaveBeenCalledWith(videoObjectUrl);
+    expect(revokeObjectUrl).toHaveBeenCalledWith(subtitleObjectUrl);
+  });
+
+  it.each([undefined, 'false', 'TRUE'])(
+    'keeps an authorized video ready without requesting or rendering subtitles when the opt-in is %s',
+    async (subtitleOptIn) => {
+      if (subtitleOptIn === undefined) {
+        vi.stubEnv('VITE_LESSON_SUBTITLES_ENABLED', '');
+        Reflect.deleteProperty(import.meta.env, 'VITE_LESSON_SUBTITLES_ENABLED');
+      } else {
+        vi.stubEnv('VITE_LESSON_SUBTITLES_ENABLED', subtitleOptIn);
+      }
+      vi.stubGlobal('URL', { createObjectURL: createObjectUrl, revokeObjectURL: revokeObjectUrl });
+      requestAuthorizedLessonMedia.mockResolvedValue(admittedMediaResponse('video/mp4'));
+      render(
+        <LessonMediaAccess
+          lessonType="video"
+          locator={{ filename: 'lesson.mp4' }}
+          subtitleLocator={{ courseId: 7, lessonId: 12 }}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Load video' }));
+
+      const preview = (await screen.findByLabelText('Lesson video preview')) as HTMLVideoElement;
+      signalPlayableMetadata(preview);
+
+      await waitFor(() => expect(screen.getByText('Video ready.')).toBeTruthy());
+      expect(requestAuthorizedLessonSubtitles).not.toHaveBeenCalled();
+      expect(preview.querySelector('track[kind="subtitles"]')).toBeNull();
+      expect(createObjectUrl).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it('revokes a same-MIME corrupt video and retries with a fresh request and object URL', async () => {
     const firstObjectUrl = 'blob:corrupt-video';

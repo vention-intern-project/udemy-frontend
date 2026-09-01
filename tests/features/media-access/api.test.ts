@@ -1,21 +1,31 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { requestAuthorizedLessonMedia } from '../../../src/features/media-access';
+import {
+  requestAuthorizedLessonMedia,
+  requestAuthorizedLessonSubtitles,
+} from '../../../src/features/media-access';
 import type { ApiRequestOptions } from '../../../src/shared/api';
 import type { SessionContextValue } from '../../../src/features/auth-session';
 
 function sessionWithRequiredRequester(): SessionContextValue {
-  const requestRequired = vi.fn(async <TResponse, TBody>(options: ApiRequestOptions<TBody, TResponse>) => {
-    void options;
-    return {
-      blob: new Blob(['media'], { type: 'video/mp4' }),
-      contentType: 'video/mp4',
-      contentDisposition: null,
-    } as TResponse;
-  });
+  const requestRequired = vi.fn(
+    async <TResponse, TBody>(options: ApiRequestOptions<TBody, TResponse>) => {
+      void options;
+      return {
+        blob: new Blob(['media'], { type: 'video/mp4' }),
+        contentType: 'video/mp4',
+        contentDisposition: null,
+      } as TResponse;
+    },
+  );
   return {
-    state: { status: 'anonymous' }, retryBootstrap: vi.fn(), acceptAccessToken: vi.fn(), clearSession: vi.fn(),
-    requestPublic: vi.fn(), requestOptional: vi.fn(), requestRequired,
+    state: { status: 'anonymous' },
+    retryBootstrap: vi.fn(),
+    acceptAccessToken: vi.fn(),
+    clearSession: vi.fn(),
+    requestPublic: vi.fn(),
+    requestOptional: vi.fn(),
+    requestRequired,
   } as unknown as SessionContextValue;
 }
 
@@ -24,12 +34,40 @@ describe('authorized lesson media request', () => {
     const session = sessionWithRequiredRequester();
     const controller = new AbortController();
 
-    await expect(requestAuthorizedLessonMedia(session, { filename: 'lesson one.pdf' }, controller.signal))
-      .resolves.toMatchObject({ contentType: 'video/mp4' });
+    await expect(
+      requestAuthorizedLessonMedia(session, { filename: 'lesson one.pdf' }, controller.signal),
+    ).resolves.toMatchObject({ contentType: 'video/mp4' });
 
-    expect(session.requestRequired).toHaveBeenCalledWith(expect.objectContaining({
-      method: 'GET', authPolicy: 'required', path: '/media/lessons/lesson%20one.pdf', responseType: 'blob', signal: controller.signal,
-    }));
+    expect(session.requestRequired).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: 'GET',
+        authPolicy: 'required',
+        path: '/media/lessons/lesson%20one.pdf',
+        responseType: 'blob',
+        signal: controller.signal,
+      }),
+    );
+    expect(session.requestPublic).not.toHaveBeenCalled();
+    expect(session.requestOptional).not.toHaveBeenCalled();
+  });
+
+  it('uses the required API-042 binary gateway for a lesson subtitle track', async () => {
+    const session = sessionWithRequiredRequester();
+    const controller = new AbortController();
+
+    await expect(
+      requestAuthorizedLessonSubtitles(session, { courseId: 7, lessonId: 12 }, controller.signal),
+    ).resolves.toMatchObject({ contentType: 'video/mp4' });
+
+    expect(session.requestRequired).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: 'GET',
+        authPolicy: 'required',
+        path: '/courses/7/lessons/12/subtitles',
+        responseType: 'blob',
+        signal: controller.signal,
+      }),
+    );
     expect(session.requestPublic).not.toHaveBeenCalled();
     expect(session.requestOptional).not.toHaveBeenCalled();
   });

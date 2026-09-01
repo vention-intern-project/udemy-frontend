@@ -26,6 +26,7 @@ import {
   useSignupWorkflow,
 } from '../../src/features/auth-workflows';
 import { SessionProvider, type AccessTokenStore } from '../../src/features/auth-session';
+import { CartCompositeCheckoutProvider } from '../../src/features/checkout-cart';
 import { ApiError, type ApiClient, type ApiRequestOptions } from '../../src/shared/api';
 import { localeRuntime, type Locale } from '../../src/shared/locale';
 import { ThemeProvider } from '../../src/shared/ui/theme';
@@ -232,9 +233,11 @@ function renderAuth(
             initialEntries={[path]}
             future={{ v7_relativeSplatPath: true, v7_startTransition: true }}
           >
-            <AppRouter />
-            <LocationProbe />
-            {options.routerChild}
+            <CartCompositeCheckoutProvider>
+              <AppRouter />
+              <LocationProbe />
+              {options.routerChild}
+            </CartCompositeCheckoutProvider>
           </MemoryRouter>
         </SessionProvider>
       </ThemeProvider>

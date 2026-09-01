@@ -51,6 +51,12 @@ const enrollmentMutation = {
     currency: detail.currency,
   },
 };
+const activeEnrollments = {
+  ...emptyEnrollments,
+  items: [enrollmentMutation],
+  total: 1,
+  pages: 1,
+};
 const cartItemMutation = {
   id: 5,
   course_id: 7,
@@ -142,11 +148,20 @@ interface PendingResourceStatusConsoleEntry {
 
 interface DiagnosticAssertions {
   expectHttpFailure(failure: ExpectedHttpFailure): void;
+  allowOptionalHttpFailure(failure: ExpectedHttpFailure): void;
   assertClean(): void;
 }
 
 function expectMissingCurrentReview(diagnostics: DiagnosticAssertions) {
   diagnostics.expectHttpFailure({
+    method: 'GET',
+    pathname: '/courses/7/reviews/me',
+    status: 404,
+  });
+}
+
+function allowOptionalMissingCurrentReview(diagnostics: DiagnosticAssertions) {
+  diagnostics.allowOptionalHttpFailure({
     method: 'GET',
     pathname: '/courses/7/reviews/me',
     status: 404,
@@ -275,6 +290,7 @@ async function installDiagnostics(page: Page) {
   const mediaRequests: string[] = [];
   const unexpectedApiRequests: string[] = [];
   const expectedFailures: ObservedHttpFailure[] = [];
+  const optionalFailures: ObservedHttpFailure[] = [];
   const pendingResourceConsoleErrors: PendingResourceStatusConsoleEntry[] = [];
   await page.route(isRootApiPath, async (route) => {
     if (isDocumentNavigation(route)) {
@@ -289,7 +305,8 @@ async function installDiagnostics(page: Page) {
   page.on('response', (response) => {
     const request = response.request();
     const pathname = new URL(response.url()).pathname;
-    const expected = expectedFailures.find(
+    const registeredFailures = [...expectedFailures, ...optionalFailures];
+    const expected = registeredFailures.find(
       (failure) =>
         !failure.observed &&
         failure.method === request.method() &&
@@ -299,7 +316,7 @@ async function installDiagnostics(page: Page) {
     if (expected) {
       expected.observed = true;
       expected.observedResponseUrl = response.url();
-      pairExpectedFailuresWithPendingConsole(expectedFailures, pendingResourceConsoleErrors);
+      pairExpectedFailuresWithPendingConsole(registeredFailures, pendingResourceConsoleErrors);
     }
   });
   page.on('console', (message) => {
@@ -307,10 +324,15 @@ async function installDiagnostics(page: Page) {
     const entry = parseResourceStatusConsoleEntry(message.text(), message.location().url);
     if (entry?.url.length === 0) {
       pendingResourceConsoleErrors.push({ entry, text: message.text() });
-      pairExpectedFailuresWithPendingConsole(expectedFailures, pendingResourceConsoleErrors);
+      pairExpectedFailuresWithPendingConsole(
+        [...expectedFailures, ...optionalFailures],
+        pendingResourceConsoleErrors,
+      );
       return;
     }
-    const expected = entry ? findExpectedFailureForConsole(expectedFailures, entry) : undefined;
+    const expected = entry
+      ? findExpectedFailureForConsole([...expectedFailures, ...optionalFailures], entry)
+      : undefined;
     if (expected) {
       expected.consoleObserved = true;
       return;
@@ -331,6 +353,14 @@ async function installDiagnostics(page: Page) {
         consoleObserved: false,
       });
     },
+    allowOptionalHttpFailure: (failure) => {
+      optionalFailures.push({
+        ...failure,
+        observed: false,
+        observedResponseUrl: null,
+        consoleObserved: false,
+      });
+    },
     assertClean: () => {
       expect(
         expectedFailures.filter((failure) => !failure.observed),
@@ -339,6 +369,10 @@ async function installDiagnostics(page: Page) {
       expect(
         expectedFailures.filter((failure) => !failure.consoleObserved),
         'expected resource-status console errors were not observed',
+      ).toEqual([]);
+      expect(
+        optionalFailures.filter((failure) => failure.observed && !failure.consoleObserved),
+        'observed optional HTTP failures lacked resource-status console errors',
       ).toEqual([]);
       expect(
         [...errors, ...pendingResourceConsoleErrors.map((pending) => pending.text)],
@@ -792,7 +826,7 @@ for (const scenario of [
   {
     localeButton: 'Русский',
     price: '0.00',
-    action: 'Записаться бесплатно',
+    action: 'Записаться',
     mutationPath: '**/enrollments',
     mutationResponse: enrollmentMutation,
   },
@@ -857,7 +891,7 @@ for (const scenario of [
     localeButton: 'Русский',
     freeLabel: 'БЕСПЛАТНО',
     unavailableLabel: 'Цена недоступна',
-    actionLabel: 'Записаться бесплатно',
+    actionLabel: 'Записаться',
   },
   {
     localeButton: "O'zbek",
@@ -1138,6 +1172,7 @@ for (const scenario of [
     enrollments: emptyEnrollments,
     expected: 'Not available for this account',
     price: '0.00',
+    missingCurrentReviewIsOptional: true,
   },
   {
     name: 'already-enrolled preflight',
@@ -1167,6 +1202,7 @@ for (const scenario of [
     },
     expected: 'Already enrolled',
     price: '0.00',
+    missingCurrentReviewIsOptional: false,
   },
   {
     name: 'already-in-cart preflight',
@@ -1186,11 +1222,13 @@ for (const scenario of [
     enrollments: emptyEnrollments,
     expected: 'Already in cart',
     price: '19.99',
+    missingCurrentReviewIsOptional: false,
   },
 ]) {
   test(`blocks ${scenario.name} before any mutation with diagnostics`, async ({ page }) => {
     const diagnostics = await installDiagnostics(page);
-    expectMissingCurrentReview(diagnostics);
+    if (scenario.missingCurrentReviewIsOptional) allowOptionalMissingCurrentReview(diagnostics);
+    else expectMissingCurrentReview(diagnostics);
     await installStudentToken(page);
     let mutations = 0;
     await page.route('**/me', (route) => json(route, scenario.profile));
@@ -1445,6 +1483,7 @@ test('preserves keyboard access and reflow without horizontal overflow', async (
   for (const width of [320, 390, 768, 1280, 1440, 640]) {
     await page.setViewportSize({ width, height: 900 });
     await expect(page.getByRole('link', { name: 'Sign in' })).toBeVisible();
+    await expect(page.getByRole('search', { name: 'Course catalog search' })).toBeVisible();
     const geometry = await page.evaluate(() => ({
       clientWidth: document.documentElement.clientWidth,
       documentWidth: document.documentElement.scrollWidth,
@@ -1585,6 +1624,8 @@ test('keeps authenticated review CRUD recoverable without raw server detail and 
   let createFailures = 0;
   let updateFailures = 0;
   let deleteFailures = 0;
+  const createdRatings: number[] = [];
+  const updatedRatings: number[] = [];
   await page.route('**/me', (route) => json(route, studentProfile));
   await page.route('**/courses/7**', async (route) => {
     if (isDocumentNavigation(route)) return route.fallback();
@@ -1606,6 +1647,7 @@ test('keeps authenticated review CRUD recoverable without raw server detail and 
     }
     if (path === '/courses/7/reviews' && request.method() === 'POST') {
       expect(request.headers().authorization).toBe('Bearer student-token');
+      createdRatings.push((request.postDataJSON() as { rating: number }).rating);
       createFailures += 1;
       if (createFailures === 1) {
         await json(route, { detail: 'distinctive create detail' }, 500);
@@ -1617,6 +1659,7 @@ test('keeps authenticated review CRUD recoverable without raw server detail and 
     }
     if (path === '/courses/7/reviews' && request.method() === 'PATCH') {
       expect(request.headers().authorization).toBe('Bearer student-token');
+      updatedRatings.push((request.postDataJSON() as { rating: number }).rating);
       updateFailures += 1;
       await json(route, { detail: 'distinctive update detail' }, updateFailures === 1 ? 500 : 200);
       return;
@@ -1640,17 +1683,90 @@ test('keeps authenticated review CRUD recoverable without raw server detail and 
     await json(route, detail);
   });
   await page.route('**/cart', (route) => json(route, emptyCart));
-  await page.route('**/enrollments/my**', (route) => json(route, emptyEnrollments));
+  await page.route('**/enrollments/my**', (route) => json(route, activeEnrollments));
 
   await page.goto('/courses/7?reviews=owned');
   await expect(page.getByRole('heading', { level: 3, name: 'Write a review' })).toBeVisible();
+  const ratingGroup = page.getByRole('group', { name: 'Rating' });
+  const ratingChoices = ratingGroup.getByRole('radio');
+  await expect(ratingChoices).toHaveCount(5);
+  const fiveStars = ratingGroup.getByRole('radio', { name: 'Rating: 5/5' });
+  const fourStars = ratingGroup.getByRole('radio', { name: 'Rating: 4/5' });
+  await expect(fiveStars).not.toBeChecked();
+  await expect(page.getByRole('button', { name: 'Save review' })).toBeDisabled();
+  const fourStarTarget = fourStars.locator('xpath=..');
+  await expect(fourStarTarget).toHaveCSS('width', '44px');
+  await expect(fourStarTarget).toHaveCSS('height', '44px');
+  await fourStars.focus();
+  await fourStars.press('Space');
+  await expect(fourStars).toBeChecked();
+  expect(await fourStars.evaluate((control) => control.matches(':focus-visible'))).toBe(true);
+
+  const comment = page.getByLabel('What did you like?');
+  await expect(comment).toHaveAttribute('maxlength', '1000');
+  await expect(page.getByText('0/1000')).toBeVisible();
+  await comment.fill('Clear examples.');
+  await expect(page.getByText('15/1000')).toBeVisible();
+
+  const emptyState = page.locator('[data-part="reviews-empty-state"]');
+  const reviewForm = page.locator('[data-part="review-form"]');
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const desktopEmptyBox = await emptyState.boundingBox();
+  const desktopFormBox = await reviewForm.boundingBox();
+  if (!desktopEmptyBox || !desktopFormBox)
+    throw new Error('Review desktop geometry is unavailable.');
+  expect(Math.abs(desktopEmptyBox.y - desktopFormBox.y)).toBeLessThanOrEqual(1);
+  expect(desktopEmptyBox.x + desktopEmptyBox.width).toBeLessThan(desktopFormBox.x);
+  const saveReview = page.getByRole('button', { name: 'Save review' });
+  const saveBox = await saveReview.boundingBox();
+  if (!saveBox) throw new Error('Review save geometry is unavailable.');
+  expect(saveBox.width).toBeGreaterThan(desktopFormBox.width - 40);
+
+  await page.setViewportSize({ width: 320, height: 900 });
+  const mobileEmptyBox = await emptyState.boundingBox();
+  const mobileFormBox = await reviewForm.boundingBox();
+  if (!mobileEmptyBox || !mobileFormBox) throw new Error('Review mobile geometry is unavailable.');
+  expect(mobileFormBox.y).toBeGreaterThan(mobileEmptyBox.y + mobileEmptyBox.height);
+  await expectNoHorizontalOverflow(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+
   await page.getByRole('button', { name: 'Save review' }).click();
   await expect(page.getByText('Unable to complete action')).toBeVisible();
   await expect(page.locator('body')).not.toContainText('distinctive create detail');
   await page.getByRole('button', { name: 'Save review' }).click();
+  await expect(page.getByRole('heading', { level: 3, name: 'Your review' })).toBeVisible();
+  await expect(page.getByText('Clear and useful.')).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Edit your review' })).toHaveText('Edit review');
+  await expect(page.getByRole('heading', { level: 3, name: 'Edit your review' })).toHaveCount(0);
+  const reviewsHeading = page.getByRole('heading', { level: 2, name: 'Reviews' });
+  await reviewsHeading.click();
+  await expect(reviewsHeading).toHaveCSS('outline-style', 'none');
+  const deleteReviewAction = page.getByRole('button', { name: 'Delete review' });
+  await deleteReviewAction.hover();
+  await expect(deleteReviewAction).toHaveCSS('color', 'rgb(185, 28, 28)');
+  await expect(deleteReviewAction).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await page.getByRole('button', { name: 'Edit your review' }).click();
   await expect(page.getByRole('heading', { level: 3, name: 'Edit your review' })).toBeVisible();
-  await page.getByRole('button', { name: 'Save review' }).click();
+  const cancelReviewEdit = page.getByRole('button', { name: 'Cancel' });
+  const reviewActionColors = await cancelReviewEdit.evaluate(() => {
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--action-primary-bg)';
+    probe.style.backgroundColor = 'var(--action-secondary-bg)';
+    document.body.append(probe);
+    const styles = getComputedStyle(probe);
+    const colors = {
+      foreground: styles.color,
+      hoverBackground: styles.backgroundColor,
+    };
+    probe.remove();
+    return colors;
+  });
+  await expect(cancelReviewEdit).toHaveCSS('color', reviewActionColors.foreground);
+  await cancelReviewEdit.hover();
+  await expect(cancelReviewEdit).toHaveCSS('background-color', reviewActionColors.hoverBackground);
+  await page.getByRole('button', { name: 'Save changes' }).click();
   await expect(page.locator('body')).not.toContainText('distinctive update detail');
+  await page.getByRole('button', { name: 'Cancel' }).click();
   await page.getByRole('button', { name: 'Delete review' }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await page.keyboard.press('Escape');
@@ -1672,6 +1788,8 @@ test('keeps authenticated review CRUD recoverable without raw server detail and 
   expect(createFailures).toBe(2);
   expect(updateFailures).toBe(1);
   expect(deleteFailures).toBe(2);
+  expect(createdRatings).toEqual([4, 4]);
+  expect(updatedRatings).toEqual([5]);
   diagnostics.assertClean();
 });
 
