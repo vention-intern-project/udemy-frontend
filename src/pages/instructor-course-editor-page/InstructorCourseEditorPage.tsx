@@ -684,7 +684,7 @@ export function InstructorCourseEditorPage() {
             >
               <option value="video">{t('instructor:courseEditorVideo')}</option>
               <option value="text">{t('instructor:courseEditorText')}</option>
-              <option value="pdf">PDF</option>
+              <option value="pdf">{t('instructor:courseEditorPdf')}</option>
             </Select>
             <Textarea
               ref={lessonDescriptionRef}
@@ -710,7 +710,9 @@ export function InstructorCourseEditorPage() {
                     accept={uploadRule.accept}
                     aria-invalid={lessonFileError || undefined}
                     aria-describedby={
-                      lessonFileError ? 'create-lesson-file-error' : 'create-lesson-file-help'
+                      lessonFileError
+                        ? 'create-lesson-file-help create-lesson-file-error'
+                        : 'create-lesson-file-help'
                     }
                     onChange={changeLessonFile}
                   />

@@ -9,17 +9,16 @@ import {
   UserRound,
   type LucideIcon,
 } from 'lucide-react';
-import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
 import type { UserProfile, UserRole } from '@entities/user';
-import { useSession } from '@features/auth-session';
 import { NATIVE_LOCALE_METADATA, SUPPORTED_LOCALES, useLocale } from '@shared/locale';
 import type { ExclusiveDisclosureControl } from '@shared/types';
 
 import styles from './AppShell.module.css';
 
 interface AccountMenuProps {
+  onLogOut: () => void;
   user: UserProfile;
   showLanguage?: boolean;
   exclusiveDisclosure?: ExclusiveDisclosureControl;
@@ -84,14 +83,15 @@ export function AccountIdentity({ user, roleLabel, variant = 'default' }: Accoun
   );
 }
 
-export function AccountMenu({ user, showLanguage = false, exclusiveDisclosure }: AccountMenuProps) {
-  const { clearSession } = useSession();
+export function AccountMenu({
+  onLogOut,
+  user,
+  showLanguage = false,
+  exclusiveDisclosure,
+}: AccountMenuProps) {
   const { t } = useTranslation();
-  const { clearStoredLocale, locale, setLocale } = useLocale();
-  const location = useLocation();
-  const navigate = useNavigate();
+  const { locale, setLocale } = useLocale();
   const [open, setOpen] = useState(false);
-  const [logoutPending, setLogoutPending] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [languageView, setLanguageView] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement>(null);
@@ -120,12 +120,6 @@ export function AccountMenu({ user, showLanguage = false, exclusiveDisclosure }:
   useEffect(() => {
     if (exclusiveDisclosure?.closeRequested) dismissAccountMenu();
   }, [dismissAccountMenu, exclusiveDisclosure?.closeRequested]);
-
-  useEffect(() => {
-    if (!logoutPending || location.pathname !== '/') return;
-    clearSession();
-    setLogoutPending(false);
-  }, [clearSession, location.pathname, logoutPending]);
 
   useEffect(() => {
     if (!open) return;
@@ -284,15 +278,7 @@ export function AccountMenu({ user, showLanguage = false, exclusiveDisclosure }:
                   <ChevronRight aria-hidden="true" size={16} />
                 </button>
               ) : null}
-              <button
-                className={styles.accountMenuLogout}
-                type="button"
-                onClick={() => {
-                  clearStoredLocale();
-                  setLogoutPending(true);
-                  navigate('/', { replace: true, flushSync: true });
-                }}
-              >
+              <button className={styles.accountMenuLogout} type="button" onClick={onLogOut}>
                 <LogOut aria-hidden="true" size={16} />
                 {t('auth:logOut')}
               </button>

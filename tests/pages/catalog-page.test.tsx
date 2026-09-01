@@ -2430,11 +2430,13 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(screen.getByLabelText('catalog location').textContent).toBe('/?page=3');
     expect(requests).toHaveLength(initialRequestCount);
 
+    const sortTrigger = screen.getByRole('button', { name: 'Sort by: Oldest' });
     await act(async () => {
-      await user.click(screen.getByRole('contentinfo'));
+      await user.click(sortTrigger);
     });
     expect(screen.queryByRole('group', { name: 'Price range' })).toBeNull();
-    await waitFor(() => expect(trigger).toBe(document.activeElement));
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    expect(document.activeElement).toBe(sortTrigger);
     expect(screen.getByLabelText('catalog location').textContent).toBe('/?page=3');
     expect(requests).toHaveLength(initialRequestCount);
   });

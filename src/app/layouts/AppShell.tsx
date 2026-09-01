@@ -560,7 +560,7 @@ export function AppShell() {
   const { t } = useTranslation();
   const session = useSession();
   const { clearStoredLocale } = useLocale();
-  const { cacheEpoch, state } = session;
+  const { cacheEpoch, clearSession, state } = session;
   const cartSubject =
     state.status === 'authenticated' && state.user.role === 'student' ? (cacheEpoch ?? null) : null;
   const hasCartNavigation = state.status === 'anonymous' || cartSubject !== null;
@@ -653,6 +653,12 @@ export function AppShell() {
   const isAuthenticatedDrawerViewport =
     isAuthenticatedTablet || (isInstructor && isAuthenticatedMobile);
   const showHeaderCart = hasCartNavigation && !(isAnonymous && isStudentMobileViewport);
+  const requestLogout = useCallback(() => {
+    setAuthenticatedTabletDrawerOpen(false);
+    clearStoredLocale();
+    setLogoutPending(true);
+    navigate('/', { replace: true, flushSync: true });
+  }, [clearStoredLocale, navigate]);
 
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') return undefined;
@@ -680,9 +686,9 @@ export function AppShell() {
 
   useEffect(() => {
     if (!logoutPending || location.pathname !== '/') return;
-    session.clearSession();
+    clearSession();
     setLogoutPending(false);
-  }, [location.pathname, logoutPending, session]);
+  }, [clearSession, location.pathname, logoutPending]);
 
   useEffect(() => {
     if (isAnonymousTablet || !isAnonymous) return;
@@ -1200,7 +1206,11 @@ export function AppShell() {
             ) : null}
             {isStudentMobile ? (
               <>
-                <AccountMenu user={state.user} exclusiveDisclosure={accountDisclosureControl} />
+                <AccountMenu
+                  user={state.user}
+                  onLogOut={requestLogout}
+                  exclusiveDisclosure={accountDisclosureControl}
+                />
                 {languageSelector}
               </>
             ) : null}
@@ -1211,7 +1221,11 @@ export function AppShell() {
                 <CartNavigationLink itemCount={cart.data?.itemCount} />
                 {!isAuthenticatedTablet ? (
                   <div className={styles.account}>
-                    <AccountMenu user={state.user} exclusiveDisclosure={accountDisclosureControl} />
+                    <AccountMenu
+                      user={state.user}
+                      onLogOut={requestLogout}
+                      exclusiveDisclosure={accountDisclosureControl}
+                    />
                     {!isAnonymousMobile ? (
                       <button
                         ref={menuButtonRef}
@@ -1257,7 +1271,11 @@ export function AppShell() {
                   }
                 >
                   {state.status === 'authenticated' && (!isAuthenticatedTablet || isInstructor) ? (
-                    <AccountMenu user={state.user} exclusiveDisclosure={accountDisclosureControl} />
+                    <AccountMenu
+                      user={state.user}
+                      onLogOut={requestLogout}
+                      exclusiveDisclosure={accountDisclosureControl}
+                    />
                   ) : null}
                   {isAuthenticatedMobile || (isInstructor && isAuthenticatedTablet)
                     ? languageSelector
@@ -1340,12 +1358,7 @@ export function AppShell() {
           navigation={navigation}
           onClose={() => setAuthenticatedTabletDrawerOpen(false)}
           onCreateCourse={isInstructorCoursesRoute ? handleInstructorCourseTitleFocus : undefined}
-          onLogOut={() => {
-            setAuthenticatedTabletDrawerOpen(false);
-            clearStoredLocale();
-            setLogoutPending(true);
-            navigate('/', { replace: true, flushSync: true });
-          }}
+          onLogOut={requestLogout}
           onNavigate={(to) => {
             if (to === routeFocusIdentity) menuButtonRef.current?.focus();
             else mainRef.current?.focus({ preventScroll: true });

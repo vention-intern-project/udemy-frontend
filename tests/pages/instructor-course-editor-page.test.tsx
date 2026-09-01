@@ -530,6 +530,30 @@ describe('InstructorCourseEditorPage', () => {
     expect(screen.queryByRole('heading', { name: 'Create lesson' })).toBeNull();
   });
 
+  it('retains the file help alongside the error when a lesson file is invalid', async () => {
+    const request: ApiClient['request'] = async (options) => {
+      if (options.path === '/me') return decode(options, instructor);
+      if (options.path === '/courses/7' && options.method === 'GET') return decode(options, course);
+      throw new Error(`Unexpected request: ${options.method} ${options.path}`);
+    };
+    await renderPage({ request });
+    const user = userEvent.setup();
+    await screen.findByRole('heading', { name: 'Edit course' });
+    await act(async () => await user.click(screen.getByRole('button', { name: 'Add lesson' })));
+    await act(async () => await user.click(screen.getByRole('combobox', { name: 'Lesson type' })));
+    await act(async () => await user.click(screen.getByRole('option', { name: 'PDF' })));
+    const file = screen.getByLabelText('Lesson file (optional)');
+    await act(async () => {
+      fireEvent.change(file, {
+        target: { files: [new File(['video'], 'lesson.mp4', { type: 'video/mp4' })] },
+      });
+    });
+
+    expect(file.getAttribute('aria-invalid')).toBe('true');
+    expect(file.getAttribute('aria-describedby')).toContain('create-lesson-file-help');
+    expect(file.getAttribute('aria-describedby')).toContain('create-lesson-file-error');
+  });
+
   it('keeps a created lesson and offers its editor when the automatic file upload fails', async () => {
     const request: ApiClient['request'] = async (options) => {
       if (options.path === '/me') return decode(options, instructor);

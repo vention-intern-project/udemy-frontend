@@ -10,7 +10,7 @@ const generated = GENERATED_LOCALE_RESOURCES as Record<
   Record<string, Record<string, string>>
 >;
 const RECORDED_DRAFT37_UNIT_COUNT = 545;
-const FE_068_UNIT_COUNT = 20;
+const FE_068_UNIT_COUNT = 21;
 const INSTRUCTOR_UI_UNIT_COUNT = 9;
 const CURRENT_CORPUS_UNIT_COUNT =
   RECORDED_DRAFT37_UNIT_COUNT +

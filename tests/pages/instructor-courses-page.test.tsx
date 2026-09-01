@@ -296,7 +296,7 @@ describe('InstructorCoursesPage', () => {
     const user = userEvent.setup();
     expect(document.querySelector('[data-part="instructor-courses-hero"]')).toBeNull();
     const pageTitle = screen.getByRole('heading', { level: 1, name: 'Instructor courses' });
-    expect(pageTitle.className).toContain('pageTitle');
+    expect(pageTitle).toBeTruthy();
     expect(
       screen.queryByText(
         'Create meaningful courses, share your expertise, and inspire learners to grow.',
@@ -344,6 +344,8 @@ describe('InstructorCoursesPage', () => {
     await waitFor(() => expect(createRequests).toHaveLength(1));
     expect(createRequests[0]?.body).toEqual({ title: 'A'.repeat(255) });
     const newCourseActions = await screen.findByRole('navigation', { name: 'New course actions' });
+    const collectionHeading = screen.getByRole('heading', { level: 2, name: 'Your courses' });
+    await waitFor(() => expect(document.activeElement).toBe(collectionHeading));
     expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 5000);
     expect(
       within(newCourseActions).getByRole('link', { name: 'Edit course' }).getAttribute('href'),

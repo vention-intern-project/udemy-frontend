@@ -172,6 +172,7 @@ describe('LessonMediaAccess', () => {
       return element as HTMLTrackElement;
     });
     expect(preview.getAttribute('src')).toBe(videoObjectUrl);
+    expect(track.getAttribute('label')).toBe('Subtitles');
     expect(track.getAttribute('src')).toBe(subtitleObjectUrl);
     expect(track.getAttribute('srclang')).toBe('und');
     expect(track.default).toBe(true);
@@ -184,6 +185,37 @@ describe('LessonMediaAccess', () => {
     view.unmount();
     expect(revokeObjectUrl).toHaveBeenCalledWith(videoObjectUrl);
     expect(revokeObjectUrl).toHaveBeenCalledWith(subtitleObjectUrl);
+  });
+
+  it.each([
+    ['ru', 'Субтитры'],
+    ['uz', 'Subtitrlar'],
+  ] as const)('uses the localized subtitle-track label in %s', async (locale: Locale, label) => {
+    vi.stubEnv('VITE_LESSON_SUBTITLES_ENABLED', 'true');
+    vi.stubGlobal('URL', { createObjectURL: createObjectUrl, revokeObjectURL: revokeObjectUrl });
+    requestAuthorizedLessonMedia.mockResolvedValue(admittedMediaResponse('video/mp4'));
+    requestAuthorizedLessonSubtitles.mockResolvedValue(admittedMediaResponse('text/vtt'));
+    render(
+      <LocaleProvider initialLocale={locale}>
+        <LessonMediaAccess
+          lessonType="video"
+          locator={{ filename: 'lesson.mp4' }}
+          subtitleLocator={{ courseId: 7, lessonId: 12 }}
+        />
+      </LocaleProvider>,
+    );
+
+    fireEvent.click(
+      screen.getByRole('button', { name: locale === 'ru' ? 'Загрузить видео' : 'Videoni yuklash' }),
+    );
+
+    const track = await waitFor(() => {
+      const element = document.querySelector('track[kind="subtitles"]');
+      expect(element).not.toBeNull();
+      return element as HTMLTrackElement;
+    });
+    expect(track.getAttribute('label')).toBe(label);
+    expect(track.getAttribute('srclang')).toBe('und');
   });
 
   it.each([undefined, 'false', 'TRUE'])(

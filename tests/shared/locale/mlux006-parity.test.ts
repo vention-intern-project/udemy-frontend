@@ -10,7 +10,7 @@ type GeneratedResources = Record<string, Record<string, Record<string, string>>>
 const resources = GENERATED_LOCALE_RESOURCES as GeneratedResources;
 const RECORDED_DRAFT37_UNIT_COUNT = 545;
 const RECORDED_DRAFT37_OCCURRENCE_COUNT = 768;
-const FE_068_UNIT_COUNT = 20;
+const FE_068_UNIT_COUNT = 21;
 const INSTRUCTOR_UI_UNIT_COUNT = 9;
 const CRF_002_UNIT_IDS = [
   'MLUX-C0544',

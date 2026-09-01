@@ -23,8 +23,8 @@ import type {
 
 import draft37Registry from '../../../localization/corpus/registry.json';
 
-const CURRENT_CORPUS_UNIT_COUNT = 584;
-const CURRENT_CORPUS_OCCURRENCE_COUNT = 807;
+const CURRENT_CORPUS_UNIT_COUNT = 585;
+const CURRENT_CORPUS_OCCURRENCE_COUNT = 808;
 
 const {
   SUPPLIED_REVIEW_ARTIFACT,

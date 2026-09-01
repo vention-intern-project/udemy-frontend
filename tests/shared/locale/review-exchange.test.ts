@@ -46,8 +46,8 @@ const TASK_ID = 'FE-067';
 // Current-corpus assertions use the accepted current registry size. DRAFT-37 and
 // legacy-artifact assertions remain pinned to their recorded historical counts below.
 const HISTORICAL_CORPUS_UNIT_COUNT = 545;
-const CURRENT_CORPUS_UNIT_COUNT = 584;
-const CURRENT_UNREVIEWED_UNIT_COUNT = 570;
+const CURRENT_CORPUS_UNIT_COUNT = 585;
+const CURRENT_UNREVIEWED_UNIT_COUNT = 571;
 const CURRENT_REVIEW_STATUS_COUNTS = {
   'approved-effective': 12,
   'unchanged-approved': 2,
