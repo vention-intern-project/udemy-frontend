@@ -982,15 +982,19 @@ describe('application routing and guards', () => {
     stubViewportMatchMedia({ mobile: false, tablet: true });
     renderApp('/instructor/courses#mobile-menu-focus', 'instructor');
     await screen.findByRole('heading', { level: 1, name: 'Instructor courses' });
+    await act(async () => {});
     const user = userEvent.setup();
     const trigger = screen.getByRole('button', { name: 'Open navigation' });
 
     await act(async () => {
       await user.click(trigger);
     });
-    const currentRouteLink = within(
-      screen.getByRole('navigation', { name: 'Mobile navigation' }),
-    ).getByRole('link', { name: 'Instructor courses' });
+    const mobileNavigation = await screen.findByRole('navigation', {
+      name: 'Mobile navigation',
+    });
+    const currentRouteLink = within(mobileNavigation).getByRole('link', {
+      name: 'Instructor courses',
+    });
     await act(async () => {
       await user.click(currentRouteLink);
     });
