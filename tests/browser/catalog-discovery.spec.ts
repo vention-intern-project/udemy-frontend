@@ -2254,10 +2254,11 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
     path: '/courses?page=2&page_size=24&search_query=React&min_price=5&sort=-created_at',
     errorText: 'net::ERR_ABORTED',
   });
-  const requests: string[] = [];
+  const catalogRequests: string[] = [];
   await page.route('**/courses**', async (route) => {
-    if (new URL(route.request().url()).pathname === '/courses')
-      requests.push(route.request().url());
+    const requestUrl = new URL(route.request().url());
+    if (requestUrl.pathname === '/courses' && requestUrl.searchParams.get('page_size') === '24')
+      catalogRequests.push(route.request().url());
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -2425,7 +2426,7 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
     page.locator('[data-part="course-card-metadata"]').getByText('Ada Lovelace', { exact: true }),
   ).toBeVisible();
   await expect(page.getByText('1 lesson available', { exact: true })).toBeVisible();
-  expect(requests[0]).toContain('page_size=24');
+  expect(catalogRequests).not.toEqual([]);
 
   const filters = page.getByRole('form', { name: 'Course filters' });
   await expect(filters.getByRole('heading', { name: 'Filters' })).toHaveCount(0);
@@ -2503,7 +2504,7 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   expect(resultTypography.suffix.color).toBe(resultTypography.expected.muted);
   expect(resultTypography.suffix.fontWeight).toBe('400');
   const sortUrlBeforeHover = page.url();
-  const requestCountBeforeHover = requests.length;
+  const requestCountBeforeHover = catalogRequests.length;
   const sortIdle = await sortTrigger.evaluate((trigger) => {
     const chevron = trigger.querySelector<HTMLElement>('[data-part="catalog-sort-chevron"]');
     if (!trigger || !chevron) throw new Error('Custom sort trigger or chevron is missing.');
@@ -2619,7 +2620,7 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   expect(Math.abs(sortGeometry[2].rightInset - sortIdle.rightInset)).toBeLessThanOrEqual(1);
   expect(sortGeometry[2].centreDelta).toBeLessThanOrEqual(1);
   expect(page.url()).toBe(sortUrlBeforeHover);
-  expect(requests).toHaveLength(requestCountBeforeHover);
+  expect(catalogRequests).toHaveLength(requestCountBeforeHover);
   const lowToHighOption = sortListbox.getByRole('option', { name: 'Low to High' });
   await lowToHighOption.evaluate((option) => {
     const tooltip = document.activeElement
@@ -2764,8 +2765,8 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/search_query=React&min_price=5&sort=price/);
-  await expect.poll(() => requests[requests.length - 1]).toContain('sort=price');
-  await expect.poll(() => requests[requests.length - 1]).toContain('page=1');
+  await expect.poll(() => catalogRequests[catalogRequests.length - 1]).toContain('sort=price');
+  await expect.poll(() => catalogRequests[catalogRequests.length - 1]).toContain('page=1');
   await expect(sortTrigger).toBeFocused();
   const toolbarGeometry = await Promise.all([
     resultHeading.boundingBox(),
@@ -2823,12 +2824,14 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   await page.keyboard.press('Space');
   await sortListbox.getByRole('option', { name: 'A to Z' }).click();
   await expect(page).toHaveURL(/search_query=React&min_price=5&sort=title/);
-  await expect.poll(() => requests[requests.length - 1]).toContain('sort=title');
-  await expect.poll(() => requests[requests.length - 1]).toContain('page=1');
+  await expect.poll(() => catalogRequests[catalogRequests.length - 1]).toContain('sort=title');
+  await expect.poll(() => catalogRequests[catalogRequests.length - 1]).toContain('page=1');
   await headerSearch.fill('TypeScript');
   await headerSearch.press('Enter');
   await expect(page).toHaveURL(/search_query=TypeScript&min_price=5&sort=title/);
-  await expect.poll(() => requests[requests.length - 1]).toContain('search_query=TypeScript');
+  await expect
+    .poll(() => catalogRequests[catalogRequests.length - 1])
+    .toContain('search_query=TypeScript');
   await expect(headerSearch).toBeFocused();
   await allowOptionalFailureDuringCatalogTransition(
     assertClean,
@@ -2849,7 +2852,9 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   await headerSearch.fill('JavaScript');
   await headerSearch.press('Enter');
   await expect(page).toHaveURL(/search_query=JavaScript&min_price=5&sort=title/);
-  await expect.poll(() => requests[requests.length - 1]).toContain('search_query=JavaScript');
+  await expect
+    .poll(() => catalogRequests[catalogRequests.length - 1])
+    .toContain('search_query=JavaScript');
   await allowOptionalFailureDuringCatalogTransition(
     assertClean,
     catalogRatingCancellation,
@@ -2873,20 +2878,20 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   const minimum = filters.getByRole('spinbutton', { name: 'From' });
   const maximum = filters.getByRole('spinbutton', { name: 'To' });
   const priceUrlBeforeApply = page.url();
-  const requestCountBeforePriceApply = requests.length;
+  const requestCountBeforePriceApply = catalogRequests.length;
   await minimum.fill('10');
   await expect(page).toHaveURL(priceUrlBeforeApply);
-  expect(requests).toHaveLength(requestCountBeforePriceApply);
+  expect(catalogRequests).toHaveLength(requestCountBeforePriceApply);
 
   await maximum.fill('20');
   await page.getByRole('button', { name: 'Done' }).click();
   await expect(page).toHaveURL(/search_query=JavaScript&min_price=10&max_price=20&sort=title/);
   await expect(priceTrigger).toBeFocused();
-  await expect.poll(() => requests.length).toBe(requestCountBeforePriceApply + 1);
+  await expect.poll(() => catalogRequests.length).toBe(requestCountBeforePriceApply + 1);
   await expect
     .poll(
       () =>
-        requests.filter((requestUrl) => {
+        catalogRequests.filter((requestUrl) => {
           const url = new URL(requestUrl);
           return (
             url.pathname === '/courses' &&

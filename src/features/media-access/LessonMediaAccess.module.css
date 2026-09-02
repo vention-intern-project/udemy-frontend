@@ -42,7 +42,7 @@
   padding: var(--spacing-4, 16px);
   overflow: auto;
   color: var(--text-primary);
-  line-height: var(--type-body-lh);
+  line-height: var(--type-body-md-lh);
   white-space: pre-wrap;
 }
 .media {
