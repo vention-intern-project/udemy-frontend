@@ -3192,7 +3192,8 @@ test('canonicalizes an inverted range and honors single-page pagination availabi
   });
   const requests: string[] = [];
   await page.route('**/courses**', async (route) => {
-    if (new URL(route.request().url()).pathname === '/courses')
+    const requestUrl = new URL(route.request().url());
+    if (requestUrl.pathname === '/courses' && requestUrl.searchParams.get('page_size') === '24')
       requests.push(route.request().url());
     await route.fulfill({
       status: 200,
@@ -3228,7 +3229,8 @@ test('keeps an inverted price range invalid, then submits a corrected value with
   });
   const requests: string[] = [];
   await page.route('**/courses**', async (route) => {
-    if (new URL(route.request().url()).pathname === '/courses')
+    const requestUrl = new URL(route.request().url());
+    if (requestUrl.pathname === '/courses' && requestUrl.searchParams.get('page_size') === '24')
       requests.push(route.request().url());
     await route.fulfill({
       status: 200,

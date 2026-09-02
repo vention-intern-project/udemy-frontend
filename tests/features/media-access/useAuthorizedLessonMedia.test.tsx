@@ -94,6 +94,7 @@ describe('LessonMediaAccess', () => {
         <LocaleProvider initialLocale={locale}>
           <LessonMediaAccess
             lessonType="pdf"
+            isPublished
             locator={mapLessonMediaLocator('/media/lessons/%00private.pdf')}
           />
         </LocaleProvider>,
@@ -106,7 +107,9 @@ describe('LessonMediaAccess', () => {
 
   it('opens and closes long text lesson content without making a media request', async () => {
     const lessonText = 'A long lesson body that remains available inside a bounded reader.';
-    render(<LessonMediaAccess lessonType="text" locator={null} textContent={lessonText} />);
+    render(
+      <LessonMediaAccess lessonType="text" isPublished locator={null} textContent={lessonText} />,
+    );
 
     expect(screen.queryByText('Media unavailable in this workspace')).toBeNull();
     expect(screen.queryByText(lessonText)).toBeNull();
@@ -125,6 +128,23 @@ describe('LessonMediaAccess', () => {
     expect(requestAuthorizedLessonMedia).not.toHaveBeenCalled();
   });
 
+  it('keeps an unpublished text lesson unavailable without exposing its details or content', () => {
+    const draftText = 'Unpublished lesson text must not be exposed to learners.';
+    render(
+      <LessonMediaAccess
+        lessonType="text"
+        isPublished={false}
+        locator={null}
+        textContent={draftText}
+      />,
+    );
+
+    expect(screen.getByText('Media unavailable in this workspace')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Details' })).toBeNull();
+    expect(screen.queryByText(draftText)).toBeNull();
+    expect(requestAuthorizedLessonMedia).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['ru', 'Подробнее', 'Текстовый урок', 'Закрыть диалог'],
     ['uz', 'Batafsil', 'Matnli dars', 'Dialogni yopish'],
@@ -133,7 +153,12 @@ describe('LessonMediaAccess', () => {
     async (locale: Locale, detailsLabel, regionLabel, closeLabel) => {
       render(
         <LocaleProvider initialLocale={locale}>
-          <LessonMediaAccess lessonType="text" locator={null} textContent="Lesson content" />
+          <LessonMediaAccess
+            lessonType="text"
+            isPublished
+            locator={null}
+            textContent="Lesson content"
+          />
         </LocaleProvider>,
       );
 
@@ -149,7 +174,13 @@ describe('LessonMediaAccess', () => {
     '/media/lessons/private%0A.pdf',
     '/media/lessons/private%7F.pdf',
   ])('does not request a decoded-control locator %s', (downloadUrl) => {
-    render(<LessonMediaAccess lessonType="pdf" locator={mapLessonMediaLocator(downloadUrl)} />);
+    render(
+      <LessonMediaAccess
+        lessonType="pdf"
+        isPublished
+        locator={mapLessonMediaLocator(downloadUrl)}
+      />,
+    );
 
     expect(screen.getByText('Media unavailable in this workspace')).toBeTruthy();
     expect(requestAuthorizedLessonMedia).not.toHaveBeenCalled();
@@ -159,7 +190,7 @@ describe('LessonMediaAccess', () => {
     vi.stubGlobal('URL', { createObjectURL: createObjectUrl, revokeObjectURL: revokeObjectUrl });
     requestAuthorizedLessonMedia.mockResolvedValue(admittedMediaResponse('video/mp4'));
     const view = render(
-      <LessonMediaAccess lessonType="video" locator={{ filename: 'lesson.mp4' }} />,
+      <LessonMediaAccess lessonType="video" isPublished locator={{ filename: 'lesson.mp4' }} />,
     );
 
     expect(requestAuthorizedLessonMedia).not.toHaveBeenCalled();
@@ -186,7 +217,9 @@ describe('LessonMediaAccess', () => {
   it('closes an opened video, revokes its object URL, and restores the load control focus', async () => {
     vi.stubGlobal('URL', { createObjectURL: createObjectUrl, revokeObjectURL: revokeObjectUrl });
     requestAuthorizedLessonMedia.mockResolvedValue(admittedMediaResponse('video/mp4'));
-    render(<LessonMediaAccess lessonType="video" locator={{ filename: 'lesson.mp4' }} />);
+    render(
+      <LessonMediaAccess lessonType="video" isPublished locator={{ filename: 'lesson.mp4' }} />,
+    );
 
     fireEvent.click(screen.getByRole('button', { name: 'Load video' }));
     const preview = await screen.findByLabelText('Lesson video preview');
@@ -210,6 +243,7 @@ describe('LessonMediaAccess', () => {
     const view = render(
       <LessonMediaAccess
         lessonType="video"
+        isPublished
         locator={{ filename: 'lesson.mp4' }}
         subtitleLocator={{ courseId: 7, lessonId: 12 }}
       />,
@@ -251,6 +285,7 @@ describe('LessonMediaAccess', () => {
       <LocaleProvider initialLocale={locale}>
         <LessonMediaAccess
           lessonType="video"
+          isPublished
           locator={{ filename: 'lesson.mp4' }}
           subtitleLocator={{ courseId: 7, lessonId: 12 }}
         />
@@ -284,6 +319,7 @@ describe('LessonMediaAccess', () => {
       render(
         <LessonMediaAccess
           lessonType="video"
+          isPublished
           locator={{ filename: 'lesson.mp4' }}
           subtitleLocator={{ courseId: 7, lessonId: 12 }}
         />,
@@ -307,7 +343,9 @@ describe('LessonMediaAccess', () => {
     createObjectUrl.mockReturnValueOnce(firstObjectUrl).mockReturnValueOnce(secondObjectUrl);
     vi.stubGlobal('URL', { createObjectURL: createObjectUrl, revokeObjectURL: revokeObjectUrl });
     requestAuthorizedLessonMedia.mockResolvedValue(admittedMediaResponse('video/mp4'));
-    render(<LessonMediaAccess lessonType="video" locator={{ filename: 'lesson.mp4' }} />);
+    render(
+      <LessonMediaAccess lessonType="video" isPublished locator={{ filename: 'lesson.mp4' }} />,
+    );
 
     fireEvent.click(screen.getByRole('button', { name: 'Load video' }));
     const corruptPreview = (await screen.findByLabelText(
@@ -344,7 +382,9 @@ describe('LessonMediaAccess', () => {
     async (contentType) => {
       vi.stubGlobal('URL', { createObjectURL: createObjectUrl, revokeObjectURL: revokeObjectUrl });
       requestAuthorizedLessonMedia.mockResolvedValue(admittedMediaResponse(contentType));
-      render(<LessonMediaAccess lessonType="video" locator={{ filename: 'lesson.video' }} />);
+      render(
+        <LessonMediaAccess lessonType="video" isPublished locator={{ filename: 'lesson.video' }} />,
+      );
 
       fireEvent.click(screen.getByRole('button', { name: 'Load video' }));
 
@@ -358,7 +398,7 @@ describe('LessonMediaAccess', () => {
     vi.stubGlobal('URL', { createObjectURL: createObjectUrl, revokeObjectURL: revokeObjectUrl });
     const response = admittedMediaResponse('application/pdf');
     requestAuthorizedLessonMedia.mockResolvedValue(response);
-    render(<LessonMediaAccess lessonType="pdf" locator={{ filename: 'lesson.pdf' }} />);
+    render(<LessonMediaAccess lessonType="pdf" isPublished locator={{ filename: 'lesson.pdf' }} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Load PDF' }));
 
@@ -373,7 +413,7 @@ describe('LessonMediaAccess', () => {
 
   it('closes an opened PDF and returns keyboard focus to its load control', async () => {
     requestAuthorizedLessonMedia.mockResolvedValue(admittedMediaResponse('application/pdf'));
-    render(<LessonMediaAccess lessonType="pdf" locator={{ filename: 'lesson.pdf' }} />);
+    render(<LessonMediaAccess lessonType="pdf" isPublished locator={{ filename: 'lesson.pdf' }} />);
 
     const loadPdf = screen.getByRole('button', { name: 'Load PDF' });
     fireEvent.click(loadPdf);
@@ -403,6 +443,7 @@ describe('LessonMediaAccess', () => {
       render(
         <LessonMediaAccess
           lessonType={lessonType}
+          isPublished
           locator={{ filename: `lesson.${lessonType === 'video' ? 'mp4' : 'pdf'}` }}
         />,
       );
@@ -425,7 +466,9 @@ describe('LessonMediaAccess', () => {
     requestAuthorizedLessonMedia.mockImplementation(
       () => new Promise<ApiBinaryResponse>(() => undefined),
     );
-    render(<LessonMediaAccess lessonType="video" locator={{ filename: 'lesson.mp4' }} />);
+    render(
+      <LessonMediaAccess lessonType="video" isPublished locator={{ filename: 'lesson.mp4' }} />,
+    );
     const trigger = screen.getByRole('button', { name: 'Load video' }) as HTMLButtonElement;
     trigger.focus();
 
@@ -450,11 +493,13 @@ describe('LessonMediaAccess', () => {
       });
     });
     const view = render(
-      <LessonMediaAccess lessonType="video" locator={{ filename: 'first.mp4' }} />,
+      <LessonMediaAccess lessonType="video" isPublished locator={{ filename: 'first.mp4' }} />,
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Load video' }));
-    view.rerender(<LessonMediaAccess lessonType="video" locator={{ filename: 'second.mp4' }} />);
+    view.rerender(
+      <LessonMediaAccess lessonType="video" isPublished locator={{ filename: 'second.mp4' }} />,
+    );
     expect(pending.signal).not.toBeNull();
     expect(pending.signal?.aborted).toBe(true);
 
@@ -483,7 +528,9 @@ describe('LessonMediaAccess', () => {
     'maps a protected media failure to safe UI copy and a deterministic focus target',
     async (error, expectedMessage, focusTarget) => {
       requestAuthorizedLessonMedia.mockRejectedValue(error);
-      render(<LessonMediaAccess lessonType="video" locator={{ filename: 'lesson.mp4' }} />);
+      render(
+        <LessonMediaAccess lessonType="video" isPublished locator={{ filename: 'lesson.mp4' }} />,
+      );
       const trigger = screen.getByRole('button', { name: 'Load video' });
       trigger.focus();
 

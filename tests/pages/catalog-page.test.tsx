@@ -169,7 +169,9 @@ function renderCatalog(
     }
     vi.stubGlobal('IntersectionObserver', NonIntersectingObserver);
   }
-  const requestWithMaximumPriceFixture = (requestOptions: ApiRequestOptions) => {
+  const requestWithMaximumPriceFixture: ApiClient['request'] = async <TResponse, TBody = unknown>(
+    requestOptions: ApiRequestOptions<TBody, TResponse>,
+  ): Promise<TResponse> => {
     const query = requestOptions.query as
       | { readonly page?: number; readonly page_size?: number; readonly sort?: string }
       | undefined;
@@ -179,15 +181,15 @@ function renderCatalog(
       query.page_size === 1 &&
       query.sort === '-price'
     ) {
-      return Promise.resolve(response());
+      return response() as TResponse;
     }
-    return request(requestOptions);
+    return request<TResponse, TBody>(requestOptions);
   };
   return render(
     <QueryClientProvider client={options.queryClient ?? createAppQueryClient()}>
       <LocaleProvider initialLocale={options.locale ?? 'en'}>
         <SessionProvider
-          client={{ request: requestWithMaximumPriceFixture as ApiClient['request'] }}
+          client={{ request: requestWithMaximumPriceFixture }}
           tokenStore={options.tokenStore ?? tokenStore(token)}
         >
           <MemoryRouter

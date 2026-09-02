@@ -13,6 +13,8 @@ const LessonPdfPreview = lazy(() => import('./LessonPdfPreview'));
 
 export interface LessonMediaAccessProps {
   readonly lessonType: LessonType;
+  /** Whether the learner can access this lesson in the current course outline. */
+  readonly isPublished: boolean;
   readonly locator: LessonMediaLocator | null;
   readonly subtitleLocator?: LessonSubtitleLocator | null;
   readonly textContent?: string | null;
@@ -20,6 +22,7 @@ export interface LessonMediaAccessProps {
 
 export function LessonMediaAccess({
   lessonType,
+  isPublished,
   locator,
   subtitleLocator = null,
   textContent = null,
@@ -90,6 +93,10 @@ export function LessonMediaAccess({
   function handleTextClose() {
     restoreLoadFocusRef.current = true;
     setTextOpen(false);
+  }
+
+  if (!isPublished) {
+    return <p className={styles.unavailable}>{t('course:mediaUnavailableInWorkspace')}</p>;
   }
 
   if (lessonType === 'text') {

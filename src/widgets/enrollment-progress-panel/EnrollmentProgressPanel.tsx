@@ -319,6 +319,7 @@ export function EnrollmentProgressPanel({
                     <div className={styles.lessonMediaAccess}>
                       <LessonMediaAccess
                         lessonType={lesson.lessonType}
+                        isPublished={lesson.isPublished}
                         locator={lesson.mediaLocator}
                         subtitleLocator={lesson.subtitleLocator}
                         textContent={lesson.description}

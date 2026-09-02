@@ -38357,7 +38357,7 @@
             "functionName": "EnrollmentProgressPanel",
             "argument": "`learning:${lessonCompletionLabelKey(displayState)}`",
             "occurrence": 1,
-            "sourceFingerprint": "sha256:7fd85fe99c948d49361bb246978b4bdb38853c6c9a6deab195738ac312cb7e24"
+            "sourceFingerprint": "sha256:d82cf8f329b33a919f1f84e9515dd073b17de3f1a028ec2b5c779b61e8a92892"
           }
         ]
       },

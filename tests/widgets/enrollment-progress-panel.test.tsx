@@ -9,8 +9,14 @@ import type { CourseProgress, LessonCompletionState } from '../../src/features/l
 import { LocaleProvider, localeRuntime, type Locale } from '../../src/shared/locale';
 import { EnrollmentProgressPanel } from '../../src/widgets/enrollment-progress-panel';
 
+interface MockLessonMediaAccessProps {
+  readonly isPublished: boolean;
+}
+
 vi.mock('../../src/features/media-access', () => ({
-  LessonMediaAccess: () => null,
+  LessonMediaAccess: ({ isPublished }: MockLessonMediaAccessProps) => (
+    <output aria-label="lesson media availability">{String(isPublished)}</output>
+  ),
 }));
 
 const outline: LessonOutline = { total: 2, items: [] };
@@ -178,6 +184,7 @@ describe('EnrollmentProgressPanel DRAFT-21 lesson-count noun localization', () =
 
     expect(screen.getByText('Текстовый урок · Скоро будет доступно', { exact: true })).toBeTruthy();
     expect(screen.queryByText('Данные черновика')).toBeNull();
+    expect(screen.getByLabelText('lesson media availability').textContent).toBe('false');
   });
 
   it.each([
