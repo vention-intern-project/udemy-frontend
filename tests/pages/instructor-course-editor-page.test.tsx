@@ -386,8 +386,12 @@ describe('InstructorCourseEditorPage', () => {
     const user = userEvent.setup();
 
     expect(await screen.findByText('Review course information and lessons.')).toBeTruthy();
-    const details = screen.getByRole('heading', { name: 'Course details' }).closest('section');
-    const dangerZone = screen.getByRole('heading', { name: 'Danger zone' }).closest('section');
+    const details = (await screen.findByRole('heading', { name: 'Course details' })).closest(
+      'section',
+    );
+    const dangerZone = (await screen.findByRole('heading', { name: 'Danger zone' })).closest(
+      'section',
+    );
     if (!details || !dangerZone) throw new Error('Expected editor sections');
     expect(within(details).getByRole('button', { name: 'Save changes' })).toBeTruthy();
     expect(

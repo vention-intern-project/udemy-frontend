@@ -440,10 +440,14 @@ describe('useCartCompositeCheckout', () => {
 
   it('locks an enlarged server attempt before completion when a unique pending course is outside the snapshot', async () => {
     const counts = { checkout: 0, enrollments: 0, cart: 0, payment: 0, restore: 0 };
+    let sessionLoaded = false;
     const request: ApiClient['request'] = async <TResponse, TBody>(
       options: ApiRequestOptions<TBody, TResponse>,
     ) => {
-      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/me') {
+        sessionLoaded = true;
+        return decode(options, student);
+      }
       if (options.path === '/cart/checkout') {
         counts.checkout += 1;
         return decode(options, { message: 'acknowledged', enrolled_courses: 2 });
@@ -465,6 +469,7 @@ describe('useCartCompositeCheckout', () => {
     });
 
     await waitFor(() => expect(result.current.phase).toBe('idle'));
+    await waitFor(() => expect(sessionLoaded).toBe(true));
     act(() => result.current.start());
     await waitFor(() => expect(result.current.phase).toBe('checkout_integrity_unknown'));
     expect(result.current.completionPlan).toEqual([]);
