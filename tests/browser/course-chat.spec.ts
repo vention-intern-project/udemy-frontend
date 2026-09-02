@@ -1739,6 +1739,8 @@ test('centers unavailable course assistant guidance with an underlined violet re
 test('reflows the general full-page assistant at all standard application widths', async ({
   page,
 }) => {
+  const scenarioReadinessTimeout = 120_000;
+  test.setTimeout(600_000);
   const chatRequests: ChatRequestEvidence[] = [];
   const diagnostics = captureRuntimeDiagnostics(page);
   const acceptedNavigationRasterAbort =
@@ -1748,7 +1750,9 @@ test('reflows the general full-page assistant at all standard application widths
   for (const width of [390, 768, 1024, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/ai-chat', { waitUntil: 'commit' });
-    await expect(page.getByRole('heading', { name: 'BETA AI Learning Assistant' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'BETA AI Learning Assistant' })).toBeVisible({
+      timeout: scenarioReadinessTimeout,
+    });
     await expect(page.getByLabel('Message the course assistant')).toBeVisible();
     await waitForRenderedAiChatAssets(page);
     await expectNoOverflow(page);

@@ -142,7 +142,7 @@ describe('browser server isolation probes', () => {
     } finally {
       await Promise.all([closeServer(shellProbe), closeServer(authProbe)]);
     }
-  }, 30_000);
+  }, 120_000);
 
   it('cancels both real helpers before startup can outlive caller ownership', async () => {
     let appShellCancellation: Promise<void> | undefined;

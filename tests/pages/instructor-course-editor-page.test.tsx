@@ -386,8 +386,12 @@ describe('InstructorCourseEditorPage', () => {
     const user = userEvent.setup();
 
     expect(await screen.findByText('Review course information and lessons.')).toBeTruthy();
-    const details = screen.getByRole('heading', { name: 'Course details' }).closest('section');
-    const dangerZone = screen.getByRole('heading', { name: 'Danger zone' }).closest('section');
+    const details = (await screen.findByRole('heading', { name: 'Course details' })).closest(
+      'section',
+    );
+    const dangerZone = (await screen.findByRole('heading', { name: 'Danger zone' })).closest(
+      'section',
+    );
     if (!details || !dangerZone) throw new Error('Expected editor sections');
     expect(within(details).getByRole('button', { name: 'Save changes' })).toBeTruthy();
     expect(
@@ -612,7 +616,7 @@ describe('InstructorCourseEditorPage', () => {
     await renderPage({ request });
     const user = userEvent.setup();
     await screen.findByRole('heading', { name: 'Edit course' });
-    await act(async () => await user.click(screen.getByRole('button', { name: 'Add lesson' })));
+    await act(async () => user.click(await screen.findByRole('button', { name: 'Add lesson' })));
     expect(screen.getByLabelText('Lesson file (optional)')).toBeTruthy();
     await act(async () => await user.click(screen.getByRole('combobox', { name: 'Lesson type' })));
     await act(async () => await user.click(screen.getByRole('option', { name: 'Text' })));

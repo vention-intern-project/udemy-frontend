@@ -757,7 +757,8 @@ describe('CourseDetailPage', () => {
       </I18nextProvider>,
     );
 
-    const action = await screen.findByRole('button', { name: 'Checking availability' });
+    await screen.findByRole('heading', { level: 3, name: 'Welcome' });
+    const action = screen.getByRole('button', { name: 'Checking availability' });
     expect((action as HTMLButtonElement).disabled).toBe(true);
     expect(preflightReads).toBe(0);
     await userEvent.setup().click(action);
