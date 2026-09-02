@@ -364,12 +364,14 @@ describe('CatalogPage public URL and pagination behavior', () => {
       },
       clear: clearToken,
     };
-    const requestHeaders = new Map<string, Headers>();
+    const requestHeaders = new Map<string, Headers[]>();
     const fetchImplementation: typeof fetch = async (input, init) => {
       const requestUrl =
         typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
       const pathname = new URL(requestUrl).pathname;
-      requestHeaders.set(pathname, new Headers(init?.headers));
+      const headers = requestHeaders.get(pathname) ?? [];
+      headers.push(new Headers(init?.headers));
+      requestHeaders.set(pathname, headers);
 
       if (pathname === '/me') {
         return new Response(
@@ -417,8 +419,10 @@ describe('CatalogPage public URL and pagination behavior', () => {
       expect(screen.getByLabelText('catalog session status').textContent).toBe('authenticated'),
     );
     expect(await screen.findByText('We could not load courses')).toBeTruthy();
-    expect(requestHeaders.get('/me')?.get('Authorization')).toBe('Bearer stored-access-token');
-    expect(requestHeaders.get('/courses')?.get('Authorization')).toBeNull();
+    expect(requestHeaders.get('/me')?.[0]?.get('Authorization')).toBe('Bearer stored-access-token');
+    const catalogRequestHeaders = requestHeaders.get('/courses') ?? [];
+    expect(catalogRequestHeaders).toHaveLength(3);
+    for (const headers of catalogRequestHeaders) expect(headers.get('Authorization')).toBeNull();
     expect(clearToken).not.toHaveBeenCalled();
     expect(storedToken).toBe('stored-access-token');
     expect(fetchSpy).toHaveBeenCalledTimes(4);

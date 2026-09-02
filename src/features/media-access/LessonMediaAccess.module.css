@@ -56,7 +56,20 @@
 }
 .pdfLoading {
   display: grid;
+  grid-template-rows: auto 1fr;
   block-size: 100%;
+}
+.pdfLoadingActions {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--spacing-1, 4px);
+}
+.pdfLoadingCloseButton {
+  inline-size: var(--control-height-md);
+  padding-inline: 0;
+}
+.pdfLoadingStatus {
+  display: grid;
   margin: 0;
   place-items: center;
   color: var(--text-muted);

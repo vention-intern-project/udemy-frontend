@@ -211,9 +211,21 @@ export function LessonMediaAccess({
       <div className={styles.mediaFrame} data-part="lesson-media-frame">
         <Suspense
           fallback={
-            <p className={styles.pdfLoading} role="status">
-              {t('course:preparingPdfPreview')}
-            </p>
+            <div className={styles.pdfLoading}>
+              <div className={styles.pdfLoadingActions}>
+                <Button
+                  className={styles.pdfLoadingCloseButton}
+                  variant="ghost"
+                  aria-label={t('a11y:closeDialog', { defaultValue: 'Close dialog' })}
+                  onClick={handleMediaClose}
+                >
+                  <X aria-hidden="true" focusable="false" size={18} strokeWidth={1.75} />
+                </Button>
+              </div>
+              <p className={styles.pdfLoadingStatus} role="status">
+                {t('course:preparingPdfPreview')}
+              </p>
+            </div>
           }
         >
           <LessonPdfPreview file={media.state.file} onClose={handleMediaClose} />

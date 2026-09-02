@@ -12,6 +12,7 @@ const mediaMocks = vi.hoisted(() => ({
   requestAuthorizedLessonMedia: vi.fn(),
   requestAuthorizedLessonSubtitles: vi.fn(),
   renderedPdf: null as Blob | null,
+  suspendedPdfPreview: null as Promise<void> | null,
 }));
 const requestAuthorizedLessonMedia = mediaMocks.requestAuthorizedLessonMedia;
 const requestAuthorizedLessonSubtitles = mediaMocks.requestAuthorizedLessonSubtitles;
@@ -22,6 +23,7 @@ vi.mock('../../../src/features/media-access/api', () => ({
 }));
 vi.mock('../../../src/features/media-access/LessonPdfPreview', () => ({
   default: ({ file, onClose }: { file: Blob; onClose: () => void }) => {
+    if (mediaMocks.suspendedPdfPreview !== null) throw mediaMocks.suspendedPdfPreview;
     mediaMocks.renderedPdf = file;
     return (
       <section role="region" aria-label="Lesson PDF preview" tabIndex={-1}>
@@ -49,10 +51,24 @@ interface PendingMediaRequest {
   resolve(response: ApiBinaryResponse): void;
 }
 
+interface Deferred<T> {
+  promise: Promise<T>;
+  resolve(value: T): void;
+}
+
+function deferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((nextResolve) => {
+    resolve = nextResolve;
+  });
+  return { promise, resolve };
+}
+
 afterEach(async () => {
   requestAuthorizedLessonMedia.mockReset();
   requestAuthorizedLessonSubtitles.mockReset();
   mediaMocks.renderedPdf = null;
+  mediaMocks.suspendedPdfPreview = null;
   createObjectUrl.mockReset();
   createObjectUrl.mockReturnValue(objectUrl);
   revokeObjectUrl.mockReset();
@@ -424,6 +440,39 @@ describe('LessonMediaAccess', () => {
     await waitFor(() => expect(screen.queryByLabelText('Lesson PDF preview')).toBeNull());
     expect(screen.getByRole('button', { name: 'Load PDF' })).toBe(document.activeElement);
     expect(requestAuthorizedLessonMedia).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the PDF close control available while its preview is suspended', async () => {
+    const pendingPreview = deferred<void>();
+    mediaMocks.suspendedPdfPreview = pendingPreview.promise;
+    requestAuthorizedLessonMedia.mockResolvedValue(admittedMediaResponse('application/pdf'));
+    render(<LessonMediaAccess lessonType="pdf" isPublished locator={{ filename: 'lesson.pdf' }} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load PDF' }));
+
+    expect(await screen.findByRole('status')).toBeTruthy();
+    const fallbackClose = screen.getByRole('button', { name: 'Close dialog' });
+    expect(fallbackClose.classList.contains('ui-button--md')).toBe(true);
+    expect(fallbackClose.classList.contains('ui-button--sm')).toBe(false);
+    fireEvent.click(fallbackClose);
+
+    await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+    expect(screen.queryByRole('region', { name: 'Lesson PDF preview' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Load PDF' })).toBe(document.activeElement);
+    expect(requestAuthorizedLessonMedia).toHaveBeenCalledTimes(1);
+
+    mediaMocks.suspendedPdfPreview = null;
+    pendingPreview.resolve();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load PDF' }));
+    await screen.findByRole('region', { name: 'Lesson PDF preview' });
+    expect(screen.getAllByRole('button', { name: 'Close dialog' })).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }));
+
+    await waitFor(() => expect(screen.queryByLabelText('Lesson PDF preview')).toBeNull());
+    expect(screen.getByRole('button', { name: 'Load PDF' })).toBe(document.activeElement);
+    expect(requestAuthorizedLessonMedia).toHaveBeenCalledTimes(2);
   });
 
   it.each([
