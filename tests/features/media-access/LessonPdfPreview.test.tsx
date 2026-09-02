@@ -71,27 +71,44 @@ afterEach(async () => {
 });
 
 describe('LessonPdfPreview', () => {
+  it('exposes a localized close action without covering the rendered page', async () => {
+    const onClose = vi.fn();
+    render(
+      <LessonPdfPreview file={new Blob(['%PDF'], { type: 'application/pdf' })} onClose={onClose} />,
+    );
+
+    const close = await screen.findByRole('button', { name: 'Close dialog' });
+    fireEvent.click(close);
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(close.closest('[data-part="lesson-pdf-toolbar"]')).not.toBeNull();
+  });
+
   it.each([
-    ['ru', 'Предыдущая страница', 'Следующая страница'],
-    ['uz', 'Oldingi sahifa', 'Keyingi sahifa'],
+    ['ru', 'Предыдущая страница', 'Следующая страница', 'Закрыть диалог'],
+    ['uz', 'Oldingi sahifa', 'Keyingi sahifa', 'Dialogni yopish'],
   ] as const)(
-    'renders admitted page navigation labels in %s without changing page control behavior',
-    async (locale: Locale, previousPage, nextPage) => {
+    'renders admitted page and close labels in %s without changing page control behavior',
+    async (locale: Locale, previousPage, nextPage, closeDialog) => {
       render(
         <LocaleProvider initialLocale={locale}>
-          <LessonPdfPreview file={new Blob(['%PDF'], { type: 'application/pdf' })} />
+          <LessonPdfPreview
+            file={new Blob(['%PDF'], { type: 'application/pdf' })}
+            onClose={() => undefined}
+          />
         </LocaleProvider>,
       );
 
       await screen.findByRole('button', { name: nextPage });
       expect(screen.getByRole('button', { name: previousPage })).toHaveProperty('disabled', true);
       expect(screen.getByRole('button', { name: nextPage })).toHaveProperty('disabled', false);
+      expect(screen.getByRole('button', { name: closeDialog })).toBeTruthy();
     },
   );
 
   it('renders an admitted Blob in-page with secure options and bounded page navigation', async () => {
     const file = new Blob(['%PDF'], { type: 'application/pdf' });
-    render(<LessonPdfPreview file={file} />);
+    render(<LessonPdfPreview file={file} onClose={() => undefined} />);
 
     const preview = await screen.findByRole('region', { name: 'Lesson PDF preview' });
     await waitFor(() => expect(screen.getByLabelText('Rendered PDF page 1')).toBeTruthy());
@@ -127,7 +144,12 @@ describe('LessonPdfPreview', () => {
   });
 
   it('keeps one navigation action focused and duplicate-safe while a page render is pending', async () => {
-    render(<LessonPdfPreview file={new Blob(['%PDF'], { type: 'application/pdf' })} />);
+    render(
+      <LessonPdfPreview
+        file={new Blob(['%PDF'], { type: 'application/pdf' })}
+        onClose={() => undefined}
+      />,
+    );
     await waitFor(() => expect(screen.getByRole('status').textContent).toContain('Page 1 of 2'));
 
     const initialRenderCount = pdfMocks.pageRenderCount;
@@ -158,7 +180,12 @@ describe('LessonPdfPreview', () => {
   });
 
   it('moves a failed pending page render through an intentional region to the retry action', async () => {
-    render(<LessonPdfPreview file={new Blob(['%PDF'], { type: 'application/pdf' })} />);
+    render(
+      <LessonPdfPreview
+        file={new Blob(['%PDF'], { type: 'application/pdf' })}
+        onClose={() => undefined}
+      />,
+    );
     await waitFor(() => expect(screen.getByRole('status').textContent).toContain('Page 1 of 2'));
 
     const next = screen.getByRole('button', { name: 'Next page' });
@@ -177,7 +204,12 @@ describe('LessonPdfPreview', () => {
     async (failureKind) => {
       if (failureKind === 'document') pdfMocks.documentMode = 'error';
       else pdfMocks.pageMode = 'error';
-      render(<LessonPdfPreview file={new Blob(['%PDF'], { type: 'application/pdf' })} />);
+      render(
+        <LessonPdfPreview
+          file={new Blob(['%PDF'], { type: 'application/pdf' })}
+          onClose={() => undefined}
+        />,
+      );
 
       const retry = await screen.findByRole('button', { name: 'Try PDF again' });
       expect(screen.getByRole('status').textContent).toBe('PDF could not be displayed. Try again.');

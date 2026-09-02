@@ -218,6 +218,123 @@ test('opens a published Catalog course through a successful Course Detail respon
   assertClean();
 });
 
+test('debounces header search, keeps IME composition quiet, and exposes an immediate purple clear action', async ({
+  page,
+}) => {
+  const assertClean = await monitor(page);
+  assertClean.allowOptionalRequestFailure({
+    method: 'GET',
+    path: '/courses?page=1&page_size=24&sort=created_at',
+    errorText: 'net::ERR_ABORTED',
+  });
+  await installCatalogAdmissionRoutes(page, { courses: [permittedCourse('React foundations')] });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/');
+
+  const catalogSearch = page.getByRole('search', { name: 'Course catalog search' });
+  const input = catalogSearch.getByRole('combobox', { name: 'Search courses' });
+  const catalogRequests: string[] = [];
+  page.on('request', (request) => {
+    const url = new URL(request.url());
+    if (
+      request.method() === 'GET' &&
+      url.pathname === '/courses' &&
+      url.searchParams.get('page_size') === '24'
+    )
+      catalogRequests.push(url.search);
+  });
+
+  await input.fill('React');
+  await page.waitForTimeout(350);
+  await expect(page).toHaveURL('/');
+  const requestsBeforeDebounce = catalogRequests.length;
+  await expect(page).toHaveURL(/search_query=React/);
+  await expect
+    .poll(() => catalogRequests.slice(requestsBeforeDebounce))
+    .toEqual(['?page=1&page_size=24&search_query=React&sort=created_at']);
+
+  const clear = catalogSearch.getByRole('button', { name: 'Clear' });
+  await expect(clear).toBeVisible();
+  const clearPresentation = await clear.evaluate((button) => {
+    const tokenProbe = document.createElement('span');
+    tokenProbe.style.color = 'var(--action-primary-bg)';
+    document.body.append(tokenProbe);
+    const expectedColor = getComputedStyle(tokenProbe).color;
+    tokenProbe.remove();
+    return {
+      color: getComputedStyle(button).color,
+      expectedColor,
+      height: getComputedStyle(button).height,
+    };
+  });
+  expect(clearPresentation.color).toBe(clearPresentation.expectedColor);
+  expect(Number.parseFloat(clearPresentation.height)).toBeGreaterThanOrEqual(44);
+
+  await clear.click();
+  await expect(page).toHaveURL('/');
+  await expect(input).toBeFocused();
+  await expect(clear).toHaveCount(0);
+
+  await input.evaluate((element) => {
+    element.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+  });
+  await input.fill('TypeScript');
+  await page.waitForTimeout(550);
+  await expect(page).toHaveURL('/');
+  await input.evaluate((element) => {
+    element.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }));
+  });
+  await expect(page).toHaveURL(/search_query=TypeScript/);
+
+  assertClean();
+});
+
+test('cancels a header-search debounce after in-app Catalog navigation', async ({ page }) => {
+  const assertClean = await monitor(page);
+  assertClean.allowOptionalRequestFailure({
+    method: 'GET',
+    path: '/courses?page=1&page_size=24&sort=created_at',
+    errorText: 'net::ERR_ABORTED',
+  });
+  assertClean.allowOptionalRequestFailure({
+    method: 'GET',
+    path: '/courses/7',
+    errorText: 'net::ERR_ABORTED',
+  });
+  assertClean.allowOptionalRequestFailure({
+    method: 'GET',
+    path: '/courses/7/reviews?page=1&page_size=20',
+    errorText: 'net::ERR_ABORTED',
+  });
+  const course = permittedCourse('Route-stable React course');
+  await installCatalogAdmissionRoutes(page, { courses: [course] });
+  await installCatalogCourseDetailScenario(page, course);
+  const catalogRequestUrls: string[] = [];
+  page.on('request', (request) => {
+    const url = new URL(request.url());
+    if (
+      request.method() === 'GET' &&
+      url.pathname === '/courses' &&
+      url.searchParams.get('page_size') === '24'
+    ) {
+      catalogRequestUrls.push(url.search);
+    }
+  });
+  await page.goto('/');
+
+  const catalogSearch = page.getByRole('search', { name: 'Course catalog search' });
+  await catalogSearch.getByRole('combobox', { name: 'Search courses' }).fill('React');
+  await page.getByRole('link', { name: course.title }).click();
+  await expect(page).toHaveURL(`/courses/${course.id}`);
+  const requestsBeforeTimer = catalogRequestUrls.length;
+
+  await page.waitForTimeout(650);
+
+  await expect(page).toHaveURL(`/courses/${course.id}`);
+  expect(catalogRequestUrls).toHaveLength(requestsBeforeTimer);
+  assertClean();
+});
+
 test('derives a complete API-037 catalog rating summary without card reflow or extra controls', async ({
   page,
 }) => {
@@ -2137,10 +2254,11 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
     path: '/courses?page=2&page_size=24&search_query=React&min_price=5&sort=-created_at',
     errorText: 'net::ERR_ABORTED',
   });
-  const requests: string[] = [];
+  const catalogRequests: string[] = [];
   await page.route('**/courses**', async (route) => {
-    if (new URL(route.request().url()).pathname === '/courses')
-      requests.push(route.request().url());
+    const requestUrl = new URL(route.request().url());
+    if (requestUrl.pathname === '/courses' && requestUrl.searchParams.get('page_size') === '24')
+      catalogRequests.push(route.request().url());
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -2230,7 +2348,9 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
       );
       if (!inner || !form || !browse || !search || !logIn || !signUp)
         throw new Error('Anonymous catalog header controls are missing.');
-      const sequence = Array.from(header.querySelectorAll('a, input')).map((element) => {
+      const sequence = Array.from(
+        header.querySelectorAll('a, input, form[role="search"] button'),
+      ).map((element) => {
         if (element instanceof HTMLInputElement) return element.name;
         return element.getAttribute('aria-label') ?? element.textContent?.trim();
       });
@@ -2272,6 +2392,7 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
     'LearnHub home',
     'Catalog',
     'search_query',
+    'Clear',
     'Cart',
     'Log in',
     'Sign up',
@@ -2293,6 +2414,8 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   await page.keyboard.press('Tab');
   await expect(headerSearch).toBeFocused();
   await page.keyboard.press('Tab');
+  await expect(catalogSearch.getByRole('button', { name: 'Clear' })).toBeFocused();
+  await page.keyboard.press('Tab');
   await expect(page.getByRole('link', { name: 'Cart', exact: true })).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(page.getByRole('link', { name: 'Log in', exact: true })).toBeFocused();
@@ -2303,7 +2426,7 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
     page.locator('[data-part="course-card-metadata"]').getByText('Ada Lovelace', { exact: true }),
   ).toBeVisible();
   await expect(page.getByText('1 lesson available', { exact: true })).toBeVisible();
-  expect(requests[0]).toContain('page_size=24');
+  expect(catalogRequests).not.toEqual([]);
 
   const filters = page.getByRole('form', { name: 'Course filters' });
   await expect(filters.getByRole('heading', { name: 'Filters' })).toHaveCount(0);
@@ -2381,7 +2504,7 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   expect(resultTypography.suffix.color).toBe(resultTypography.expected.muted);
   expect(resultTypography.suffix.fontWeight).toBe('400');
   const sortUrlBeforeHover = page.url();
-  const requestCountBeforeHover = requests.length;
+  const requestCountBeforeHover = catalogRequests.length;
   const sortIdle = await sortTrigger.evaluate((trigger) => {
     const chevron = trigger.querySelector<HTMLElement>('[data-part="catalog-sort-chevron"]');
     if (!trigger || !chevron) throw new Error('Custom sort trigger or chevron is missing.');
@@ -2497,7 +2620,7 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   expect(Math.abs(sortGeometry[2].rightInset - sortIdle.rightInset)).toBeLessThanOrEqual(1);
   expect(sortGeometry[2].centreDelta).toBeLessThanOrEqual(1);
   expect(page.url()).toBe(sortUrlBeforeHover);
-  expect(requests).toHaveLength(requestCountBeforeHover);
+  expect(catalogRequests).toHaveLength(requestCountBeforeHover);
   const lowToHighOption = sortListbox.getByRole('option', { name: 'Low to High' });
   await lowToHighOption.evaluate((option) => {
     const tooltip = document.activeElement
@@ -2642,8 +2765,8 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/search_query=React&min_price=5&sort=price/);
-  await expect.poll(() => requests[requests.length - 1]).toContain('sort=price');
-  await expect.poll(() => requests[requests.length - 1]).toContain('page=1');
+  await expect.poll(() => catalogRequests[catalogRequests.length - 1]).toContain('sort=price');
+  await expect.poll(() => catalogRequests[catalogRequests.length - 1]).toContain('page=1');
   await expect(sortTrigger).toBeFocused();
   const toolbarGeometry = await Promise.all([
     resultHeading.boundingBox(),
@@ -2701,12 +2824,14 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   await page.keyboard.press('Space');
   await sortListbox.getByRole('option', { name: 'A to Z' }).click();
   await expect(page).toHaveURL(/search_query=React&min_price=5&sort=title/);
-  await expect.poll(() => requests[requests.length - 1]).toContain('sort=title');
-  await expect.poll(() => requests[requests.length - 1]).toContain('page=1');
+  await expect.poll(() => catalogRequests[catalogRequests.length - 1]).toContain('sort=title');
+  await expect.poll(() => catalogRequests[catalogRequests.length - 1]).toContain('page=1');
   await headerSearch.fill('TypeScript');
   await headerSearch.press('Enter');
   await expect(page).toHaveURL(/search_query=TypeScript&min_price=5&sort=title/);
-  await expect.poll(() => requests[requests.length - 1]).toContain('search_query=TypeScript');
+  await expect
+    .poll(() => catalogRequests[catalogRequests.length - 1])
+    .toContain('search_query=TypeScript');
   await expect(headerSearch).toBeFocused();
   await allowOptionalFailureDuringCatalogTransition(
     assertClean,
@@ -2727,7 +2852,9 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   await headerSearch.fill('JavaScript');
   await headerSearch.press('Enter');
   await expect(page).toHaveURL(/search_query=JavaScript&min_price=5&sort=title/);
-  await expect.poll(() => requests[requests.length - 1]).toContain('search_query=JavaScript');
+  await expect
+    .poll(() => catalogRequests[catalogRequests.length - 1])
+    .toContain('search_query=JavaScript');
   await allowOptionalFailureDuringCatalogTransition(
     assertClean,
     catalogRatingCancellation,
@@ -2751,20 +2878,20 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   const minimum = filters.getByRole('spinbutton', { name: 'From' });
   const maximum = filters.getByRole('spinbutton', { name: 'To' });
   const priceUrlBeforeApply = page.url();
-  const requestCountBeforePriceApply = requests.length;
+  const requestCountBeforePriceApply = catalogRequests.length;
   await minimum.fill('10');
   await expect(page).toHaveURL(priceUrlBeforeApply);
-  expect(requests).toHaveLength(requestCountBeforePriceApply);
+  expect(catalogRequests).toHaveLength(requestCountBeforePriceApply);
 
   await maximum.fill('20');
   await page.getByRole('button', { name: 'Done' }).click();
   await expect(page).toHaveURL(/search_query=JavaScript&min_price=10&max_price=20&sort=title/);
   await expect(priceTrigger).toBeFocused();
-  await expect.poll(() => requests.length).toBe(requestCountBeforePriceApply + 1);
+  await expect.poll(() => catalogRequests.length).toBe(requestCountBeforePriceApply + 1);
   await expect
     .poll(
       () =>
-        requests.filter((requestUrl) => {
+        catalogRequests.filter((requestUrl) => {
           const url = new URL(requestUrl);
           return (
             url.pathname === '/courses' &&
@@ -3070,7 +3197,8 @@ test('canonicalizes an inverted range and honors single-page pagination availabi
   });
   const requests: string[] = [];
   await page.route('**/courses**', async (route) => {
-    if (new URL(route.request().url()).pathname === '/courses')
+    const requestUrl = new URL(route.request().url());
+    if (requestUrl.pathname === '/courses' && requestUrl.searchParams.get('page_size') === '24')
       requests.push(route.request().url());
     await route.fulfill({
       status: 200,
@@ -3106,7 +3234,8 @@ test('keeps an inverted price range invalid, then submits a corrected value with
   });
   const requests: string[] = [];
   await page.route('**/courses**', async (route) => {
-    if (new URL(route.request().url()).pathname === '/courses')
+    const requestUrl = new URL(route.request().url());
+    if (requestUrl.pathname === '/courses' && requestUrl.searchParams.get('page_size') === '24')
       requests.push(route.request().url());
     await route.fulfill({
       status: 200,
@@ -4634,6 +4763,17 @@ test('localizes the Price disclosure trigger and fields without changing respons
   page,
 }) => {
   const assertClean = await monitor(page);
+  const maximumPriceRequestUrls: URL[] = [];
+  page.on('request', (request) => {
+    const url = new URL(request.url());
+    if (
+      request.method() === 'GET' &&
+      url.pathname === '/courses' &&
+      url.searchParams.get('sort') === '-price'
+    ) {
+      maximumPriceRequestUrls.push(url);
+    }
+  });
   assertClean.allowRequestFailure(
     {
       method: 'GET',
@@ -4657,6 +4797,8 @@ test('localizes the Price disclosure trigger and fields without changing respons
       trigger: 'Price',
       minimum: 'From',
       maximum: 'To',
+      minimumPlaceholder: '0',
+      maximumPlaceholder: '9.99',
       done: 'Done',
     },
     {
@@ -4665,6 +4807,8 @@ test('localizes the Price disclosure trigger and fields without changing respons
       trigger: 'Цена',
       minimum: 'От',
       maximum: 'До',
+      minimumPlaceholder: '0',
+      maximumPlaceholder: '9.99',
       done: 'Готово',
     },
     {
@@ -4673,6 +4817,8 @@ test('localizes the Price disclosure trigger and fields without changing respons
       trigger: 'Narx',
       minimum: 'Dan',
       maximum: 'Gacha',
+      minimumPlaceholder: '0',
+      maximumPlaceholder: '9.99',
       done: 'Tayyor',
     },
   ] as const;
@@ -4719,6 +4865,8 @@ test('localizes the Price disclosure trigger and fields without changing respons
       const maximum = page.getByRole('spinbutton', { name: expected.maximum, exact: true });
       await expect(minimum).toHaveAccessibleName(expected.minimum);
       await expect(maximum).toHaveAccessibleName(expected.maximum);
+      await expect(minimum).toHaveAttribute('placeholder', expected.minimumPlaceholder);
+      await expect(maximum).toHaveAttribute('placeholder', expected.maximumPlaceholder);
       await expect(minimum.locator('xpath=..').locator(':scope > label')).toBeVisible();
       await expect(maximum.locator('xpath=..').locator(':scope > label')).toBeVisible();
       await expect(page.getByRole('button', { name: expected.done })).toBeVisible();
@@ -4813,6 +4961,16 @@ test('localizes the Price disclosure trigger and fields without changing respons
   await page.evaluate(() => {
     document.documentElement.style.zoom = '';
   });
+  expect(maximumPriceRequestUrls.length).toBeGreaterThan(0);
+  expect(
+    maximumPriceRequestUrls.every(
+      (url) =>
+        url.searchParams.size === 3 &&
+        url.searchParams.get('page') === '1' &&
+        url.searchParams.get('page_size') === '1' &&
+        url.searchParams.get('sort') === '-price',
+    ),
+  ).toBe(true);
   assertClean();
 });
 

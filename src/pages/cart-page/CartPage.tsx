@@ -183,12 +183,6 @@ export function CompositeCheckoutNotice({
         <p>{t('cart:checkingOut')}</p>
       </Notice>
     );
-  if (checkout.phase === 'discovering_recovery')
-    return (
-      <Notice tone="info" title={t('learning:paymentPending')}>
-        <p>{t('cart:checkingOut')}</p>
-      </Notice>
-    );
   if (checkout.phase === 'recovery_candidates')
     return (
       <Notice tone="info" title={t('learning:paymentPending')}>

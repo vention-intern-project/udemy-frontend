@@ -26,6 +26,7 @@ interface CartFixtureOptions {
   readonly checkoutMode?: 'lost' | 'normal';
   readonly completionMode?: 'lost' | 'malformed' | 'normal';
   readonly completionStatusByEnrollment?: Readonly<Record<number, EnrollmentStatus>>;
+  readonly enrollmentReadDelayMs?: number;
   readonly enrollments?: readonly FixtureEnrollment[];
   readonly initialPending?: readonly number[];
   readonly uncertainCompletionEnrollmentId?: number;
@@ -114,6 +115,7 @@ class CartCompositeFixture {
   readonly checkoutMode: 'lost' | 'normal';
   readonly completionMode: 'lost' | 'malformed' | 'normal';
   readonly completionStatusByEnrollment: Readonly<Record<number, EnrollmentStatus>>;
+  readonly enrollmentReadDelayMs: number;
   readonly enrollments: FixtureEnrollment[];
   readonly uncertainCompletionEnrollmentId: number | undefined;
   readonly unrelatedCourseIdAfterRestore: number | undefined;
@@ -123,6 +125,7 @@ class CartCompositeFixture {
     this.checkoutMode = options.checkoutMode ?? 'normal';
     this.completionMode = options.completionMode ?? 'normal';
     this.completionStatusByEnrollment = options.completionStatusByEnrollment ?? {};
+    this.enrollmentReadDelayMs = options.enrollmentReadDelayMs ?? 0;
     this.uncertainCompletionEnrollmentId = options.uncertainCompletionEnrollmentId;
     this.unrelatedCourseIdAfterRestore = options.unrelatedCourseIdAfterRestore;
     this.enrollments = [...(options.enrollments ?? [])];
@@ -198,8 +201,11 @@ class CartCompositeFixture {
         if (this.checkoutMode === 'lost') return route.abort('failed');
         return json(route, { enrolled_courses: 1, message: 'legacy acknowledgement' });
       }
-      if (record.path === '/enrollments/my' && record.method === 'GET')
+      if (record.path === '/enrollments/my' && record.method === 'GET') {
+        if (this.enrollmentReadDelayMs > 0)
+          await new Promise((resolve) => setTimeout(resolve, this.enrollmentReadDelayMs));
         return json(route, pageOf(this.enrollments));
+      }
       const enrollmentMatch = /^\/enrollments\/(\d+)$/.exec(record.path);
       if (enrollmentMatch && record.method === 'GET') {
         const item = this.enrollmentById(Number(enrollmentMatch[1]));
@@ -268,6 +274,24 @@ async function openCart(
   await fixture.install(page, locale);
   await page.goto('/cart');
 }
+
+test('keeps a refreshed empty Cart quiet while recovery discovery is pending', async ({ page }) => {
+  const fixture = new CartCompositeFixture({
+    cartCourseIds: [],
+    enrollmentReadDelayMs: 1_000,
+    enrollments: [enrollment(77, 7, 'active')],
+  });
+
+  await openCart(page, fixture);
+  await expect(page.getByRole('heading', { name: 'Your cart is empty' })).toBeVisible();
+  await expect.poll(() => fixture.count('/enrollments/my', 'GET')).toBe(1);
+  await expect(page.getByText('Payment pending', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Checking out…', { exact: true })).toHaveCount(0);
+  await page.waitForTimeout(1_050);
+  await expect(page.getByText('Payment pending', { exact: true })).toHaveCount(0);
+  expect(fixture.count('/cart/checkout', 'POST')).toBe(0);
+  expect(fixture.count('/payments/complete', 'POST')).toBe(0);
+});
 
 test('proves the whole Cart payment once and focuses the terminal result without legacy acknowledgement', async ({
   page,

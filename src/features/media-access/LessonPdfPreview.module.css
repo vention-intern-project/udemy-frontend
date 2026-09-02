@@ -21,10 +21,20 @@
   margin: 0;
   color: var(--text-secondary);
 }
+.toolbarActions {
+  display: flex;
+  gap: var(--spacing-2, 8px);
+  align-items: center;
+  flex-shrink: 0;
+}
 .navigation {
   display: flex;
   gap: var(--spacing-2, 8px);
   flex-wrap: wrap;
+}
+.closeButton {
+  inline-size: var(--control-height-sm);
+  padding-inline: 0;
 }
 .pageViewport {
   min-inline-size: 0;
@@ -54,6 +64,9 @@
   .toolbar {
     align-items: stretch;
     flex-direction: column;
+  }
+  .toolbarActions {
+    justify-content: space-between;
   }
   .navigation :global(button) {
     min-block-size: var(--control-height-md);

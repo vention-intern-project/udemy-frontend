@@ -105,6 +105,14 @@
   text-overflow: ellipsis;
 }
 
+.catalogSearchInputWithClear {
+  padding-right: calc(var(--control-height-md) + var(--spacing-3));
+}
+
+.catalogSearchInput::-webkit-search-cancel-button {
+  display: none;
+}
+
 .catalogSearchInput:focus-visible {
   border-color: var(--action-primary-bg);
   outline-color: var(--action-primary-bg);
@@ -119,6 +127,33 @@
   color: var(--text-muted);
   pointer-events: none;
   transform: translateY(-50%);
+}
+
+.catalogSearchClear {
+  position: absolute;
+  top: 50%;
+  right: var(--spacing-1);
+  display: grid;
+  width: var(--control-height-md);
+  height: var(--control-height-md);
+  place-items: center;
+  padding: 0;
+  color: var(--action-primary-bg);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.catalogSearchClear:hover {
+  color: var(--action-primary-bg-hover);
+  background: var(--action-secondary-bg);
+}
+
+.catalogSearchClear:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .catalogSearchListbox {

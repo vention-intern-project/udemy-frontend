@@ -1,4 +1,4 @@
-export { catalogFailure, requestCatalog } from './api';
+export { catalogFailure, requestCatalog, requestCatalogMaximumPrice } from './api';
 export type { CatalogFailure, CatalogFailureKind, CatalogRequester } from './api';
 export {
   addCatalogSearchHistory,
@@ -32,3 +32,5 @@ export type {
 } from './query';
 export { useCatalogDiscovery } from './useCatalogDiscovery';
 export type { CatalogDiscoveryState } from './useCatalogDiscovery';
+export { useCatalogMaximumPrice } from './use-catalog-maximum-price';
+export type { CatalogMaximumPriceState } from './use-catalog-maximum-price';

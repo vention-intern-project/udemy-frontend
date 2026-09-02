@@ -294,12 +294,14 @@ export function EnrollmentProgressPanel({
                         {t(`learning:${lessonCompletionLabelKey(displayState)}`)}
                       </p>
                       <h3>{lesson.title}</h3>
-                      <p>
-                        {lesson.description ??
-                          t('course:noLessonDescriptionIsAvailable', {
-                            defaultValue: 'No lesson description is available.',
-                          })}
-                      </p>
+                      {lesson.lessonType === 'text' ? null : (
+                        <p>
+                          {lesson.description ??
+                            t('course:noLessonDescriptionIsAvailable', {
+                              defaultValue: 'No lesson description is available.',
+                            })}
+                        </p>
+                      )}
                       <span>
                         {lesson.lessonType === 'video'
                           ? lesson.isPublished
@@ -317,8 +319,10 @@ export function EnrollmentProgressPanel({
                     <div className={styles.lessonMediaAccess}>
                       <LessonMediaAccess
                         lessonType={lesson.lessonType}
+                        isPublished={lesson.isPublished}
                         locator={lesson.mediaLocator}
                         subtitleLocator={lesson.subtitleLocator}
+                        textContent={lesson.description}
                       />
                     </div>
                     <LessonCompletionAction

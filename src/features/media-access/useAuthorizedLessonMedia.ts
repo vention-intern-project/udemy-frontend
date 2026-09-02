@@ -42,6 +42,7 @@ export interface AuthorizedLessonMediaController {
   readonly state: AuthorizedLessonMediaState;
   readonly canLoad: boolean;
   load(): void;
+  close(): void;
   markVideoReady(objectUrl: string): void;
   reportVideoError(objectUrl: string): void;
 }
@@ -156,6 +157,11 @@ export function useAuthorizedLessonMedia(
     );
   }, []);
 
+  const close = useCallback(() => {
+    disposeActive();
+    setState({ status: 'idle' });
+  }, [disposeActive]);
+
   const reportVideoError = useCallback((objectUrl: string) => {
     const active = activeRef.current;
     if (active?.objectUrl !== objectUrl) return;
@@ -173,6 +179,7 @@ export function useAuthorizedLessonMedia(
     state,
     canLoad: kind !== null && locator !== null,
     load,
+    close,
     markVideoReady,
     reportVideoError,
   };

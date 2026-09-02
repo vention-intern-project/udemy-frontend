@@ -73,6 +73,7 @@ const INSTRUCTOR_COURSES_PATH = '/instructor/courses';
 const INSTRUCTOR_COURSES_HEADING_ID = 'your-courses-heading';
 const INSTRUCTOR_COURSES_NEW_TAB_FOCUS_KEY = 'learnhub.instructor-courses.new-tab-focus';
 const INSTRUCTOR_COURSES_NEW_TAB_FOCUS_MAX_AGE_MS = 30_000;
+const CATALOG_SEARCH_DEBOUNCE_MS = 500;
 
 interface CartPresentation {
   badge: string | null;
@@ -605,10 +606,14 @@ export function AppShell() {
   const mainRef = useRef<HTMLElement>(null);
   const catalogSearchRef = useRef<HTMLInputElement>(null);
   const catalogSearchWrapperRef = useRef<HTMLDivElement>(null);
+  const catalogSearchDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const catalogSearchIsComposingRef = useRef(false);
   const restoreCatalogSearchFocusRef = useRef(false);
   const newTabInstructorCoursesFocusClaimedRef = useRef(false);
   const catalogSearchListboxId = `catalog-search-history-${useId()}`;
   const currentLocation = `${location.pathname}${location.search}${location.hash}`;
+  const catalogSearchLocationIdentity = `${location.key}:${currentLocation}`;
+  const catalogSearchLocationRef = useRef(catalogSearchLocationIdentity);
   const previousLocationRef = useRef(currentLocation);
   const previousScrollLocationRef = useRef(location);
   const entryScrollPositionsRef = useRef(new Map<string, ScrollPosition>());
@@ -727,6 +732,11 @@ export function AppShell() {
   }, [densityMode, routeDensityMode, setDensityMode]);
 
   useLayoutEffect(() => {
+    catalogSearchLocationRef.current = catalogSearchLocationIdentity;
+    clearCatalogSearchDebounce();
+  }, [catalogSearchLocationIdentity]);
+
+  useLayoutEffect(() => {
     if (typeof window === 'undefined') return undefined;
 
     const root = document.documentElement;
@@ -760,10 +770,13 @@ export function AppShell() {
 
   useEffect(() => {
     if (!isCatalogRoute) return;
+    clearCatalogSearchDebounce();
     setCatalogSearchDraft(catalogQuery.search_query ?? '');
     setCatalogSearchOpen(false);
     setActiveCatalogSearchIndex(null);
   }, [catalogQuery.search_query, isCatalogRoute]);
+
+  useEffect(() => clearCatalogSearchDebounce, []);
 
   useEffect(() => {
     if (!isCatalogRoute) return;
@@ -920,6 +933,12 @@ export function AppShell() {
     setActiveCatalogSearchIndex(null);
   }
 
+  function clearCatalogSearchDebounce() {
+    if (catalogSearchDebounceTimerRef.current === null) return;
+    clearTimeout(catalogSearchDebounceTimerRef.current);
+    catalogSearchDebounceTimerRef.current = null;
+  }
+
   function rememberCatalogSearch(term: string) {
     const nextHistory = addCatalogSearchHistory(catalogSearchHistory, term);
     if (nextHistory.length === 0) return;
@@ -927,7 +946,8 @@ export function AppShell() {
     persistCatalogSearchHistory(nextHistory);
   }
 
-  function submitCatalogSearch(value = catalogSearchDraft) {
+  function submitCatalogSearch(value = catalogSearchDraft, remember = true) {
+    clearCatalogSearchDebounce();
     const submittedSearch = value.trim();
     const next = {
       ...catalogQuery,
@@ -937,7 +957,7 @@ export function AppShell() {
     const nextSearch = serializeCatalogQuery(next);
     const currentCanonicalSearch = serializeCatalogQuery(catalogQuery);
     setCatalogSearchDraft(next.search_query ?? '');
-    if (submittedSearch) rememberCatalogSearch(submittedSearch);
+    if (submittedSearch && remember) rememberCatalogSearch(submittedSearch);
     closeCatalogSearchList();
     const destinationPathname = isCatalogRoute ? location.pathname : '/';
     if (
@@ -953,6 +973,29 @@ export function AppShell() {
       search: nextSearch ? `?${nextSearch}` : '',
       hash: isCatalogRoute ? location.hash : '',
     });
+  }
+
+  function scheduleCatalogSearch(value: string) {
+    clearCatalogSearchDebounce();
+    const scheduledLocation = catalogSearchLocationIdentity;
+    const timeoutId = setTimeout(() => {
+      if (
+        catalogSearchDebounceTimerRef.current !== timeoutId ||
+        catalogSearchLocationRef.current !== scheduledLocation
+      )
+        return;
+      catalogSearchDebounceTimerRef.current = null;
+      submitCatalogSearch(value, false);
+    }, CATALOG_SEARCH_DEBOUNCE_MS);
+    catalogSearchDebounceTimerRef.current = timeoutId;
+  }
+
+  function clearCatalogSearch() {
+    clearCatalogSearchDebounce();
+    setCatalogSearchDraft('');
+    closeCatalogSearchList();
+    submitCatalogSearch('', false);
+    catalogSearchRef.current?.focus();
   }
 
   const languageSelector = (
@@ -1093,6 +1136,7 @@ export function AppShell() {
               aria-label={t('a11y:courseCatalogSearch')}
               onSubmit={(event) => {
                 event.preventDefault();
+                if (catalogSearchIsComposingRef.current) return;
                 submitCatalogSearch(activeCatalogSearchTerm);
               }}
             >
@@ -1101,7 +1145,12 @@ export function AppShell() {
                   ref={catalogSearchRef}
                   label={<VisuallyHidden>{t('a11y:searchCourses')}</VisuallyHidden>}
                   fieldClassName={styles.catalogSearchPrimitiveField}
-                  className={styles.catalogSearchInput}
+                  className={[
+                    styles.catalogSearchInput,
+                    catalogSearchDraft ? styles.catalogSearchInputWithClear : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
                   name="search_query"
                   type="search"
                   value={catalogSearchDraft}
@@ -1126,9 +1175,19 @@ export function AppShell() {
                     setActiveCatalogSearchIndex(null);
                   }}
                   onChange={(event) => {
-                    setCatalogSearchDraft(event.target.value);
+                    const nextDraft = event.target.value;
+                    setCatalogSearchDraft(nextDraft);
                     setCatalogSearchOpen(catalogSearchHistory.length > 0);
                     setActiveCatalogSearchIndex(null);
+                    if (!catalogSearchIsComposingRef.current) scheduleCatalogSearch(nextDraft);
+                  }}
+                  onCompositionStart={() => {
+                    catalogSearchIsComposingRef.current = true;
+                    clearCatalogSearchDebounce();
+                  }}
+                  onCompositionEnd={(event) => {
+                    catalogSearchIsComposingRef.current = false;
+                    scheduleCatalogSearch(event.currentTarget.value);
                   }}
                   onKeyDown={(event) => {
                     if (event.key === 'Escape') {
@@ -1167,6 +1226,16 @@ export function AppShell() {
                     strokeWidth="2"
                   />
                 </svg>
+                {catalogSearchDraft ? (
+                  <button
+                    className={styles.catalogSearchClear}
+                    type="button"
+                    aria-label={t('cart:clear')}
+                    onClick={clearCatalogSearch}
+                  >
+                    <X aria-hidden="true" focusable="false" size={20} strokeWidth={2} />
+                  </button>
+                ) : null}
                 {catalogSearchListboxVisible ? (
                   <div
                     className={styles.catalogSearchListbox}

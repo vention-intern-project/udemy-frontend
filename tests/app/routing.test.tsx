@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
@@ -10,6 +10,7 @@ import { ApplicationTitleBoundary, AppRouter, densityForPath } from '../../src/a
 import { createAppQueryClient } from '../../src/app/query';
 import type { UserProfileDto, UserRoleDto } from '../../src/entities/user';
 import { SessionProvider, type AccessTokenStore } from '../../src/features/auth-session';
+import { CartCompositeCheckoutProvider } from '../../src/features/checkout-cart';
 import type { ApiClient, ApiRequestOptions } from '../../src/shared/api';
 import { ThemeProvider } from '../../src/shared/ui/theme';
 
@@ -165,6 +166,7 @@ function FocusNavigationProbe() {
 }
 
 interface RenderAppOptions {
+  readonly cartCompositeCheckout?: boolean;
   readonly focusNavigationProbe?: boolean;
   readonly initialEntries?: string[];
   readonly initialIndex?: number;
@@ -226,11 +228,23 @@ function renderApp(path: string, role?: UserRoleDto, options: RenderAppOptions =
               initialIndex={options.initialIndex}
               future={{ v7_relativeSplatPath: true, v7_startTransition: true }}
             >
-              <ApplicationTitleBoundary>
-                <AppRouter />
-              </ApplicationTitleBoundary>
-              <LocationProbe />
-              {options.focusNavigationProbe ? <FocusNavigationProbe /> : null}
+              {options.cartCompositeCheckout ? (
+                <CartCompositeCheckoutProvider>
+                  <ApplicationTitleBoundary>
+                    <AppRouter />
+                  </ApplicationTitleBoundary>
+                  <LocationProbe />
+                  {options.focusNavigationProbe ? <FocusNavigationProbe /> : null}
+                </CartCompositeCheckoutProvider>
+              ) : (
+                <>
+                  <ApplicationTitleBoundary>
+                    <AppRouter />
+                  </ApplicationTitleBoundary>
+                  <LocationProbe />
+                  {options.focusNavigationProbe ? <FocusNavigationProbe /> : null}
+                </>
+              )}
             </MemoryRouter>
           </SessionProvider>
         </ThemeProvider>
@@ -240,6 +254,8 @@ function renderApp(path: string, role?: UserRoleDto, options: RenderAppOptions =
 }
 
 afterEach(() => {
+  vi.clearAllTimers();
+  vi.useRealTimers();
   cleanup();
   globalThis.localStorage.clear();
   vi.restoreAllMocks();
@@ -580,14 +596,10 @@ describe('application routing and guards', () => {
   it('submits the persistent workspace search to the canonical catalog URL and resets page', async () => {
     renderApp('/learning?page=3', 'student');
     await screen.findByRole('heading', { level: 1, name: 'My learning' });
-    const user = userEvent.setup();
     const search = screen.getByRole('combobox', { name: 'Search courses' });
 
-    await act(async () => {
-      await user.clear(search);
-      await user.type(search, 'React');
-      await user.keyboard('{Enter}');
-    });
+    fireEvent.change(search, { target: { value: 'React' } });
+    fireEvent.submit(screen.getByRole('search', { name: 'Course catalog search' }));
 
     await waitFor(() =>
       expect(screen.getByLabelText('current location').textContent).toBe('/?search_query=React'),
@@ -614,6 +626,108 @@ describe('application routing and guards', () => {
     await waitFor(() => expect(screen.getByRole('main')).toBe(document.activeElement));
   });
 
+  it('waits for 500ms of quiet input before canonically navigating a header search', async () => {
+    renderApp('/?sort=price&page=3');
+    await screen.findByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' });
+    await act(async () => undefined);
+    vi.useFakeTimers();
+    const search = screen.getByRole('combobox', { name: 'Search courses' });
+
+    fireEvent.change(search, { target: { value: 'Re' } });
+    await act(async () => vi.advanceTimersByTime(499));
+    expect(screen.getByLabelText('current location').textContent).toBe('/?sort=price&page=3');
+
+    fireEvent.change(search, { target: { value: 'React' } });
+    await act(async () => vi.advanceTimersByTime(499));
+    expect(screen.getByLabelText('current location').textContent).toBe('/?sort=price&page=3');
+
+    await act(async () => vi.advanceTimersByTime(1));
+    expect(screen.getByLabelText('current location').textContent).toBe(
+      '/?search_query=React&sort=price',
+    );
+  });
+
+  it('cancels a persistent workspace header-search debounce after navigation to Cart', async () => {
+    const { request } = renderApp('/learning?page=3', 'student', {
+      cartCompositeCheckout: true,
+    });
+    await screen.findByRole('heading', { level: 1, name: 'My learning' });
+    await act(async () => undefined);
+    vi.useFakeTimers();
+    const search = screen.getByRole('combobox', { name: 'Search courses' });
+    const catalogRequestCount = () =>
+      request.mock.calls.filter(([options]) => (options as ApiRequestOptions).path === '/courses')
+        .length;
+
+    fireEvent.change(search, { target: { value: 'React' } });
+    const requestsBeforeNavigation = catalogRequestCount();
+    fireEvent.click(screen.getByRole('link', { name: 'Cart' }));
+    expect(screen.getByLabelText('current location').textContent).toBe('/cart');
+
+    await act(async () => vi.advanceTimersByTime(500));
+
+    expect(screen.getByLabelText('current location').textContent).toBe('/cart');
+    expect(catalogRequestCount()).toBe(requestsBeforeNavigation);
+    expect(globalThis.localStorage.getItem('learnhub.catalog-search-history')).toBeNull();
+  });
+
+  it('keeps Enter immediate and does not add debounced drafts to recent-search history', async () => {
+    renderApp('/');
+    await screen.findByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' });
+    await act(async () => undefined);
+    vi.useFakeTimers();
+    const search = screen.getByRole('combobox', { name: 'Search courses' });
+
+    fireEvent.change(search, { target: { value: 'Debounced only' } });
+    await act(async () => vi.advanceTimersByTime(500));
+    expect(globalThis.localStorage.getItem('learnhub.catalog-search-history')).toBeNull();
+
+    const currentSearch = screen.getByRole('combobox', { name: 'Search courses' });
+    fireEvent.change(currentSearch, { target: { value: 'Explicit Enter' } });
+    fireEvent.submit(screen.getByRole('search', { name: 'Course catalog search' }));
+    expect(screen.getByLabelText('current location').textContent).toBe(
+      '/?search_query=Explicit+Enter',
+    );
+    await act(async () => vi.advanceTimersByTime(500));
+    expect(screen.getByLabelText('current location').textContent).toBe(
+      '/?search_query=Explicit+Enter',
+    );
+    expect(globalThis.localStorage.getItem('learnhub.catalog-search-history')).toBe(
+      JSON.stringify(['Explicit Enter']),
+    );
+  });
+
+  it('waits for composition to end before starting the search debounce', async () => {
+    renderApp('/');
+    await screen.findByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' });
+    await act(async () => undefined);
+    vi.useFakeTimers();
+    const search = screen.getByRole('combobox', { name: 'Search courses' });
+
+    fireEvent.compositionStart(search);
+    fireEvent.change(search, { target: { value: 'React' } });
+    await act(async () => vi.advanceTimersByTime(500));
+    expect(screen.getByLabelText('current location').textContent).toBe('/');
+
+    fireEvent.compositionEnd(search, { data: 'React' });
+    await act(async () => vi.advanceTimersByTime(499));
+    expect(screen.getByLabelText('current location').textContent).toBe('/');
+    await act(async () => vi.advanceTimersByTime(1));
+    expect(screen.getByLabelText('current location').textContent).toBe('/?search_query=React');
+  });
+
+  it('renders an immediate accessible clear control that keeps focus on the search input', async () => {
+    renderApp('/?search_query=React');
+    await screen.findByRole('heading', { level: 1, name: 'Master the Skills Shaping the Future' });
+    const clear = screen.getByRole('button', { name: 'Clear' });
+
+    fireEvent.click(clear);
+    await waitFor(() => expect(screen.getByLabelText('current location').textContent).toBe('/'));
+    const currentSearch = screen.getByRole('combobox', { name: 'Search courses' });
+    await waitFor(() => expect(document.activeElement).toBe(currentSearch));
+    expect((currentSearch as HTMLInputElement).value).toBe('');
+  });
+
   it('removes the recent-search outside-pointer listener when the open draft has zero matches', async () => {
     globalThis.localStorage.setItem(
       'learnhub.catalog-search-history',
@@ -636,10 +750,7 @@ describe('application routing and guards', () => {
       .find(([type]) => type === 'pointerdown')?.[1];
     expect(pointerListener).toBeTruthy();
 
-    await act(async () => {
-      await user.clear(input);
-      await user.type(input, 'no matching history');
-    });
+    fireEvent.change(input, { target: { value: 'no matching history' } });
     await waitFor(() =>
       expect(screen.queryByRole('listbox', { name: 'Recent searches' })).toBeNull(),
     );

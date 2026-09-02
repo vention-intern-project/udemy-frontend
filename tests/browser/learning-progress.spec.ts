@@ -243,6 +243,17 @@ interface LessonMediaLifecycleWindow extends Window {
   __lessonMediaLifecycleProbe?: LessonMediaLifecycleProbe;
 }
 
+interface PdfPreviewSuspensionWindow extends Window {
+  __releaseSuspendedPdfPreview?: () => void;
+}
+
+const suspendedPdfPreviewModule = [
+  'let releaseSuspendedPdfPreview;',
+  'globalThis.__releaseSuspendedPdfPreview = () => releaseSuspendedPdfPreview?.();',
+  'await new Promise((resolve) => { releaseSuspendedPdfPreview = resolve; });',
+  "export { default } from '/src/features/media-access/LessonPdfPreview.tsx?pdf-preview-suspension-real';",
+].join('\n');
+
 async function installLessonMediaLifecycleProbe(page: Page) {
   await page.addInitScript(() => {
     if (window.top !== window) return;
@@ -895,6 +906,15 @@ test('keeps aggregate progress separate from fresh lesson state, dedupes action,
   );
   await expect(page.getByText('1 available now · 1 lesson coming soon')).toBeVisible();
   await expect(page.getByText('Text lesson', { exact: true })).toBeVisible();
+  const textDetails = page.getByRole('button', { name: 'Details' });
+  await expect(textDetails).toBeVisible();
+  await textDetails.click();
+  const textReader = page.getByRole('region', { name: 'Text lesson' });
+  await expect(textReader).toBeFocused();
+  await expect(textReader).toContainText('Keep the reasoning reproducible');
+  await textReader.getByRole('button', { name: 'Close dialog' }).click();
+  await expect(textReader).toBeHidden();
+  await expect(textDetails).toBeFocused();
   await expect(page.getByText('Listed metadata', { exact: true })).toHaveCount(0);
   await expect(page.getByText('Draft metadata', { exact: true })).toHaveCount(0);
   await expect(page.getByText('Media unavailable in this workspace')).toHaveCount(0);
@@ -1170,6 +1190,11 @@ test('keeps authorized video usable without requesting a subtitle track by defau
   await expectEffectivePageScaleGeometry(page, preview);
   expect(mediaRequests).toEqual(['/media/lessons/lesson%20one.mp4']);
   expect(subtitleRequests).toEqual([]);
+  await page.getByRole('button', { name: 'Close dialog' }).click();
+  await expect(preview).toBeHidden();
+  await expect(loadVideo).toBeVisible();
+  await expect(loadVideo).toBeFocused();
+  expect(mediaRequests).toEqual(['/media/lessons/lesson%20one.mp4']);
   expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
   expect(diagnostics.httpFailures).toEqual([]);
 });
@@ -1504,6 +1529,125 @@ test('renders authorized PDF in-page with basic navigation and stable geometry',
   }
   await expectEffectivePageScaleGeometry(page, preview);
   await expectPdfViewportGeometry(preview, 1440);
+  await preview.getByRole('button', { name: 'Close dialog' }).click();
+  await expect(preview).toBeHidden();
+  await expect(loadPdf).toBeVisible();
+  await expect(loadPdf).toBeFocused();
+  expect(mediaRequests).toEqual(['/media/lessons/lesson.pdf']);
+  expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
+  expect(diagnostics.httpFailures).toEqual([]);
+});
+
+test('keeps the suspended PDF fallback close control usable in Chromium', async ({ page }) => {
+  await installStudent(page);
+  const diagnostics = captureRuntimeDiagnostics(page, {
+    abortedRequests: [expectedGetAbort('/enrollments/4', 1)],
+  });
+  const mediaRequests: string[] = [];
+  await page.route('**/*', async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.origin !== 'http://127.0.0.1:4179') return route.fallback();
+    if (url.pathname === '/me') return json(route, student);
+    if (url.pathname === '/enrollments/4') return json(route, enrollment);
+    if (url.pathname === '/courses/7/progress')
+      return json(route, {
+        course_id: 7,
+        completed_lessons: 0,
+        total_lessons: 1,
+        progress_percentage: 0,
+      });
+    if (url.pathname === '/courses/7/lessons' && request.method() === 'GET')
+      return json(route, {
+        items: [
+          {
+            id: 12,
+            title: 'Suspended browser PDF',
+            lesson_type: 'pdf',
+            download_url: '/media/lessons/suspended.pdf',
+            description: null,
+            is_published: true,
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: '2026-01-01T00:00:00Z',
+          },
+        ],
+        page: 1,
+        page_size: 100,
+        total: 1,
+        pages: 1,
+        has_next: false,
+        has_previous: false,
+      });
+    if (url.pathname === '/media/lessons/suspended.pdf') {
+      mediaRequests.push(url.pathname);
+      expect(request.headers().authorization).toBe('Bearer student-token');
+      return route.fulfill({ status: 200, contentType: 'application/pdf', body: VALID_PDF });
+    }
+    if (url.pathname.startsWith('/courses/') || url.pathname.startsWith('/enrollments/'))
+      throw new Error(`Unexpected learning request ${request.method()} ${url.pathname}`);
+    return route.fallback();
+  });
+  await page.route(
+    (url) =>
+      url.pathname.endsWith('/src/features/media-access/LessonPdfPreview.tsx') &&
+      !url.searchParams.has('pdf-preview-suspension-real'),
+    (route) =>
+      route.fulfill({
+        contentType: 'application/javascript',
+        body: suspendedPdfPreviewModule,
+      }),
+  );
+
+  await page.goto('/learning/enrollments/4');
+  const loadPdf = page.getByRole('button', { name: 'Load PDF' });
+  await tabTo(page, loadPdf);
+  await page.keyboard.press('Enter');
+  const fallbackStatus = page.getByText('Preparing PDF preview…', { exact: true });
+  const closeDialog = page.getByRole('button', { name: 'Close dialog' });
+  await expect(fallbackStatus).toBeVisible();
+  await expect(closeDialog).toHaveCount(1);
+  expect(mediaRequests).toEqual(['/media/lessons/suspended.pdf']);
+
+  for (const width of [320, 390, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    const geometry = await closeDialog.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        bodyWidth: document.body.scrollWidth,
+        documentWidth: document.documentElement.scrollWidth,
+        height: rect.height,
+        layoutWidth: document.documentElement.clientWidth,
+        width: rect.width,
+      };
+    });
+    expect(geometry.width).toBeGreaterThanOrEqual(44);
+    expect(geometry.height).toBeGreaterThanOrEqual(44);
+    expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.layoutWidth);
+    expect(geometry.bodyWidth).toBeLessThanOrEqual(geometry.layoutWidth);
+  }
+
+  await tabTo(page, closeDialog);
+  await expect(closeDialog).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(fallbackStatus).toBeHidden();
+  await expect(loadPdf).toBeVisible();
+  await expect(loadPdf).toBeFocused();
+
+  await page.evaluate(() => {
+    const release = (window as PdfPreviewSuspensionWindow).__releaseSuspendedPdfPreview;
+    if (release === undefined)
+      throw new Error('Suspended PDF preview release hook is unavailable.');
+    release();
+  });
+  await loadPdf.click();
+  const preview = page.getByRole('region', { name: 'Lesson PDF preview' });
+  await expect(preview).toBeVisible();
+  await expect(preview.locator('canvas')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Close dialog' })).toHaveCount(1);
+  await preview.getByRole('button', { name: 'Close dialog' }).click();
+  await expect(preview).toBeHidden();
+  await expect(loadPdf).toBeFocused();
+  expect(mediaRequests).toEqual(['/media/lessons/suspended.pdf', '/media/lessons/suspended.pdf']);
   expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
   expect(diagnostics.httpFailures).toEqual([]);
 });
