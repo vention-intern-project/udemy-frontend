@@ -53,17 +53,18 @@
   list-style: none;
 }
 .lesson {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 12rem;
   gap: var(--spacing-3, 12px);
-  justify-content: space-between;
   align-items: flex-start;
   padding: var(--spacing-3, 12px);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
 }
 .lessonDetails {
+  grid-column: 1;
+  grid-row: 1;
   min-inline-size: 0;
-  flex: 1 1 auto;
 }
 .lesson span,
 .lesson .completion {
@@ -91,10 +92,18 @@
   color: var(--feedback-success);
   background: var(--feedback-success-bg);
 }
+.lessonMediaAccess {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  min-inline-size: 0;
+  margin-block-start: var(--spacing-2, 8px);
+}
 .loading {
   padding: var(--spacing-3, 12px);
 }
 .lessonCompletionAction {
+  grid-column: 2;
+  grid-row: 1;
   flex: 0 0 auto;
   inline-size: 12rem;
   color: var(--action-secondary-fg) !important;
@@ -130,7 +139,17 @@
   block-size: 18px;
 }
 @media (max-width: 480px) {
-  .lesson,
+  .lesson {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lessonDetails,
+  .lessonMediaAccess,
+  .lessonCompletionAction {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
   .summary {
     align-items: stretch;
     flex-direction: column;

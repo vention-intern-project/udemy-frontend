@@ -225,6 +225,7 @@ describe('TanStack server-state boundary', () => {
       'API-039': 'required',
       'API-040': 'required',
       'API-041': 'required',
+      'API-042': 'required',
     } as const satisfies Readonly<Record<SelectedApiOperationId, AuthPolicy>>;
 
     expect(Object.keys(API_OPERATION_METADATA_BY_ID).sort()).toEqual(

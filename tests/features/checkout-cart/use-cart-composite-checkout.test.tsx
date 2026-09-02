@@ -375,12 +375,79 @@ describe('useCartCompositeCheckout', () => {
     expect(result.current.results).toEqual([{ enrollmentId: 70, courseId: 7, kind: 'active' }]);
   });
 
-  it('locks an enlarged server attempt before completion when a unique pending course is outside the snapshot', async () => {
+  it('keeps an admitted failed payment pending for exactly seven seconds before cancellation', async () => {
     const counts = { checkout: 0, enrollments: 0, cart: 0, payment: 0, restore: 0 };
     const request: ApiClient['request'] = async <TResponse, TBody>(
       options: ApiRequestOptions<TBody, TResponse>,
     ) => {
       if (options.path === '/me') return decode(options, student);
+      if (options.path === '/cart/checkout') {
+        counts.checkout += 1;
+        return decode(options, { message: 'acknowledged', enrolled_courses: 1 });
+      }
+      if (options.path === '/enrollments/my') {
+        counts.enrollments += 1;
+        return decode(options, enrollmentList());
+      }
+      if (options.path === '/cart') {
+        counts.cart += 1;
+        return decode(options, counts.restore === 0 ? emptyCart() : restoredCart());
+      }
+      if (options.path === '/payments/complete') {
+        counts.payment += 1;
+        return decode(options, { enrollment_id: 70, status: 'cancelled', message: 'cancelled' });
+      }
+      if (options.path === '/cart/items') {
+        counts.restore += 1;
+        return decode(options, restoredCart().items[0]);
+      }
+      throw new Error(`Unexpected request ${options.method} ${options.path}`);
+    };
+    const { result } = renderHook(() => useCartCompositeCheckout([paidCourse]), {
+      wrapper: createWrapper(request),
+    });
+
+    await waitFor(() => expect(result.current.phase).toBe('idle'));
+    vi.useFakeTimers();
+    try {
+      act(() =>
+        result.current.start([{ courseId: 7, outcome: 'failed' }], {
+          completionDelayMs: 7_000,
+        }),
+      );
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(result.current.phase).toBe('checkout_admitted');
+      expect(counts.payment).toBe(0);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(6_999);
+      });
+      expect(result.current.phase).toBe('checkout_admitted');
+      expect(counts.payment).toBe(0);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(result.current.phase).toBe('checkout_completed');
+      expect(result.current.results).toEqual([{ enrollmentId: 70, courseId: 7, kind: 'restored' }]);
+      expect(counts).toEqual({ checkout: 1, enrollments: 1, cart: 2, payment: 1, restore: 1 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('locks an enlarged server attempt before completion when a unique pending course is outside the snapshot', async () => {
+    const counts = { checkout: 0, enrollments: 0, cart: 0, payment: 0, restore: 0 };
+    let sessionLoaded = false;
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/me') {
+        sessionLoaded = true;
+        return decode(options, student);
+      }
       if (options.path === '/cart/checkout') {
         counts.checkout += 1;
         return decode(options, { message: 'acknowledged', enrolled_courses: 2 });
@@ -402,6 +469,7 @@ describe('useCartCompositeCheckout', () => {
     });
 
     await waitFor(() => expect(result.current.phase).toBe('idle'));
+    await waitFor(() => expect(sessionLoaded).toBe(true));
     act(() => result.current.start());
     await waitFor(() => expect(result.current.phase).toBe('checkout_integrity_unknown'));
     expect(result.current.completionPlan).toEqual([]);
@@ -949,6 +1017,48 @@ describe('useCartCompositeCheckout', () => {
     expect(result.current.results).toEqual([{ enrollmentId: 70, courseId: 7, kind: 'active' }]);
   });
 
+  it('dismisses only a verified restored result and releases its terminal write lock', async () => {
+    let cartContainsCourse = true;
+    let checkoutRequests = 0;
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/cart/checkout') {
+        checkoutRequests += 1;
+        cartContainsCourse = false;
+        return decode(options, { message: 'acknowledged', enrolled_courses: 1 });
+      }
+      if (options.path === '/enrollments/my') return decode(options, enrollmentList());
+      if (options.path === '/cart')
+        return decode(options, cartContainsCourse ? restoredCart() : emptyCart());
+      if (options.path === '/payments/complete') {
+        return decode(options, { enrollment_id: 70, status: 'cancelled', message: 'declined' });
+      }
+      if (options.path === '/cart/items' && options.method === 'POST') {
+        cartContainsCourse = true;
+        return decode(options, restoredCart().items[0]);
+      }
+      throw new Error(`Unexpected request ${options.method} ${options.path}`);
+    };
+    const { result } = renderHook(() => useCartCompositeCheckout([paidCourse]), {
+      wrapper: createWrapper(request),
+    });
+
+    await waitFor(() => expect(result.current.phase).toBe('idle'));
+    act(() => result.current.start([{ courseId: 7, outcome: 'failed' }]));
+    await waitFor(() => expect(result.current.phase).toBe('checkout_completed'));
+    expect(result.current.results).toEqual([{ enrollmentId: 70, courseId: 7, kind: 'restored' }]);
+
+    act(() => result.current.dismissRestoredCourses([7]));
+    expect(result.current.phase).toBe('idle');
+    expect(result.current.results).toEqual([]);
+
+    cartContainsCourse = true;
+    act(() => result.current.start([{ courseId: 7, outcome: 'failed' }]));
+    await waitFor(() => expect(checkoutRequests).toBe(2));
+  });
+
   it('aggregates a verified active item with an independently restored cancelled item', async () => {
     const counts = { checkout: 0, enrollments: 0, cart: 0, payment: 0, restore: 0 };
     const request: ApiClient['request'] = async <TResponse, TBody>(
@@ -1107,6 +1217,35 @@ describe('useCartCompositeCheckout', () => {
     const completedCounts = { ...counts };
     act(() => result.current.start());
     expect(counts).toEqual(completedCounts);
+  });
+
+  it('dismisses a proven successful result and returns the workflow to idle', async () => {
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/cart/checkout')
+        return decode(options, { message: 'acknowledged', enrolled_courses: 1 });
+      if (options.path === '/enrollments/my') return decode(options, enrollmentList());
+      if (options.path === '/cart') return decode(options, emptyCart());
+      if (options.path === '/payments/complete')
+        return decode(options, { enrollment_id: 70, status: 'active', message: 'paid' });
+      throw new Error(`Unexpected request ${options.method} ${options.path}`);
+    };
+    const harness = createSessionHarness(request);
+    const { result } = renderHook(() => useCartCompositeCheckout([paidCourse]), {
+      wrapper: harness.Wrapper,
+    });
+
+    await waitFor(() => expect(harness.session()?.state.status).toBe('authenticated'));
+    act(() => result.current.start());
+    await waitFor(() => expect(result.current.phase).toBe('checkout_completed'));
+    expect(result.current.results).toEqual([{ enrollmentId: 70, courseId: 7, kind: 'active' }]);
+
+    act(() => result.current.dismissSuccessfulCourses([7]));
+
+    expect(result.current.results).toEqual([]);
+    expect(result.current.phase).toBe('idle');
   });
 
   it('invalidates only the terminal attempt subject Cart and enrollment cache identities once', async () => {

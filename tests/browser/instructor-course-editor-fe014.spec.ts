@@ -61,6 +61,7 @@ interface FixtureState {
   courseDeleteStatus: number;
   lessonDeleteStatus: number;
   coursePatchGate?: Promise<void>;
+  lessonPatchGate?: Promise<void>;
   uploadGate?: Promise<void>;
   courseDeleteGate?: Promise<void>;
   lessonDeleteGate?: Promise<void>;
@@ -317,12 +318,13 @@ async function installInstructorFixture(page: Page, state: FixtureState): Promis
       return;
     }
 
+    const lessonUploadMatch = /^\/lessons\/(\d+)\/upload-file$/u.exec(path);
     const editorMutation =
       path === `/courses/${courseId}` ||
       path === `/courses/${courseId}/lessons` ||
       path === `/courses/${courseId}/lessons/${lessonId}` ||
       path === `/lessons/${lessonId}` ||
-      path === `/lessons/${lessonId}/upload-file`;
+      lessonUploadMatch !== null;
     if (!editorMutation) {
       await route.continue();
       return;
@@ -399,6 +401,7 @@ async function installInstructorFixture(page: Page, state: FixtureState): Promis
         'lesson_type',
         'title',
       ]);
+      await state.lessonPatchGate;
       if (state.lessonPatchStatus !== 200) {
         await fulfillJson(
           route,
@@ -417,7 +420,7 @@ async function installInstructorFixture(page: Page, state: FixtureState): Promis
       await fulfillJson(route, 200, state.lesson);
       return;
     }
-    if (path === `/lessons/${lessonId}/upload-file` && method === 'POST') {
+    if (lessonUploadMatch && method === 'POST') {
       expect(request.headers()['content-type']).toContain('multipart/form-data');
       const multipart = request.postDataBuffer();
       expect(multipart?.toString('utf8')).toContain('name="file"');
@@ -426,7 +429,10 @@ async function installInstructorFixture(page: Page, state: FixtureState): Promis
         await fulfillJson(route, state.uploadStatus, failure(state.uploadStatus, 'file'));
         return;
       }
-      await fulfillJson(route, 200, uploadAcknowledgement(state.lesson));
+      const uploadLessonId = Number(lessonUploadMatch[1]);
+      const uploadLesson =
+        state.course.lessons.find((lesson) => lesson.id === uploadLessonId) ?? state.lesson;
+      await fulfillJson(route, 200, uploadAcknowledgement(uploadLesson));
       return;
     }
     await route.abort();
@@ -496,10 +502,33 @@ test('uses authenticated course PATCH and lesson POST contracts, including safe 
   await page.goto(`/instructor/courses/${courseId}/edit`, { waitUntil: 'commit' });
 
   await expect(page.getByRole('heading', { name: 'Edit course' })).toBeVisible();
+  await expect(
+    page
+      .getByRole('navigation', { name: 'Breadcrumb' })
+      .getByText('Contract-faithful instructor course', { exact: true }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Add lesson' }).click();
+  await expect(page.getByLabel('Lesson title')).toBeFocused();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expectNoHorizontalOverflow(page);
+  expect(
+    await page.evaluate(() => {
+      const price = document.querySelector<HTMLInputElement>('input[name="price"]');
+      const currency = document.querySelector<HTMLInputElement>('input[name="currency"]');
+      const createLesson = document.querySelector('#create-lesson-heading')?.closest('section');
+      const dangerZone = document.querySelector('#danger-zone-heading')?.closest('section');
+      if (!price || !currency || !createLesson || !dangerZone) return false;
+      return (
+        currency.getBoundingClientRect().top > price.getBoundingClientRect().top &&
+        dangerZone.compareDocumentPosition(createLesson) === Node.DOCUMENT_POSITION_PRECEDING
+      );
+    }),
+  ).toBe(true);
+  await page.setViewportSize({ width: 1280, height: 900 });
   await expectInstructorCanvasToMeetFooter(page);
   state.coursePatchStatus = 422;
   await page.getByLabel('Course title').fill('An intentionally invalid contract course title');
-  await page.getByRole('button', { name: 'Save course' }).click();
+  await page.getByRole('button', { name: 'Save changes' }).click();
   await expect(page.getByLabel('Course title')).toBeFocused();
   await expect(page.getByLabel('Course title')).toHaveAttribute('aria-invalid', 'true');
   await expect(page.getByText('Check course title and submit again.')).toBeVisible();
@@ -507,7 +536,7 @@ test('uses authenticated course PATCH and lesson POST contracts, including safe 
 
   state.coursePatchStatus = 200;
   await page.getByLabel('Course title').fill('Saved course title');
-  await page.getByRole('button', { name: 'Save course' }).click();
+  await page.getByRole('button', { name: 'Save changes' }).click();
   await expect
     .poll(() => state.requests.filter((request) => request.method() === 'PATCH'))
     .toHaveLength(2);
@@ -524,6 +553,40 @@ test('uses authenticated course PATCH and lesson POST contracts, including safe 
   await page.getByRole('button', { name: 'Create lesson' }).click();
   await expect(page.getByText('Browser-created lesson')).toBeVisible();
   expect(state.requests.filter((request) => request.method() === 'POST')).toHaveLength(2);
+});
+
+test('creates a PDF lesson and then uploads its optional source file', async ({ page }) => {
+  const state = createFixtureState();
+  await installInstructorFixture(page, state);
+  await page.goto(`/instructor/courses/${courseId}/edit`, { waitUntil: 'commit' });
+
+  await page.getByRole('button', { name: 'Add lesson' }).click();
+  await page.getByLabel('Lesson title').fill('PDF created with source');
+  await page.getByRole('combobox', { name: 'Lesson type' }).click();
+  await page.getByRole('option', { name: 'PDF' }).click();
+  await page.getByLabel('Lesson file (optional)').setInputFiles({
+    name: 'browser-notes.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('pdf'),
+  });
+  const createLessonButton = page.getByRole('button', { name: 'Create lesson' });
+  const [formBox, buttonBox] = await Promise.all([
+    page.locator('#create-lesson-panel form').boundingBox(),
+    createLessonButton.boundingBox(),
+  ]);
+  expect(formBox).not.toBeNull();
+  expect(buttonBox).not.toBeNull();
+  expect((buttonBox?.x ?? 0) + (buttonBox?.width ?? 0)).toBeGreaterThan(
+    (formBox?.x ?? 0) + (formBox?.width ?? 0) / 2,
+  );
+  await createLessonButton.click();
+
+  await expect(page.getByText('PDF created with source')).toBeVisible();
+  await expect
+    .poll(() => state.requests.map((request) => new URL(request.url()).pathname))
+    .toEqual([`/courses/${courseId}/lessons`, '/lessons/102/upload-file']);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expectNoHorizontalOverflow(page);
 });
 
 test('returns from the editor through the contextual Instructor courses link without a mutation', async ({
@@ -543,6 +606,24 @@ test('returns from the editor through the contextual Instructor courses link wit
 
   await expect(page).toHaveURL('/instructor/courses');
   expect(state.requests.filter((request) => request.method() !== 'GET')).toEqual([]);
+});
+
+test('makes the outlined Delete course action solid red with white content on hover', async ({
+  page,
+}) => {
+  const state = createFixtureState();
+  await installInstructorFixture(page, state);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`/instructor/courses/${courseId}/edit`, { waitUntil: 'commit' });
+
+  const deleteCourse = page.getByRole('button', { name: 'Delete course' });
+  await expect(deleteCourse).toHaveCSS('color', 'rgb(185, 28, 28)');
+  await expect(deleteCourse).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+  await deleteCourse.hover();
+  await expect(deleteCourse).toHaveCSS('color', 'rgb(255, 255, 255)');
+  await expect(deleteCourse).toHaveCSS('background-color', 'rgb(185, 28, 28)');
+  await expect(deleteCourse.locator('svg')).toHaveCSS('color', 'rgb(255, 255, 255)');
+  await expectNoHorizontalOverflow(page);
 });
 
 test('confirms named destructive actions and restores keyboard focus on cancel', async ({
@@ -662,6 +743,59 @@ test('announces truthful pending course and lesson deletes without duplicate mut
   await expect(page).toHaveURL(/\/instructor\/courses$/);
 });
 
+test('keeps Save lesson primary styling, geometry, and label stable without a pending spinner', async ({
+  page,
+}) => {
+  const state = createFixtureState();
+  const patchGate = deferredAction();
+  state.lessonPatchGate = patchGate.promise;
+  await installInstructorFixture(page, state);
+  await page.goto(`/instructor/lessons/${lessonId}/edit`, { waitUntil: 'commit' });
+
+  const saveLesson = page.getByRole('button', { name: 'Save lesson' });
+  const uploadPanel = page.getByRole('heading', { name: 'Upload lesson file' }).locator('..');
+  await expect(saveLesson).toHaveCount(0);
+  await expect(page.getByRole('status')).toContainText('All changes saved');
+  await page.getByLabel('Lesson title').fill('Updated stable lesson');
+  await expect(saveLesson).toBeEnabled();
+  await expect(page.getByText('All changes saved')).toHaveCount(0);
+  const [uploadBox, idleBox, idleBackground, idleColor] = await Promise.all([
+    uploadPanel.boundingBox(),
+    saveLesson.boundingBox(),
+    saveLesson.evaluate((element) => getComputedStyle(element).backgroundColor),
+    saveLesson.evaluate((element) => getComputedStyle(element).color),
+  ]);
+  if (!uploadBox || !idleBox) throw new Error('Lesson editor action geometry is unavailable.');
+  expect(uploadBox.y + uploadBox.height).toBeLessThanOrEqual(idleBox.y);
+
+  await saveLesson.click();
+  await expect(saveLesson).toBeDisabled();
+  await expect(saveLesson).toHaveAttribute('aria-busy', 'true');
+  await expect(saveLesson).toHaveText('Save lesson');
+  await expect(saveLesson.locator('[data-part="spinner"]')).toHaveCount(0);
+  const pendingBox = await saveLesson.boundingBox();
+  if (!pendingBox) throw new Error('Pending Save lesson geometry is unavailable.');
+  expect(pendingBox.width).toBeCloseTo(idleBox.width, 1);
+  expect(pendingBox.height).toBeCloseTo(idleBox.height, 1);
+  await expect(saveLesson).toHaveCSS('background-color', idleBackground);
+  await expect(saveLesson).toHaveCSS('color', idleColor);
+  await expect(saveLesson).toHaveCSS('cursor', 'pointer');
+
+  await page.keyboard.press('Enter');
+  await expect
+    .poll(() => state.requests.filter((request) => request.method() === 'PATCH'))
+    .toHaveLength(1);
+  await expectNoHorizontalOverflow(page);
+
+  patchGate.resolve();
+  await expect(saveLesson).toHaveCount(0);
+  const savedState = page.getByRole('status');
+  await expect(savedState).toContainText('All changes saved');
+  await expect(savedState).toHaveCSS('color', 'rgb(55, 65, 81)');
+  await expect(savedState.locator('svg')).toHaveCount(1);
+  await expect(page.getByText('lessonEditorAllChangesSaved')).toHaveCount(0);
+});
+
 test('uses lesson PATCH and contract-faithful multipart upload without terminal or replacement UI', async ({
   page,
 }) => {
@@ -669,7 +803,17 @@ test('uses lesson PATCH and contract-faithful multipart upload without terminal 
   await installInstructorFixture(page, state);
   await page.goto(`/instructor/lessons/${lessonId}/edit`, { waitUntil: 'commit' });
 
-  await expect(page.getByRole('heading', { name: 'Edit lesson' })).toBeVisible();
+  const lessonHeading = page.getByRole('heading', { name: 'Edit lesson' });
+  const backToCourse = page.getByRole('link', { name: 'Back to course' });
+  await expect(lessonHeading).toBeVisible();
+  await expect(backToCourse).toHaveCSS('color', 'rgb(91, 63, 214)');
+  const [backBox, headingBox] = await Promise.all([
+    backToCourse.boundingBox(),
+    lessonHeading.boundingBox(),
+  ]);
+  if (!backBox || !headingBox) throw new Error('Lesson editor header geometry is unavailable.');
+  expect(backBox.x).toBeCloseTo(headingBox.x, 1);
+  expect(backBox.y + backBox.height).toBeLessThanOrEqual(headingBox.y);
   state.lessonPatchStatus = 422;
   await page.getByRole('checkbox', { name: 'Publish this lesson' }).check();
   await page.getByRole('button', { name: 'Save lesson' }).click();
@@ -688,14 +832,18 @@ test('uses lesson PATCH and contract-faithful multipart upload without terminal 
 
   const uploadRequestsBeforeTypeChanges = api032RequestCount(state.requests);
   const lessonFile = page.locator('input[name="file"]');
+  const filePicker = lessonFile.locator('..');
+  await expect(filePicker).toHaveCSS('border-top-style', 'dashed');
   await lessonFile.setInputFiles({
     name: 'browser-video.mp4',
     mimeType: 'video/mp4',
     buffer: Buffer.from('video'),
   });
+  await expect(filePicker.getByText('browser-video.mp4')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Upload file' })).toBeEnabled();
 
-  await page.getByRole('combobox', { name: 'Lesson type' }).selectOption('pdf');
+  await page.getByRole('combobox', { name: 'Lesson type' }).click();
+  await page.getByRole('option', { name: 'PDF' }).click();
   await page.getByRole('button', { name: 'Save lesson' }).click();
   await expect(
     page.getByText('The lesson type changed. Choose a file that matches the updated lesson type.'),
@@ -712,7 +860,8 @@ test('uses lesson PATCH and contract-faithful multipart upload without terminal 
   });
   await expect(page.getByRole('button', { name: 'Upload file' })).toBeEnabled();
 
-  await page.getByRole('combobox', { name: 'Lesson type' }).selectOption('video');
+  await page.getByRole('combobox', { name: 'Lesson type' }).click();
+  await page.getByRole('option', { name: 'Video' }).click();
   await page.getByRole('button', { name: 'Save lesson' }).click();
   await expect(
     page.getByText('The lesson type changed. Choose a file that matches the updated lesson type.'),
@@ -901,8 +1050,24 @@ test('settles deferred course and upload failures in the locale selected while p
   const courseTitle = page.getByLabel('Course title');
   await expect(courseTitle).toBeVisible();
   await courseTitle.fill('Deferred browser course');
-  await page.getByRole('button', { name: 'Save course' }).click();
-  await expect(page.getByRole('button', { name: 'Saving course' })).toBeDisabled();
+  const saveChanges = page.getByRole('button', { name: 'Save changes' });
+  const [idleSaveBackground, idleSaveColor, idleSaveBox] = await Promise.all([
+    saveChanges.evaluate((element) => getComputedStyle(element).backgroundColor),
+    saveChanges.evaluate((element) => getComputedStyle(element).color),
+    saveChanges.boundingBox(),
+  ]);
+  await saveChanges.click();
+  await expect(saveChanges).toBeDisabled();
+  await expect(saveChanges).toHaveAttribute('aria-busy', 'true');
+  await expect(saveChanges).toHaveText('Save changes');
+  await expect(saveChanges.locator('[data-part="spinner"]')).toHaveCount(0);
+  await expect(saveChanges).toHaveCSS('background-color', idleSaveBackground);
+  await expect(saveChanges).toHaveCSS('color', idleSaveColor);
+  await expect(saveChanges).toHaveCSS('cursor', 'pointer');
+  const pendingSaveBox = await saveChanges.boundingBox();
+  if (!idleSaveBox || !pendingSaveBox) throw new Error('Save changes geometry is unavailable.');
+  expect(pendingSaveBox.width).toBeCloseTo(idleSaveBox.width, 1);
+  expect(pendingSaveBox.height).toBeCloseTo(idleSaveBox.height, 1);
   await expect
     .poll(() => state.requests.filter((request) => request.method() === 'PATCH'))
     .toHaveLength(1);
@@ -1012,6 +1177,8 @@ test('renders allocated enrollment and lesson-editor copy in Russian and Uzbek w
     lessonEditor,
     workspace,
     backToCourse,
+    lessonTitle,
+    allChangesSaved,
     saveLesson,
     uploadFile,
   ] of [
@@ -1025,6 +1192,8 @@ test('renders allocated enrollment and lesson-editor copy in Russian and Uzbek w
       'Редактировать урок',
       'Рабочая область преподавателя',
       'Вернуться к курсу',
+      'Название урока',
+      'Все изменения сохранены',
       'Сохранить урок',
       'Загрузить файл',
     ],
@@ -1038,6 +1207,8 @@ test('renders allocated enrollment and lesson-editor copy in Russian and Uzbek w
       'Darsni tahrirlash',
       'O‘qituvchi ish maydoni',
       'Kursga qaytish',
+      'Dars nomi',
+      'Barcha o‘zgarishlar saqlandi',
       'Darsni saqlash',
       'Faylni yuklash',
     ],
@@ -1064,6 +1235,9 @@ test('renders allocated enrollment and lesson-editor copy in Russian and Uzbek w
     await expect(page.getByRole('heading', { name: lessonEditor })).toBeVisible();
     await expect(page.getByText(workspace, { exact: true })).toBeVisible();
     await expect(page.getByRole('link', { name: backToCourse })).toBeVisible();
+    await expect(page.getByRole('status')).toContainText(allChangesSaved);
+    await expect(page.getByRole('button', { name: saveLesson })).toHaveCount(0);
+    await page.getByLabel(lessonTitle).fill(`${state.lesson.title} updated`);
     await expect(page.getByRole('button', { name: saveLesson })).toBeVisible();
     await expect(page.getByRole('button', { name: uploadFile })).toBeVisible();
     await expectNoHorizontalOverflow(page);
@@ -1094,7 +1268,7 @@ test('localizes instructor course lesson-list types without changing lesson writ
     for (const [index, label] of labels.entries()) {
       const title = ['Video list lesson', 'Text list lesson', 'PDF list lesson'][index]!;
       const row = page.getByRole('heading', { name: title }).locator('xpath=ancestor::li');
-      await expect(row.getByText(new RegExp(`^${label} ·`))).toBeVisible();
+      await expect(row.locator('p')).toContainText(label);
     }
 
     const firstEdit = page

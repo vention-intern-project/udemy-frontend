@@ -23,10 +23,14 @@
   line-height: var(--type-body-md-lh);
 }
 .breadcrumb > [aria-current='page'] {
+  flex: 1 1 0;
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .backLink {
+  flex: 0 0 auto;
   justify-self: start;
   gap: var(--spacing-1);
   padding-inline: 0;
@@ -36,6 +40,7 @@
   font-weight: 500;
   line-height: var(--type-body-md-lh);
   text-decoration: none;
+  white-space: nowrap;
 }
 
 .backLink:visited {
@@ -53,9 +58,10 @@
 
 @media (min-width: 1120px) {
   .readingContent .breadcrumb {
-    margin-inline-start: calc(-1 * var(--spacing-12));
+    margin-inline-start: calc(-1 * var(--spacing-6));
   }
 }
+
 .header {
   display: grid;
   gap: var(--spacing-2, 8px);

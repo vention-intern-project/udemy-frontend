@@ -1,7 +1,27 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useId } from 'react';
+import {
+  type MouseEvent,
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Bot, GraduationCap, LibraryBig, LogIn, ShoppingCart, UserPlus } from 'lucide-react';
+import {
+  Bot,
+  ChevronRight,
+  GraduationCap,
+  LibraryBig,
+  LogIn,
+  LogOut,
+  Menu,
+  ShoppingCart,
+  UserPlus,
+  X,
+} from 'lucide-react';
 import {
   Link,
   NavLink,
@@ -12,7 +32,9 @@ import {
 } from 'react-router-dom';
 
 import type { Cart } from '@entities/cart';
+import type { UserProfile } from '@entities/user';
 import { useSession } from '@features/auth-session';
+import { requestInstructorCourseCreateDisclosure } from '@features/instructor-courses';
 import { cartQueryKey, requestCart } from '@features/cart-workflow';
 import {
   addCatalogSearchHistory,
@@ -21,12 +43,13 @@ import {
   readCatalogSearchHistory,
   serializeCatalogQuery,
 } from '@features/catalog-discovery';
-import { Input, VisuallyHidden } from '@shared/ui/primitives';
+import { Dialog, Input, VisuallyHidden } from '@shared/ui/primitives';
 import { useDensityMode } from '@shared/ui/theme';
-import { LanguageSelector } from '@shared/locale';
+import { LanguageSelector, useLocale } from '@shared/locale';
+import type { ExclusiveDisclosureControl } from '@shared/types';
 import { CourseChatLauncher } from '@widgets/course-chat';
 import learnHubBookMark from './assets/learnhub-book-ui018.png';
-import { AccountMenu } from './AccountMenu';
+import { AccountIdentity, AccountMenu } from './AccountMenu';
 import {
   assistantNavigationTarget,
   cartNavigationState,
@@ -41,9 +64,15 @@ import { densityForPath, routeForPath } from '../router/route-registry';
 import styles from './AppShell.module.css';
 
 type MobileMenuFocusTarget = 'trigger' | 'main';
+type HeaderDisclosure = 'account' | 'language';
 
-const STUDENT_MOBILE_QUERY = '(max-width: 767px)';
+const STUDENT_MOBILE_QUERY = '(max-width: 767.98px)';
+const TABLET_QUERY = '(min-width: 768px) and (max-width: 1023px)';
 const INSTRUCTOR_COURSE_TITLE_ID = 'instructor-course-title';
+const INSTRUCTOR_COURSES_PATH = '/instructor/courses';
+const INSTRUCTOR_COURSES_HEADING_ID = 'your-courses-heading';
+const INSTRUCTOR_COURSES_NEW_TAB_FOCUS_KEY = 'learnhub.instructor-courses.new-tab-focus';
+const INSTRUCTOR_COURSES_NEW_TAB_FOCUS_MAX_AGE_MS = 30_000;
 
 interface CartPresentation {
   badge: string | null;
@@ -52,6 +81,30 @@ interface CartPresentation {
 interface ScrollPosition {
   left: number;
   top: number;
+}
+
+interface InstructorCoursesNewTabFocusMarker {
+  readonly destination: string;
+  readonly requestedAt: number;
+  readonly sourcePath: string;
+}
+
+function isInstructorCoursesNewTabFocusMarker(
+  value: unknown,
+): value is InstructorCoursesNewTabFocusMarker {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    'destination' in value &&
+    typeof value.destination === 'string' &&
+    'requestedAt' in value &&
+    typeof value.requestedAt === 'number' &&
+    Number.isFinite(value.requestedAt) &&
+    Number.isSafeInteger(value.requestedAt) &&
+    'sourcePath' in value &&
+    typeof value.sourcePath === 'string'
+  );
 }
 
 export function presentCart(itemCount: number | undefined): CartPresentation {
@@ -64,6 +117,7 @@ interface NavigationLinksProps {
   items: readonly NavigationItem[];
   onNavigate?: (to: string) => void;
   showPrimaryNavigationIndicator?: boolean;
+  showTrailingChevron?: boolean;
 }
 
 const NAVIGATION_VARIANT_CLASS: Record<NavigationItemVariant, string> = {
@@ -71,6 +125,61 @@ const NAVIGATION_VARIANT_CLASS: Record<NavigationItemVariant, string> = {
   'login-secondary': styles.navLinkLogin,
   'signup-primary': styles.navLinkSignup,
 };
+
+function isExplicitNewTabNavigation(event: MouseEvent<HTMLAnchorElement>): boolean {
+  if (event.defaultPrevented) return false;
+  if (event.type === 'auxclick') return event.button === 1;
+  const target = event.currentTarget.getAttribute('target');
+  return (
+    event.button === 0 &&
+    (event.metaKey || event.ctrlKey || event.shiftKey || target?.toLowerCase() === '_blank') &&
+    !event.currentTarget.hasAttribute('download')
+  );
+}
+
+function requestInstructorCoursesNewTabFocus(
+  event: MouseEvent<HTMLAnchorElement>,
+  destination: string,
+): void {
+  if (destination !== INSTRUCTOR_COURSES_PATH || !isExplicitNewTabNavigation(event)) return;
+  try {
+    const marker: InstructorCoursesNewTabFocusMarker = {
+      destination,
+      requestedAt: Date.now(),
+      sourcePath: window.location.pathname,
+    };
+    window.localStorage.setItem(INSTRUCTOR_COURSES_NEW_TAB_FOCUS_KEY, JSON.stringify(marker));
+  } catch {
+    // Focus restoration is progressive enhancement when local storage is unavailable.
+  }
+}
+
+export function claimInstructorCoursesNewTabFocus(
+  pathname: string,
+  referrer = document.referrer,
+  now = Date.now(),
+): boolean {
+  if (pathname !== INSTRUCTOR_COURSES_PATH) return false;
+  try {
+    const serialized = window.localStorage.getItem(INSTRUCTOR_COURSES_NEW_TAB_FOCUS_KEY);
+    if (!serialized) return false;
+    // A marker can only authorize one document. Retire it before parsing the referrer so an
+    // invalid document value cannot leave a replayable focus request behind.
+    window.localStorage.removeItem(INSTRUCTOR_COURSES_NEW_TAB_FOCUS_KEY);
+    const marker: unknown = JSON.parse(serialized);
+    if (!isInstructorCoursesNewTabFocusMarker(marker)) return false;
+    const referrerUrl = new URL(referrer);
+    const valid =
+      marker.destination === pathname &&
+      referrerUrl.origin === window.location.origin &&
+      marker.sourcePath === referrerUrl.pathname &&
+      now - marker.requestedAt >= 0 &&
+      now - marker.requestedAt <= INSTRUCTOR_COURSES_NEW_TAB_FOCUS_MAX_AGE_MS;
+    return valid;
+  } catch {
+    return false;
+  }
+}
 
 interface CartNavigationLinkProps {
   itemCount: number | undefined;
@@ -80,6 +189,7 @@ function CartNavigationLink({ itemCount }: CartNavigationLinkProps) {
   const presentation = presentCart(itemCount);
   const location = useLocation();
   const { t } = useTranslation();
+
   return (
     <NavLink
       aria-label={
@@ -255,46 +365,202 @@ function NavigationLinks({
   items,
   onNavigate,
   showPrimaryNavigationIndicator = false,
+  showTrailingChevron = false,
 }: NavigationLinksProps) {
   const { t } = useTranslation();
+  const location = useLocation();
   return (
     <ul className={styles.navList}>
-      {items.map((item) => (
-        <li key={item.to}>
+      {items.map((item) => {
+        const isCatalogSection =
+          item.to === '/' && routeForPath(location.pathname)?.id === 'PAGE-002';
+        return (
+          <li key={item.to}>
+            <NavLink
+              aria-current={isCatalogSection ? 'location' : undefined}
+              end={item.end}
+              className={({ isActive }) =>
+                [
+                  styles.navLink,
+                  isActive || isCatalogSection ? styles.navLinkActive : null,
+                  showPrimaryNavigationIndicator && item.primaryNavigationIndicator
+                    ? styles.navLinkPrimary
+                    : null,
+                  item.to === '/' || item.to === '/learning'
+                    ? styles.navLinkPrimaryInteractive
+                    : null,
+                  item.variant ? NAVIGATION_VARIANT_CLASS[item.variant] : null,
+                ]
+                  .filter(Boolean)
+                  .join(' ')
+              }
+              onClick={(event) => {
+                requestInstructorCoursesNewTabFocus(event, item.to);
+                if (isCurrentTabNavigation(event)) onNavigate?.(item.to);
+              }}
+              onAuxClick={(event) => requestInstructorCoursesNewTabFocus(event, item.to)}
+              to={item.to}
+            >
+              {t(item.labelKey)}
+              {showTrailingChevron ? (
+                <ChevronRight aria-hidden="true" focusable="false" size={16} />
+              ) : null}
+            </NavLink>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+interface AuthenticatedTabletDrawerProps {
+  readonly navigation: readonly NavigationItem[];
+  readonly onClose: () => void;
+  readonly onCreateCourse?: () => void;
+  readonly onLogOut: () => void;
+  readonly onNavigate: (to: string) => void;
+  readonly open: boolean;
+  readonly user: UserProfile;
+}
+
+const AUTHENTICATED_TABLET_DRAWER_EXIT_DURATION_MS = 180;
+
+function AuthenticatedTabletDrawer({
+  navigation,
+  onClose,
+  onCreateCourse,
+  onLogOut,
+  onNavigate,
+  open,
+  user,
+}: AuthenticatedTabletDrawerProps) {
+  const { t } = useTranslation();
+  const [present, setPresent] = useState(open);
+  const [closing, setClosing] = useState(false);
+  const afterCloseActionRef = useRef<AuthenticatedTabletDrawerProps['onCreateCourse']>(undefined);
+  const roleLabel =
+    user.role === 'student'
+      ? t('auth:student')
+      : user.role === 'instructor'
+        ? t('course:instructor')
+        : t('auth:admin');
+  const location = useLocation();
+  const assistantTarget = assistantNavigationTarget(location);
+
+  const runAfterCloseAction = useCallback(() => {
+    const action = afterCloseActionRef.current;
+    afterCloseActionRef.current = undefined;
+    if (action) scheduleAppShellFocus(action);
+  }, []);
+
+  const closeForNavigation = useCallback(
+    (to: string) => {
+      afterCloseActionRef.current = () => onNavigate(to);
+      onClose();
+    },
+    [onClose, onNavigate],
+  );
+
+  useEffect(() => {
+    if (open) {
+      afterCloseActionRef.current = undefined;
+      setPresent(true);
+      setClosing(false);
+      return undefined;
+    }
+    if (!present) return undefined;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setPresent(false);
+      setClosing(false);
+      runAfterCloseAction();
+      return undefined;
+    }
+
+    setClosing(true);
+    const timeoutId = window.setTimeout(() => {
+      setPresent(false);
+      setClosing(false);
+      runAfterCloseAction();
+    }, AUTHENTICATED_TABLET_DRAWER_EXIT_DURATION_MS);
+    return () => window.clearTimeout(timeoutId);
+  }, [open, present, runAfterCloseAction]);
+
+  return (
+    <Dialog
+      className={[
+        styles.authenticatedTabletDrawer,
+        closing ? styles.authenticatedTabletDrawerClosing : null,
+      ]
+        .filter(Boolean)
+        .join(' ')}
+      closeContent={<X aria-hidden="true" focusable="false" size={20} strokeWidth={1.75} />}
+      closeLabel={t('a11y:closeNavigation')}
+      onClose={onClose}
+      open={present}
+      title={
+        <>
+          <VisuallyHidden>{t('common:menu')}</VisuallyHidden>
+          <span aria-hidden="true">
+            <AccountIdentity user={user} roleLabel={roleLabel} variant="drawerHeader" />
+          </span>
+        </>
+      }
+    >
+      <nav
+        aria-label={t('a11y:mobileNavigation')}
+        className={styles.authenticatedTabletDrawerNavigation}
+        id="authenticated-tablet-navigation"
+      >
+        <NavigationLinks items={navigation} onNavigate={closeForNavigation} showTrailingChevron />
+        {user.role === 'student' ? (
           <NavLink
-            end={item.end}
             className={({ isActive }) =>
-              [
-                styles.navLink,
-                isActive ? styles.navLinkActive : null,
-                showPrimaryNavigationIndicator && item.primaryNavigationIndicator
-                  ? styles.navLinkPrimary
-                  : null,
-                item.to === '/' || item.to === '/learning'
-                  ? styles.navLinkPrimaryInteractive
-                  : null,
-                item.variant ? NAVIGATION_VARIANT_CLASS[item.variant] : null,
-              ]
+              [styles.authenticatedTabletDrawerLink, isActive ? styles.navLinkActive : null]
                 .filter(Boolean)
                 .join(' ')
             }
             onClick={(event) => {
-              if (isCurrentTabNavigation(event)) onNavigate?.(item.to);
+              if (isCurrentTabNavigation(event)) closeForNavigation(assistantTarget.to);
             }}
-            to={item.to}
+            state={assistantTarget.state}
+            to={assistantTarget.to}
           >
-            {t(item.labelKey)}
+            <span className={styles.authenticatedTabletDrawerLinkLabel}>
+              <Bot aria-hidden="true" focusable="false" size={20} strokeWidth={1.75} />
+              {t('common:aiChat')}
+            </span>
+            <ChevronRight aria-hidden="true" focusable="false" size={16} />
           </NavLink>
-        </li>
-      ))}
-    </ul>
+        ) : null}
+        {onCreateCourse ? (
+          <button
+            className={styles.authenticatedTabletDrawerAction}
+            type="button"
+            onClick={() => {
+              afterCloseActionRef.current = onCreateCourse;
+              onClose();
+            }}
+          >
+            <span>{t('instructor:coursesCreateCourse')}</span>
+            <ChevronRight aria-hidden="true" focusable="false" size={16} />
+          </button>
+        ) : null}
+      </nav>
+      <div className={styles.authenticatedTabletDrawerFooter}>
+        <button className={styles.authenticatedTabletDrawerLogout} type="button" onClick={onLogOut}>
+          <LogOut aria-hidden="true" focusable="false" size={18} />
+          <span>{t('auth:logOut')}</span>
+        </button>
+      </div>
+    </Dialog>
   );
 }
 
 export function AppShell() {
   const { t } = useTranslation();
   const session = useSession();
-  const { cacheEpoch, state } = session;
+  const { clearStoredLocale } = useLocale();
+  const { cacheEpoch, clearSession, state } = session;
   const cartSubject =
     state.status === 'authenticated' && state.user.role === 'student' ? (cacheEpoch ?? null) : null;
   const hasCartNavigation = state.status === 'anonymous' || cartSubject !== null;
@@ -308,7 +574,10 @@ export function AppShell() {
   const navigate = useNavigate();
   const navigationType = useNavigationType();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [authenticatedTabletDrawerOpen, setAuthenticatedTabletDrawerOpen] = useState(false);
+  const [logoutPending, setLogoutPending] = useState(false);
   const [isStudentMobileViewport, setIsStudentMobileViewport] = useState(false);
+  const [isTabletViewport, setIsTabletViewport] = useState(false);
   const [isMobileCatalogScrolled, setIsMobileCatalogScrolled] = useState(false);
   const catalogQuery = useMemo(
     () => parseCatalogQuery(new URLSearchParams(location.search)),
@@ -319,12 +588,25 @@ export function AppShell() {
     readCatalogSearchHistory(),
   );
   const [catalogSearchOpen, setCatalogSearchOpen] = useState(false);
+  const [activeHeaderDisclosure, setActiveHeaderDisclosure] = useState<HeaderDisclosure | null>(
+    null,
+  );
+  const accountDisclosureControl: ExclusiveDisclosureControl = {
+    closeRequested: activeHeaderDisclosure === 'language',
+    requestOpen: () => setActiveHeaderDisclosure('account'),
+  };
+  const languageDisclosureControl: ExclusiveDisclosureControl = {
+    closeRequested: activeHeaderDisclosure === 'account',
+    requestOpen: () => setActiveHeaderDisclosure('language'),
+  };
   const [activeCatalogSearchIndex, setActiveCatalogSearchIndex] = useState<number | null>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const tabletMenuRef = useRef<HTMLDivElement>(null);
   const mainRef = useRef<HTMLElement>(null);
   const catalogSearchRef = useRef<HTMLInputElement>(null);
   const catalogSearchWrapperRef = useRef<HTMLDivElement>(null);
   const restoreCatalogSearchFocusRef = useRef(false);
+  const newTabInstructorCoursesFocusClaimedRef = useRef(false);
   const catalogSearchListboxId = `catalog-search-history-${useId()}`;
   const currentLocation = `${location.pathname}${location.search}${location.hash}`;
   const previousLocationRef = useRef(currentLocation);
@@ -332,16 +614,19 @@ export function AppShell() {
   const entryScrollPositionsRef = useRef(new Map<string, ScrollPosition>());
   const routeFocusIdentity = `${location.pathname}${location.search}`;
   const previousRouteFocusIdentityRef = useRef(routeFocusIdentity);
+  const initialRoutePathnameRef = useRef(location.pathname);
   const navigation = navigationForSession(state);
   const route = routeForPath(location.pathname);
   const layout = route?.layout ?? 'public';
   const isCatalogRoute = route?.id === 'PAGE-001';
+  const isCourseDetailRoute = route?.id === 'PAGE-002';
   const isInstructorCoursesRoute = route?.id === 'PAGE-010';
   const isAnonymous = state.status !== 'authenticated';
   const isInstructor = state.status === 'authenticated' && state.user.role === 'instructor';
   const brandDestination = isInstructor ? '/instructor/courses' : '/';
   const hasCatalogSearch =
     isCatalogRoute ||
+    (isCourseDetailRoute && !isInstructor) ||
     (state.status === 'authenticated' && state.user.role === 'student' && layout === 'workspace');
   const isAnonymousCatalogRoute = isCatalogRoute && isAnonymous;
   const launcherRouteIds = new Set(['PAGE-001', 'PAGE-002', 'PAGE-007', 'PAGE-008']);
@@ -362,7 +647,18 @@ export function AppShell() {
     isStudentMobileViewport && state.status === 'authenticated' && state.user.role === 'student';
   const isAuthenticatedMobile = isStudentMobileViewport && state.status === 'authenticated';
   const isAnonymousMobile = isStudentMobileViewport && isAnonymous;
+  const isAnonymousTablet = isTabletViewport && isAnonymous;
+  const isAuthenticatedTablet = isTabletViewport && state.status === 'authenticated';
+  const isInstructorCompactDrawer = isInstructor && (isStudentMobileViewport || isTabletViewport);
+  const isAuthenticatedDrawerViewport =
+    isAuthenticatedTablet || (isInstructor && isAuthenticatedMobile);
   const showHeaderCart = hasCartNavigation && !(isAnonymous && isStudentMobileViewport);
+  const requestLogout = useCallback(() => {
+    setAuthenticatedTabletDrawerOpen(false);
+    clearStoredLocale();
+    setLogoutPending(true);
+    navigate('/', { replace: true, flushSync: true });
+  }, [clearStoredLocale, navigate]);
 
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') return undefined;
@@ -372,6 +668,43 @@ export function AppShell() {
     mediaQuery.addEventListener('change', updateViewport);
     return () => mediaQuery.removeEventListener('change', updateViewport);
   }, []);
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return undefined;
+    const mediaQuery = window.matchMedia(TABLET_QUERY);
+    const updateViewport = () => {
+      setIsTabletViewport(mediaQuery.matches);
+    };
+    updateViewport();
+    mediaQuery.addEventListener('change', updateViewport);
+    return () => mediaQuery.removeEventListener('change', updateViewport);
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthenticatedDrawerViewport) setAuthenticatedTabletDrawerOpen(false);
+  }, [isAuthenticatedDrawerViewport]);
+
+  useEffect(() => {
+    if (!logoutPending || location.pathname !== '/') return;
+    clearSession();
+    setLogoutPending(false);
+  }, [clearSession, location.pathname, logoutPending]);
+
+  useEffect(() => {
+    if (isAnonymousTablet || !isAnonymous) return;
+    setMobileOpen(false);
+  }, [isAnonymous, isAnonymousTablet]);
+
+  useEffect(() => {
+    if (!mobileOpen || !isAnonymousTablet) return undefined;
+    function closeOnOutsidePointer(event: PointerEvent) {
+      if (!tabletMenuRef.current?.contains(event.target as Node)) setMobileOpen(false);
+    }
+    document.addEventListener('pointerdown', closeOnOutsidePointer, true);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePointer, true);
+    };
+  }, [isAnonymousTablet, mobileOpen]);
 
   useEffect(() => {
     if (isAnonymousMobile) setMobileOpen(false);
@@ -446,14 +779,18 @@ export function AppShell() {
     };
 
     window.addEventListener('scroll', rememberCurrentPosition, { passive: true });
-    return () => window.removeEventListener('scroll', rememberCurrentPosition);
+    document.addEventListener('click', rememberCurrentPosition, true);
+    return () => {
+      window.removeEventListener('scroll', rememberCurrentPosition);
+      document.removeEventListener('click', rememberCurrentPosition, true);
+    };
   }, [location.key]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const previousLocation = previousScrollLocationRef.current;
     if (previousLocation.key === location.key) return;
 
-    if (navigationType !== 'POP') {
+    if (navigationType !== 'POP' && !entryScrollPositionsRef.current.has(previousLocation.key)) {
       entryScrollPositionsRef.current.set(previousLocation.key, {
         left: window.scrollX,
         top: window.scrollY,
@@ -491,6 +828,7 @@ export function AppShell() {
   useEffect(() => {
     if (previousLocationRef.current !== currentLocation) {
       setMobileOpen(false);
+      setAuthenticatedTabletDrawerOpen(false);
       const restoreCatalogSearchFocus = restoreCatalogSearchFocusRef.current;
       const routeChanged = previousRouteFocusIdentityRef.current !== routeFocusIdentity;
       restoreCatalogSearchFocusRef.current = false;
@@ -504,6 +842,39 @@ export function AppShell() {
     }
   }, [currentLocation, location.pathname, routeFocusIdentity]);
 
+  useEffect(() => {
+    const hasClaimedNewTabFocus =
+      newTabInstructorCoursesFocusClaimedRef.current ||
+      claimInstructorCoursesNewTabFocus(initialRoutePathnameRef.current);
+    if (!hasClaimedNewTabFocus) return undefined;
+    newTabInstructorCoursesFocusClaimedRef.current = true;
+    let cancelled = false;
+    const focusHeading = (heading: HTMLElement) =>
+      scheduleAppShellFocus(() => {
+        if (cancelled) return;
+        heading.focus({ preventScroll: true });
+        newTabInstructorCoursesFocusClaimedRef.current = false;
+      });
+    const heading = document.getElementById(INSTRUCTOR_COURSES_HEADING_ID);
+    if (heading instanceof HTMLElement) {
+      focusHeading(heading);
+      return () => {
+        cancelled = true;
+      };
+    }
+    const observer = new MutationObserver(() => {
+      const renderedHeading = document.getElementById(INSTRUCTOR_COURSES_HEADING_ID);
+      if (!(renderedHeading instanceof HTMLElement)) return;
+      observer.disconnect();
+      focusHeading(renderedHeading);
+    });
+    observer.observe(mainRef.current ?? document.body, { childList: true, subtree: true });
+    return () => {
+      cancelled = true;
+      observer.disconnect();
+    };
+  }, []);
+
   function closeMobileMenu(focusTarget: MobileMenuFocusTarget) {
     setMobileOpen(false);
     scheduleAppShellFocus(() => {
@@ -514,7 +885,12 @@ export function AppShell() {
 
   function handleInstructorCourseTitleFocus() {
     setMobileOpen(false);
-    focusInstructorCourseTitle(INSTRUCTOR_COURSE_TITLE_ID);
+    setAuthenticatedTabletDrawerOpen(false);
+    if (document.getElementById(INSTRUCTOR_COURSE_TITLE_ID)) {
+      focusInstructorCourseTitle(INSTRUCTOR_COURSE_TITLE_ID);
+      return;
+    }
+    requestInstructorCourseCreateDisclosure();
   }
 
   const catalogSearchMatches = useMemo(() => {
@@ -579,6 +955,20 @@ export function AppShell() {
     });
   }
 
+  const languageSelector = (
+    <LanguageSelector
+      className={[styles.languageSelector, isAnonymousMobile ? styles.languageSelectorMobile : null]
+        .filter(Boolean)
+        .join(' ')}
+      menuClassName={styles.languageMenu}
+      optionClassName={styles.languageOption}
+      selectedOptionClassName={styles.languageOptionSelected}
+      selectionIndicatorClassName={styles.languageRadio}
+      mobile={isAnonymousMobile}
+      exclusiveDisclosure={languageDisclosureControl}
+    />
+  );
+
   return (
     <div className={styles.shell} data-layout={layout}>
       <a className={styles.skipLink} href="#main-content">
@@ -592,6 +982,7 @@ export function AppShell() {
           hasCatalogSearch ? styles.headerWithCatalogSearch : styles.headerWithoutCatalogSearch,
           isAnonymousCatalogRoute ? styles.headerAnonymousCatalog : null,
           isInstructor ? styles.headerInstructorCourses : null,
+          isAuthenticatedMobile ? styles.headerAuthenticatedMobile : null,
           isStudentMobile ? styles.headerStudentMobile : null,
           isAnonymousMobile ? styles.headerAnonymousMobile : null,
           isMobileCatalogScrolled ? styles.headerMobileSearchDetached : null,
@@ -633,6 +1024,66 @@ export function AppShell() {
                   </div>
                 ) : null}
               </nav>
+            ) : null}
+            {isAuthenticatedDrawerViewport ? (
+              <button
+                ref={menuButtonRef}
+                aria-controls={
+                  authenticatedTabletDrawerOpen ? 'authenticated-tablet-navigation' : undefined
+                }
+                aria-expanded={authenticatedTabletDrawerOpen}
+                aria-haspopup="dialog"
+                className={styles.menuButton}
+                type="button"
+                onClick={() => setAuthenticatedTabletDrawerOpen((open) => !open)}
+              >
+                <Menu aria-hidden="true" focusable="false" size={20} strokeWidth={1.75} />
+                <VisuallyHidden>
+                  {authenticatedTabletDrawerOpen
+                    ? t('a11y:closeNavigation')
+                    : t('a11y:openNavigation')}
+                </VisuallyHidden>
+              </button>
+            ) : null}
+            {isAnonymousTablet ? (
+              <div
+                ref={tabletMenuRef}
+                className={styles.tabletMenuAnchor}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape' && mobileOpen) {
+                    event.preventDefault();
+                    closeMobileMenu('trigger');
+                  }
+                }}
+              >
+                <button
+                  ref={menuButtonRef}
+                  className={styles.menuButton}
+                  type="button"
+                  aria-expanded={mobileOpen}
+                  aria-controls="tablet-navigation-menu"
+                  onClick={() => setMobileOpen((open) => !open)}
+                >
+                  <Menu aria-hidden="true" focusable="false" size={20} strokeWidth={1.75} />
+                  <VisuallyHidden>
+                    {mobileOpen ? t('a11y:closeNavigation') : t('a11y:openNavigation')}
+                  </VisuallyHidden>
+                </button>
+                {mobileOpen ? (
+                  <nav
+                    id="tablet-navigation-menu"
+                    className={styles.tabletMenuPopover}
+                    aria-label={t('a11y:mobileNavigation')}
+                  >
+                    <NavigationLinks
+                      items={navigation}
+                      onNavigate={(to) =>
+                        closeMobileMenu(to === routeFocusIdentity ? 'trigger' : 'main')
+                      }
+                    />
+                  </nav>
+                ) : null}
+              </div>
             ) : null}
           </div>
           {hasCatalogSearch ? (
@@ -744,7 +1195,7 @@ export function AppShell() {
             </form>
           ) : null}
           <div className={styles.headerCatalogEnd}>
-            {isInstructorCoursesRoute && !isStudentMobileViewport ? (
+            {isInstructorCoursesRoute && !isStudentMobileViewport && !isAuthenticatedTablet ? (
               <button
                 className={[styles.navLink, styles.navLinkPrimary, styles.navAction].join(' ')}
                 type="button"
@@ -753,36 +1204,51 @@ export function AppShell() {
                 {t('instructor:coursesCreateCourse')}
               </button>
             ) : null}
-            {isStudentMobile ? <AccountMenu user={state.user} showLanguage /> : null}
+            {isStudentMobile ? (
+              <>
+                <AccountMenu
+                  user={state.user}
+                  onLogOut={requestLogout}
+                  exclusiveDisclosure={accountDisclosureControl}
+                />
+                {languageSelector}
+              </>
+            ) : null}
             {isStudentMobile ? null : state.status === 'authenticated' &&
               state.user.role === 'student' ? (
               <div className={styles.headerCartAccountGroup}>
-                <AiAssistantNavigationLink />
+                {!isAuthenticatedTablet ? <AiAssistantNavigationLink /> : null}
                 <CartNavigationLink itemCount={cart.data?.itemCount} />
-                <div className={styles.account}>
-                  <AccountMenu user={state.user} />
-                  {!isAnonymousMobile ? (
-                    <button
-                      ref={menuButtonRef}
-                      className={styles.menuButton}
-                      type="button"
-                      aria-expanded={mobileOpen}
-                      aria-controls="mobile-navigation"
-                      onClick={() => setMobileOpen((open) => !open)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Escape' && mobileOpen) {
-                          event.preventDefault();
-                          closeMobileMenu('trigger');
-                        }
-                      }}
-                    >
-                      <span aria-hidden="true">{t('common:menu')}</span>
-                      <VisuallyHidden>
-                        {mobileOpen ? t('a11y:closeNavigation') : t('a11y:openNavigation')}
-                      </VisuallyHidden>
-                    </button>
-                  ) : null}
-                </div>
+                {!isAuthenticatedTablet ? (
+                  <div className={styles.account}>
+                    <AccountMenu
+                      user={state.user}
+                      onLogOut={requestLogout}
+                      exclusiveDisclosure={accountDisclosureControl}
+                    />
+                    {!isAnonymousMobile ? (
+                      <button
+                        ref={menuButtonRef}
+                        className={styles.menuButton}
+                        type="button"
+                        aria-expanded={mobileOpen}
+                        aria-controls="mobile-navigation"
+                        onClick={() => setMobileOpen((open) => !open)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Escape' && mobileOpen) {
+                            event.preventDefault();
+                            closeMobileMenu('trigger');
+                          }
+                        }}
+                      >
+                        <Menu aria-hidden="true" focusable="false" size={20} strokeWidth={1.75} />
+                        <VisuallyHidden>
+                          {mobileOpen ? t('a11y:closeNavigation') : t('a11y:openNavigation')}
+                        </VisuallyHidden>
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             ) : (
               <>
@@ -804,10 +1270,20 @@ export function AppShell() {
                       : [styles.account, styles.accountAnonymous].join(' ')
                   }
                 >
-                  {state.status === 'authenticated' ? (
-                    <AccountMenu user={state.user} showLanguage={isAuthenticatedMobile} />
+                  {state.status === 'authenticated' && (!isAuthenticatedTablet || isInstructor) ? (
+                    <AccountMenu
+                      user={state.user}
+                      onLogOut={requestLogout}
+                      exclusiveDisclosure={accountDisclosureControl}
+                    />
                   ) : null}
-                  {!isAnonymousMobile ? (
+                  {isAuthenticatedMobile || (isInstructor && isAuthenticatedTablet)
+                    ? languageSelector
+                    : null}
+                  {!isInstructorCompactDrawer &&
+                  !isAnonymousMobile &&
+                  !isAnonymousTablet &&
+                  !isAuthenticatedTablet ? (
                     <button
                       ref={menuButtonRef}
                       className={styles.menuButton}
@@ -822,7 +1298,7 @@ export function AppShell() {
                         }
                       }}
                     >
-                      <span aria-hidden="true">{t('common:menu')}</span>
+                      <Menu aria-hidden="true" focusable="false" size={20} strokeWidth={1.75} />
                       <VisuallyHidden>
                         {mobileOpen ? t('a11y:closeNavigation') : t('a11y:openNavigation')}
                       </VisuallyHidden>
@@ -831,23 +1307,16 @@ export function AppShell() {
                 </div>
               </>
             )}
-            {!isAuthenticatedMobile ? (
-              <LanguageSelector
-                className={[
-                  styles.languageSelector,
-                  isAnonymousMobile ? styles.languageSelectorMobile : null,
-                ]
-                  .filter(Boolean)
-                  .join(' ')}
-                menuClassName={styles.languageMenu}
-                optionClassName={styles.languageOption}
-                selectedOptionClassName={styles.languageOptionSelected}
-                mobile={isAnonymousMobile}
-              />
-            ) : null}
+            {!isAuthenticatedMobile && !(isInstructor && isAuthenticatedTablet)
+              ? languageSelector
+              : null}
           </div>
         </div>
-        {mobileOpen && !isAnonymousMobile ? (
+        {mobileOpen &&
+        !isInstructor &&
+        !isAnonymousMobile &&
+        !isAnonymousTablet &&
+        !isAuthenticatedTablet ? (
           <nav
             id="mobile-navigation"
             className={styles.navMobile}
@@ -884,6 +1353,20 @@ export function AppShell() {
           </nav>
         ) : null}
       </header>
+      {state.status === 'authenticated' && isAuthenticatedDrawerViewport ? (
+        <AuthenticatedTabletDrawer
+          navigation={navigation}
+          onClose={() => setAuthenticatedTabletDrawerOpen(false)}
+          onCreateCourse={isInstructorCoursesRoute ? handleInstructorCourseTitleFocus : undefined}
+          onLogOut={requestLogout}
+          onNavigate={(to) => {
+            if (to === routeFocusIdentity) menuButtonRef.current?.focus();
+            else mainRef.current?.focus({ preventScroll: true });
+          }}
+          open={authenticatedTabletDrawerOpen}
+          user={state.user}
+        />
+      ) : null}
       <main
         ref={mainRef}
         className={[

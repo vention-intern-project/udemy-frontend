@@ -12,6 +12,7 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 
 import type { CatalogCourse } from '@entities/course';
+import { useCourseRatingSummary } from '@features/course-reviews';
 import { Button } from '@shared/ui/primitives';
 
 import styles from './CourseCard.module.css';
@@ -59,6 +60,8 @@ export function CourseCard({
   onAction,
 }: CourseCardProps) {
   const { t, i18n } = useTranslation();
+  const cardRef = useRef<HTMLElement>(null);
+  const ratingSummary = useCourseRatingSummary(course.id, cardRef);
   const isDisclosureAvailable = useCourseCardDisclosureAvailability();
   const tooltipNotice = course.isPublished
     ? null
@@ -68,11 +71,32 @@ export function CourseCard({
   const statusExplanationId = `catalog-course-${course.id}-status`;
   const tooltipLabelId = `catalog-course-${course.id}-description-label`;
   const tooltipDescriptionId = `catalog-course-${course.id}-description`;
+  const ratingDescriptionId = `catalog-course-${course.id}-rating`;
   const description =
     course.description ??
     t('catalog:noCourseDescriptionIsAvailable', {
       defaultValue: 'No course description is available.',
     });
+  const ratingLocale = i18n.resolvedLanguage ?? i18n.language;
+  const rating = ratingSummary.data;
+  const ratingText =
+    rating && rating.averageRating !== null
+      ? new Intl.NumberFormat(ratingLocale, {
+          minimumFractionDigits: 1,
+          maximumFractionDigits: 1,
+        }).format(rating.averageRating)
+      : null;
+  const reviewCountText = rating
+    ? new Intl.NumberFormat(ratingLocale).format(rating.reviewCount)
+    : null;
+  const hasTerminalRatingState =
+    (ratingText !== null && reviewCountText !== null) ||
+    rating?.reviewCount === 0 ||
+    ratingSummary.isError;
+  const linkDescriptionIds = [
+    hasTerminalRatingState ? ratingDescriptionId : null,
+    isDisclosureAvailable && isDisclosureVisible ? tooltipDescriptionId : null,
+  ].filter((id): id is string => id !== null);
   const linkRef = useRef<HTMLAnchorElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const openTimerRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null);
@@ -212,6 +236,7 @@ export function CourseCard({
   const feedbackId = `catalog-course-${course.id}-action-feedback`;
   const actionVisual = courseActionVisual(action.presentation);
   const actionLabel = t(action.labelKey);
+  const paymentProcessing = action.presentation === 'payment-processing';
   const ActionIcon =
     action.kind === 'link' ||
     (action.kind === 'button' &&
@@ -325,6 +350,7 @@ export function CourseCard({
   return (
     <li className={styles.item}>
       <article
+        ref={cardRef}
         className={styles.card}
         data-part="course-card"
         data-course-card-id={course.id}
@@ -337,7 +363,7 @@ export function CourseCard({
           to={`/courses/${course.id}`}
           aria-label={course.title}
           aria-describedby={
-            isDisclosureAvailable && isDisclosureVisible ? tooltipDescriptionId : undefined
+            linkDescriptionIds.length > 0 ? linkDescriptionIds.join(' ') : undefined
           }
           onFocus={handleLinkFocus}
           onBlur={handleLinkBlur}
@@ -345,6 +371,31 @@ export function CourseCard({
           <div className={styles.preview} data-part="course-card-preview" />
           <div className={styles.body} data-part="course-card-body">
             <h3 className={styles.title}>{course.title}</h3>
+            <div
+              id={hasTerminalRatingState ? ratingDescriptionId : undefined}
+              className={styles.rating}
+              data-part="course-card-rating"
+            >
+              {ratingText && reviewCountText ? (
+                <>
+                  <span className={styles.ratingLabel}>{`${t('course:ratingLabel')}: `}</span>
+                  <span className={styles.ratingStar} aria-hidden="true">
+                    ★
+                  </span>
+                  <span>{ratingText}</span>
+                  <span className={styles.ratingSeparator} aria-hidden="true">
+                    {' · '}
+                  </span>
+                  <span>{`${t('course:reviewsHeading')}: ${reviewCountText}`}</span>
+                </>
+              ) : rating?.reviewCount === 0 ? (
+                t('course:noReviews')
+              ) : ratingSummary.isError ? (
+                t('course:reviewsLoadFailed')
+              ) : (
+                <span className={styles.ratingPlaceholder} aria-hidden="true" />
+              )}
+            </div>
             <div className={styles.metadata} data-part="course-card-metadata">
               <span className={styles.byline}>{course.instructorName}</span>
               <span
@@ -435,6 +486,7 @@ export function CourseCard({
                 variant={actionVisual.buttonVariant}
                 disabled={action.disabled}
                 aria-busy={action.pending || undefined}
+                aria-label={paymentProcessing ? t('catalog:paymentProcessing') : undefined}
                 aria-describedby={action.feedback ? feedbackId : undefined}
                 className={[
                   styles.actionButton,
@@ -447,7 +499,33 @@ export function CourseCard({
               >
                 <span className={styles.actionContent} data-part="course-card-action-content">
                   {ActionIcon ? <ActionIcon size={16} aria-hidden="true" /> : null}
-                  <span>{actionLabel}</span>
+                  <span aria-hidden={paymentProcessing || undefined}>{actionLabel}</span>
+                  {paymentProcessing ? (
+                    <span
+                      className={styles.paymentProcessingDots}
+                      data-part="payment-processing-dots"
+                      aria-hidden="true"
+                    >
+                      <span
+                        className={styles.paymentProcessingDot}
+                        data-part="payment-processing-dot"
+                      >
+                        .
+                      </span>
+                      <span
+                        className={styles.paymentProcessingDot}
+                        data-part="payment-processing-dot"
+                      >
+                        .
+                      </span>
+                      <span
+                        className={styles.paymentProcessingDot}
+                        data-part="payment-processing-dot"
+                      >
+                        .
+                      </span>
+                    </span>
+                  ) : null}
                 </span>
               </Button>
             )}

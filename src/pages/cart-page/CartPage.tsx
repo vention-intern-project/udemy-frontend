@@ -2,14 +2,16 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { Link, matchPath, type To, useLocation } from 'react-router-dom';
-import { ChevronLeft, ShieldX, Trash2 } from 'lucide-react';
+import { ChevronLeft, CircleAlert, ShieldX, Trash2 } from 'lucide-react';
 
 import { sanitizeInternalReturnTo } from '@features/auth-session';
 import { cartFailureState, useCartWorkflow, type CartFailureState } from '@features/cart-workflow';
 import {
-  useCartCompositeCheckout,
+  useRouteStableCartCompositeCheckout,
   type CartCompositeCheckoutWorkflow,
+  type CartCompositeOutcomeSelection,
 } from '@features/checkout-cart';
+import { classifyCoursePrice } from '@features/course-detail';
 import type { Cart } from '@entities/cart';
 import { formatLocaleCurrency } from '@shared/locale';
 import {
@@ -42,6 +44,7 @@ interface RemoveFocusTarget {
 export interface CompositeCheckoutNoticeProps {
   readonly checkout: CartCompositeCheckoutWorkflow;
   readonly courseTitles: ReadonlyMap<number, string>;
+  readonly cardResultCourseIds?: ReadonlySet<number>;
   onRetryPayment(courseId: number): void;
 }
 
@@ -67,6 +70,7 @@ interface CartReturnRoute {
 }
 
 const mobileSummaryQuery = '(max-width: 1023px)';
+const successfulPaymentNoticeLifetimeMs = 8_000;
 const cartReturnFallback: CartReturnTarget = {
   label: 'Catalog',
   labelKey: 'navigation:catalog',
@@ -169,9 +173,16 @@ function getSummaryJumpState(summaryHeading: HTMLElement): SummaryJumpState {
 export function CompositeCheckoutNotice({
   checkout,
   courseTitles,
+  cardResultCourseIds,
   onRetryPayment,
 }: CompositeCheckoutNoticeProps) {
   const { t } = useTranslation();
+  if (checkout.phase === 'checkout_admitted' || checkout.phase === 'completing_checkout')
+    return (
+      <Notice tone="info" title={t('learning:paymentPending')}>
+        <p>{t('cart:checkingOut')}</p>
+      </Notice>
+    );
   if (checkout.phase === 'discovering_recovery')
     return (
       <Notice tone="info" title={t('learning:paymentPending')}>
@@ -198,7 +209,10 @@ export function CompositeCheckoutNotice({
   const visibleResults = integrityUnknown
     ? checkout.results.filter((result) => result.kind !== 'integrity_unknown')
     : checkout.results;
-  if (!integrityUnknown && visibleResults.length === 0) return null;
+  const pageResults = visibleResults.filter(
+    (result) => result.kind !== 'restored' || !cardResultCourseIds?.has(result.courseId),
+  );
+  if (!integrityUnknown && pageResults.length === 0) return null;
   return (
     <div className={styles.checkoutResults} aria-live="polite">
       {integrityUnknown ? (
@@ -206,7 +220,7 @@ export function CompositeCheckoutNotice({
           <p>{t('cart:doNotStartAnotherPayment')}</p>
         </Notice>
       ) : null}
-      {visibleResults.map((result) => {
+      {pageResults.map((result) => {
         const courseTitle = courseTitles.get(result.courseId) ?? String(result.courseId);
         if (result.kind === 'active')
           return (
@@ -317,16 +331,44 @@ export function CartPage() {
   const courseTitlesRef = useRef(new Map<number, string>());
   const statusMessage = mutationStatusMessage(t, feedback?.success, feedback?.kind);
   const currentCart = cart.data;
-  const checkout = useCartCompositeCheckout(
+  const checkout = useRouteStableCartCompositeCheckout(
     currentCart?.items.map((item) => ({ courseId: item.courseId, price: item.course.price })) ?? [],
   );
+  const successfulCourseIds = checkout.results
+    .filter((result) => result.kind === 'active')
+    .map((result) => result.courseId);
+  const successfulCourseIdsRef = useRef(successfulCourseIds);
+  const dismissSuccessfulCoursesRef = useRef(checkout.dismissSuccessfulCourses);
+  if (currentCart)
+    for (const item of currentCart.items)
+      courseTitlesRef.current.set(item.courseId, item.course.title);
+  for (const candidate of checkout.recoveryCandidates)
+    courseTitlesRef.current.set(candidate.courseId, candidate.course.title);
   const returnTarget = cartReturnTarget(location.state);
   useEffect(() => {
-    if (currentCart)
-      for (const item of currentCart.items)
-        courseTitlesRef.current.set(item.courseId, item.course.title);
-    for (const candidate of checkout.recoveryCandidates)
-      courseTitlesRef.current.set(candidate.courseId, candidate.course.title);
+    successfulCourseIdsRef.current = successfulCourseIds;
+    dismissSuccessfulCoursesRef.current = checkout.dismissSuccessfulCourses;
+  }, [checkout.dismissSuccessfulCourses, successfulCourseIds]);
+  useEffect(() => {
+    const courseIds = checkout.results
+      .filter((result) => result.kind === 'active')
+      .map((result) => result.courseId);
+    if (courseIds.length === 0) return undefined;
+    const timeoutId = globalThis.setTimeout(() => {
+      dismissSuccessfulCoursesRef.current(courseIds);
+    }, successfulPaymentNoticeLifetimeMs);
+    return () => globalThis.clearTimeout(timeoutId);
+  }, [checkout.results]);
+
+  useEffect(
+    () => () => {
+      const courseIds = successfulCourseIdsRef.current;
+      if (courseIds.length > 0) dismissSuccessfulCoursesRef.current(courseIds);
+    },
+    [],
+  );
+
+  useEffect(() => {
     if (currentCart?.items.length) cartHasContainedItemsRef.current = true;
     if (
       !currentCart ||
@@ -348,6 +390,11 @@ export function CartPage() {
   useLayoutEffect(() => {
     if (!feedback?.success || !currentCart || isBusy) return;
     if (feedback.kind === 'clear' && currentCart.items.length === 0) {
+      checkout.dismissRestoredCourses(
+        checkout.results
+          .filter((result) => result.kind === 'restored')
+          .map((result) => result.courseId),
+      );
       headingRef.current?.focus();
       return;
     }
@@ -356,6 +403,7 @@ export function CartPage() {
     const target = removeFocusTarget;
     if (!target || currentCart.items.some((item) => item.courseId === target.removedCourseId))
       return;
+    checkout.dismissRestoredCourses([target.removedCourseId]);
     const nextItem = currentCart.items[target.index] ?? currentCart.items[target.index - 1];
     if (nextItem) {
       const trackedAction = removeActionRefs.current
@@ -369,7 +417,7 @@ export function CartPage() {
       action?.focus();
     } else headingRef.current?.focus();
     setRemoveFocusTarget(null);
-  }, [currentCart, feedback, isBusy, removeFocusTarget]);
+  }, [checkout, currentCart, feedback, isBusy, removeFocusTarget]);
 
   useEffect(() => {
     if (
@@ -434,7 +482,7 @@ export function CartPage() {
   };
 
   const removeCourse = (courseId: number, index: number) => {
-    if (isBusy) return;
+    if (isBusy || checkout.pending) return;
 
     setRemoveFocusTarget({ removedCourseId: courseId, index });
     remove(courseId);
@@ -518,6 +566,28 @@ export function CartPage() {
   const removeFailure = feedback?.kind === 'remove' && !feedback.success ? feedback.failure : null;
   const clearFailure = feedback?.kind === 'clear' && !feedback.success ? feedback.failure : null;
   const canDisplayTotal = hasSingleCartCurrency(currentCart);
+  const paymentFailureSelections = currentCart.items
+    .filter((item) => classifyCoursePrice(item.course.price) === 'paid')
+    .map<CartCompositeOutcomeSelection>((item) => ({
+      courseId: item.courseId,
+      outcome: 'failed',
+    }));
+  const cartCourseIds = new Set(currentCart.items.map((item) => item.courseId));
+  const restoredResultByCourseId = new Map(
+    checkout.results
+      .filter((result) => result.kind === 'restored' && cartCourseIds.has(result.courseId))
+      .map((result) => [result.courseId, result] as const),
+  );
+  const checkoutIntegrityUnknown = checkout.phase === 'checkout_integrity_unknown';
+  const checkoutRequiresRetry = restoredResultByCourseId.size > 0;
+  const hasPageLevelCheckoutResult =
+    checkoutIntegrityUnknown ||
+    checkout.results.some(
+      (result) => result.kind !== 'restored' || !cartCourseIds.has(result.courseId),
+    );
+  const firstCardResultCourseId = restoredResultByCourseId.keys().next().value;
+  const checkoutActionsDisabled =
+    isBusy || checkout.pending || checkoutIntegrityUnknown || checkoutRequiresRetry;
   return (
     <article className={styles.page} aria-busy={isBusy || checkout.pending}>
       <VisuallyHidden as="p" role="status" aria-live="polite">
@@ -561,10 +631,11 @@ export function CartPage() {
           </Button>
         </div>
       </header>
-      <div ref={checkoutNoticeRef} tabIndex={-1}>
+      <div ref={hasPageLevelCheckoutResult ? checkoutNoticeRef : undefined} tabIndex={-1}>
         <CompositeCheckoutNotice
           checkout={checkout}
           courseTitles={courseTitlesRef.current}
+          cardResultCourseIds={cartCourseIds}
           onRetryPayment={(courseId) => checkout.retryRestoredCourse(courseId)}
         />
       </div>
@@ -589,73 +660,91 @@ export function CartPage() {
       <div className={styles.content}>
         <div className={styles.courseList}>
           <div className={styles.items} role="list" aria-label={t('a11y:cartCourses')}>
-            {currentCart.items.map((item, index) => (
-              <section className={styles.item} key={item.id} role="listitem">
-                <Link
-                  className={styles.preview}
-                  to={`/courses/${item.courseId}`}
-                  aria-label={t('cart:preview', {
-                    defaultValue: `Preview ${item.course.title}`,
-                    courseTitle: item.course.title,
-                  })}
-                >
-                  <span aria-hidden="true">
-                    {t('cart:coursePreview', { defaultValue: 'Course preview' })}
-                  </span>
-                </Link>
-                <div className={styles.courseInfo}>
-                  <p className={styles.label}>{t('cart:courseLabel')}</p>
-                  <h2>
-                    <Link className={styles.courseLink} to={`/courses/${item.courseId}`}>
-                      {item.course.title}
-                    </Link>
-                  </h2>
-                </div>
-                <div className={styles.itemFooter}>
-                  <div className={styles.price}>
-                    <p className={styles.label}>{t('instructor:courseEditorPrice')}</p>
-                    <p>
-                      {formatLocaleCurrency({
-                        price: item.course.price,
-                        currency: item.course.currency,
-                        locale: i18n.language,
-                      })}
-                    </p>
-                  </div>
-                  <div
-                    className={styles.removeAction}
-                    ref={(node) => {
-                      if (node) removeActionRefs.current.set(item.courseId, node);
-                      else removeActionRefs.current.delete(item.courseId);
-                    }}
+            {currentCart.items.map((item, index) => {
+              const restoredResult = restoredResultByCourseId.get(item.courseId);
+              return (
+                <section className={styles.item} key={item.id} role="listitem">
+                  <Link
+                    className={styles.preview}
+                    to={`/courses/${item.courseId}`}
+                    aria-label={t('cart:preview', {
+                      defaultValue: `Preview ${item.course.title}`,
+                      courseTitle: item.course.title,
+                    })}
                   >
-                    <Button
-                      variant="ghost"
-                      className={styles.removeButton}
-                      aria-label={t('cart:remove', {
-                        defaultValue: `Remove ${item.course.title}`,
-                        courseTitle: item.course.title,
-                      })}
-                      data-cart-remove-course-id={item.courseId}
-                      onClick={() => removeCourse(item.courseId, index)}
+                    <span aria-hidden="true">
+                      {t('cart:coursePreview', { defaultValue: 'Course preview' })}
+                    </span>
+                  </Link>
+                  <div className={styles.courseInfo}>
+                    <p className={styles.label}>{t('cart:courseLabel')}</p>
+                    <h2>
+                      <Link className={styles.courseLink} to={`/courses/${item.courseId}`}>
+                        {item.course.title}
+                      </Link>
+                    </h2>
+                  </div>
+                  <div className={styles.itemFooter}>
+                    <div className={styles.price}>
+                      <p className={styles.label}>{t('instructor:courseEditorPrice')}</p>
+                      <p>
+                        {formatLocaleCurrency({
+                          price: item.course.price,
+                          currency: item.course.currency,
+                          locale: i18n.language,
+                        })}
+                      </p>
+                    </div>
+                    <div
+                      className={styles.removeAction}
+                      ref={(node) => {
+                        if (node) removeActionRefs.current.set(item.courseId, node);
+                        else removeActionRefs.current.delete(item.courseId);
+                      }}
                     >
-                      <Trash2 size={20} aria-hidden="true" />
-                    </Button>
+                      <Button
+                        variant="ghost"
+                        className={styles.removeButton}
+                        aria-label={t('cart:remove', {
+                          defaultValue: `Remove ${item.course.title}`,
+                          courseTitle: item.course.title,
+                        })}
+                        data-cart-remove-course-id={item.courseId}
+                        onClick={() => removeCourse(item.courseId, index)}
+                        disabled={checkout.pending}
+                      >
+                        <Trash2 size={20} aria-hidden="true" />
+                      </Button>
+                    </div>
                   </div>
-                  <Button
-                    variant="secondary"
-                    className={styles.failureAction}
-                    aria-label={`${t('cart:simulatePaymentFailure')}: ${item.course.title}`}
-                    disabled={
-                      isBusy || checkout.pending || checkout.phase === 'checkout_integrity_unknown'
-                    }
-                    onClick={() => checkout.start([{ courseId: item.courseId, outcome: 'failed' }])}
-                  >
-                    {t('cart:simulatePaymentFailure')}
-                  </Button>
-                </div>
-              </section>
-            ))}
+                  {restoredResult ? (
+                    <div
+                      ref={
+                        item.courseId === firstCardResultCourseId ? checkoutNoticeRef : undefined
+                      }
+                      className={styles.paymentRecovery}
+                      role="alert"
+                      tabIndex={-1}
+                    >
+                      <span className={styles.paymentRecoveryCopy}>
+                        <strong>{t('cart:paymentFailed')}</strong>
+                        <span>{t('cart:courseReturnedToCart')}</span>
+                      </span>
+                      {!checkoutIntegrityUnknown ? (
+                        <Button
+                          aria-label={`${t('cart:retryMockPayment')}: ${item.course.title}`}
+                          onClick={() => checkout.retryRestoredCourse(restoredResult.courseId)}
+                        >
+                          {i18n.exists('cart:retryPayment')
+                            ? t('cart:retryPayment')
+                            : 'Retry payment'}
+                        </Button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </section>
+              );
+            })}
           </div>
         </div>
         {isSummaryJumpVisible ? (
@@ -682,15 +771,39 @@ export function CartPage() {
           ) : (
             <strong className={styles.totalUnavailable}>{t('cart:totalUnavailable')}</strong>
           )}
-          <Button
-            fullWidth
-            onClick={() => checkout.start()}
-            disabled={isBusy || checkout.pending || checkout.phase === 'checkout_integrity_unknown'}
-            state={checkout.pending ? 'loading' : 'idle'}
-            loadingLabel={t('cart:checkingOut', { defaultValue: 'Checking out…' })}
-          >
-            {t('cart:completeMockPayment')}
-          </Button>
+          {checkoutRequiresRetry ? (
+            <p className={styles.summaryRecoveryStatus}>
+              <CircleAlert size={20} aria-hidden="true" />
+              <span>
+                {i18n.exists('cart:paymentRetryRequired')
+                  ? t('cart:paymentRetryRequired')
+                  : 'Payment retry required'}{' '}
+                · {t('catalog:resultCount', { count: restoredResultByCourseId.size })}
+              </span>
+            </p>
+          ) : (
+            <>
+              <Button
+                fullWidth
+                onClick={() => checkout.start()}
+                disabled={checkoutActionsDisabled}
+                state={checkout.pending ? 'loading' : 'idle'}
+                loadingLabel={t('cart:checkingOut', { defaultValue: 'Checking out…' })}
+              >
+                {t('cart:completeMockPayment')}
+              </Button>
+              {paymentFailureSelections.length > 0 ? (
+                <Button
+                  fullWidth
+                  variant="secondary"
+                  disabled={checkoutActionsDisabled}
+                  onClick={() => checkout.simulateFailure(paymentFailureSelections)}
+                >
+                  {t('cart:simulatePaymentFailure')}
+                </Button>
+              ) : null}
+            </>
+          )}
           <p className={styles.mockCheckoutDisclosure}>
             <ShieldX size={20} aria-hidden="true" />
             <span>{t('cart:insecureCheckout')}</span>

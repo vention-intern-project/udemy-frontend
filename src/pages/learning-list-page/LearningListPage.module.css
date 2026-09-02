@@ -266,10 +266,6 @@
   .emptyIllustration {
     width: min(100%, 32.5rem);
   }
-
-  .backLink {
-    margin-inline-start: calc(-1 * var(--spacing-6));
-  }
 }
 
 @media (max-width: 479px) {

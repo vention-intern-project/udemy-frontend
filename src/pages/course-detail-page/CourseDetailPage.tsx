@@ -195,7 +195,11 @@ export function CourseDetailPage() {
         items={outline.data?.items}
         onRetry={retryOutline}
       />
-      <CourseReviews key={courseId} courseId={courseId} />
+      <CourseReviews
+        key={courseId}
+        courseId={courseId}
+        canWriteReview={preflight === 'already-enrolled'}
+      />
     </article>
   );
 }

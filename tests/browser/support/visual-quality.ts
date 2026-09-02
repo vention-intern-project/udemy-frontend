@@ -33,6 +33,8 @@ export interface ObservedRequestFailure extends RequestFailureIdentity {
   url: string;
 }
 
+export type OptionalRequestFailureAllowanceRetirement = () => void;
+
 export interface ConsoleErrorEvidence {
   text: string;
   url: string;
@@ -76,7 +78,7 @@ export interface HttpFailureAccounting {
 
 export interface RequestFailureAccounting {
   allow(identity: RequestFailureIdentity, occurrences: number): void;
-  allowOptional(identity: RequestFailureIdentity): void;
+  allowOptional(identity: RequestFailureIdentity): OptionalRequestFailureAllowanceRetirement;
   observe(method: string, url: string, errorText: string): void;
   acceptedFailures(): readonly ObservedRequestFailure[];
   violations(): {
@@ -189,7 +191,12 @@ export function createRequestFailureAccounting(): RequestFailureAccounting {
       expectedFailures.push({ ...identity, occurrences, remaining: occurrences });
     },
     allowOptional(identity) {
-      optionalFailures.push({ ...identity, occurrences: 1, remaining: 1 });
+      const allowance = { ...identity, occurrences: 1, remaining: 1 };
+      optionalFailures.push(allowance);
+      return () => {
+        const allowanceIndex = optionalFailures.indexOf(allowance);
+        if (allowanceIndex >= 0) optionalFailures.splice(allowanceIndex, 1);
+      };
     },
     observe(method, url, errorText) {
       const failure = { method, path: requestPath(url), errorText, url };

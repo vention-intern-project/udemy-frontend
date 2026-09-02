@@ -14,7 +14,10 @@ import { createAppQueryClient } from '../../src/app/query';
 import type { Cart } from '../../src/entities/cart';
 import { SessionProvider, type AccessTokenStore } from '../../src/features/auth-session';
 import { CartPage, CompositeCheckoutNotice } from '../../src/pages/cart-page/CartPage';
-import type { CartCompositeCheckoutWorkflow } from '../../src/features/checkout-cart';
+import {
+  CartCompositeCheckoutProvider,
+  type CartCompositeCheckoutWorkflow,
+} from '../../src/features/checkout-cart';
 import { ApiError, type ApiClient, type ApiRequestOptions } from '../../src/shared/api';
 import { localeRuntime } from '../../src/shared/locale';
 import { QueryClientProvider } from '@tanstack/react-query';
@@ -105,6 +108,7 @@ const CART_RESIDUAL_COPY = {
     courseCount: '2 courses',
     courseLabel: 'Course',
     empty: 'Your cart is empty',
+    failure: 'Simulate payment failure',
     mockCheckout: 'Complete mock payment',
     orderSummary: 'Order summary',
     price: 'Price',
@@ -118,6 +122,7 @@ const CART_RESIDUAL_COPY = {
     courseCount: '2 курса',
     courseLabel: 'Курс',
     empty: 'Ваша корзина пуста',
+    failure: 'Сымитировать ошибку платежа',
     mockCheckout: 'Завершить тестовый платёж',
     orderSummary: 'Итоги заказа',
     price: 'Цена',
@@ -131,6 +136,7 @@ const CART_RESIDUAL_COPY = {
     courseCount: '2 ta kurs',
     courseLabel: 'Kurs',
     empty: 'Savatingiz bo‘sh',
+    failure: 'To‘lov xatosini taqlid qilish',
     mockCheckout: 'Sinov to‘lovini yakunlash',
     orderSummary: 'Buyurtma yakuni',
     price: 'Narx',
@@ -294,8 +300,10 @@ async function renderCart(request: ApiClient['request'], initialEntry: CartIniti
               future={{ v7_relativeSplatPath: true, v7_startTransition: true }}
               initialEntries={[initialEntry]}
             >
-              <LocationProbe />
-              <CartPage />
+              <CartCompositeCheckoutProvider>
+                <LocationProbe />
+                <CartPage />
+              </CartCompositeCheckoutProvider>
             </MemoryRouter>
           </SessionProvider>
         </QueryClientProvider>
@@ -309,6 +317,8 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  localeRuntime.addResource('en', 'cart', 'retryPayment', 'Retry payment');
+  localeRuntime.addResource('en', 'cart', 'paymentRetryRequired', 'Payment retry required');
 });
 
 beforeEach(async () => {
@@ -445,6 +455,8 @@ describe('CartPage', () => {
       expect(within(total).getByRole('heading', { name: copy.orderSummary })).toBeTruthy();
       expect(within(total).getByText(copy.total)).toBeTruthy();
       expect(within(total).getByRole('button', { name: copy.mockCheckout })).toBeTruthy();
+      expect(within(total).getByRole('button', { name: copy.failure })).toBeTruthy();
+      expect(within(courses).queryByRole('button', { name: copy.failure })).toBeNull();
       expect(document.body.textContent).not.toMatch(/Translation unavailable|(?:cart|a11y):\w+/);
       cleanup();
 
@@ -657,13 +669,13 @@ describe('CartPage', () => {
       const user = userEvent.setup();
       screen.getByRole('button', { name: 'Remove Second course' }).focus();
       await interact(() => user.tab());
-      expect(screen.getByRole('button', { name: 'Simulate payment failure: Second course' })).toBe(
-        document.activeElement,
-      );
-      await interact(() => user.tab());
       expect(jump).toBe(document.activeElement);
       await interact(() => user.tab());
       expect(screen.getByRole('button', { name: 'Complete mock payment' })).toBe(
+        document.activeElement,
+      );
+      await interact(() => user.tab());
+      expect(screen.getByRole('button', { name: 'Simulate payment failure' })).toBe(
         document.activeElement,
       );
       fireEvent.click(jump);
@@ -799,8 +811,13 @@ describe('CartPage', () => {
     }
   });
 
-  it('keeps a restored failed payment visible and exposes a course-specific retry action', async () => {
+  it('keeps the admitted cart visible and route stable until a simulated failure is restored', async () => {
+    const cartResources = localeRuntime.getResourceBundle('en', 'cart') as Record<string, string>;
+    delete cartResources.retryPayment;
+    delete cartResources.paymentRetryRequired;
     let cartReads = 0;
+    let paymentRequests = 0;
+    let courseRemoved = false;
     const pendingEnrollment = {
       id: 70,
       user_id: 1,
@@ -824,17 +841,19 @@ describe('CartPage', () => {
         cartReads += 1;
         return decode(
           options,
-          cartReads === 1
-            ? { ...cartWithItems, items: [cartWithItems.items[0]], item_count: 1 }
-            : cartReads === 2
-              ? { id: 1, items: [], total_price: '0.00', currency: 'USD', item_count: 0 }
-              : {
-                  id: 1,
-                  items: [cartWithItems.items[0]],
-                  total_price: '19.990',
-                  currency: 'USD',
-                  item_count: 1,
-                },
+          courseRemoved
+            ? { id: 1, items: [], total_price: '0.00', currency: 'USD', item_count: 0 }
+            : cartReads === 1
+              ? { ...cartWithItems, items: [cartWithItems.items[0]], item_count: 1 }
+              : cartReads === 2
+                ? { id: 1, items: [], total_price: '0.00', currency: 'USD', item_count: 0 }
+                : {
+                    id: 1,
+                    items: [cartWithItems.items[0]],
+                    total_price: '19.990',
+                    currency: 'USD',
+                    item_count: 1,
+                  },
         );
       }
       if (options.path === '/cart/checkout')
@@ -849,8 +868,10 @@ describe('CartPage', () => {
           has_next: false,
           has_previous: false,
         });
-      if (options.path === '/payments/complete')
+      if (options.path === '/payments/complete') {
+        paymentRequests += 1;
         return decode(options, { enrollment_id: 70, status: 'cancelled', message: 'cancelled' });
+      }
       if (options.path === '/cart/items')
         return decode(options, {
           id: 10,
@@ -863,24 +884,152 @@ describe('CartPage', () => {
             currency: 'USD',
           },
         });
+      if (options.path === '/cart/items/7' && options.method === 'DELETE') {
+        courseRemoved = true;
+        return decode(options, undefined);
+      }
       throw new Error(`Unexpected request ${options.method} ${options.path}`);
     };
     await renderCart(request);
-    const user = userEvent.setup();
-    const simulateFailure = await screen.findByRole('button', {
-      name: 'Simulate payment failure: Long accessible course title',
+    const summary = await screen.findByRole('complementary', { name: 'Cart total' });
+    expect(
+      screen.queryByRole('button', {
+        name: 'Simulate payment failure: Long accessible course title',
+      }),
+    ).toBeNull();
+    const simulateFailure = within(summary).getByRole('button', {
+      name: 'Simulate payment failure',
     });
-    await interact(() => user.click(simulateFailure));
-    expect(await screen.findByText('Payment failed')).toBeTruthy();
-    expect(screen.getByRole('alert').textContent).toContain(
-      'The course was returned to your cart.',
+    vi.useFakeTimers();
+    fireEvent.click(simulateFailure);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByLabelText('Current route').textContent).toBe('/cart');
+    expect(screen.getByRole('heading', { name: 'Cart' })).toBeTruthy();
+    expect(screen.getByRole('list', { name: 'Cart courses' }).textContent).toContain(
+      'Long accessible course title',
     );
+    expect(screen.queryByRole('heading', { name: 'Your cart is empty' })).toBeNull();
+    expect(screen.getByText('Payment pending', { exact: true })).toBeTruthy();
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Remove Long accessible course title',
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect((screen.getByRole('button', { name: 'Clear cart' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    expect(paymentRequests).toBe(0);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6_999);
+    });
+    expect(screen.getByLabelText('Current route').textContent).toBe('/cart');
+    expect(screen.getByRole('list', { name: 'Cart courses' }).textContent).toContain(
+      'Long accessible course title',
+    );
+    expect(screen.getByText('Payment pending', { exact: true })).toBeTruthy();
+    expect(paymentRequests).toBe(0);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(paymentRequests).toBe(1);
+    expect(screen.getAllByText('Payment failed')).toHaveLength(1);
+    const restoredCourseCard = screen
+      .getByRole('link', { name: 'Long accessible course title' })
+      .closest<HTMLElement>('[role="listitem"]');
+    if (!restoredCourseCard) throw new Error('The restored Cart course card is unavailable.');
+    const restoredPaymentAlert = within(restoredCourseCard).getByRole('alert');
+    expect(restoredPaymentAlert.textContent).toContain('Payment failed');
+    expect(restoredPaymentAlert.textContent).toContain('The course was returned to your cart.');
+    expect(document.activeElement).toBe(restoredPaymentAlert);
     expect(
       screen.getByRole('button', { name: 'Retry mock payment: Long accessible course title' }),
     ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Retry mock payment: Long accessible course title' })
+        .textContent,
+    ).toBe('Retry payment');
+    expect(
+      within(summary).getByText('Payment retry required · 1 course', { exact: true }),
+    ).toBeTruthy();
+    expect(within(summary).queryByRole('button', { name: 'Complete mock payment' })).toBeNull();
+    expect(within(summary).queryByRole('button', { name: 'Simulate payment failure' })).toBeNull();
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Retry mock payment: Long accessible course title',
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
     expect(screen.queryByText('Checkout accepted')).toBeNull();
     expect(screen.queryByRole('link', { name: 'Check My Learning' })).toBeNull();
+    vi.useRealTimers();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Long accessible course title' }));
+    await screen.findByRole('heading', { name: 'Your cart is empty' });
+    await waitFor(() => expect(courseRemoved).toBe(true));
+    expect(screen.queryByText('Payment failed', { exact: true })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Retry mock payment: Long accessible course title' }),
+    ).toBeNull();
+    expect(screen.queryByText('Payment retry required · 1 course', { exact: true })).toBeNull();
+    expect(document.activeElement).toBe(
+      screen.getByRole('heading', { name: 'Your cart is empty' }),
+    );
   });
+
+  it.each(['Complete mock payment', 'Simulate payment failure'])(
+    'starts %s after an earlier empty-cart recovery check',
+    async (actionName) => {
+      let hasCartItems = false;
+      let enrollmentReads = 0;
+      let checkoutRequests = 0;
+      const request: ApiClient['request'] = async <TResponse, TBody>(
+        options: ApiRequestOptions<TBody, TResponse>,
+      ) => {
+        if (options.path === '/me') return decode(options, student);
+        if (options.path === '/cart' && options.method === 'GET')
+          return decode(
+            options,
+            hasCartItems
+              ? cartWithItems
+              : { id: 1, items: [], total_price: '0.00', currency: 'USD', item_count: 0 },
+          );
+        if (options.path === '/enrollments/my') {
+          enrollmentReads += 1;
+          return decode(options, {
+            items: [],
+            page: 1,
+            page_size: 100,
+            total: 0,
+            pages: 0,
+            has_next: false,
+            has_previous: false,
+          });
+        }
+        if (options.path === '/cart/checkout') {
+          checkoutRequests += 1;
+          return decode(options, { message: 'accepted', enrolled_courses: 2 });
+        }
+        throw new Error(`Unexpected request ${options.method} ${options.path}`);
+      };
+      const queryClient = await renderCart(request);
+
+      expect(await screen.findByRole('heading', { name: 'Your cart is empty' })).toBeTruthy();
+      await waitFor(() => expect(enrollmentReads).toBe(1));
+
+      hasCartItems = true;
+      await act(async () => {
+        await queryClient.invalidateQueries();
+      });
+      fireEvent.click(await screen.findByRole('button', { name: actionName }));
+
+      await waitFor(() => expect(checkoutRequests).toBe(1));
+    },
+  );
 
   it('keeps recovery and the completed result visible when the cart is empty', async () => {
     const counts = { checkout: 0, enrollmentReads: 0, payments: 0 };
@@ -984,6 +1133,8 @@ describe('CartPage', () => {
       pending: false,
       start: vi.fn(),
       retryRestoredCourse: vi.fn(),
+      dismissRestoredCourses: vi.fn(),
+      dismissSuccessfulCourses: vi.fn(),
       discoverRecovery: vi.fn(),
       resumeRecovery,
     };
@@ -1016,6 +1167,8 @@ describe('CartPage', () => {
       pending: false,
       start: vi.fn(),
       retryRestoredCourse: vi.fn(),
+      dismissRestoredCourses: vi.fn(),
+      dismissSuccessfulCourses: vi.fn(),
       discoverRecovery: vi.fn(),
       resumeRecovery: vi.fn(),
     };

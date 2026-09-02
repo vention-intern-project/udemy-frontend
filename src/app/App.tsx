@@ -2,6 +2,7 @@ import { BrowserRouter } from 'react-router-dom';
 
 import { SessionProvider } from '../features/auth-session';
 import { CourseChatSessionProvider } from '../features/course-chat';
+import { CartCompositeCheckoutProvider } from '../features/checkout-cart';
 import { LocaleProvider } from '../shared/locale';
 import { ThemeProvider } from '../shared/ui/theme';
 import { ApplicationTitleBoundary, AppRouter, densityForPath } from './router';
@@ -18,10 +19,17 @@ export function App() {
           <SessionProvider apiBaseUrl={import.meta.env.VITE_API_BASE_URL ?? ''}>
             <CourseChatSessionProvider>
               <SessionPrivateCacheLifecycle />
-              <BrowserRouter>
-                <ApplicationTitleBoundary>
-                  <AppRouter />
-                </ApplicationTitleBoundary>
+              <BrowserRouter
+                future={{
+                  v7_relativeSplatPath: true,
+                  v7_startTransition: true,
+                }}
+              >
+                <CartCompositeCheckoutProvider>
+                  <ApplicationTitleBoundary>
+                    <AppRouter />
+                  </ApplicationTitleBoundary>
+                </CartCompositeCheckoutProvider>
               </BrowserRouter>
             </CourseChatSessionProvider>
           </SessionProvider>

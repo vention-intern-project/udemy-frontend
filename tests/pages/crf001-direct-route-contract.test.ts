@@ -41,7 +41,7 @@ describe('CRF-001 direct-route and Cart contract', () => {
     expect(catalog).toContain("'cancelled-recovery'");
     expect(detail).toContain("'cancelled-recovery'");
     expect(catalog).toContain(
-      "if (enrollmentPreflight === 'pending-protected') return 'unavailable';",
+      "if (enrollmentPreflight === 'pending-protected') return 'payment-pending';",
     );
     expect(detail).toContain(
       "if (enrollmentPreflight === 'pending-protected') return 'unavailable';",

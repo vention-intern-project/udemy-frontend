@@ -74,6 +74,7 @@ describe('course detail transport boundary', () => {
           has_next: false,
           has_previous: false,
         }),
+        7,
       );
 
       expect(outline.items).toEqual([
@@ -84,11 +85,29 @@ describe('course detail transport boundary', () => {
           description: null,
           isPublished: true,
           mediaLocator,
+          subtitleLocator: null,
         },
       ]);
       expect(JSON.stringify(outline)).not.toContain('https://media.example');
     },
   );
+
+  it('maps completed subtitle processing to an opaque course and lesson locator', () => {
+    const outline = mapLessonListDto(
+      decodeLessonListDto({
+        items: [{ ...lesson, subtitle_status: true }],
+        page: 1,
+        page_size: 100,
+        total: 1,
+        pages: 1,
+        has_next: false,
+        has_previous: false,
+      }),
+      7,
+    );
+
+    expect(outline.items[0]?.subtitleLocator).toEqual({ courseId: 7, lessonId: 3 });
+  });
 
   it('rejects malformed success pagination', () => {
     expect(() =>

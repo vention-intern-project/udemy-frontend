@@ -1,7 +1,16 @@
 import { createServer } from 'vite';
 import { resolveAppShellTestPort } from './app-shell-harness';
+import { createViteServerLifecycle } from './support/vite-server-lifecycle';
 
-export default async function startAppShellServer() {
+export type AppShellServerCleanup = () => Promise<void>;
+
+export interface AppShellServerStartupObserver {
+  readonly onCleanupReady: (cleanup: AppShellServerCleanup) => void;
+}
+
+export async function startAppShellViteServer(
+  observer?: AppShellServerStartupObserver,
+): Promise<AppShellServerCleanup> {
   const port = resolveAppShellTestPort();
   const server = await createServer({
     clearScreen: false,
@@ -27,14 +36,24 @@ export default async function startAppShellServer() {
     },
   });
 
+  const { cleanup, waitWhileActive } = createViteServerLifecycle({
+    close: () => server.close(),
+    cancellationMessage: 'AppShell Vite server startup was cancelled',
+  });
+
   try {
-    await server.listen();
-    await server.environments.client.warmupRequest('/src/main.tsx');
-    await server.environments.client.waitForRequestsIdle();
+    observer?.onCleanupReady(cleanup);
+    await waitWhileActive(() => server.listen());
+    await waitWhileActive(() => server.environments.client.warmupRequest('/src/main.tsx'));
+    await waitWhileActive(() => server.environments.client.waitForRequestsIdle());
   } catch (error) {
-    await server.close();
+    await cleanup();
     throw error;
   }
 
-  return async () => server.close();
+  return cleanup;
+}
+
+export default async function startAppShellServer() {
+  return startAppShellViteServer();
 }

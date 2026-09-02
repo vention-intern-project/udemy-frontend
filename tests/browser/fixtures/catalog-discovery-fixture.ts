@@ -8,6 +8,7 @@ import {
   findUnexpectedConsoleErrors,
   type ConsoleErrorEvidence,
   type HttpFailureIdentity,
+  type OptionalRequestFailureAllowanceRetirement,
   type RequestFailureIdentity,
 } from '../support/visual-quality';
 
@@ -45,7 +46,9 @@ export interface CatalogBrowserMonitor {
   (): void;
   allowHttpFailure(identity: HttpFailureIdentity, occurrences?: number): void;
   allowRequestFailure(identity: RequestFailureIdentity, occurrences?: number): void;
-  allowOptionalRequestFailure(identity: RequestFailureIdentity): void;
+  allowOptionalRequestFailure(
+    identity: RequestFailureIdentity,
+  ): OptionalRequestFailureAllowanceRetirement;
 }
 
 export interface CatalogAdmissionFixtureOptions {
@@ -216,7 +219,8 @@ export async function installCatalogHeroScenario(
 ): Promise<CatalogHeroScenarioController> {
   const requests: string[] = [];
   await page.route('**/courses**', async (route) => {
-    requests.push(route.request().url());
+    if (new URL(route.request().url()).pathname === '/courses')
+      requests.push(route.request().url());
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -237,8 +241,9 @@ export async function installCatalogRefreshScenario(
   let deferNextResponse = false;
   let releaseDeferredResponse: (() => void) | null = null;
   await page.route('**/courses**', async (route) => {
-    requests.push(route.request().url());
-    if (deferNextResponse) {
+    const isCatalogRequest = new URL(route.request().url()).pathname === '/courses';
+    if (isCatalogRequest) requests.push(route.request().url());
+    if (isCatalogRequest && deferNextResponse) {
       deferNextResponse = false;
       await new Promise<void>((resolve) => {
         releaseDeferredResponse = resolve;

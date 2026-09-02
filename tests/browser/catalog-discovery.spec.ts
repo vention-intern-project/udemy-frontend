@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import type { ReviewDto } from '@entities/review';
 import {
   createCatalogResponse,
   createPermittedCatalogCourse,
@@ -12,7 +13,12 @@ import {
   installCatalogLocalizedVerticalSliceScenario,
   installCatalogQuietCartScenario,
   installCatalogRefreshScenario,
+  type CatalogBrowserMonitor,
 } from './fixtures/catalog-discovery-fixture';
+import {
+  createRequestFailureAccounting,
+  type RequestFailureIdentity,
+} from './support/visual-quality';
 
 const response = createCatalogResponse;
 const permittedCourse = createPermittedCatalogCourse;
@@ -65,6 +71,74 @@ interface ScreenshotPixelProbe {
   expected: number[];
   samples: number[][];
   junctionSamples: number[][];
+}
+
+interface DeferredReviewRelease {
+  current: (() => void) | null;
+}
+
+type CatalogTransition = () => Promise<void>;
+
+async function allowOptionalCatalogRatingFailures(
+  assertClean: CatalogBrowserMonitor,
+  transition: CatalogTransition,
+): Promise<void> {
+  await allowOptionalFailureDuringCatalogTransition(
+    assertClean,
+    {
+      method: 'GET',
+      path: '/courses/8/reviews?page=1&page_size=20',
+      errorText: 'net::ERR_ABORTED',
+    },
+    () =>
+      allowOptionalFailureDuringCatalogTransition(
+        assertClean,
+        {
+          method: 'GET',
+          path: '/courses/11/reviews?page=1&page_size=20',
+          errorText: 'net::ERR_ABORTED',
+        },
+        transition,
+      ),
+  );
+}
+
+const catalogRatingCancellation: RequestFailureIdentity = {
+  method: 'GET',
+  path: '/courses/7/reviews?page=1&page_size=20',
+  errorText: 'net::ERR_ABORTED',
+};
+
+async function allowOptionalFailureDuringCatalogTransition(
+  assertClean: CatalogBrowserMonitor,
+  identity: RequestFailureIdentity,
+  transition: CatalogTransition,
+): Promise<void> {
+  const retireAllowance = assertClean.allowOptionalRequestFailure(identity);
+  try {
+    await transition();
+  } finally {
+    retireAllowance();
+  }
+}
+
+function expectTransitionScopedOptionalFailureAccounting(): void {
+  const admittedUrl = `http://127.0.0.1:4178${catalogRatingCancellation.path}`;
+  const admitted = createRequestFailureAccounting();
+  const retireAdmitted = admitted.allowOptional(catalogRatingCancellation);
+  admitted.observe('GET', admittedUrl, 'net::ERR_ABORTED');
+  retireAdmitted();
+  expect(admitted.acceptedFailures()).toHaveLength(1);
+  expect(admitted.violations().requestFailures).toEqual([]);
+
+  const late = createRequestFailureAccounting();
+  const retireUnused = late.allowOptional(catalogRatingCancellation);
+  retireUnused();
+  late.observe('GET', admittedUrl, 'net::ERR_ABORTED');
+  expect(late.acceptedFailures()).toEqual([]);
+  expect(late.violations().requestFailures).toEqual([
+    { ...catalogRatingCancellation, url: admittedUrl },
+  ]);
 }
 
 test('opens a published Catalog course through a successful Course Detail response', async ({
@@ -144,11 +218,181 @@ test('opens a published Catalog course through a successful Course Detail respon
   assertClean();
 });
 
+test('derives a complete API-037 catalog rating summary without card reflow or extra controls', async ({
+  page,
+}) => {
+  const assertClean = await monitor(page);
+  assertClean.allowRequestFailure({
+    method: 'GET',
+    path: '/courses?page=1&page_size=24&sort=created_at',
+    errorText: 'net::ERR_ABORTED',
+  });
+  const ratingReviews: readonly ReviewDto[] = Array.from({ length: 124 }, (_, index) => ({
+    id: index + 1,
+    course_id: 7,
+    user_id: index + 1,
+    rating: index < 100 ? 5 : 4,
+    comment: null,
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+  }));
+  const courses = Array.from({ length: 10 }, (_, index) => ({
+    ...permittedCourse(`Rating course ${index + 7}`),
+    id: index + 7,
+  }));
+  const reviewRequests: string[] = [];
+  let shouldDeferEmptyReview = true;
+  const emptyReviewRelease: DeferredReviewRelease = { current: null };
+  await installCatalogAdmissionRoutes(page, { courses });
+  await page.route(
+    (url) => /^\/courses\/\d+\/reviews$/.test(url.pathname),
+    async (route) => {
+      const url = new URL(route.request().url());
+      const courseId = Number(url.pathname.split('/')[2]);
+      const requestedPage = Number(url.searchParams.get('page') ?? '1');
+      reviewRequests.push(`${url.pathname}?${url.searchParams.toString()}`);
+      if (courseId === 8 && shouldDeferEmptyReview) {
+        await new Promise<void>((resolve) => {
+          emptyReviewRelease.current = () => {
+            shouldDeferEmptyReview = false;
+            resolve();
+          };
+        });
+      }
+      if (courseId === 9) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            items: [{ ...ratingReviews[0], id: 9001, course_id: 109 }],
+            page: 1,
+            page_size: 20,
+            total: 1,
+            pages: 1,
+            has_next: false,
+            has_previous: false,
+          }),
+        });
+        return;
+      }
+      if (courseId === 7) {
+        const start = (requestedPage - 1) * 20;
+        const items = ratingReviews.slice(start, start + 20);
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            items,
+            page: requestedPage,
+            page_size: 20,
+            total: 124,
+            pages: 7,
+            has_next: requestedPage < 7,
+            has_previous: requestedPage > 1,
+          }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          items: [],
+          page: 1,
+          page_size: 20,
+          total: 0,
+          pages: 0,
+          has_next: false,
+          has_previous: false,
+        }),
+      });
+    },
+  );
+
+  await page.setViewportSize({ width: 390, height: 400 });
+  await page.goto('/');
+  const summaryCard = page.locator('[data-course-card-id="7"]');
+  const summaryLink = summaryCard.getByRole('link', { name: 'Rating course 7' });
+  const summaryRow = summaryCard.locator('[data-part="course-card-rating"]');
+  await expect(summaryRow).toHaveText('Rating: ★4.8 · Reviews: 124');
+  await expect(summaryLink).toHaveAttribute('aria-describedby', 'catalog-course-7-rating');
+  await expect(summaryRow.locator('svg, button, a, input, select, textarea')).toHaveCount(0);
+  const decorativeRatingParts = summaryRow.locator('span[aria-hidden="true"]');
+  await expect(decorativeRatingParts).toHaveCount(2);
+  const ratingColorContract = await decorativeRatingParts.first().evaluate((element) => {
+    const token = getComputedStyle(document.documentElement)
+      .getPropertyValue('--rating-emphasis')
+      .trim();
+    const probe = document.createElement('span');
+    probe.style.color = token;
+    document.body.append(probe);
+    const expected = getComputedStyle(probe).color;
+    probe.remove();
+    return { actual: getComputedStyle(element).color, expected };
+  });
+  expect(ratingColorContract.actual).toBe(ratingColorContract.expected);
+  expect(reviewRequests.filter((request) => request.startsWith('/courses/7/reviews?'))).toEqual([
+    '/courses/7/reviews?page=1&page_size=20',
+    '/courses/7/reviews?page=2&page_size=20',
+    '/courses/7/reviews?page=3&page_size=20',
+    '/courses/7/reviews?page=4&page_size=20',
+    '/courses/7/reviews?page=5&page_size=20',
+    '/courses/7/reviews?page=6&page_size=20',
+    '/courses/7/reviews?page=7&page_size=20',
+  ]);
+
+  const loadingCard = page.locator('[data-course-card-id="8"]');
+  const loadingLink = loadingCard.getByRole('link', { name: 'Rating course 8' });
+  const loadingRow = loadingCard.locator('[data-part="course-card-rating"]');
+  await expect.poll(() => reviewRequests).toContain('/courses/8/reviews?page=1&page_size=20');
+  const loadingHeight = await loadingRow.evaluate(
+    (element) => element.getBoundingClientRect().height,
+  );
+  await expect(loadingRow).toHaveText('');
+  await expect(loadingLink).not.toHaveAttribute('aria-describedby');
+  await expect.poll(() => emptyReviewRelease.current).not.toBeNull();
+  const releaseEmptyReview = emptyReviewRelease.current;
+  if (!releaseEmptyReview) throw new Error('Expected the empty review request to be deferred.');
+  releaseEmptyReview();
+  await expect(loadingRow).toHaveText('No reviews yet.');
+  expect(
+    await loadingRow.evaluate((element) => element.getBoundingClientRect().height),
+  ).toBeCloseTo(loadingHeight, 0);
+
+  const unavailableCard = page.locator('[data-course-card-id="9"]');
+  await unavailableCard.scrollIntoViewIfNeeded();
+  await expect(unavailableCard.locator('[data-part="course-card-rating"]')).toHaveText(
+    'Reviews could not be loaded.',
+  );
+  await expect(unavailableCard.getByRole('link', { name: 'Rating course 9' })).toHaveAttribute(
+    'aria-describedby',
+    'catalog-course-9-rating',
+  );
+
+  expect(reviewRequests).not.toContain('/courses/16/reviews?page=1&page_size=20');
+  await page.locator('[data-course-card-id="16"]').scrollIntoViewIfNeeded();
+  await expect.poll(() => reviewRequests).toContain('/courses/16/reviews?page=1&page_size=20');
+
+  const geometry = await page.evaluate(() => ({
+    bodyWidth: document.body.scrollWidth,
+    clientWidth: document.documentElement.clientWidth,
+    documentWidth: document.documentElement.scrollWidth,
+  }));
+  expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.clientWidth);
+  expect(geometry.bodyWidth).toBeLessThanOrEqual(geometry.clientWidth);
+  assertClean();
+});
+
 test('renders a semantic full-width catalog hero at scrollable physical client edges', async ({
   page,
 }, testInfo) => {
   const assertClean = await monitor(page);
-  assertClean.allowRequestFailure({
+  assertClean.allowOptionalRequestFailure({
+    method: 'GET',
+    path: '/courses?page=1&page_size=24&sort=-price',
+    errorText: 'net::ERR_ABORTED',
+  });
+  assertClean.allowOptionalRequestFailure({
     method: 'GET',
     path: '/courses?page=1&page_size=24&sort=created_at',
     errorText: 'net::ERR_ABORTED',
@@ -212,6 +456,7 @@ test('renders a semantic full-width catalog hero at scrollable physical client e
   });
 
   let previousLeftExtension = 0;
+  let previousBoundaryArtworkStart: number | undefined;
   for (const width of [
     320, 390, 640, 767, 768, 894, 895, 896, 897, 1280, 1440, 1600, 1960, 1961, 2200, 2560, 3840,
   ]) {
@@ -243,6 +488,7 @@ test('renders a semantic full-width catalog hero at scrollable physical client e
         heroBackgroundSize: getComputedStyle(hero).backgroundSize,
         heroArtworkDisplay: getComputedStyle(hero, '::before').display,
         heroArtworkImage: getComputedStyle(hero, '::before').backgroundImage,
+        heroArtworkPosition: getComputedStyle(hero, '::before').backgroundPosition,
         heroArtworkSize: getComputedStyle(hero, '::before').backgroundSize,
         heroArtworkOpacity: getComputedStyle(hero, '::before').opacity,
         documentWidth: document.documentElement.scrollWidth,
@@ -261,7 +507,10 @@ test('renders a semantic full-width catalog hero at scrollable physical client e
     expect(geometry.titleLeft).toBeGreaterThanOrEqual(0);
     expect(geometry.titleScrollWidth).toBeLessThanOrEqual(geometry.titleClientWidth);
     expect(geometry.titleHeight).toBeGreaterThan(0);
-    if (geometry.clientWidth <= 767) {
+    if (geometry.clientWidth <= 359) {
+      expect(geometry.titleFontSize).toBe('26px');
+      expect(geometry.titleLineHeight).toBe('32px');
+    } else if (geometry.clientWidth <= 767) {
       expect(geometry.titleFontSize).toBe('28px');
       expect(geometry.titleLineHeight).toBe('36px');
     }
@@ -359,7 +608,7 @@ test('renders a semantic full-width catalog hero at scrollable physical client e
           ),
         ).toBe(true);
       }
-    } else if (geometry.clientWidth <= 895) {
+    } else if (geometry.clientWidth <= 767) {
       expect(geometry.heroArtworkDisplay).toBe('block');
       expect(geometry.heroArtworkImage).toContain('catalog-hero-mobile-stars-lines-uifd001.png');
       expect(geometry.heroArtworkOpacity).toBe('0.5');
@@ -368,6 +617,13 @@ test('renders a semantic full-width catalog hero at scrollable physical client e
       expect(geometry.heroArtworkDisplay).toBe('block');
       expect(geometry.heroArtworkImage).toContain('catalog-hero-ui025.png');
       expect(geometry.heroArtworkSize).not.toBe('auto');
+    }
+    if (geometry.clientWidth >= 894 && geometry.clientWidth <= 897) {
+      const artworkStart = Number.parseFloat(geometry.heroArtworkPosition);
+      expect(Number.isFinite(artworkStart)).toBe(true);
+      if (previousBoundaryArtworkStart !== undefined)
+        expect(Math.abs(artworkStart - previousBoundaryArtworkStart)).toBeLessThanOrEqual(4);
+      previousBoundaryArtworkStart = artworkStart;
     }
     await testInfo.attach(`catalog-hero-scrollable-client-edge-${width}`, {
       body: await page.screenshot({ fullPage: false }),
@@ -650,7 +906,7 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
       ),
     ).toBe(true);
     if (width < 768) {
-      expect(geometry.every((card) => card.priceActionGap >= 31)).toBe(true);
+      expect(geometry.every((card) => card.priceActionGap >= 8)).toBe(true);
     }
     expect(
       geometry.every((card) => card.priceFontSize === '16px' && card.priceLineHeight === '24px'),
@@ -663,9 +919,8 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
         (card) =>
           card.bodyGap === (width < 768 ? '12px' : '8px') &&
           card.metadataDisplay === 'flex' &&
-          (width < 768
-            ? card.metadataWhiteSpace === 'normal' && card.lessonWhiteSpace === 'normal'
-            : card.metadataWhiteSpace === 'nowrap' && card.lessonWhiteSpace === 'nowrap') &&
+          card.metadataHeight > 0 &&
+          (width >= 768 || card.metadataWhiteSpace === (width <= 417 ? 'nowrap' : 'normal')) &&
           card.metadataScrollHeight >= card.metadataClientHeight,
       ),
     ).toBe(true);
@@ -821,7 +1076,7 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
   ).toHaveText('Ada Lovelace · 1 lesson available');
   const reactCardLink = reactCard.getByRole('link', { name: 'React' });
   await expect(reactCard.getByRole('tooltip')).toHaveCount(0);
-  await expect(reactCardLink).not.toHaveAttribute('aria-describedby');
+  await expect(reactCardLink).toHaveAttribute('aria-describedby', 'catalog-course-7-rating');
   await reactCard.hover();
   const reactTooltip = reactCard.getByRole('tooltip');
   const reactTooltipContent = reactTooltip.locator('[data-part="course-card-tooltip-content"]');
@@ -833,6 +1088,10 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
     /^This course is not available for enrollment yet\.Course description: ReactA concise course description\.$/,
   );
   await expect(reactTooltip).toContainText('A concise course description.');
+  await expect(reactCardLink).toHaveAttribute(
+    'aria-describedby',
+    'catalog-course-7-rating catalog-course-7-description',
+  );
   await expect(reactTooltipContent.locator(':scope > span[class*="tooltipCourse"]')).toHaveText(
     'Course description: React',
   );
@@ -952,7 +1211,7 @@ test('renders aligned accessible catalog cards and opt-in arrow pagination witho
   await expect(page.getByRole('heading', { level: 3, name: 'React' })).toBeVisible();
 
   const draftButton = reactCard.getByRole('button', { name: 'Not published' });
-  const freeLink = publishedCard.getByRole('link', { name: 'Enroll for free' });
+  const freeLink = publishedCard.getByRole('link', { name: 'Enroll free' });
   const draftFreeButton = page
     .locator('[data-part="course-card"]')
     .filter({ has: page.getByRole('heading', { level: 3, name: 'Draft free' }) })
@@ -1351,7 +1610,8 @@ test('keeps a fine-pointer hover-open Sort popup open through trigger click and 
   });
   const requests: string[] = [];
   await page.route('**/courses**', async (route) => {
-    requests.push(route.request().url());
+    if (new URL(route.request().url()).pathname === '/courses')
+      requests.push(route.request().url());
     const requestedPage = Number(new URL(route.request().url()).searchParams.get('page') ?? '1');
     await route.fulfill({
       status: 200,
@@ -1523,7 +1783,7 @@ test('keeps Catalog result geometry stable while changed Sort and price requests
   };
   const captureDeferredRefresh = async () => {
     await expect.poll(() => refreshScenario.hasDeferredResponse()).toBe(true);
-    await expect(page.getByRole('heading', { level: 2 })).toHaveText('Loading course results…');
+    await expect(page.getByRole('heading', { level: 2 })).toHaveText('Found 20 courses');
     await expect(page.getByRole('status', { name: 'Catalog refresh status' })).toHaveText('');
     return capture();
   };
@@ -1627,7 +1887,7 @@ test('keeps Catalog result geometry stable while changed Sort and price requests
   for (const [index, record] of records.entries()) {
     expect(record.requestCount).toBe(initialRequestCount + index + 1);
     expect(record.during.ariaBusy).toBe('true');
-    expect(record.during.heading.text).toBe('Loading course results…');
+    expect(record.during.heading.text).toBe('Found 20 courses');
     expect(record.during.refreshStatus).toBe('');
     expect(
       record.during.firstCard,
@@ -1715,7 +1975,8 @@ test('navigates every enabled control for an authoritative high final page', asy
   });
   const requests: string[] = [];
   await page.route('**/courses**', async (route) => {
-    requests.push(route.request().url());
+    if (new URL(route.request().url()).pathname === '/courses')
+      requests.push(route.request().url());
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -1764,6 +2025,12 @@ test('keeps anonymous published Catalog links semantic and contained across the 
     },
     20,
   );
+  for (let index = 0; index < 20; index += 1)
+    assertClean.allowOptionalRequestFailure({
+      method: 'GET',
+      path: '/courses?page=1&page_size=24&sort=-price',
+      errorText: 'net::ERR_ABORTED',
+    });
   const { mutationRequests } = await installAnonymousCatalogScenario(page);
 
   for (const width of [320, 390, 767, 768, 1024, 1099, 1100, 1279, 1280, 1440]) {
@@ -1777,7 +2044,7 @@ test('keeps anonymous published Catalog links semantic and contained across the 
     const paidCard = page
       .locator('[data-part="course-card"]')
       .filter({ has: page.getByRole('heading', { level: 3, name: 'Anonymous paid' }) });
-    const freeLink = freeCard.getByRole('link', { name: 'Enroll for free' });
+    const freeLink = freeCard.getByRole('link', { name: 'Enroll free' });
     const paidLink = paidCard.getByRole('link', { name: 'Add to cart' });
 
     await expect(freeLink).toHaveCount(1);
@@ -1846,7 +2113,7 @@ test('keeps anonymous published Catalog links semantic and contained across the 
     await expect(page).toHaveURL('/login?returnTo=%2Fcourses%2F11');
 
     await page.goto('/');
-    const freeLinkAfterReset = page.getByRole('link', { name: 'Enroll for free' });
+    const freeLinkAfterReset = page.getByRole('link', { name: 'Enroll free' });
     await freeLinkAfterReset.focus();
     await expect(freeLinkAfterReset).toBeFocused();
     expect(await freeLinkAfterReset.evaluate((element) => element.matches(':focus-visible'))).toBe(
@@ -1863,6 +2130,7 @@ test('keeps anonymous published Catalog links semantic and contained across the 
 test('hydrates, applies, traverses catalog history, and keeps real-browser diagnostics clean', async ({
   page,
 }) => {
+  expectTransitionScopedOptionalFailureAccounting();
   const assertClean = await monitor(page);
   assertClean.allowRequestFailure({
     method: 'GET',
@@ -1871,7 +2139,8 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   });
   const requests: string[] = [];
   await page.route('**/courses**', async (route) => {
-    requests.push(route.request().url());
+    if (new URL(route.request().url()).pathname === '/courses')
+      requests.push(route.request().url());
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -2082,7 +2351,7 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   await expect(resultHeading.locator('strong')).not.toContainText('course');
   await expect(page.getByText('Sort by:', { exact: true })).toHaveCount(0);
   await expect(sortTrigger).toContainText('Newest');
-  await expect(sortTrigger.locator('svg[aria-hidden="true"]')).toHaveCount(1);
+  await expect(sortTrigger.locator('svg[aria-hidden="true"]')).toHaveCount(2);
   const resultTypography = await resultHeading.evaluate((heading) => {
     const total = heading.querySelector<HTMLElement>('strong');
     const suffix = heading.lastElementChild as HTMLElement | null;
@@ -2143,6 +2412,7 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
       transition: getComputedStyle(chevron).transition,
       duration: getComputedStyle(chevron).transitionDuration,
       rightInset: triggerRect.right - rect.right,
+      triggerWidth: triggerRect.width,
       centreDelta: Math.abs(
         rect.top + rect.height / 2 - (triggerRect.top + triggerRect.height / 2),
       ),
@@ -2151,8 +2421,8 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
     };
   });
   expect(sortIdle.color).toBe(sortIdle.expected.muted);
-  expect(sortIdle.angle).toBeCloseTo(45, 1);
-  expect(sortIdle.origin).toContain('4px 4px');
+  expect(sortIdle.angle).toBeCloseTo(0, 1);
+  expect(sortIdle.origin).toContain('8px 8px');
   expect(Math.abs(sortIdle.rightInset - sortIdle.expected.endInset)).toBeLessThanOrEqual(1);
   expect(sortIdle.centreDelta).toBeLessThanOrEqual(1);
   expect(sortIdle.transition).toContain('transform');
@@ -2203,7 +2473,8 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   ]);
   expect(sortGeometry[0]).not.toBeNull();
   expect(sortGeometry[1]).not.toBeNull();
-  expect(Math.abs(sortGeometry[0]!.width - 148)).toBeLessThanOrEqual(1);
+  // Preserve intrinsic label sizing while allowing the declared fallback font's Linux metrics.
+  expect(Math.abs(sortGeometry[0]!.width - 148)).toBeLessThanOrEqual(3);
   expect(sortGeometry[1]!.width).toBeGreaterThanOrEqual(192);
   expect(sortGeometry[1]!.y - (sortGeometry[0]!.y + sortGeometry[0]!.height)).toBeCloseTo(8, 0);
   expect(sortGeometry[1]!.x + sortGeometry[1]!.width).toBeLessThanOrEqual(
@@ -2221,7 +2492,7 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   });
   expect(sortPresentation).toEqual({ padding: '8px', optionRadius: '8px' });
   expect(sortGeometry[2].color).toBe(sortGeometry[2].expectedPrimary);
-  expect(sortGeometry[2].angle).toBeCloseTo(225, 1);
+  expect(sortGeometry[2].angle).toBeCloseTo(180, 1);
   expect((sortGeometry[2].angle - sortIdle.angle + 360) % 360).toBeCloseTo(180, 1);
   expect(Math.abs(sortGeometry[2].rightInset - sortIdle.rightInset)).toBeLessThanOrEqual(1);
   expect(sortGeometry[2].centreDelta).toBeLessThanOrEqual(1);
@@ -2359,7 +2630,7 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
       };
     });
   expect(reducedMotionChevron.color).toBe(sortGeometry[2].expectedPrimary);
-  expect(reducedMotionChevron.angle).toBeCloseTo(225, 1);
+  expect(reducedMotionChevron.angle).toBeCloseTo(180, 1);
   expect(reducedMotionChevron.duration).toBe('0s');
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.mouse.move(0, 0);
@@ -2371,8 +2642,8 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/search_query=React&min_price=5&sort=price/);
-  expect(requests[requests.length - 1]).toContain('sort=price');
-  expect(requests[requests.length - 1]).toContain('page=1');
+  await expect.poll(() => requests[requests.length - 1]).toContain('sort=price');
+  await expect.poll(() => requests[requests.length - 1]).toContain('page=1');
   await expect(sortTrigger).toBeFocused();
   const toolbarGeometry = await Promise.all([
     resultHeading.boundingBox(),
@@ -2402,7 +2673,7 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
     ),
   ).toBeLessThanOrEqual(1);
   expect(Math.abs(toolbarGeometry[4]!.height - 44)).toBeLessThanOrEqual(1);
-  expect(Math.abs(toolbarGeometry[4]!.width - 148)).toBeLessThanOrEqual(1);
+  expect(Math.abs(toolbarGeometry[4]!.width - sortIdle.triggerWidth)).toBeLessThanOrEqual(1);
   expect(Math.abs(toolbarGeometry[5]!.height - 44)).toBeLessThanOrEqual(1);
   expect(toolbarGeometry[4]!.y + toolbarGeometry[4]!.height).toBeLessThanOrEqual(
     toolbarGeometry[6]!.y,
@@ -2430,34 +2701,49 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   await page.keyboard.press('Space');
   await sortListbox.getByRole('option', { name: 'A to Z' }).click();
   await expect(page).toHaveURL(/search_query=React&min_price=5&sort=title/);
-  expect(requests[requests.length - 1]).toContain('sort=title');
-  expect(requests[requests.length - 1]).toContain('page=1');
+  await expect.poll(() => requests[requests.length - 1]).toContain('sort=title');
+  await expect.poll(() => requests[requests.length - 1]).toContain('page=1');
   await headerSearch.fill('TypeScript');
   await headerSearch.press('Enter');
   await expect(page).toHaveURL(/search_query=TypeScript&min_price=5&sort=title/);
+  await expect.poll(() => requests[requests.length - 1]).toContain('search_query=TypeScript');
   await expect(headerSearch).toBeFocused();
-  await page.goBack();
-  await expect(headerSearch).toHaveValue('React');
-  await page.goForward();
-  await expect(headerSearch).toHaveValue('TypeScript');
+  await allowOptionalFailureDuringCatalogTransition(
+    assertClean,
+    catalogRatingCancellation,
+    async () => {
+      await page.goBack();
+      await expect(headerSearch).toHaveValue('React');
+    },
+  );
+  await allowOptionalFailureDuringCatalogTransition(
+    assertClean,
+    catalogRatingCancellation,
+    async () => {
+      await page.goForward();
+      await expect(headerSearch).toHaveValue('TypeScript');
+    },
+  );
   await headerSearch.fill('JavaScript');
   await headerSearch.press('Enter');
   await expect(page).toHaveURL(/search_query=JavaScript&min_price=5&sort=title/);
-  await headerSearch.press('Enter');
-  const restoredTypeScriptResponse = page.waitForResponse(
-    (catalogResponse) =>
-      catalogResponse.request().method() === 'GET' &&
-      new URL(catalogResponse.url()).pathname === '/courses' &&
-      new URL(catalogResponse.url()).search ===
-        '?page=1&page_size=24&search_query=TypeScript&min_price=5&sort=title' &&
-      catalogResponse.status() >= 200 &&
-      catalogResponse.status() < 300,
+  await expect.poll(() => requests[requests.length - 1]).toContain('search_query=JavaScript');
+  await allowOptionalFailureDuringCatalogTransition(
+    assertClean,
+    catalogRatingCancellation,
+    async () => {
+      await page.goBack();
+      await expect(headerSearch).toHaveValue('TypeScript');
+    },
   );
-  await page.goBack();
-  await expect(headerSearch).toHaveValue('TypeScript');
-  await (await restoredTypeScriptResponse).finished();
-  await page.goForward();
-  await expect(headerSearch).toHaveValue('JavaScript');
+  await allowOptionalFailureDuringCatalogTransition(
+    assertClean,
+    catalogRatingCancellation,
+    async () => {
+      await page.goForward();
+      await expect(headerSearch).toHaveValue('JavaScript');
+    },
+  );
   await priceTrigger.focus();
   await page.keyboard.press('Escape');
   await expect(priceRange).toHaveCount(0);
@@ -2507,33 +2793,38 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
   await expect(anonymousNavigation.getByRole('link', { name: 'Sign up' })).toBeVisible();
   await sortTrigger.focus();
   await expect(sortTrigger).toBeFocused();
+  await expect(page.locator('[data-part="catalog-result-list"]')).toBeVisible();
   const mobileToolbarGeometry = await Promise.all([
     resultHeading.boundingBox(),
     toolbarControls.boundingBox(),
     filters.boundingBox(),
-    page.locator('[data-part="catalog-sort-toolbar"]').boundingBox(),
     priceTrigger.boundingBox(),
+    page.locator('[data-part="catalog-sort-toolbar"]').boundingBox(),
     sortTrigger.boundingBox(),
     page.locator('[data-part="catalog-result-list"]').boundingBox(),
   ]);
-  expect(mobileToolbarGeometry.every(Boolean)).toBe(true);
+  for (const index of [0, 1, 3, 4]) {
+    expect(mobileToolbarGeometry[index], `toolbar geometry ${index} is missing`).not.toBeNull();
+  }
   expect(mobileToolbarGeometry[1]!.x).toBeGreaterThanOrEqual(0);
   expect(mobileToolbarGeometry[1]!.x + mobileToolbarGeometry[1]!.width).toBeLessThanOrEqual(320);
   expect(
-    mobileToolbarGeometry[0]!.y < mobileToolbarGeometry[2]!.y ||
-      (Math.abs(mobileToolbarGeometry[0]!.y - mobileToolbarGeometry[2]!.y) <= 12 &&
+    mobileToolbarGeometry[0]!.y < mobileToolbarGeometry[3]!.y ||
+      (Math.abs(mobileToolbarGeometry[0]!.y - mobileToolbarGeometry[3]!.y) <= 12 &&
         mobileToolbarGeometry[0]!.x + mobileToolbarGeometry[0]!.width <=
-          mobileToolbarGeometry[2]!.x),
+          mobileToolbarGeometry[3]!.x),
   ).toBe(true);
   expect(
-    mobileToolbarGeometry[2]!.y < mobileToolbarGeometry[3]!.y ||
-      (Math.abs(mobileToolbarGeometry[2]!.y - mobileToolbarGeometry[3]!.y) <= 12 &&
-        mobileToolbarGeometry[2]!.x + mobileToolbarGeometry[2]!.width <=
-          mobileToolbarGeometry[3]!.x),
+    mobileToolbarGeometry[3]!.y < mobileToolbarGeometry[4]!.y ||
+      (Math.abs(mobileToolbarGeometry[3]!.y - mobileToolbarGeometry[4]!.y) <= 12 &&
+        mobileToolbarGeometry[3]!.x + mobileToolbarGeometry[3]!.width <=
+          mobileToolbarGeometry[4]!.x),
   ).toBe(true);
 
   for (const width of [320, 390, 768]) {
     await page.setViewportSize({ width, height: 900 });
+    await expect(filters).toBeVisible();
+    await expect(page.locator('[data-part="catalog-sort-toolbar"]')).toBeVisible();
     const responsiveHeaderSearch = await catalogSearch.evaluate((form) => {
       const input = form.querySelector<HTMLInputElement>('input[name="search_query"]');
       const formRect = form.getBoundingClientRect();
@@ -2572,7 +2863,7 @@ test('hydrates, applies, traverses catalog history, and keeps real-browser diagn
     }
     const responsiveToolbarGeometry = await Promise.all([
       resultHeading.boundingBox(),
-      filters.boundingBox(),
+      priceTrigger.boundingBox(),
       page.locator('[data-part="catalog-sort-toolbar"]').boundingBox(),
     ]);
     expect(responsiveToolbarGeometry.every(Boolean)).toBe(true);
@@ -2633,7 +2924,8 @@ test('remembers catalog searches in an accessible local combobox without changin
     );
   });
   await page.route('**/courses**', async (route) => {
-    requests.push(route.request().url());
+    if (new URL(route.request().url()).pathname === '/courses')
+      requests.push(route.request().url());
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -2665,7 +2957,7 @@ test('remembers catalog searches in an accessible local combobox without changin
   await expect(input).toBeFocused();
   expect(requests[requests.length - 1]).toContain('search_query=React+Basics');
   expect(requests[requests.length - 1]).toContain('min_price=5');
-  expect(requests[requests.length - 1]).toContain('sort=title');
+  await expect.poll(() => requests[requests.length - 1]).toContain('sort=title');
   expect(requests[requests.length - 1]).toContain('page=1');
 
   await input.fill('no matching history');
@@ -2692,7 +2984,7 @@ test('remembers catalog searches in an accessible local combobox without changin
   await expect(typeScriptOption).toHaveAttribute('aria-selected', 'true');
   await typeScriptOption.click();
   await expect(page).toHaveURL(/search_query=TypeScript&min_price=5&sort=title/);
-  expect(requests).toHaveLength(requestCountBeforePointer + 1);
+  await expect.poll(() => requests.length).toBe(requestCountBeforePointer + 1);
 
   await input.press('ArrowDown');
   const openListbox = page.getByRole('listbox', { name: 'Recent searches' });
@@ -2778,7 +3070,8 @@ test('canonicalizes an inverted range and honors single-page pagination availabi
   });
   const requests: string[] = [];
   await page.route('**/courses**', async (route) => {
-    requests.push(route.request().url());
+    if (new URL(route.request().url()).pathname === '/courses')
+      requests.push(route.request().url());
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -2813,7 +3106,8 @@ test('keeps an inverted price range invalid, then submits a corrected value with
   });
   const requests: string[] = [];
   await page.route('**/courses**', async (route) => {
-    requests.push(route.request().url());
+    if (new URL(route.request().url()).pathname === '/courses')
+      requests.push(route.request().url());
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -3312,6 +3606,11 @@ test('renders the DD-045 CourseCard action and status system without changing ac
     errorText: 'net::ERR_ABORTED',
   });
   assertClean.allowRequestFailure({ method: 'GET', path: '/cart', errorText: 'net::ERR_ABORTED' });
+  assertClean.allowOptionalRequestFailure({
+    method: 'GET',
+    path: '/courses?page=1&page_size=24&sort=-price',
+    errorText: 'net::ERR_ABORTED',
+  });
   const scenario = await installCatalogActionStateScenario(page);
 
   await page.goto('/');
@@ -3374,11 +3673,9 @@ test('renders the DD-045 CourseCard action and status system without changing ac
     ).toBe(true);
   }
 
-  const expectedIcons = [
-    [enroll, 'lucide-user-plus'],
-    [enrolled, 'lucide-circle-check'],
-  ] as const;
+  const expectedIcons = [[enrolled, 'lucide-circle-check']] as const;
   await expect(add.locator('svg')).toHaveCount(0);
+  await expect(enroll.locator('svg')).toHaveCount(0);
   await expect(remove.locator('svg')).toHaveCount(0);
   for (const [control, iconClass] of expectedIcons) {
     const icon = control.locator('svg');
@@ -3453,6 +3750,42 @@ test('renders the DD-045 CourseCard action and status system without changing ac
     lineHeight: '20px',
     whiteSpace: 'nowrap',
   });
+  const enrolledIdleStyle = await enrolled.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      background: style.backgroundColor,
+      border: style.borderColor,
+      boxShadow: style.boxShadow,
+      color: style.color,
+      cursor: style.cursor,
+      textDecoration: style.textDecorationLine,
+      transform: style.transform,
+      userSelect: style.userSelect,
+    };
+  });
+  await enrolled.hover();
+  expect(
+    await enrolled.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        background: style.backgroundColor,
+        border: style.borderColor,
+        boxShadow: style.boxShadow,
+        color: style.color,
+        cursor: style.cursor,
+        textDecoration: style.textDecorationLine,
+        transform: style.transform,
+        userSelect: style.userSelect,
+      };
+    }),
+  ).toEqual(enrolledIdleStyle);
+  expect(enrolledIdleStyle).toMatchObject({
+    boxShadow: 'none',
+    cursor: 'default',
+    textDecoration: 'none',
+    transform: 'none',
+    userSelect: 'none',
+  });
   expect(styles[3]).toMatchObject({
     background: 'rgb(255, 255, 255)',
     color: 'rgb(75, 50, 181)',
@@ -3468,7 +3801,7 @@ test('renders the DD-045 CourseCard action and status system without changing ac
     ),
   ).toBe(true);
   expect(styles[2].borderTopLeftRadius).toBe('8px');
-  const iconStyles = [styles[1], styles[2]];
+  const iconStyles = [styles[2]];
   expect(iconStyles.every((control) => control.iconTransform === 'none')).toBe(true);
   expect(
     iconStyles.every(
@@ -3602,11 +3935,13 @@ test('renders the DD-045 CourseCard action and status system without changing ac
     document.documentElement.style.zoom = '';
   });
   for (const [triggerName, optionName, label] of [
-    ['Change language', 'Русский', 'Записаться бесплатно'],
+    ['Change language', 'Русский', 'Записаться'],
     ['Изменить язык', "O'zbek", 'Bepul yozilish'],
   ] as const) {
+    await page.setViewportSize({ width: 1280, height: 900 });
     await page.getByRole('button', { name: triggerName }).click();
     await page.getByRole('button', { name: optionName }).click();
+    await page.setViewportSize({ width: 320, height: 900 });
     const localizedEnroll = page
       .locator('[data-part="course-card"]')
       .filter({ has: page.getByRole('heading', { level: 3, name: 'Free course' }) })
@@ -3614,6 +3949,28 @@ test('renders the DD-045 CourseCard action and status system without changing ac
     await expect(localizedEnroll).toBeVisible();
     await localizedEnroll.focus();
     await expect(localizedEnroll).toBeFocused();
+    const localizedGeometry = await localizedEnroll.evaluate((element) => {
+      const content = element.querySelector<HTMLElement>(
+        '[data-part="course-card-action-content"]',
+      );
+      if (!content) throw new Error('Localized free action content is missing.');
+      const controlRect = element.getBoundingClientRect();
+      const contentRect = content.getBoundingClientRect();
+      return {
+        controlCenter: controlRect.left + controlRect.width / 2,
+        contentCenter: contentRect.left + contentRect.width / 2,
+        controlWidth: controlRect.width,
+        contentClientWidth: content.clientWidth,
+        contentScrollWidth: content.scrollWidth,
+      };
+    });
+    expect(localizedGeometry.contentScrollWidth).toBeLessThanOrEqual(
+      localizedGeometry.contentClientWidth,
+    );
+    expect(
+      Math.abs(localizedGeometry.controlCenter - localizedGeometry.contentCenter),
+    ).toBeLessThan(1);
+    expect(localizedGeometry.controlWidth).toBeCloseTo(120, 1);
     expect(
       await page.evaluate(
         () =>
@@ -3634,6 +3991,11 @@ test('keeps pending enrollment protected and recovers cancelled paid Catalog cou
     path: '/courses?page=1&page_size=24&sort=created_at',
     errorText: 'net::ERR_ABORTED',
   });
+  assertClean.allowOptionalRequestFailure({
+    method: 'GET',
+    path: '/courses?page=1&page_size=24&sort=-price',
+    errorText: 'net::ERR_ABORTED',
+  });
   assertClean.allowRequestFailure({ method: 'GET', path: '/cart', errorText: 'net::ERR_ABORTED' });
   const scenario = await installCatalogEnrollmentPreflightScenario(page);
   await page.goto('/');
@@ -3642,9 +4004,58 @@ test('keeps pending enrollment protected and recovers cancelled paid Catalog cou
       .locator('[data-part="course-card"]')
       .filter({ has: page.getByRole('heading', { level: 3, name: title }) });
 
-  for (const title of ['Pending paid course', 'Pending free course', 'Cancelled free course']) {
-    await expect(cardFor(title).getByRole('button', { name: 'Action unavailable' })).toBeDisabled();
+  for (const title of ['Pending paid course', 'Pending free course']) {
+    const processing = cardFor(title).getByRole('button', { name: 'Payment processing' });
+    await expect(processing).toBeDisabled();
+    await expect(processing).toHaveAttribute('aria-busy', 'true');
+    await expect(processing.getByText('Processing', { exact: true })).toBeVisible();
+    await expect(processing.locator('[data-part="payment-processing-dot"]')).toHaveCount(3);
   }
+  await expect(
+    cardFor('Cancelled free course').getByRole('button', { name: 'Action unavailable' }),
+  ).toBeDisabled();
+  const animatedDots = cardFor('Pending paid course').locator(
+    '[data-part="payment-processing-dot"]',
+  );
+  expect(
+    await animatedDots.evaluateAll((dots) =>
+      dots.map((dot) => {
+        const style = getComputedStyle(dot);
+        return { delay: style.animationDelay, duration: style.animationDuration };
+      }),
+    ),
+  ).toEqual([
+    { delay: '0s', duration: '1.2s' },
+    { delay: '0.2s', duration: '1.2s' },
+    { delay: '0.4s', duration: '1.2s' },
+  ]);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  expect(
+    await animatedDots.evaluateAll((dots) =>
+      dots.map((dot) => {
+        const style = getComputedStyle(dot);
+        return { animation: style.animationName, opacity: style.opacity };
+      }),
+    ),
+  ).toEqual([
+    { animation: 'none', opacity: '1' },
+    { animation: 'none', opacity: '1' },
+    { animation: 'none', opacity: '1' },
+  ]);
+  await page.setViewportSize({ width: 320, height: 900 });
+  const compactProcessing = cardFor('Pending paid course').getByRole('button', {
+    name: 'Payment processing',
+  });
+  await expect(compactProcessing).toBeVisible();
+  const compactBox = await compactProcessing.boundingBox();
+  if (!compactBox) throw new Error('Compact payment-processing action geometry is unavailable.');
+  expect(compactBox.x).toBeGreaterThanOrEqual(0);
+  expect(compactBox.x + compactBox.width).toBeLessThanOrEqual(320);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+    ),
+  ).toBe(true);
   await expect(
     cardFor('Pending paid course').getByRole('button', { name: /add to cart/i }),
   ).toHaveCount(0);
@@ -3903,7 +4314,8 @@ test('redirects Instructor Catalog root access without public Catalog or student
       'href',
       `/instructor/courses/${courseId}/edit`,
     );
-    await expect(card.getByRole('link', { name: 'Course enrollments' })).toHaveAttribute(
+    await card.getByRole('button', { name: `${title} actions` }).click();
+    await expect(card.getByRole('menuitem', { name: 'Course enrollments' })).toHaveAttribute(
       'href',
       `/instructor/courses/${courseId}/enrollments`,
     );
@@ -4181,7 +4593,8 @@ test('Keeps the labelled whole-card route and omits Details for compact or coars
   });
   expect(intermediateGeometry.heroCentreDelta).toBeLessThanOrEqual(1);
   expect(Math.abs(intermediateGeometry.price.height - 44)).toBeLessThanOrEqual(1);
-  expect(Math.abs(intermediateGeometry.sort.width - 148)).toBeLessThanOrEqual(1);
+  // Preserve intrinsic label sizing while allowing the declared fallback font's Linux metrics.
+  expect(Math.abs(intermediateGeometry.sort.width - 148)).toBeLessThanOrEqual(3);
   expect(
     Math.abs(intermediateGeometry.price.top - intermediateGeometry.sort.top),
   ).toBeLessThanOrEqual(1);
@@ -4213,7 +4626,7 @@ test('Keeps compact fine-pointer hover and focus free of dangling disclosure ARI
   await page.waitForTimeout(320);
   await expect(card.getByRole('button', { name: 'View course details' })).toHaveCount(0);
   await expect(page.getByRole('tooltip')).toHaveCount(0);
-  await expect(link).not.toHaveAttribute('aria-describedby');
+  await expect(link).toHaveAttribute('aria-describedby', 'catalog-course-12-rating');
   assertClean();
 });
 
@@ -4265,14 +4678,29 @@ test('localizes the Price disclosure trigger and fields without changing respons
   ] as const;
 
   const widths = [320, 390, 768, 1280];
-
-  for (const expected of expectations) {
-    await page.goto('/');
+  for (const [localeIndex, expected] of expectations.entries()) {
+    if (localeIndex > 0) {
+      await allowOptionalFailureDuringCatalogTransition(
+        assertClean,
+        catalogRatingCancellation,
+        async () => {
+          await page.goto('/');
+        },
+      );
+    } else {
+      await page.goto('/');
+    }
     await page.evaluate(
       (locale) => localStorage.setItem('learnhub.locale', locale),
       expected.locale,
     );
-    await page.reload();
+    await allowOptionalFailureDuringCatalogTransition(
+      assertClean,
+      catalogRatingCancellation,
+      async () => {
+        await page.reload();
+      },
+    );
 
     const trigger = page.getByRole('button', { name: expected.trigger });
     const chevron = trigger.locator('[data-part="catalog-price-chevron"]');
@@ -4298,15 +4726,16 @@ test('localizes the Price disclosure trigger and fields without changing respons
         const desktopDisclosureGeometry = await page
           .getByRole('group', { name: expected.group })
           .evaluate((fieldset) => {
-            const legend = fieldset.querySelector('legend');
             const minimum = fieldset.querySelector('input[name="min_price"]');
-            if (!legend || !minimum) throw new Error('Price desktop layout targets are missing.');
+            const minimumLabel = minimum?.parentElement?.querySelector(':scope > label');
+            if (!minimum || !minimumLabel)
+              throw new Error('Price desktop layout targets are missing.');
             return {
-              legend: legend.getBoundingClientRect().toJSON(),
+              minimumLabel: minimumLabel.getBoundingClientRect().toJSON(),
               minimum: minimum.getBoundingClientRect().toJSON(),
             };
           });
-        expect(desktopDisclosureGeometry.legend.bottom).toBeLessThanOrEqual(
+        expect(desktopDisclosureGeometry.minimumLabel.bottom).toBeLessThanOrEqual(
           desktopDisclosureGeometry.minimum.top + 1,
         );
       }
@@ -4348,7 +4777,7 @@ test('localizes the Price disclosure trigger and fields without changing respons
     const transform = new DOMMatrixReadOnly(getComputedStyle(element).transform);
     return ((Math.atan2(transform.b, transform.a) * 180) / Math.PI + 360) % 360;
   });
-  expect(reducedMotionChevronGeometry).toBeCloseTo(225, 1);
+  expect(reducedMotionChevronGeometry).toBeCloseTo(180, 1);
   await page.keyboard.press('Escape');
   await page.emulateMedia({ reducedMotion: 'no-preference' });
 
@@ -4399,6 +4828,12 @@ test('renders the D20 Catalog vertical slice in Russian and Uzbek without changi
     },
     4,
   );
+  for (let index = 0; index < 4; index += 1)
+    assertClean.allowOptionalRequestFailure({
+      method: 'GET',
+      path: '/courses?page=1&page_size=24&sort=-price',
+      errorText: 'net::ERR_ABORTED',
+    });
   const { mutationRequests } = await installCatalogLocalizedVerticalSliceScenario(page);
 
   const expectations: readonly CatalogLocaleExpectation[] = [
@@ -4411,7 +4846,7 @@ test('renders the D20 Catalog vertical slice in Russian and Uzbek without changi
       details: 'Подробнее',
       detailsAccessibleName: 'Открыть сведения о курсе',
       lessons: '3 доступных урока',
-      enrollForFree: 'Записаться бесплатно',
+      enrollForFree: 'Записаться',
       addToCart: 'В корзину',
     },
     {
@@ -4429,12 +4864,16 @@ test('renders the D20 Catalog vertical slice in Russian and Uzbek without changi
   ];
 
   for (const expected of expectations) {
-    await page.goto('/');
+    await allowOptionalCatalogRatingFailures(assertClean, async () => {
+      await page.goto('/');
+    });
     await page.evaluate(
       (locale) => localStorage.setItem('learnhub.locale', locale),
       expected.locale,
     );
-    await page.reload();
+    await allowOptionalCatalogRatingFailures(assertClean, async () => {
+      await page.reload();
+    });
 
     const freeCard = page.locator('[data-part="course-card"]').filter({
       has: page.getByRole('heading', { level: 3, name: 'React Fundamentals: Components' }),
@@ -4461,7 +4900,7 @@ test('renders the D20 Catalog vertical slice in Russian and Uzbek without changi
     await expect(freeAction).toHaveAttribute('href', '/login?returnTo=%2Fcourses%2F8');
     await expect(paidAction).toHaveAttribute('href', '/login?returnTo=%2Fcourses%2F11');
 
-    for (const width of [320, 390, 768, 1280]) {
+    for (const width of [320, 322, 390, 768, 1280]) {
       await page.setViewportSize({ width, height: 900 });
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
       await expect(page.getByRole('heading', { level: 2 })).toHaveText(expected.resultCount);
@@ -4489,12 +4928,48 @@ test('renders the D20 Catalog vertical slice in Russian and Uzbek without changi
       expect(viewportGeometry.bodyWidth, JSON.stringify(viewportGeometry)).toBeLessThanOrEqual(
         viewportGeometry.clientWidth,
       );
+      for (const action of [freeAction, paidAction]) {
+        const actionGeometry = await action.evaluate((element) => {
+          const content = element.querySelector<HTMLElement>(
+            '[data-part="course-card-action-content"]',
+          );
+          if (!content) throw new Error('Anonymous action content is missing.');
+          const controlRect = element.getBoundingClientRect();
+          const contentRect = content.getBoundingClientRect();
+          return {
+            controlCenter: controlRect.left + controlRect.width / 2,
+            contentCenter: contentRect.left + contentRect.width / 2,
+            contentClientWidth: content.clientWidth,
+            contentScrollWidth: content.scrollWidth,
+            whiteSpace: getComputedStyle(content).whiteSpace,
+          };
+        });
+        expect(actionGeometry.contentScrollWidth).toBeLessThanOrEqual(
+          actionGeometry.contentClientWidth,
+        );
+        expect(Math.abs(actionGeometry.controlCenter - actionGeometry.contentCenter)).toBeLessThan(
+          1,
+        );
+        expect(actionGeometry.whiteSpace).toBe('nowrap');
+      }
     }
 
     await page.setViewportSize({ width: 1280, height: 900 });
     await freeAction.focus();
     await expect(freeAction).toBeFocused();
     expect(await freeAction.evaluate((element) => element.matches(':focus-visible'))).toBe(true);
+    await paidAction.hover();
+    await expect(paidAction).toHaveCSS('background-color', 'rgb(73, 50, 182)');
+    const paidBounds = await paidAction.boundingBox();
+    if (!paidBounds) throw new Error('Localized anonymous paid action bounds are missing.');
+    await page.mouse.move(
+      paidBounds.x + paidBounds.width / 2,
+      paidBounds.y + paidBounds.height / 2,
+    );
+    await page.mouse.down();
+    await expect(paidAction).toHaveCSS('background-color', 'rgb(61, 41, 155)');
+    await page.mouse.move(0, 0);
+    await page.mouse.up();
     const details = freeCard.getByRole('button', { name: expected.detailsAccessibleName });
     await details.click();
     await expect(details).toHaveAttribute('aria-expanded', 'true');

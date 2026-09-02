@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, type SyntheticEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import type { LessonMediaLocator, LessonType } from '@entities/course';
+import type { LessonMediaLocator, LessonSubtitleLocator, LessonType } from '@entities/course';
 import { Button, VisuallyHidden } from '@shared/ui/primitives';
 
 import { useAuthorizedLessonMedia } from './useAuthorizedLessonMedia';
@@ -13,11 +13,16 @@ const LessonPdfPreview = lazy(() => import('./LessonPdfPreview'));
 export interface LessonMediaAccessProps {
   readonly lessonType: LessonType;
   readonly locator: LessonMediaLocator | null;
+  readonly subtitleLocator?: LessonSubtitleLocator | null;
 }
 
-export function LessonMediaAccess({ lessonType, locator }: LessonMediaAccessProps) {
+export function LessonMediaAccess({
+  lessonType,
+  locator,
+  subtitleLocator = null,
+}: LessonMediaAccessProps) {
   const { t } = useTranslation();
-  const media = useAuthorizedLessonMedia(lessonType, locator);
+  const media = useAuthorizedLessonMedia(lessonType, locator, subtitleLocator);
   const videoRef = useRef<HTMLVideoElement>(null);
   const statusRef = useRef<HTMLParagraphElement>(null);
   const retryContainerRef = useRef<HTMLDivElement>(null);
@@ -89,7 +94,18 @@ export function LessonMediaAccess({ lessonType, locator }: LessonMediaAccessProp
           preload="metadata"
           src={media.state.objectUrl}
           tabIndex={0}
-        />
+        >
+          {media.state.subtitleObjectUrl ? (
+            <track
+              data-part="lesson-subtitle-track"
+              default
+              kind="subtitles"
+              label={t('learning:subtitleTrackLabel', { defaultValue: 'Subtitles' })}
+              src={media.state.subtitleObjectUrl}
+              srcLang="und"
+            />
+          ) : null}
+        </video>
         <VisuallyHidden as="p" role="status">
           {media.state.presentation === 'ready'
             ? t('learning:videoReady', { defaultValue: 'Video ready.' })

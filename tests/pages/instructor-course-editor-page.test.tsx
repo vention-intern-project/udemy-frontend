@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider, type QueryClient } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -86,9 +86,10 @@ async function renderPage(
   initialEntry = '/instructor/courses/7/edit',
   locale: Locale = 'en',
 ) {
+  const queryClient = createAppQueryClient();
   await act(async () => {
     render(
-      <QueryClientProvider client={createAppQueryClient()}>
+      <QueryClientProvider client={queryClient}>
         <LocaleProvider initialLocale={locale}>
           <LocaleTestControl locale="en" />
           <LocaleTestControl locale="ru" />
@@ -107,6 +108,14 @@ async function renderPage(
       </QueryClientProvider>,
     );
   });
+  return queryClient;
+}
+
+async function settleQueryClient(queryClient: QueryClient): Promise<void> {
+  await vi.waitFor(() => {
+    expect(queryClient.isMutating()).toBe(0);
+    expect(queryClient.isFetching()).toBe(0);
+  });
 }
 
 async function getResolvedEditorAction(action: string): Promise<HTMLElement> {
@@ -114,14 +123,14 @@ async function getResolvedEditorAction(action: string): Promise<HTMLElement> {
   return screen.getByRole('button', { name: action });
 }
 
-function expectContextualReturnBeforeEditorHeading() {
+function expectContextualReturnBeforeEditorHeading(currentLabel = 'Edit course') {
   const breadcrumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
   const returnLink = within(breadcrumb).getByRole('link', { name: 'Instructor courses' });
   const heading = screen.getByRole('heading', { level: 1, name: 'Edit course' });
 
   expect(returnLink.getAttribute('href')).toBe('/instructor/courses');
   expect(
-    within(breadcrumb).getByText('Edit course', { selector: '[aria-current="page"]' }),
+    within(breadcrumb).getByText(currentLabel, { selector: '[aria-current="page"]' }),
   ).toBeTruthy();
   expect(
     returnLink.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING,
@@ -130,9 +139,9 @@ function expectContextualReturnBeforeEditorHeading() {
 
 describe('InstructorCourseEditorPage', () => {
   it.each([
-    ['en', 'Save course'],
-    ['ru', 'Сохранить курс'],
-    ['uz', 'Kursni saqlash'],
+    ['en', 'Save changes'],
+    ['ru', 'Сохранить изменения'],
+    ['uz', 'O‘zgarishlarni saqlash'],
   ] as const)(
     'renders the immutable save-course control label in %s',
     async (locale, saveLabel) => {
@@ -176,8 +185,7 @@ describe('InstructorCourseEditorPage', () => {
         expect(lessonRow).not.toBeNull();
         expect(
           within(lessonRow!).getByText(
-            (_, element) =>
-              element?.tagName === 'P' && element.textContent?.startsWith(`${label} · `),
+            (_, element) => element?.tagName === 'P' && element.textContent?.startsWith(label),
           ),
         ).toBeTruthy();
       }
@@ -292,7 +300,7 @@ describe('InstructorCourseEditorPage', () => {
 
   it.each([
     ['ru', 401, 'Удалить урок', 'Удалить этот урок?', 'Войдите снова, чтобы продолжить.'],
-    ['ru', 403, 'Удалить урок', 'Удалить этот урок?', 'У вас нет разрешения изменять этот курс.'],
+    ['ru', 403, 'Удалить урок', 'Удалить этот урок?', 'У вас нет прав на изменение этого курса.'],
     ['uz', 401, 'Darsni o‘chirish', 'Bu dars o‘chirilsinmi?', 'Davom etish uchun qayta kiring.'],
     [
       'uz',
@@ -364,7 +372,50 @@ describe('InstructorCourseEditorPage', () => {
     cleanup();
     await renderPage({ request });
     expect(await screen.findByRole('heading', { name: 'Edit course' })).toBeTruthy();
-    expectContextualReturnBeforeEditorHeading();
+    expectContextualReturnBeforeEditorHeading('Verified course');
+  });
+
+  it('separates course editing, the empty lesson action, and the danger zone', async () => {
+    const request: ApiClient['request'] = async (options) => {
+      if (options.path === '/me') return decode(options, instructor);
+      if (options.path === '/courses/7' && options.method === 'GET')
+        return decode(options, { ...course, lessons: [] });
+      throw new Error(`Unexpected request: ${options.method} ${options.path}`);
+    };
+    await renderPage({ request });
+    const user = userEvent.setup();
+
+    expect(await screen.findByText('Review course information and lessons.')).toBeTruthy();
+    const details = (await screen.findByRole('heading', { name: 'Course details' })).closest(
+      'section',
+    );
+    const dangerZone = (await screen.findByRole('heading', { name: 'Danger zone' })).closest(
+      'section',
+    );
+    if (!details || !dangerZone) throw new Error('Expected editor sections');
+    expect(within(details).getByRole('button', { name: 'Save changes' })).toBeTruthy();
+    expect(
+      within(details).getByRole('spinbutton', { name: 'Price' }).hasAttribute('required'),
+    ).toBe(true);
+    expect(
+      within(details).getByRole('textbox', { name: 'Currency' }).hasAttribute('required'),
+    ).toBe(true);
+    expect(within(details).queryByRole('button', { name: 'Delete course' })).toBeNull();
+    expect(within(dangerZone).getByRole('button', { name: 'Delete course' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'No lessons yet' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Create lesson' })).toBeNull();
+
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Add lesson' }));
+    });
+    const createLesson = screen.getByRole('heading', { name: 'Create lesson' }).closest('section');
+    if (!createLesson) throw new Error('Expected create-lesson section');
+    expect(
+      createLesson.compareDocumentPosition(dangerZone) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('textbox', { name: 'Lesson title' })),
+    );
   });
 
   it('creates only verified lesson fields and returns focus after cancelling the identified delete', async () => {
@@ -401,10 +452,16 @@ describe('InstructorCourseEditorPage', () => {
     });
     await waitFor(() => expect(document.activeElement).toBe(deleteLesson));
 
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Add lesson' }));
+    });
     const lessonTitle = screen.getByRole('textbox', { name: 'Lesson title' });
     await act(async () => {
       await user.type(lessonTitle, 'New lesson');
-      await user.selectOptions(screen.getByRole('combobox', { name: 'Lesson type' }), 'pdf');
+    });
+    fireEvent.click(screen.getByRole('combobox', { name: 'Lesson type' }));
+    fireEvent.pointerDown(screen.getByRole('option', { name: 'PDF' }), { button: 0 });
+    await act(async () => {
       await user.type(
         screen.getAllByRole('textbox', { name: 'Description' })[1]!,
         'Verified notes',
@@ -420,6 +477,152 @@ describe('InstructorCourseEditorPage', () => {
       is_published: true,
     });
     expect(createRequests[0]?.body).not.toHaveProperty('download_url');
+  });
+
+  it('creates a PDF lesson before uploading its optional selected file with the returned lesson id', async () => {
+    const mutationRequests: ApiRequestOptions[] = [];
+    const request: ApiClient['request'] = async (options) => {
+      if (options.path === '/me') return decode(options, instructor);
+      if (options.path === '/courses/7' && options.method === 'GET') return decode(options, course);
+      if (options.path === '/courses/7/lessons' && options.method === 'POST') {
+        mutationRequests.push(options);
+        return decode(options, {
+          ...course.lessons[0],
+          id: 9,
+          title: 'PDF with source',
+          lesson_type: 'pdf',
+        });
+      }
+      if (options.path === '/lessons/9/upload-file' && options.method === 'POST') {
+        mutationRequests.push(options);
+        return decode(options, {
+          lesson_id: 9,
+          upload_id: '0123456789abcdef0123456789abcdef',
+          status: 'queued',
+          detail: 'File accepted and queued for processing',
+        });
+      }
+      throw new Error(`Unexpected request: ${options.method} ${options.path}`);
+    };
+    const queryClient = await renderPage({ request });
+    const user = userEvent.setup();
+    await screen.findByRole('heading', { name: 'Edit course' });
+    const pdf = new File(['pdf'], 'react-notes.pdf', { type: 'application/pdf' });
+    await act(async () => await user.click(screen.getByRole('button', { name: 'Add lesson' })));
+    await act(async () => {
+      await user.type(screen.getByRole('textbox', { name: 'Lesson title' }), 'PDF with source');
+    });
+    await act(async () => await user.click(screen.getByRole('combobox', { name: 'Lesson type' })));
+    await act(async () => await user.click(screen.getByRole('option', { name: 'PDF' })));
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('Lesson file (optional)'), {
+        target: { files: [pdf] },
+      });
+    });
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Create lesson' }));
+      await settleQueryClient(queryClient);
+    });
+
+    await waitFor(() => expect(mutationRequests).toHaveLength(2));
+    expect(mutationRequests.map(({ path }) => path)).toEqual([
+      '/courses/7/lessons',
+      '/lessons/9/upload-file',
+    ]);
+    expect(mutationRequests[1]?.body).toBeInstanceOf(FormData);
+    expect((mutationRequests[1]?.body as FormData).get('file')).toBe(pdf);
+    expect(screen.queryByRole('heading', { name: 'Create lesson' })).toBeNull();
+  });
+
+  it('retains the file help alongside the error when a lesson file is invalid', async () => {
+    const request: ApiClient['request'] = async (options) => {
+      if (options.path === '/me') return decode(options, instructor);
+      if (options.path === '/courses/7' && options.method === 'GET') return decode(options, course);
+      throw new Error(`Unexpected request: ${options.method} ${options.path}`);
+    };
+    await renderPage({ request });
+    const user = userEvent.setup();
+    await screen.findByRole('heading', { name: 'Edit course' });
+    await act(async () => await user.click(screen.getByRole('button', { name: 'Add lesson' })));
+    await act(async () => await user.click(screen.getByRole('combobox', { name: 'Lesson type' })));
+    await act(async () => await user.click(screen.getByRole('option', { name: 'PDF' })));
+    const file = screen.getByLabelText('Lesson file (optional)');
+    await act(async () => {
+      fireEvent.change(file, {
+        target: { files: [new File(['video'], 'lesson.mp4', { type: 'video/mp4' })] },
+      });
+    });
+
+    expect(file.getAttribute('aria-invalid')).toBe('true');
+    expect(file.getAttribute('aria-describedby')).toContain('create-lesson-file-help');
+    expect(file.getAttribute('aria-describedby')).toContain('create-lesson-file-error');
+  });
+
+  it('keeps a created lesson and offers its editor when the automatic file upload fails', async () => {
+    const request: ApiClient['request'] = async (options) => {
+      if (options.path === '/me') return decode(options, instructor);
+      if (options.path === '/courses/7' && options.method === 'GET') return decode(options, course);
+      if (options.path === '/courses/7/lessons' && options.method === 'POST')
+        return decode(options, {
+          ...course.lessons[0],
+          id: 9,
+          title: 'Created before upload failure',
+          lesson_type: 'pdf',
+        });
+      if (options.path === '/lessons/9/upload-file' && options.method === 'POST')
+        throw new Error('private upload failure');
+      throw new Error(`Unexpected request: ${options.method} ${options.path}`);
+    };
+    const queryClient = await renderPage({ request });
+    const user = userEvent.setup();
+    await screen.findByRole('heading', { name: 'Edit course' });
+    await act(async () => await user.click(screen.getByRole('button', { name: 'Add lesson' })));
+    await act(async () => {
+      await user.type(
+        screen.getByRole('textbox', { name: 'Lesson title' }),
+        'Created before upload failure',
+      );
+    });
+    await act(async () => await user.click(screen.getByRole('combobox', { name: 'Lesson type' })));
+    await act(async () => await user.click(screen.getByRole('option', { name: 'PDF' })));
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('Lesson file (optional)'), {
+        target: { files: [new File(['pdf'], 'react-notes.pdf', { type: 'application/pdf' })] },
+      });
+    });
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Create lesson' }));
+      await settleQueryClient(queryClient);
+    });
+
+    expect(
+      await screen.findByText('Lesson created, but the file could not be uploaded.'),
+    ).toBeTruthy();
+    const recoveryLink = screen
+      .getAllByRole('link', { name: 'Edit lesson' })
+      .find((link) => link.getAttribute('href') === '/instructor/lessons/9/edit');
+    expect(recoveryLink).toBeTruthy();
+    expect(recoveryLink?.getAttribute('href')).toBe('/instructor/lessons/9/edit');
+    expect(screen.queryByText('private upload failure')).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Create lesson' })).toBeNull();
+  });
+
+  it('shows that text lessons need no file and removes the file control', async () => {
+    const request: ApiClient['request'] = async (options) => {
+      if (options.path === '/me') return decode(options, instructor);
+      if (options.path === '/courses/7' && options.method === 'GET') return decode(options, course);
+      throw new Error(`Unexpected request: ${options.method} ${options.path}`);
+    };
+    await renderPage({ request });
+    const user = userEvent.setup();
+    await screen.findByRole('heading', { name: 'Edit course' });
+    await act(async () => user.click(await screen.findByRole('button', { name: 'Add lesson' })));
+    expect(screen.getByLabelText('Lesson file (optional)')).toBeTruthy();
+    await act(async () => await user.click(screen.getByRole('combobox', { name: 'Lesson type' })));
+    await act(async () => await user.click(screen.getByRole('option', { name: 'Text' })));
+
+    expect(screen.queryByLabelText('Lesson file (optional)')).toBeNull();
+    expect(screen.getByText('File upload is unavailable for text lessons.')).toBeTruthy();
   });
 
   it('keeps local required-title feedback associated with the field and prevents a mutation', async () => {
@@ -466,7 +669,7 @@ describe('InstructorCourseEditorPage', () => {
     const user = userEvent.setup();
     const courseTitle = await screen.findByRole('textbox', { name: 'Course title' });
     await act(async () => {
-      await user.click(screen.getByRole('button', { name: 'Save course' }));
+      await user.click(screen.getByRole('button', { name: 'Save changes' }));
     });
 
     expect(await screen.findByText('Course title is required.')).toBeTruthy();
@@ -502,7 +705,7 @@ describe('InstructorCourseEditorPage', () => {
     await act(async () => {
       await user.clear(title);
       await user.type(title, 'Persistent title');
-      await user.click(screen.getByRole('button', { name: 'Save course' }));
+      await user.click(screen.getByRole('button', { name: 'Save changes' }));
     });
     expect(await screen.findByText('Course title is required.')).toBeTruthy();
     expect(title.getAttribute('aria-describedby')).toContain('error');
@@ -542,12 +745,13 @@ describe('InstructorCourseEditorPage', () => {
     await act(async () => {
       await user.clear(title);
       await user.type(title, 'Deferred course title');
-      await user.click(screen.getByRole('button', { name: 'Save course' }));
+      await user.click(screen.getByRole('button', { name: 'Save changes' }));
     });
     await waitFor(() => expect(updateRequests).toHaveLength(1));
-    expect(screen.getByRole('button', { name: 'Saving course' }).hasAttribute('disabled')).toBe(
-      true,
-    );
+    const saveChanges = screen.getByRole('button', { name: 'Save changes' });
+    expect(saveChanges.hasAttribute('disabled')).toBe(true);
+    expect(saveChanges.getAttribute('aria-busy')).toBe('true');
+    expect(saveChanges.querySelector('[data-part="spinner"]')).toBeNull();
     expect(updateRequests).toHaveLength(1);
     expect((title as HTMLInputElement).disabled).toBe(true);
 
@@ -608,7 +812,11 @@ describe('InstructorCourseEditorPage', () => {
     await act(async () => {
       await user.clear(courseTitle);
       await user.type(courseTitle, 'Unsaved instructor edit');
-      await user.type(screen.getByRole('textbox', { name: 'Lesson title' }), 'New lesson');
+      await user.click(screen.getByRole('button', { name: 'Add lesson' }));
+    });
+    const lessonTitle = await screen.findByRole('textbox', { name: 'Lesson title' });
+    await act(async () => {
+      await user.type(lessonTitle, 'New lesson');
       await user.click(screen.getByRole('button', { name: 'Create lesson' }));
     });
 
@@ -737,7 +945,7 @@ describe('InstructorCourseEditorPage', () => {
     await act(async () => {
       await user.clear(courseTitle);
       await user.type(courseTitle, 'Submitted course title');
-      await user.click(screen.getByRole('button', { name: 'Save course' }));
+      await user.click(screen.getByRole('button', { name: 'Save changes' }));
     });
 
     await waitFor(() => {
@@ -861,6 +1069,10 @@ describe('InstructorCourseEditorPage', () => {
     };
     await renderPage({ request });
     const user = userEvent.setup();
+    const addLesson = await screen.findByRole('button', { name: 'Add lesson' });
+    await act(async () => {
+      await user.click(addLesson);
+    });
     const checkbox = await screen.findByRole('checkbox', { name: 'Publish this lesson' });
     await act(async () => {
       await user.type(screen.getByRole('textbox', { name: 'Lesson title' }), 'New lesson');

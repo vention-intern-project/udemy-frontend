@@ -28,6 +28,16 @@ interface LauncherFooterGeometry {
   readonly inlineStyle: string | null;
 }
 
+interface LauncherRestingGeometry {
+  readonly backgroundColor: string;
+  readonly borderColor: string;
+  readonly left: number;
+  readonly right: number;
+  readonly viewportWidth: number;
+  readonly opacity: string;
+  readonly primaryBackgroundColor: string;
+}
+
 interface MiniActionMenuViewportGeometry {
   readonly menuLeft: number;
   readonly menuRight: number;
@@ -264,6 +274,143 @@ function contrastRatio(first: RgbColor, second: RgbColor) {
   );
   return (lighter + 0.05) / (darker + 0.05);
 }
+
+async function getLauncherRestingGeometry(page: Page): Promise<LauncherRestingGeometry> {
+  return page.getByRole('button', { name: 'Open AI assistant' }).evaluate((launcher) => {
+    const anchor = launcher.parentElement;
+    if (!(anchor instanceof HTMLElement)) throw new Error('Launcher anchor is unavailable.');
+    const rect = launcher.getBoundingClientRect();
+    const launcherStyle = getComputedStyle(launcher);
+    const primaryBackgroundProbe = document.createElement('span');
+    primaryBackgroundProbe.style.backgroundColor = 'var(--action-primary-bg)';
+    launcher.append(primaryBackgroundProbe);
+    const primaryBackgroundColor = getComputedStyle(primaryBackgroundProbe).backgroundColor;
+    primaryBackgroundProbe.remove();
+    return {
+      backgroundColor: launcherStyle.backgroundColor,
+      borderColor: launcherStyle.borderColor,
+      left: rect.left,
+      right: rect.right,
+      viewportWidth: document.documentElement.clientWidth,
+      opacity: launcherStyle.opacity,
+      primaryBackgroundColor,
+    };
+  });
+}
+
+test('tucks the resting launcher through its content-collision threshold', async ({ page }) => {
+  test.setTimeout(180_000);
+  const chatRequests: ChatRequestEvidence[] = [];
+  await installCourseChatFixture(page, chatRequests);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+
+  for (const width of [390, 768, 1024, 1400, 1442]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/learning/enrollments/4', { waitUntil: 'commit' });
+    const launcher = page.getByRole('button', { name: 'Open AI assistant' });
+    await expect(launcher).toBeVisible({ timeout: 120_000 });
+
+    const resting = await getLauncherRestingGeometry(page);
+    expect(resting.right - resting.viewportWidth).toBeCloseTo(16, 0);
+    expect(resting.viewportWidth - resting.left).toBeCloseTo(44, 0);
+    expect(resting.opacity).toBe('0.6');
+    expect(resting.backgroundColor).not.toBe(resting.primaryBackgroundColor);
+    expect(resting.borderColor).toBe(resting.primaryBackgroundColor);
+
+    const restingBox = await launcher.boundingBox();
+    if (restingBox === null) throw new Error('Resting launcher geometry is unavailable.');
+    await page.mouse.move(width - 2, restingBox.y + restingBox.height / 2);
+    await expect
+      .poll(async () => (await getLauncherRestingGeometry(page)).right)
+      .toBeCloseTo(width - 16, 0);
+    await page.waitForTimeout(500);
+    expect((await getLauncherRestingGeometry(page)).right).toBeCloseTo(width - 16, 0);
+
+    await launcher.focus();
+    await expect
+      .poll(async () => (await getLauncherRestingGeometry(page)).right)
+      .toBeCloseTo(width - 16, 0);
+    expect((await getLauncherRestingGeometry(page)).opacity).toBe('1');
+
+    await launcher.click();
+    await expect(launcher).toHaveAttribute('aria-expanded', 'true');
+    expect((await getLauncherRestingGeometry(page)).right).toBeCloseTo(width - 16, 0);
+
+    if (width === 390) {
+      const [launcherBox, navigationBox] = await Promise.all([
+        launcher.boundingBox(),
+        page.getByRole('navigation', { name: 'Student navigation' }).boundingBox(),
+      ]);
+      if (launcherBox === null || navigationBox === null)
+        throw new Error('Compact launcher or mobile navigation geometry is unavailable.');
+      expect(navigationBox.y - (launcherBox.y + launcherBox.height)).toBeGreaterThanOrEqual(16);
+    }
+
+    await expectNoOverflow(page);
+  }
+
+  await page.setViewportSize({ width: 1443, height: 900 });
+  await page.goto('/learning/enrollments/4', { waitUntil: 'commit' });
+  const desktopLauncher = page.getByRole('button', { name: 'Open AI assistant' });
+  await expect(desktopLauncher).toBeVisible({ timeout: 120_000 });
+  const desktop = await getLauncherRestingGeometry(page);
+  expect(desktop.right).toBeCloseTo(1443 - 16, 0);
+  expect(desktop.opacity).toBe('1');
+  expect(chatRequests).toEqual([]);
+  await expectNoOverflow(page);
+});
+
+test('keeps the mobile lesson launcher above both the visible footer and student navigation', async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  const chatRequests: ChatRequestEvidence[] = [];
+  await installCourseChatFixture(page, chatRequests);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/learning/enrollments/4', { waitUntil: 'commit' });
+
+  const launcherRoot = page.getByLabel('Course assistant');
+  const launcher = page.getByRole('button', { name: 'Open AI assistant' });
+  const footer = page.getByRole('contentinfo');
+  const studentNavigation = page.getByRole('navigation', { name: 'Student navigation' });
+  await expect(launcher).toBeVisible({ timeout: 120_000 });
+
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await expect
+    .poll(async () => {
+      const [launcherBox, footerBox] = await Promise.all([
+        launcherRoot.boundingBox(),
+        footer.boundingBox(),
+      ]);
+      if (launcherBox === null || footerBox === null) return Number.NEGATIVE_INFINITY;
+      return footerBox.y - (launcherBox.y + launcherBox.height);
+    })
+    .toBeGreaterThanOrEqual(16);
+
+  const [launcherBox, navigationBox] = await Promise.all([
+    launcher.boundingBox(),
+    studentNavigation.boundingBox(),
+  ]);
+  if (launcherBox === null || navigationBox === null)
+    throw new Error('The mobile launcher or student navigation geometry is unavailable.');
+  expect(navigationBox.y - (launcherBox.y + launcherBox.height)).toBeGreaterThanOrEqual(16);
+
+  await page.evaluate(() => {
+    const main = document.querySelector('main');
+    if (!(main instanceof HTMLElement)) throw new Error('Application main content is missing.');
+    const spacer = document.createElement('div');
+    spacer.style.height = '1000px';
+    spacer.setAttribute('aria-hidden', 'true');
+    main.append(spacer);
+    window.scrollTo(0, 0);
+  });
+  await expect
+    .poll(async () => footer.evaluate((element) => element.getBoundingClientRect().top))
+    .toBeGreaterThanOrEqual(844);
+  await expect(launcherRoot).not.toHaveAttribute('style', /course-chat-footer-clearance/);
+  await expectNoOverflow(page);
+  expect(chatRequests).toEqual([]);
+});
 
 test('completes the mobile chat flow, restores focus, and preserves history after collapse', async ({
   page,
@@ -690,7 +837,7 @@ test('repositions the open mini clear menu after footer-clearance scroll and men
   const launcher = page.getByRole('button', { name: 'Open AI assistant' });
   await expect(launcher).toBeVisible({ timeout: 120_000 });
   const launcherRoot = page.locator('aside[aria-label="Course assistant"]');
-  await expect(launcherRoot).not.toHaveAttribute('style', /inset-block-end/);
+  await expect(launcherRoot).not.toHaveAttribute('style', /course-chat-footer-clearance/);
   const initialFooterTop = await page
     .getByRole('contentinfo')
     .evaluate((footer) => footer.getBoundingClientRect().top);
@@ -702,7 +849,7 @@ test('repositions the open mini clear menu after footer-clearance scroll and men
   await expect(menu).toBeVisible();
   const initialGeometry = await getMiniActionMenuViewportGeometry(page);
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
-  await expect(launcherRoot).toHaveAttribute('style', /inset-block-end/);
+  await expect(launcherRoot).toHaveAttribute('style', /course-chat-footer-clearance/);
   await expect
     .poll(async () => {
       const geometry = await getMiniActionMenuViewportGeometry(page);
@@ -791,7 +938,7 @@ test('resets Catalog footer clearance before My learning and Cart geometry witho
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
 
     const launcherRoot = page.getByLabel('Course assistant');
-    await expect(launcherRoot).toHaveAttribute('style', /inset-block-end/);
+    await expect(launcherRoot).toHaveAttribute('style', /course-chat-footer-clearance/);
     const collisionGeometry = await launcherRoot.evaluate((root) => {
       const footer = root.previousElementSibling;
       if (!(footer instanceof HTMLElement)) throw new Error('Application footer is missing.');
@@ -805,13 +952,18 @@ test('resets Catalog footer clearance before My learning and Cart geometry witho
 
     await page.getByRole('link', { name: destination.accessibleName }).click();
     await expect(page).toHaveURL(destination.path);
+    if (destination.path === '/learning') {
+      await expect(page.getByRole('link', { name: 'Open course' }).first()).toBeVisible();
+    } else {
+      await expect(page.getByRole('heading', { level: 2, name: 'Cart course 1' })).toBeVisible();
+    }
     const footerIsBelowFold = await launcherRoot.evaluate((root) => {
       const footer = root.previousElementSibling;
       if (!(footer instanceof HTMLElement)) throw new Error('Application footer is missing.');
       return footer.getBoundingClientRect().top >= window.innerHeight;
     });
     expect(footerIsBelowFold).toBe(true);
-    await expect(launcherRoot).not.toHaveAttribute('style', /inset-block-end/);
+    await expect(launcherRoot).not.toHaveAttribute('style', /course-chat-footer-clearance/);
     const normalAnchor = await launcherRoot.evaluate((root) => {
       const style = getComputedStyle(root);
       return { insetBlockEnd: style.insetBlockEnd, insetInlineEnd: style.insetInlineEnd };
@@ -972,7 +1124,7 @@ test('keeps the launcher clear through a sorted Catalog footer and page-three tr
       };
     });
   expect(Number.parseFloat(afterSort.insetBlockEnd)).toBeGreaterThan(32);
-  expect(afterSort.inlineStyle).toContain('inset-block-end');
+  expect(afterSort.inlineStyle).toContain('--course-chat-footer-clearance');
   await page.getByRole('button', { name: 'Go to page 3' }).click();
   await expect(page).toHaveURL(/\?sort=title&page=3$/);
   await expect(page.locator('[data-part="course-card"]')).toHaveCount(20);
@@ -1187,6 +1339,13 @@ test('uses one compact Suggested Actions disclosure below 1000px without changin
     const input = page.getByLabel('Message the course assistant');
     await expect(input).toBeFocused();
     await expect(input).toHaveValue(prompt);
+    const [inputBox, mobileNavigationBox] = await Promise.all([
+      input.boundingBox(),
+      page.getByRole('navigation', { name: 'Student navigation' }).boundingBox(),
+    ]);
+    if (inputBox === null || mobileNavigationBox === null)
+      throw new Error('The compact composer or mobile navigation has no rendered geometry.');
+    expect(inputBox.y + inputBox.height).toBeLessThanOrEqual(mobileNavigationBox.y);
     expect(chatRequests).toEqual([]);
   }
 
@@ -1199,7 +1358,9 @@ test('uses one compact Suggested Actions disclosure below 1000px without changin
     await page.evaluate(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches),
   ).toBe(true);
 
-  for (const width of [768, 789, 895, 896, 999, 1000, 1024, 1080, 1081, 1199, 1200, 1440]) {
+  for (const width of [
+    768, 789, 895, 896, 996, 998, 999, 1000, 1024, 1080, 1081, 1199, 1200, 1440,
+  ]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/ai-chat', { waitUntil: 'commit' });
     const suggestedActionsTrigger = page.getByRole('button', { name: 'Suggested Actions' });
@@ -1207,6 +1368,34 @@ test('uses one compact Suggested Actions disclosure below 1000px without changin
     if (width < 1000) {
       await expect(suggestedActionsTrigger).toBeVisible({ timeout: scenarioReadinessTimeout });
       await expect(sidebar).toHaveCount(0);
+      const chatFrame = page.getByRole('region', { name: 'AI assistant chat' });
+      await expect(chatFrame).toBeVisible();
+      const compactGeometry = await Promise.all([
+        suggestedActionsTrigger.boundingBox(),
+        chatFrame.boundingBox(),
+        page.evaluate(() => document.documentElement.clientWidth),
+      ]).then(([actionsBox, chatBox, viewportWidth]) => ({ actionsBox, chatBox, viewportWidth }));
+      if (!compactGeometry.actionsBox || !compactGeometry.chatBox)
+        throw new Error('Compact AI workspace geometry is unavailable.');
+      expect(compactGeometry.actionsBox.width).toBeCloseTo(compactGeometry.chatBox.width, 0);
+      expect(
+        Math.abs(
+          compactGeometry.actionsBox.x +
+            compactGeometry.actionsBox.width / 2 -
+            compactGeometry.viewportWidth / 2,
+        ),
+      ).toBeLessThanOrEqual(1);
+      expect(
+        Math.abs(
+          compactGeometry.chatBox.x +
+            compactGeometry.chatBox.width / 2 -
+            compactGeometry.viewportWidth / 2,
+        ),
+      ).toBeLessThanOrEqual(1);
+      expect(
+        compactGeometry.chatBox.y -
+          (compactGeometry.actionsBox.y + compactGeometry.actionsBox.height),
+      ).toBeCloseTo(16, 0);
     } else {
       await expect(suggestedActionsTrigger).toBeHidden();
       await expect(sidebar).toBeVisible({ timeout: scenarioReadinessTimeout });
@@ -1329,6 +1518,7 @@ test('keeps RU and Uzbek accumulated locale states, focus, zoom, reflow, and net
     preview,
     learningEmpty,
     openAssistant,
+    clearChat,
   ] of [
     [
       'ru',
@@ -1343,6 +1533,7 @@ test('keeps RU and Uzbek accumulated locale states, focus, zoom, reflow, and net
       'Предпросмотр курса «Localized course»',
       'Начните обучение',
       'Открыть ИИ-ассистента',
+      'Очистить чат',
     ],
     [
       'uz',
@@ -1357,9 +1548,10 @@ test('keeps RU and Uzbek accumulated locale states, focus, zoom, reflow, and net
       'Localized course kursini oldindan ko‘rish',
       'Ta’lim yo‘lingizni boshlang',
       'AI yordamchini ochish',
+      'Chatni tozalash',
     ],
   ] as const) {
-    for (const width of [320, 390, 768, 1280]) {
+    for (const width of [320, 390, 768, 998, 1280]) {
       await page.setViewportSize({ width, height: 900 });
       await page.goto('/ai-chat', { waitUntil: 'commit' });
       await expect(page.locator('section[aria-labelledby="ai-chat-hero-title"]')).toBeVisible({
@@ -1374,6 +1566,19 @@ test('keeps RU and Uzbek accumulated locale states, focus, zoom, reflow, and net
         timeout: scenarioReadinessTimeout,
       });
       await expect(page.getByLabel(composer)).toBeVisible();
+      if (width === 998) {
+        const actionTrigger = page.getByRole('button', { name: actions });
+        await actionTrigger.click();
+        const clearAction = page.getByRole('button', { name: clearChat });
+        await expect(clearAction).toBeVisible();
+        const clearLabelLineCount = await clearAction.locator('span').evaluate((label) => {
+          const range = document.createRange();
+          range.selectNodeContents(label);
+          return new Set(Array.from(range.getClientRects(), (rect) => Math.round(rect.top))).size;
+        });
+        expect(clearLabelLineCount).toBe(1);
+        await actionTrigger.click();
+      }
       if (width < 1000) {
         const trigger = page.getByRole('button', { name: suggestedActions });
         await expect(trigger).toBeVisible();
@@ -1534,6 +1739,8 @@ test('centers unavailable course assistant guidance with an underlined violet re
 test('reflows the general full-page assistant at all standard application widths', async ({
   page,
 }) => {
+  const scenarioReadinessTimeout = 120_000;
+  test.setTimeout(600_000);
   const chatRequests: ChatRequestEvidence[] = [];
   const diagnostics = captureRuntimeDiagnostics(page);
   const acceptedNavigationRasterAbort =
@@ -1542,9 +1749,12 @@ test('reflows the general full-page assistant at all standard application widths
 
   for (const width of [390, 768, 1024, 1440]) {
     await page.setViewportSize({ width, height: 900 });
-    await page.goto('/ai-chat');
-    await expect(page.getByRole('heading', { name: 'BETA AI Learning Assistant' })).toBeVisible();
+    await page.goto('/ai-chat', { waitUntil: 'commit' });
+    await expect(page.getByRole('heading', { name: 'BETA AI Learning Assistant' })).toBeVisible({
+      timeout: scenarioReadinessTimeout,
+    });
     await expect(page.getByLabel('Message the course assistant')).toBeVisible();
+    await waitForRenderedAiChatAssets(page);
     await expectNoOverflow(page);
   }
 

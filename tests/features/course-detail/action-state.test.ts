@@ -208,6 +208,7 @@ describe('course primary action matrix', () => {
   });
 
   it.each([
+    ['payment-pending', 'catalog:paymentProcessingShort'],
     ['already-enrolled', 'course:alreadyEnrolled'],
     ['already-in-cart', 'course:alreadyInCart'],
     ['unavailable', 'course:actionUnavailable'],

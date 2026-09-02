@@ -356,8 +356,8 @@ describe('deterministic API mock harness', () => {
       }
     }
 
-    expect(mockFetch.operationIds).toHaveLength(38);
-    expect(new Set(mockFetch.operationIds).size).toBe(38);
+    expect(mockFetch.operationIds).toHaveLength(API_OPERATIONS.length);
+    expect(new Set(mockFetch.operationIds).size).toBe(API_OPERATIONS.length);
     expect(mockFetch.assumptionTags).toEqual([
       CONTRACT_ASSUMPTIONS.GAP_007.code,
       CONTRACT_ASSUMPTIONS.GAP_003.code,

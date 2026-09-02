@@ -177,17 +177,20 @@ describe('PlaceholderPage source-bound exclusion', () => {
       PLACEHOLDER_NOTE,
     );
 
-    expect(sourceSeam).toEqual({
+    expect(sourceSeam).toMatchObject({
       sourcePath: placeholderSourcePath,
-      line: 16,
       seam: 'jsx',
       value: PLACEHOLDER_NOTE,
     });
+    expect(sourceSeam.line).toBe(MLUX_003_SOURCE_EXCLUSIONS[0].line);
     expect(MLUX_003_SOURCE_EXCLUSIONS).toEqual([
       {
         id: 'MLUX-X012',
         corpusVersion: 'MLUX-001-DRAFT-26',
-        ...sourceSeam,
+        sourcePath: placeholderSourcePath,
+        line: 17,
+        seam: 'jsx',
+        value: PLACEHOLDER_NOTE,
         status: 'Excluded',
         origin: 'Current-route unreachable fallback note',
         boundaryReason:

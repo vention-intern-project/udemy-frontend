@@ -50,12 +50,18 @@ export interface LessonOutlineItem {
   title: string;
   lessonType: LessonType;
   mediaLocator: LessonMediaLocator | null;
+  subtitleLocator: LessonSubtitleLocator | null;
   description: string | null;
   isPublished: boolean;
 }
 
 export interface LessonMediaLocator {
   readonly filename: string;
+}
+
+export interface LessonSubtitleLocator {
+  readonly courseId: number;
+  readonly lessonId: number;
 }
 
 export interface LessonOutline {

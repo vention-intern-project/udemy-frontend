@@ -10,6 +10,7 @@ if (!root) {
   throw new Error('Application root element is missing');
 }
 
+// createRoot is a React 18 API that renders the main App component.
 createRoot(root).render(
   <StrictMode>
     <App />

@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { MessageSquareMore, Star, Trash2 } from 'lucide-react';
 
+import { REVIEW_COMMENT_MAX_LENGTH } from '@entities/review';
 import {
   Button,
   DestructiveConfirmation,
@@ -10,25 +12,191 @@ import {
   SkeletonGroup,
   Textarea,
 } from '@shared/ui/primitives';
+import { LOCALE_RESOURCES, resolveLocale, type Locale } from '@shared/locale';
 
 import { useCourseReviews } from './useCourseReviews';
 import styles from './CourseReviews.module.css';
 
 export interface CourseReviewsProps {
   readonly courseId: number;
+  readonly canWriteReview: boolean;
 }
 
-function validRating(value: number): value is 1 | 2 | 3 | 4 | 5 {
+type ReviewRatingValue = 1 | 2 | 3 | 4 | 5;
+type ReviewRatingSelection = ReviewRatingValue | 0;
+
+interface ReviewRatingSelectorProps {
+  readonly label: string;
+  readonly value: ReviewRatingSelection;
+  onChange(value: ReviewRatingValue): void;
+}
+
+interface ReviewStarsProps {
+  readonly label: string;
+  readonly rating: number;
+}
+
+interface ReviewFormCopy {
+  readonly courseReviewsHeading: string;
+  readonly editReviewShort: string;
+  readonly noReviewsDescription: string;
+  readonly reviewCommentPlaceholder: string;
+  readonly reviewCommentPrompt: string;
+  readonly saveReviewChanges: string;
+  readonly yourReview: string;
+}
+
+type ReviewFormCopyKey = keyof ReviewFormCopy;
+
+const reviewRatings: readonly ReviewRatingValue[] = [1, 2, 3, 4, 5];
+
+function reviewFormCopy(locale: Locale): ReviewFormCopy {
+  const courseCopy = LOCALE_RESOURCES[locale].course as Record<string, string>;
+  return {
+    courseReviewsHeading: courseCopy.courseReviewsHeading,
+    editReviewShort: courseCopy.editReviewShort,
+    noReviewsDescription: courseCopy.noReviewsDescription,
+    reviewCommentPlaceholder: courseCopy.reviewCommentPlaceholder,
+    reviewCommentPrompt: courseCopy.reviewCommentPrompt,
+    saveReviewChanges: courseCopy.saveReviewChanges,
+    yourReview: courseCopy.yourReview,
+  };
+}
+
+const reviewFormCopyByLocale = {
+  en: reviewFormCopy('en'),
+  ru: reviewFormCopy('ru'),
+  uz: reviewFormCopy('uz'),
+} satisfies Readonly<Record<Locale, ReviewFormCopy>>;
+
+function resolveReviewFormCopy(
+  translatedValue: string,
+  key: ReviewFormCopyKey,
+  fallback: string,
+): string {
+  return translatedValue === 'Translation unavailable' ||
+    translatedValue === key ||
+    translatedValue === `course:${key}`
+    ? fallback
+    : translatedValue;
+}
+
+function validRating(value: number): value is ReviewRatingValue {
   return Number.isInteger(value) && value >= 1 && value <= 5;
 }
 
-export function CourseReviews({ courseId }: CourseReviewsProps) {
-  const { t } = useTranslation();
+function ReviewRatingSelector({ label, value, onChange }: ReviewRatingSelectorProps) {
+  const name = `review-rating-${useId()}`;
+  const [previewRating, setPreviewRating] = useState<ReviewRatingValue | null>(null);
+  const visibleRating = previewRating ?? value;
+  return (
+    <fieldset className={styles.ratingField}>
+      <legend>{label}</legend>
+      <div className={styles.ratingOptions}>
+        {reviewRatings.map((rating) => (
+          <label
+            className={styles.ratingOption}
+            key={rating}
+            onMouseEnter={() => setPreviewRating(rating)}
+            onMouseLeave={() => setPreviewRating(null)}
+          >
+            <input
+              className={styles.ratingInput}
+              type="radio"
+              name={name}
+              value={rating}
+              checked={rating === value}
+              aria-label={`${label}: ${rating}/5`}
+              onFocus={() => setPreviewRating(rating)}
+              onBlur={() => setPreviewRating(null)}
+              onChange={() => onChange(rating)}
+            />
+            <span
+              className={[
+                styles.ratingVisual,
+                rating <= visibleRating ? styles.ratingVisualSelected : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              aria-hidden="true"
+            >
+              <Star size={24} fill={rating <= visibleRating ? 'currentColor' : 'none'} />
+            </span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+function ReviewStars({ label, rating }: ReviewStarsProps) {
+  const normalizedRating = validRating(rating) ? rating : 0;
+  return (
+    <div className={styles.reviewRating}>
+      <span className={styles.reviewStars} role="img" aria-label={`${label}: ${rating}/5`}>
+        {reviewRatings.map((value) => (
+          <Star
+            className={value <= normalizedRating ? styles.reviewStarSelected : undefined}
+            key={value}
+            size={20}
+            fill={value <= normalizedRating ? 'currentColor' : 'none'}
+            aria-hidden="true"
+          />
+        ))}
+      </span>
+    </div>
+  );
+}
+
+export function CourseReviews({ courseId, canWriteReview }: CourseReviewsProps) {
+  const { i18n, t } = useTranslation();
+  const canonicalCourseCopy =
+    reviewFormCopyByLocale[
+      resolveLocale({ browserLocales: [i18n.resolvedLanguage ?? i18n.language] })
+    ];
+  const localizedCourseCopy: ReviewFormCopy = {
+    courseReviewsHeading: resolveReviewFormCopy(
+      t('course:courseReviewsHeading'),
+      'courseReviewsHeading',
+      canonicalCourseCopy.courseReviewsHeading,
+    ),
+    editReviewShort: resolveReviewFormCopy(
+      t('course:editReviewShort'),
+      'editReviewShort',
+      canonicalCourseCopy.editReviewShort,
+    ),
+    noReviewsDescription: resolveReviewFormCopy(
+      t('course:noReviewsDescription'),
+      'noReviewsDescription',
+      canonicalCourseCopy.noReviewsDescription,
+    ),
+    reviewCommentPlaceholder: resolveReviewFormCopy(
+      t('course:reviewCommentPlaceholder'),
+      'reviewCommentPlaceholder',
+      canonicalCourseCopy.reviewCommentPlaceholder,
+    ),
+    reviewCommentPrompt: resolveReviewFormCopy(
+      t('course:reviewCommentPrompt'),
+      'reviewCommentPrompt',
+      canonicalCourseCopy.reviewCommentPrompt,
+    ),
+    saveReviewChanges: resolveReviewFormCopy(
+      t('course:saveReviewChanges'),
+      'saveReviewChanges',
+      canonicalCourseCopy.saveReviewChanges,
+    ),
+    yourReview: resolveReviewFormCopy(
+      t('course:yourReview'),
+      'yourReview',
+      canonicalCourseCopy.yourReview,
+    ),
+  };
   const reviews = useCourseReviews(courseId);
   const headingRef = useRef<HTMLHeadingElement>(null);
-  const [rating, setRating] = useState(5);
+  const [rating, setRating] = useState<ReviewRatingSelection>(0);
   const [comment, setComment] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [editingOwnedReview, setEditingOwnedReview] = useState(false);
   const [focusReviewsAfterDelete, setFocusReviewsAfterDelete] = useState(false);
   const currentReview = reviews.current.data;
   const hasCurrentReview = reviews.current.isSuccess;
@@ -36,11 +204,12 @@ export function CourseReviews({ courseId }: CourseReviewsProps) {
   const mutation = isEditing ? reviews.update : reviews.create;
   useEffect(() => {
     if (hasCurrentReview) {
-      setRating(currentReview?.rating ?? 5);
-      setComment(currentReview?.comment ?? '');
+      setRating(currentReview && validRating(currentReview.rating) ? currentReview.rating : 0);
+      setComment((currentReview?.comment ?? '').slice(0, REVIEW_COMMENT_MAX_LENGTH));
     } else if (reviews.noOwnedReview) {
-      setRating(5);
+      setRating(0);
       setComment('');
+      setEditingOwnedReview(false);
     }
   }, [currentReview, hasCurrentReview, reviews.noOwnedReview]);
   useEffect(() => {
@@ -53,10 +222,70 @@ export function CourseReviews({ courseId }: CourseReviewsProps) {
     event.preventDefault();
     if (!validRating(rating)) return;
     const body = { rating, comment: comment.trim() || null };
-    if (isEditing) mutation.mutate(body);
+    if (isEditing)
+      reviews.update.mutate(body, {
+        onSuccess: () => setEditingOwnedReview(false),
+      });
     else reviews.create.mutate(body);
   };
+  const cancelEditing = () => {
+    setRating(currentReview && validRating(currentReview.rating) ? currentReview.rating : 0);
+    setComment((currentReview?.comment ?? '').slice(0, REVIEW_COMMENT_MAX_LENGTH));
+    setEditingOwnedReview(false);
+  };
   const mutationError = mutation.error ? t('common:pleaseTryAgain') : null;
+  const canShowForm =
+    (canWriteReview || reviews.hasOwnedReview) &&
+    (reviews.current.isSuccess || reviews.noOwnedReview);
+  const reviewForm =
+    canShowForm && (!isEditing || editingOwnedReview) ? (
+      <form className={styles.form} data-part="review-form" onSubmit={submit}>
+        <h3>{isEditing ? t('course:editReview') : t('course:writeReview')}</h3>
+        <ReviewRatingSelector label={t('course:ratingLabel')} value={rating} onChange={setRating} />
+        <Textarea
+          fieldClassName={styles.commentField}
+          label={localizedCourseCopy.reviewCommentPrompt}
+          placeholder={localizedCourseCopy.reviewCommentPlaceholder}
+          maxLength={REVIEW_COMMENT_MAX_LENGTH}
+          helpText={
+            <span aria-live="polite">
+              {comment.length}/{REVIEW_COMMENT_MAX_LENGTH}
+            </span>
+          }
+          value={comment}
+          onChange={(event) => setComment(event.target.value.slice(0, REVIEW_COMMENT_MAX_LENGTH))}
+        />
+        {mutationError ? (
+          <Notice tone="error" title={t('common:unableToCompleteAction')}>
+            {mutationError}
+          </Notice>
+        ) : null}
+        <div className={styles.actions}>
+          {isEditing ? (
+            <Button
+              variant="ghost"
+              className={styles.reviewSecondaryAction}
+              onClick={cancelEditing}
+            >
+              {t('common:cancel')}
+            </Button>
+          ) : null}
+          <Button
+            fullWidth={!isEditing}
+            type="submit"
+            disabled={!validRating(rating)}
+            state={mutation.isPending ? 'loading' : 'idle'}
+          >
+            {isEditing ? localizedCourseCopy.saveReviewChanges : t('course:saveReview')}
+          </Button>
+        </div>
+      </form>
+    ) : null;
+  const publicReviews = (reviews.list.data?.items ?? []).filter(
+    (review) => review.id !== currentReview?.id,
+  );
+  const isPublicListEmpty =
+    reviews.list.data !== undefined && publicReviews.length === 0 && !reviews.hasOwnedReview;
   return (
     <section className={styles.section} aria-labelledby="course-reviews-heading">
       <h2 ref={headingRef} id="course-reviews-heading" tabIndex={-1}>
@@ -78,13 +307,65 @@ export function CourseReviews({ courseId }: CourseReviewsProps) {
           </Button>
         </Notice>
       ) : null}
-      {reviews.list.data?.items.length === 0 ? <p>{t('course:noReviews')}</p> : null}
-      {reviews.list.data?.items.map((review) => (
-        <article className={styles.review} key={review.id}>
-          <p>{review.comment}</p>
-          <data value={review.rating ?? 0}>{review.rating}/5</data>
+      {reviews.hasOwnedReview && currentReview && !editingOwnedReview ? (
+        <article className={styles.ownedReview} data-part="owned-review">
+          <div className={styles.ownedReviewHeader}>
+            <h3>{localizedCourseCopy.yourReview}</h3>
+            <div className={styles.ownedReviewActions}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className={styles.reviewSecondaryAction}
+                aria-label={t('course:editReview')}
+                onClick={() => setEditingOwnedReview(true)}
+              >
+                {localizedCourseCopy.editReviewShort}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className={styles.deleteReviewAction}
+                aria-label={t('course:deleteReview')}
+                onClick={() => setConfirmDelete(true)}
+              >
+                <Trash2 size={20} aria-hidden="true" />
+              </Button>
+            </div>
+          </div>
+          <ReviewStars label={t('course:ratingLabel')} rating={currentReview.rating ?? 0} />
+          {currentReview.comment ? <p>{currentReview.comment}</p> : null}
         </article>
-      ))}
+      ) : null}
+      {reviews.hasOwnedReview && editingOwnedReview ? reviewForm : null}
+      {isPublicListEmpty ? (
+        <div
+          className={[styles.emptyLayout, reviewForm ? styles.emptyLayoutWithForm : '']
+            .filter(Boolean)
+            .join(' ')}
+        >
+          <div className={styles.emptyState} data-part="reviews-empty-state">
+            <span className={styles.emptyIcon} aria-hidden="true">
+              <MessageSquareMore size={24} strokeWidth={1.75} />
+            </span>
+            <p className={styles.emptyTitle}>{t('course:noReviews')}</p>
+            <p className={styles.emptyDescription}>{localizedCourseCopy.noReviewsDescription}</p>
+          </div>
+          {reviewForm}
+        </div>
+      ) : null}
+      {publicReviews.length > 0 ? (
+        <section className={styles.publicReviews} aria-labelledby="course-public-reviews-heading">
+          <h3 id="course-public-reviews-heading">{localizedCourseCopy.courseReviewsHeading}</h3>
+          <div className={styles.reviewList}>
+            {publicReviews.map((review) => (
+              <article className={styles.review} key={review.id}>
+                <ReviewStars label={t('course:ratingLabel')} rating={review.rating ?? 0} />
+                {review.comment ? <p>{review.comment}</p> : null}
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
       {reviews.list.data && reviews.list.data.pages > 1 ? (
         <Pagination
           currentPage={reviews.list.data.page}
@@ -94,41 +375,7 @@ export function CourseReviews({ courseId }: CourseReviewsProps) {
           onPageChange={reviews.setPage}
         />
       ) : null}
-      {reviews.current.isSuccess || reviews.noOwnedReview ? (
-        <form className={styles.form} onSubmit={submit}>
-          <h3>{isEditing ? t('course:editReview') : t('course:writeReview')}</h3>
-          <label>
-            {t('course:ratingLabel')}
-            <select value={rating} onChange={(event) => setRating(Number(event.target.value))}>
-              {[1, 2, 3, 4, 5].map((value) => (
-                <option value={value} key={value}>
-                  {value}
-                </option>
-              ))}
-            </select>
-          </label>
-          <Textarea
-            label={t('course:commentLabel')}
-            value={comment}
-            onChange={(event) => setComment(event.target.value)}
-          />
-          {mutationError ? (
-            <Notice tone="error" title={t('common:unableToCompleteAction')}>
-              {mutationError}
-            </Notice>
-          ) : null}
-          <div className={styles.actions}>
-            <Button type="submit" state={mutation.isPending ? 'loading' : 'idle'}>
-              {t('course:saveReview')}
-            </Button>
-            {isEditing ? (
-              <Button variant="destructive" onClick={() => setConfirmDelete(true)}>
-                {t('course:deleteReview')}
-              </Button>
-            ) : null}
-          </div>
-        </form>
-      ) : null}
+      {!isPublicListEmpty && !reviews.hasOwnedReview ? reviewForm : null}
       <DestructiveConfirmation
         open={confirmDelete}
         title={t('course:deleteReviewTitle')}
@@ -141,6 +388,7 @@ export function CourseReviews({ courseId }: CourseReviewsProps) {
           reviews.remove.mutate(undefined, {
             onSuccess: () => {
               setConfirmDelete(false);
+              setEditingOwnedReview(false);
               setFocusReviewsAfterDelete(true);
             },
           })

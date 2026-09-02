@@ -10,7 +10,13 @@ const generated = GENERATED_LOCALE_RESOURCES as Record<
   Record<string, Record<string, string>>
 >;
 const RECORDED_DRAFT37_UNIT_COUNT = 545;
-const CURRENT_CORPUS_UNIT_COUNT = RECORDED_DRAFT37_UNIT_COUNT + CRF_002_UNIT_IDS.length;
+const FE_068_UNIT_COUNT = 21;
+const INSTRUCTOR_UI_UNIT_COUNT = 9;
+const CURRENT_CORPUS_UNIT_COUNT =
+  RECORDED_DRAFT37_UNIT_COUNT +
+  CRF_002_UNIT_IDS.length +
+  FE_068_UNIT_COUNT +
+  INSTRUCTOR_UI_UNIT_COUNT;
 
 describe('generated canonical localization resources', () => {
   it('binds the committed canonical registry to exact DRAFT-37 migration facts', () => {
@@ -19,7 +25,8 @@ describe('generated canonical localization resources', () => {
       source: { sha256: 'C9E208FC5F1AEF55E709290C67270B79E1CBCE4831E7FBCB20555AB5CF8A73AE' },
       summary: {
         translationUnits: CURRENT_CORPUS_UNIT_COUNT,
-        sourceOccurrences: 768 + CRF_002_UNIT_IDS.length,
+        sourceOccurrences:
+          768 + CRF_002_UNIT_IDS.length + FE_068_UNIT_COUNT + INSTRUCTOR_UI_UNIT_COUNT,
         mergedDuplicateRows: 223,
       },
     });
@@ -46,6 +53,24 @@ describe('generated canonical localization resources', () => {
     expect(generated.en.common.language).toBe('Language');
     expect(generated.ru.common.language).toBe('Язык');
     expect(generated.uz.common.language).toBe('Til');
+    expect(generated.en.course.noReviewsDescription).toContain('Be the first');
+    expect(generated.ru.course.reviewCommentPrompt).toBe('Что вам понравилось?');
+    expect(generated.uz.course.reviewCommentPlaceholder).toBe('Batafsilroq aytib bering');
+    expect(generated.en.course.yourReview).toBe('Your review');
+    expect(generated.ru.course.courseReviewsHeading).toBe('Отзывы о курсе');
+    expect(generated.en.course.editReviewShort).toBe('Edit review');
+    expect(generated.ru.course.editReviewShort).toBe('Изменить отзыв');
+    expect(generated.uz.course.editReviewShort).toBe('Sharhni tahrirlash');
+    expect(generated.uz.course.saveReviewChanges).toBe('O‘zgarishlarni saqlash');
+    expect(generated.en.learning.completeLessonShort).toBe('Complete');
+    expect(generated.ru.learning.completeLessonShort).toBe('Завершить');
+    expect(generated.uz.learning.completeLessonShort).toBe('Yakunlash');
+    expect(generated.en.learning.videoLessonType).toBe('Video lesson');
+    expect(generated.ru.learning.textLessonType).toBe('Текстовый урок');
+    expect(generated.uz.learning.pdfLessonType).toBe('PDF dars');
+    expect(generated.en.learning.pdfLessonComingSoon).toBe('PDF lesson · Coming soon');
+    expect(generated.ru.learning.videoLessonComingSoon).toBe('Видеоурок · Скоро будет доступно');
+    expect(generated.uz.learning.textLessonComingSoon).toBe('Matnli dars · Tez orada mavjud');
     expect(JSON.stringify(GENERATED_LOCALE_RESOURCES)).not.toContain('approvalRecordedAt');
     expect(JSON.stringify(GENERATED_LOCALE_RESOURCES)).not.toContain('review_requested');
     expect(JSON.stringify(GENERATED_LOCALE_RESOURCES)).not.toContain('unitLifecycle');

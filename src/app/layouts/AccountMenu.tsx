@@ -9,18 +9,19 @@ import {
   UserRound,
   type LucideIcon,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
 import type { UserProfile, UserRole } from '@entities/user';
-import { useSession } from '@features/auth-session';
 import { NATIVE_LOCALE_METADATA, SUPPORTED_LOCALES, useLocale } from '@shared/locale';
+import type { ExclusiveDisclosureControl } from '@shared/types';
 
 import styles from './AppShell.module.css';
 
 interface AccountMenuProps {
+  onLogOut: () => void;
   user: UserProfile;
   showLanguage?: boolean;
+  exclusiveDisclosure?: ExclusiveDisclosureControl;
 }
 
 interface AccountRolePresentation {
@@ -36,11 +37,60 @@ const ACCOUNT_ROLE_PRESENTATION: Record<UserRole, AccountRolePresentation> = {
   admin: { Icon: ShieldCheck, labelKey: 'auth:admin' },
 };
 
-export function AccountMenu({ user, showLanguage = false }: AccountMenuProps) {
-  const { clearSession } = useSession();
+interface AccountIdentityProps {
+  readonly user: UserProfile;
+  readonly roleLabel: string;
+  readonly variant?: AccountIdentityVariant;
+}
+
+type AccountIdentityVariant = 'default' | 'drawerHeader';
+
+function accountIdentity(user: UserProfile): string {
+  return `${user.name} ${user.surname}`;
+}
+
+function accountInitials(user: UserProfile): string {
+  return `${user.name.trim().charAt(0)}${user.surname.trim().charAt(0)}`.toLocaleUpperCase();
+}
+
+export function AccountIdentity({ user, roleLabel, variant = 'default' }: AccountIdentityProps) {
+  const rolePresentation = ACCOUNT_ROLE_PRESENTATION[user.role];
+  const RoleIcon = rolePresentation.Icon;
+  const isDrawerHeader = variant === 'drawerHeader';
+
+  return (
+    <span
+      className={[
+        styles.accountMenuProfile,
+        isDrawerHeader ? styles.authenticatedTabletDrawerIdentity : null,
+      ]
+        .filter(Boolean)
+        .join(' ')}
+      data-part="account-menu-profile"
+    >
+      <span className={styles.accountMenuAvatar} aria-hidden="true">
+        {accountInitials(user)}
+      </span>
+      <span className={styles.accountMenuDetails}>
+        <span className={styles.accountMenuName}>{accountIdentity(user)}</span>
+        {!isDrawerHeader ? <span className={styles.accountMenuEmail}>{user.email}</span> : null}
+      </span>
+      <span className={styles.accountMenuRole}>
+        <RoleIcon data-part="account-menu-role-icon" aria-hidden="true" size={16} />
+        <span>{roleLabel}</span>
+      </span>
+    </span>
+  );
+}
+
+export function AccountMenu({
+  onLogOut,
+  user,
+  showLanguage = false,
+  exclusiveDisclosure,
+}: AccountMenuProps) {
   const { t } = useTranslation();
-  const { clearStoredLocale, locale, setLocale } = useLocale();
-  const navigate = useNavigate();
+  const { locale, setLocale } = useLocale();
   const [open, setOpen] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [languageView, setLanguageView] = useState(false);
@@ -52,17 +102,24 @@ export function AccountMenu({ user, showLanguage = false }: AccountMenuProps) {
   const pendingLanguageFocusRef = useRef<'back' | 'language' | null>(null);
   const suppressNextAccountFocusOpenRef = useRef(false);
   const menuId = `account-menu-${useId()}`;
-  const identity = `${user.name} ${user.surname}`;
-  const initials =
-    `${user.name.trim().charAt(0)}${user.surname.trim().charAt(0)}`.toLocaleUpperCase();
+  const identity = accountIdentity(user);
+  const initials = accountInitials(user);
   const rolePresentation = ACCOUNT_ROLE_PRESENTATION[user.role];
-  const RoleIcon = rolePresentation.Icon;
   const dismissAccountMenu = useCallback(() => {
     setOpen(false);
     setPinned(false);
     setLanguageView(false);
     pendingLanguageFocusRef.current = null;
   }, []);
+
+  function openAccountMenu() {
+    exclusiveDisclosure?.requestOpen();
+    setOpen(true);
+  }
+
+  useEffect(() => {
+    if (exclusiveDisclosure?.closeRequested) dismissAccountMenu();
+  }, [dismissAccountMenu, exclusiveDisclosure?.closeRequested]);
 
   useEffect(() => {
     if (!open) return;
@@ -120,12 +177,12 @@ export function AccountMenu({ user, showLanguage = false }: AccountMenuProps) {
           suppressNextAccountFocusOpenRef.current = false;
           return;
         }
-        setOpen(true);
+        openAccountMenu();
       }}
       onBlur={(event) => {
         if (!pinned && !event.currentTarget.contains(event.relatedTarget)) dismissAccountMenu();
       }}
-      onMouseEnter={() => setOpen(true)}
+      onMouseEnter={openAccountMenu}
       onMouseLeave={() => {
         if (!pinned) dismissAccountMenu();
       }}
@@ -145,6 +202,7 @@ export function AccountMenu({ user, showLanguage = false }: AccountMenuProps) {
             dismissAccountMenu();
             return;
           }
+          exclusiveDisclosure?.requestOpen();
           setPinned(true);
           setOpen(true);
         }}
@@ -201,19 +259,7 @@ export function AccountMenu({ user, showLanguage = false }: AccountMenuProps) {
             </div>
           ) : (
             <>
-              <div className={styles.accountMenuProfile} data-part="account-menu-profile">
-                <span className={styles.accountMenuAvatar} aria-hidden="true">
-                  {initials}
-                </span>
-                <span className={styles.accountMenuDetails}>
-                  <span className={styles.accountMenuName}>{identity}</span>
-                  <span className={styles.accountMenuEmail}>{user.email}</span>
-                </span>
-                <span className={styles.accountMenuRole}>
-                  <RoleIcon data-part="account-menu-role-icon" aria-hidden="true" size={16} />
-                  <span>{t(rolePresentation.labelKey)}</span>
-                </span>
-              </div>
+              <AccountIdentity user={user} roleLabel={t(rolePresentation.labelKey)} />
               <div className={styles.accountMenuDivider} role="separator" />
               {showLanguage ? (
                 <button
@@ -232,15 +278,7 @@ export function AccountMenu({ user, showLanguage = false }: AccountMenuProps) {
                   <ChevronRight aria-hidden="true" size={16} />
                 </button>
               ) : null}
-              <button
-                className={styles.accountMenuLogout}
-                type="button"
-                onClick={() => {
-                  clearStoredLocale();
-                  clearSession();
-                  navigate('/');
-                }}
-              >
+              <button className={styles.accountMenuLogout} type="button" onClick={onLogOut}>
                 <LogOut aria-hidden="true" size={16} />
                 {t('auth:logOut')}
               </button>

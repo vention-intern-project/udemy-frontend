@@ -9,11 +9,32 @@
   max-width: var(--container-max-workspace);
   margin-inline: auto;
 }
-.header {
+.pageActions {
   display: flex;
-  gap: var(--spacing-3);
+  justify-content: flex-end;
+}
+.savedState {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
+  gap: var(--spacing-2);
+  min-height: var(--control-height-md);
+  color: var(--text-secondary);
+  font-weight: var(--font-weight-medium);
+}
+.savedState svg {
+  flex: none;
+  color: var(--feedback-success);
+}
+.pendingPrimaryAction.pendingPrimaryAction:disabled {
+  color: var(--action-primary-fg);
+  background: var(--action-primary-bg);
+  border-color: transparent;
+  cursor: pointer;
+}
+.header {
+  display: grid;
+  justify-items: start;
+  gap: var(--spacing-1);
 }
 .header h1,
 .header p,
@@ -21,7 +42,9 @@
   margin: 0;
 }
 .eyebrow {
-  color: var(--text-secondary);
+  color: var(--text-muted);
+  font-size: var(--type-body-sm-size);
+  line-height: var(--type-body-sm-lh);
 }
 .panel {
   padding: var(--density-card-inner);
@@ -30,10 +53,28 @@
   background: var(--color-surface);
 }
 .backLink {
-  display: inline-flex;
-  min-height: var(--control-height-md);
-  align-items: center;
-  color: var(--action-link);
+  gap: var(--spacing-1);
+  padding-inline: 0;
+  color: var(--action-primary-bg);
+  background: transparent;
+  font-size: var(--type-body-md-size);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--type-body-md-lh);
+  white-space: nowrap;
+}
+.backLink:visited,
+.backLink:focus-visible {
+  color: var(--action-primary-bg);
+  background: transparent;
+}
+.backLink:hover,
+.backLink:active {
+  color: var(--action-primary-bg-hover);
+  background: transparent;
+  text-decoration: underline;
+}
+.backLink svg {
+  flex: none;
 }
 .checkbox {
   display: flex;
@@ -44,9 +85,102 @@
 .fieldError {
   color: var(--state-error-fg);
 }
-@media (max-width: 767px) {
-  .header {
-    flex-direction: column;
-    align-items: stretch;
+
+.uploadField {
+  display: grid;
+  gap: var(--spacing-2);
+}
+
+.fileLabel {
+  font-size: var(--type-body-sm-size);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--type-body-sm-lh);
+}
+
+.uploadPicker {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: var(--spacing-2);
+  min-height: 10rem;
+  padding: var(--spacing-6);
+  border: var(--border-width) dashed var(--action-primary-bg);
+  border-radius: var(--radius-lg);
+  color: var(--action-secondary-fg);
+  background: color-mix(in srgb, var(--action-secondary-bg) 58%, var(--color-surface));
+  text-align: center;
+  transition:
+    border-color 180ms cubic-bezier(0.2, 0, 0, 1),
+    background-color 180ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.uploadPicker:hover {
+  background: var(--action-secondary-bg);
+}
+
+.uploadPicker:focus-within {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.uploadPicker:has(.uploadInput[aria-invalid='true']) {
+  border-color: var(--state-error-fg);
+}
+
+.uploadInput {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.uploadPrompt {
+  font-weight: var(--font-weight-semibold);
+}
+
+.uploadHelp {
+  color: var(--text-muted);
+  font-size: var(--type-caption-size);
+  line-height: var(--type-caption-lh);
+}
+
+.fileName {
+  max-width: 100%;
+  padding: var(--spacing-1) var(--spacing-2);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  background: var(--color-surface);
+  font-size: var(--type-body-sm-size);
+  line-height: var(--type-body-sm-lh);
+  overflow-wrap: anywhere;
+}
+
+.uploadUnavailable {
+  display: flex;
+  gap: var(--spacing-3);
+  align-items: center;
+  min-height: var(--control-height-md);
+  padding: var(--spacing-4);
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  background: var(--color-canvas);
+}
+
+.uploadUnavailable svg {
+  flex: none;
+  color: var(--text-muted);
+}
+
+.uploadUnavailable p {
+  margin: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .uploadPicker {
+    transition: none;
   }
 }

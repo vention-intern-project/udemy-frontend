@@ -2,7 +2,7 @@
   position: fixed;
   z-index: var(--z-overlay);
   inset-inline-end: var(--spacing-4);
-  inset-block-end: var(--spacing-8);
+  inset-block-end: calc(var(--spacing-8) + var(--course-chat-footer-clearance, 0px));
   display: grid;
   gap: var(--spacing-2);
   justify-items: end;
@@ -10,12 +10,15 @@
 .launcherAnchor {
   position: relative;
 }
+
 .launcher {
+  position: relative;
+  z-index: 1;
   width: 60px;
   height: 60px;
-  border: 0;
+  border: 2px solid var(--action-primary-bg);
   border-radius: 50%;
-  background: var(--action-primary-bg);
+  background: var(--color-surface-inverted);
   color: var(--action-primary-fg);
   display: grid;
   place-items: center;
@@ -254,11 +257,48 @@
   width: 14px;
   height: 14px;
 }
+
+@media (max-width: 1442px) {
+  .launcherAnchor::before {
+    content: '';
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    inset-inline-end: calc(-1 * var(--spacing-8));
+  }
+
+  .launcher {
+    opacity: 0.6;
+    transform: translateX(var(--spacing-8));
+    transition:
+      opacity var(--duration-standard) var(--easing-standard),
+      transform var(--duration-standard) var(--easing-standard);
+  }
+
+  .launcherAnchor:hover .launcher,
+  .launcherAnchor:focus-within .launcher,
+  .launcherAnchorOpen .launcher {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (max-width: 767px) {
+  .root {
+    inset-block-end: calc(
+      var(--student-mobile-bottom-nav-inset, 0px) + var(--spacing-4) +
+        var(--course-chat-footer-clearance, 0px)
+    );
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .launcher,
   .launcherTooltip {
     transition: none;
   }
 }
+
 @media (max-width: 320px) {
   .widget {
     width: calc(100vw - 16px);

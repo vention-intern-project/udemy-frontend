@@ -1,6 +1,9 @@
-import { cp, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { cp, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join } from 'node:path';
+import { promisify } from 'node:util';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -23,7 +26,7 @@ const {
 } = await import('../../../scripts/localization/corpus-engine.mjs');
 const {
   RECORDED_BASE_REQUEST,
-  recordedBaseAccountMenuSource,
+  CRF_001_FULL_TARGET_COMMIT,
   writeRecordedBaseArtifacts,
   // @ts-expect-error The dependency-free Node localization fixture has no TypeScript declaration.
 } = await import('./fixtures/crf001-recorded-base-fixture.mjs');
@@ -61,7 +64,27 @@ interface ConsumerGrammarFixture {
 }
 
 const temporaryDirectories: string[] = [];
+const TEMPORARY_DIRECTORY_CLEANUP_TIMEOUT_MS = 30_000;
 const taskRequest = structuredClone(RECORDED_BASE_REQUEST);
+const execFileAsync = promisify(execFile);
+const CRF_001_TARGET_CONSUMER_GRAMMAR_DIGEST =
+  'd9970b3b5b52c13d8571b0d826cd00eebea52f6202e120d3ebf7013ab4a6a49e';
+
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonical(record[key])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function canonicalDigest(value: unknown): string {
+  return createHash('sha256').update(canonical(value)).digest('hex');
+}
 
 async function createTargets(): Promise<TransactionTargets> {
   const directory = await mkdtemp(join(tmpdir(), 'learnhub-crf001-transaction-'));
@@ -95,15 +118,38 @@ function recoveryRequestForTargets(targets: TransactionTargets, request = taskRe
 async function createSourceFixture(): Promise<SourceFixture> {
   const sourceRoot = join(await mkdtemp(join(tmpdir(), 'learnhub-crf001-source-')), 'src');
   temporaryDirectories.push(dirname(sourceRoot));
-  await cp(resolve('src'), sourceRoot, { recursive: true });
-  const accountMenuPath = join(sourceRoot, 'app/layouts/AccountMenu.tsx');
-  await writeFile(
-    accountMenuPath,
-    recordedBaseAccountMenuSource(await readFile(accountMenuPath, 'utf8')),
-    'utf8',
+  const gitOptions = { maxBuffer: 32 * 1024 * 1024 };
+  const { stdout: paths } = await execFileAsync(
+    'git',
+    ['ls-tree', '-r', '--name-only', CRF_001_FULL_TARGET_COMMIT, '--', 'src'],
+    gitOptions,
   );
+  const sourcePaths = paths.trim().split('\n').filter(Boolean);
+  if (sourcePaths.length === 0) {
+    throw new Error(`CRF-001 source target ${CRF_001_FULL_TARGET_COMMIT} is unavailable locally`);
+  }
+  await Promise.all(
+    sourcePaths.map(async (sourcePath) => {
+      const { stdout } = await execFileAsync(
+        'git',
+        ['show', `${CRF_001_FULL_TARGET_COMMIT}:${sourcePath}`],
+        gitOptions,
+      );
+      const destination = join(dirname(sourceRoot), sourcePath);
+      await mkdir(dirname(destination), { recursive: true });
+      await writeFile(destination, stdout, 'utf8');
+    }),
+  );
+  const cartSourcePath = 'src/pages/cart-page/CartPage.tsx';
+  const { stdout: recordedCartSource } = await execFileAsync(
+    'git',
+    ['show', `${CRF_001_FULL_TARGET_COMMIT}:${cartSourcePath}`],
+    gitOptions,
+  );
+  const cartFixturePath = join(sourceRoot, 'pages/cart-page/CartPage.tsx');
+  expect(await readFile(cartFixturePath, 'utf8')).toBe(recordedCartSource);
   const cartPageSource = `${CRF_001_CART_PAGE_SOURCE.replace(/^\n/, '')}\n`;
-  await writeFile(join(sourceRoot, 'pages/cart-page/CartPage.tsx'), cartPageSource, 'utf8');
+  await writeFile(cartFixturePath, cartPageSource, 'utf8');
   return { sourceRoot };
 }
 
@@ -141,7 +187,7 @@ afterEach(async () => {
       .splice(0)
       .map((directory) => rm(directory, { recursive: true, force: true })),
   );
-});
+}, TEMPORARY_DIRECTORY_CLEANUP_TIMEOUT_MS);
 
 describe('CRF-001 localization transactions', () => {
   it('revises protected CRF sources transactionally, preserves identity/history and exactly replays', async () => {
@@ -227,7 +273,7 @@ describe('CRF-001 localization transactions', () => {
         argument: 'failure.messageKey',
         occurrence: 1,
         sourceFingerprint:
-          'sha256:8ebde6f65eb583569e1d0db37651996aa6ba1d80fcf305bde618c820b27a9b1a',
+          'sha256:8cd8137043a2fbd70289e9521bf2d49feae1092db98d429d1ce7a03608f20a68',
       },
       {
         sourcePath: 'pages/learning-list-page/LearningListPage.tsx',
@@ -235,7 +281,7 @@ describe('CRF-001 localization transactions', () => {
         argument: 'failure.titleKey',
         occurrence: 1,
         sourceFingerprint:
-          'sha256:8ebde6f65eb583569e1d0db37651996aa6ba1d80fcf305bde618c820b27a9b1a',
+          'sha256:8cd8137043a2fbd70289e9521bf2d49feae1092db98d429d1ce7a03608f20a68',
       },
     ]);
     expect(reconciledCorpus.consumerGrammar.reconciliations).toEqual([
@@ -250,6 +296,10 @@ describe('CRF-001 localization transactions', () => {
         ]),
       }),
     ]);
+    expect(CRF_001_FULL_TARGET_COMMIT).toBe('8fc38f5c9ecd0ed4fac14a92450a94a8eb96da13');
+    expect(canonicalDigest(reconciledCorpus.consumerGrammar)).toBe(
+      CRF_001_TARGET_CONSUMER_GRAMMAR_DIGEST,
+    );
     await expect(reconcileFromRecordedBase(targets, sourceFixture)).resolves.toEqual({
       reconciled: false,
       removedCount: 0,

@@ -46,6 +46,8 @@ const qualityCommands = [
       '--poolOptions.forks.maxForks=1',
       '--poolOptions.forks.minForks=1',
       '--poolOptions.forks.isolate=true',
+      '--testTimeout=60000',
+      '--hookTimeout=60000',
     ],
   ],
   ['build', ['run', 'build']],

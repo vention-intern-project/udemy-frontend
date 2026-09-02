@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   createBrowserLocaleStore,
@@ -9,6 +9,7 @@ import {
   getBrowserLocales,
   normalizeLocale,
   resolveLocale,
+  syncLocaleResources,
 } from '../../../src/shared/locale';
 
 describe('locale runtime backed by generated canonical resources', () => {
@@ -59,5 +60,22 @@ describe('locale runtime backed by generated canonical resources', () => {
       { ru: { language: 'Язык' }, uz: { language: 'Til' } },
     );
     expect(lookup.get('language', 'uz')).toBe('Til');
+  });
+
+  it('replaces live locale bundles and notifies React consumers after a resource update', () => {
+    const runtime = createLocaleRuntime('en');
+    runtime.addResource('en', 'course', 'staleKey', 'Stale value');
+    const languageChanged = vi.fn();
+    runtime.on('languageChanged', languageChanged);
+
+    syncLocaleResources(runtime, {
+      en: { course: { refreshedKey: 'Fresh value' } },
+      ru: { course: { refreshedKey: 'Новое значение' } },
+      uz: { course: { refreshedKey: 'Yangi qiymat' } },
+    });
+
+    expect(runtime.t('course:refreshedKey')).toBe('Fresh value');
+    expect(runtime.exists('course:staleKey')).toBe(false);
+    expect(languageChanged).toHaveBeenCalledWith('en');
   });
 });

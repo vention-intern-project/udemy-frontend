@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import {
@@ -10,6 +11,7 @@ import {
   type CatalogPriceRangeDraft,
   type CatalogQuery,
 } from '@features/catalog-discovery';
+import type { ExclusiveDisclosureControl } from '@shared/types';
 import { Button, Input, VisuallyHidden } from '@shared/ui/primitives';
 
 import styles from './CatalogFilterBar.module.css';
@@ -17,7 +19,17 @@ import styles from './CatalogFilterBar.module.css';
 interface CatalogFilterBarProps {
   query: CatalogQuery;
   onApply: (next: CatalogQuery) => void;
+  readonly exclusiveDisclosure?: ExclusiveDisclosureControl;
+  readonly minimumPricePlaceholder?: string;
+  readonly maximumPricePlaceholder?: string;
 }
+
+type HoverCloseTimer = ReturnType<typeof setTimeout>;
+type PriceDisclosureOpenMode = 'hover' | 'persistent' | null;
+type DismissDraft = (restoreFocus?: boolean) => void;
+
+const FINE_HOVER_QUERY = '(hover: hover) and (pointer: fine)';
+const HOVER_CLOSE_DELAY_MS = 240;
 
 function priceDraftFromCatalogQuery(query: CatalogQuery): CatalogPriceRangeDraft {
   const draft = draftFromCatalogQuery(query);
@@ -41,18 +53,31 @@ function hasInvertedPriceRange(draft: CatalogPriceRangeDraft): boolean {
   );
 }
 
-export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
+export function CatalogFilterBar({
+  query,
+  onApply,
+  exclusiveDisclosure,
+  minimumPricePlaceholder,
+  maximumPricePlaceholder,
+}: CatalogFilterBarProps) {
   const { t } = useTranslation();
   const rangeDescriptionId = `catalog-price-range-description-${useId()}`;
   const [draft, setDraft] = useState<CatalogPriceRangeDraft>(() =>
     priceDraftFromCatalogQuery(query),
   );
+  const [appliedRange, setAppliedRange] = useState<CatalogPriceRange>(() => ({
+    min_price: query.min_price,
+    max_price: query.max_price,
+  }));
   const [errors, setErrors] = useState<CatalogFilterValidationErrors>({});
   const [open, setOpen] = useState(false);
   const draftRef = useRef(draft);
   const queryRef = useRef(query);
   const rootRef = useRef<HTMLFormElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const hoverCloseTimerRef = useRef<HoverCloseTimer | null>(null);
+  const openModeRef = useRef<PriceDisclosureOpenMode>(null);
+  const dismissDraftRef = useRef<DismissDraft>(() => {});
   const lastAppliedRangeRef = useRef<CatalogPriceRange>({
     min_price: query.min_price,
     max_price: query.max_price,
@@ -63,6 +88,7 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
 
   useEffect(() => {
     setDraft(priceDraftFromCatalogQuery(query));
+    setAppliedRange({ min_price: query.min_price, max_price: query.max_price });
     setErrors({});
     lastAppliedRangeRef.current = { min_price: query.min_price, max_price: query.max_price };
   }, [query]);
@@ -103,6 +129,7 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
       return true;
 
     lastAppliedRangeRef.current = nextRange;
+    setAppliedRange(nextRange);
     onApply({
       ...validation.value,
       search_query: currentQuery.search_query,
@@ -110,7 +137,14 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
     });
     return true;
   };
-  const close = (restoreApplied = false) => {
+  const cancelHoverClose = () => {
+    if (hoverCloseTimerRef.current === null) return;
+    clearTimeout(hoverCloseTimerRef.current);
+    hoverCloseTimerRef.current = null;
+  };
+  const close = (restoreApplied = false, restoreFocus = true) => {
+    cancelHoverClose();
+    openModeRef.current = null;
     if (restoreApplied) {
       const restored = priceDraftFromCatalogQuery(queryRef.current);
       draftRef.current = restored;
@@ -118,15 +152,56 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
       setErrors({});
     }
     setOpen(false);
-    globalThis.setTimeout(() => triggerRef.current?.focus(), 0);
+    if (restoreFocus) globalThis.setTimeout(() => triggerRef.current?.focus(), 0);
   };
+  const supportsFinePointerHover = (pointerType: string) =>
+    pointerType === 'mouse' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia(FINE_HOVER_QUERY).matches;
+  const openFromHover = (pointerType: string) => {
+    if (!supportsFinePointerHover(pointerType)) return;
+    cancelHoverClose();
+    if (openModeRef.current !== 'persistent') openModeRef.current = 'hover';
+    exclusiveDisclosure?.requestOpen();
+    setOpen(true);
+  };
+  const dismissDraft = (restoreFocus = true) => close(true, restoreFocus);
+  dismissDraftRef.current = dismissDraft;
+  const closeAfterHover = (pointerType: string) => {
+    if (!supportsFinePointerHover(pointerType) || openModeRef.current === null) return;
+    cancelHoverClose();
+    hoverCloseTimerRef.current = setTimeout(() => {
+      hoverCloseTimerRef.current = null;
+      dismissDraft(false);
+    }, HOVER_CLOSE_DELAY_MS);
+  };
+  const toggleFromClick = () => {
+    cancelHoverClose();
+    const shouldClose = open && openModeRef.current === 'persistent';
+    if (shouldClose) {
+      dismissDraft();
+      return;
+    }
+    openModeRef.current = 'persistent';
+    exclusiveDisclosure?.requestOpen();
+    setOpen(true);
+  };
+  useEffect(
+    () => () => {
+      if (hoverCloseTimerRef.current !== null) clearTimeout(hoverCloseTimerRef.current);
+    },
+    [],
+  );
+  useEffect(() => {
+    if (exclusiveDisclosure?.closeRequested) dismissDraftRef.current(false);
+  }, [exclusiveDisclosure?.closeRequested]);
   useEffect(() => {
     if (!open) return undefined;
-    const cancel = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) close(true);
+    const dismiss = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) dismissDraftRef.current(false);
     };
-    document.addEventListener('pointerdown', cancel, true);
-    return () => document.removeEventListener('pointerdown', cancel, true);
+    document.addEventListener('pointerdown', dismiss, true);
+    return () => document.removeEventListener('pointerdown', dismiss, true);
   }, [open]);
   const minimumError =
     errors.min_price === 'nonNegativePrice' ? t('catalog:nonNegativePrice') : undefined;
@@ -137,15 +212,32 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
         ? t('catalog:maximumPriceMustBeAtLeast')
         : undefined;
   const appliedRangeDescription = [
-    query.min_price === undefined
+    appliedRange.min_price === undefined
       ? null
-      : `${t('catalog:priceFrom', { defaultValue: 'From' })}: ${query.min_price}`,
-    query.max_price === undefined
+      : `${t('catalog:priceFrom', { defaultValue: 'From' })}: ${appliedRange.min_price}`,
+    appliedRange.max_price === undefined
       ? null
-      : `${t('catalog:priceTo', { defaultValue: 'To' })}: ${query.max_price}`,
+      : `${t('catalog:priceTo', { defaultValue: 'To' })}: ${appliedRange.max_price}`,
   ]
     .filter((description): description is string => description !== null)
     .join(', ');
+  const hasAppliedPriceRange = query.min_price !== undefined || query.max_price !== undefined;
+  const resetPriceRange = () => {
+    const currentQuery = queryRef.current;
+    const clearedDraft: CatalogPriceRangeDraft = { min_price: '', max_price: '' };
+    draftRef.current = clearedDraft;
+    setDraft(clearedDraft);
+    setErrors({});
+    lastAppliedRangeRef.current = { min_price: undefined, max_price: undefined };
+    setAppliedRange({ min_price: undefined, max_price: undefined });
+    onApply({
+      ...currentQuery,
+      min_price: undefined,
+      max_price: undefined,
+      page: 1,
+    });
+    close();
+  };
 
   return (
     <form
@@ -167,10 +259,12 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
         aria-describedby={appliedRangeDescription ? rangeDescriptionId : undefined}
         aria-expanded={open}
         aria-controls={open ? 'catalog-price-disclosure' : undefined}
-        onClick={() => {
-          if (open) close(true);
-          else setOpen(true);
+        onPointerEnter={(event) => openFromHover(event.pointerType)}
+        onPointerMove={(event) => {
+          if (supportsFinePointerHover(event.pointerType)) cancelHoverClose();
         }}
+        onPointerLeave={(event) => closeAfterHover(event.pointerType)}
+        onClick={toggleFromClick}
         onKeyDown={(event) => {
           if (event.key === 'Escape') {
             event.preventDefault();
@@ -179,7 +273,14 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
         }}
       >
         <span>{t('catalog:priceTrigger', { defaultValue: 'Price' })}</span>
-        <span className={styles.chevron} data-part="catalog-price-chevron" aria-hidden="true" />
+        <ChevronDown
+          className={styles.chevron}
+          data-part="catalog-price-chevron"
+          aria-hidden="true"
+          focusable="false"
+          size={16}
+          strokeWidth={1.75}
+        />
       </button>
       {appliedRangeDescription ? (
         <VisuallyHidden id={rangeDescriptionId}>{appliedRangeDescription}</VisuallyHidden>
@@ -188,6 +289,16 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
         <fieldset
           id="catalog-price-disclosure"
           className={styles.priceRange}
+          onPointerEnter={(event) => {
+            if (supportsFinePointerHover(event.pointerType)) cancelHoverClose();
+          }}
+          onPointerLeave={(event) => closeAfterHover(event.pointerType)}
+          onPointerDownCapture={(event) => {
+            if (supportsFinePointerHover(event.pointerType)) {
+              cancelHoverClose();
+              openModeRef.current = 'persistent';
+            }
+          }}
           onKeyDown={(event) => {
             if (event.key === 'Escape') {
               event.preventDefault();
@@ -195,9 +306,9 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
             }
           }}
         >
-          <legend className={styles.legend}>
+          <VisuallyHidden as="legend">
             {t('catalog:priceRange', { defaultValue: 'Price range' })}
-          </legend>
+          </VisuallyHidden>
           <Input
             label={t('catalog:priceFrom', { defaultValue: 'From' })}
             name="min_price"
@@ -205,6 +316,7 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
             inputMode="decimal"
             min="0"
             fieldClassName={styles.field}
+            placeholder={minimumPricePlaceholder}
             value={draft.min_price}
             error={minimumError}
             onChange={(event) => update('min_price', event.target.value)}
@@ -216,11 +328,25 @@ export function CatalogFilterBar({ query, onApply }: CatalogFilterBarProps) {
             inputMode="decimal"
             min="0"
             fieldClassName={styles.field}
+            placeholder={maximumPricePlaceholder}
             value={draft.max_price}
             error={maximumError}
             onChange={(event) => update('max_price', event.target.value)}
           />
-          <Button type="submit">{t('catalog:priceDone', { defaultValue: 'Done' })}</Button>
+          <div
+            className={[styles.actions, !hasAppliedPriceRange && styles.actionsSingle]
+              .filter(Boolean)
+              .join(' ')}
+          >
+            {hasAppliedPriceRange ? (
+              <Button type="button" variant="secondary" fullWidth onClick={resetPriceRange}>
+                {t('catalog:priceReset', { defaultValue: 'Reset' })}
+              </Button>
+            ) : null}
+            <Button type="submit" fullWidth>
+              {t('catalog:priceDone', { defaultValue: 'Done' })}
+            </Button>
+          </div>
         </fieldset>
       ) : null}
     </form>
