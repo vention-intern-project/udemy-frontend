@@ -543,7 +543,7 @@ describe('InstructorCourseEditorPage', () => {
     await renderPage({ request });
     const user = userEvent.setup();
     await screen.findByRole('heading', { name: 'Edit course' });
-    await act(async () => await user.click(screen.getByRole('button', { name: 'Add lesson' })));
+    await act(async () => user.click(await screen.findByRole('button', { name: 'Add lesson' })));
     await act(async () => await user.click(screen.getByRole('combobox', { name: 'Lesson type' })));
     await act(async () => await user.click(screen.getByRole('option', { name: 'PDF' })));
     const file = screen.getByLabelText('Lesson file (optional)');
