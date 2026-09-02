@@ -21,6 +21,27 @@ export interface CatalogFailure {
   messageKey: CatalogFailureMessageKey;
 }
 
+const CATALOG_NUMERIC_PRICE_PATTERN = /^\d+(?:\.\d+)?$/;
+
+function decodeCatalogCourseList(response: unknown): CatalogCourseList {
+  try {
+    return mapCourseListDto(decodeCourseListDto(response));
+  } catch (error) {
+    throw new ApiError({
+      kind: 'invalid_response',
+      status: null,
+      message: 'Server returned an invalid catalog response',
+      cause: error,
+    });
+  }
+}
+
+function normalizeCatalogMaximumPrice(price: string): string | undefined {
+  if (!CATALOG_NUMERIC_PRICE_PATTERN.test(price)) return undefined;
+  const numericPrice = Number(price);
+  return Number.isFinite(numericPrice) && numericPrice >= 0 ? price : undefined;
+}
+
 export async function requestCatalog(
   request: CatalogRequester,
   query: CatalogQuery,
@@ -33,16 +54,22 @@ export async function requestCatalog(
     query: { ...toCourseListQuery(query) },
     signal,
   });
-  try {
-    return mapCourseListDto(decodeCourseListDto(response));
-  } catch (error) {
-    throw new ApiError({
-      kind: 'invalid_response',
-      status: null,
-      message: 'Server returned an invalid catalog response',
-      cause: error,
-    });
-  }
+  return decodeCatalogCourseList(response);
+}
+
+export async function requestCatalogMaximumPrice(
+  request: CatalogRequester,
+  signal: AbortSignal,
+): Promise<string | undefined> {
+  const operation = API_OPERATION_BY_ID['API-008'];
+  const response = await request<unknown>({
+    method: operation.method,
+    path: operation.path,
+    query: { page: 1, page_size: 1, sort: '-price' },
+    signal,
+  });
+  const maximumCourse = decodeCatalogCourseList(response).items[0];
+  return maximumCourse ? normalizeCatalogMaximumPrice(maximumCourse.price) : undefined;
 }
 
 export function catalogFailure(error: unknown): CatalogFailure {

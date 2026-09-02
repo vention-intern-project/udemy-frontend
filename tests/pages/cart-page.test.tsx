@@ -1100,6 +1100,34 @@ describe('CartPage', () => {
     expect(screen.queryByRole('link', { name: 'Check My Learning' })).toBeNull();
   });
 
+  it('keeps initial empty-Cart recovery discovery visually quiet', () => {
+    const checkout: CartCompositeCheckoutWorkflow = {
+      phase: 'discovering_recovery',
+      completionPlan: [],
+      results: [],
+      recoveryCandidates: [],
+      pending: true,
+      start: vi.fn(),
+      retryRestoredCourse: vi.fn(),
+      dismissRestoredCourses: vi.fn(),
+      dismissSuccessfulCourses: vi.fn(),
+      discoverRecovery: vi.fn(),
+      resumeRecovery: vi.fn(),
+    };
+    render(
+      <I18nextProvider i18n={localeRuntime}>
+        <CompositeCheckoutNotice
+          checkout={checkout}
+          courseTitles={new Map()}
+          onRetryPayment={vi.fn()}
+        />
+      </I18nextProvider>,
+    );
+
+    expect(screen.queryByText('Payment pending', { exact: true })).toBeNull();
+    expect(screen.queryByText('Checking out…', { exact: true })).toBeNull();
+  });
+
   it('renders every server-proven recovery candidate in the populated-Cart notice', () => {
     const resumeRecovery = vi.fn();
     const checkout: CartCompositeCheckoutWorkflow = {

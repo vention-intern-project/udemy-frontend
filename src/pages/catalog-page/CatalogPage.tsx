@@ -9,6 +9,7 @@ import {
   type CatalogQuery,
   type CatalogRequester,
   useCatalogDiscovery,
+  useCatalogMaximumPrice,
 } from '@features/catalog-discovery';
 import { useSession } from '@features/auth-session';
 import { CatalogFilterBar } from '@widgets/catalog-filter-bar';
@@ -143,12 +144,10 @@ export function CatalogPage() {
   const queryKey = useMemo(() => serializeCatalogQuery(query), [query]);
   const criteriaKey = useMemo(() => catalogResultSetKey(query), [query]);
   const presentationKey = useMemo(() => serializeCatalogQuery({ ...query, page: 1 }), [query]);
-  const { requestPublic } = useSession();
-  const request = useCallback<CatalogRequester>(
-    (options) => requestPublic(options),
-    [requestPublic],
-  );
+  const { cacheEpoch, requestPublic } = useSession();
+  const request: CatalogRequester = requestPublic;
   const discovery = useCatalogDiscovery(query, request);
+  const { maximumPrice } = useCatalogMaximumPrice(request, cacheEpoch);
 
   useEffect(() => {
     const canonical = serializeCatalogQuery(query);
@@ -450,6 +449,8 @@ export function CatalogPage() {
                     query={query}
                     onApply={navigate}
                     exclusiveDisclosure={priceDisclosureControl}
+                    minimumPricePlaceholder="0"
+                    maximumPricePlaceholder={maximumPrice}
                   />
                   <div className={styles.sortToolbar} data-part="catalog-sort-toolbar">
                     <div className={styles.sortField}>

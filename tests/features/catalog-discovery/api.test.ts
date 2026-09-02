@@ -3,6 +3,7 @@ import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import {
   catalogFailure,
   requestCatalog,
+  requestCatalogMaximumPrice,
   type CatalogRequester,
 } from '../../../src/features/catalog-discovery';
 import { ApiError, type ApiClient } from '../../../src/shared/api';
@@ -57,6 +58,47 @@ describe('catalog request boundary', () => {
       }),
     );
   });
+
+  it('reads the global maximum price from one descending API-008 catalog item', async () => {
+    const request = vi.fn().mockResolvedValue(validResponse) as CatalogRequester;
+
+    await expect(requestCatalogMaximumPrice(request, new AbortController().signal)).resolves.toBe(
+      '9.99',
+    );
+
+    expect(request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: 'GET',
+        path: '/courses',
+        query: { page: 1, page_size: 1, sort: '-price' },
+      }),
+    );
+  });
+
+  it.each([
+    [
+      'empty',
+      {
+        ...validResponse,
+        items: [],
+        page: 1,
+        page_size: 1,
+        total: 0,
+        pages: 0,
+        has_previous: false,
+      },
+    ],
+    ['invalid', { ...validResponse, items: [{ ...validResponse.items[0], price: 'not-a-price' }] }],
+  ])(
+    'fails closed without a maximum placeholder for a %s top-price response',
+    async (_case, response) => {
+      const request = vi.fn().mockResolvedValue(response) as CatalogRequester;
+
+      await expect(
+        requestCatalogMaximumPrice(request, new AbortController().signal),
+      ).resolves.toBeUndefined();
+    },
+  );
 
   it('normalizes decoder failures to the public invalid-response classification', async () => {
     const request = vi

@@ -151,7 +151,8 @@ export async function installLearningCompletionScenario(
             title: 'First browser lesson',
             lesson_type: 'text',
             download_url: null,
-            description: null,
+            description:
+              'A long text lesson explains how to establish context, verify the available evidence, compare alternatives, document assumptions, and finish with a clear next action. Keep the reasoning reproducible so another learner can follow each decision without guessing what happened between steps.',
             is_published: true,
             created_at: '2026-01-01T00:00:00Z',
             updated_at: '2026-01-01T00:00:00Z',

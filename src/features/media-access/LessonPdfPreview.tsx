@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { useTranslation } from 'react-i18next';
+import { X } from 'lucide-react';
 import 'react-pdf/dist/Page/TextLayer.css';
 
 import { Button } from '@shared/ui/primitives';
@@ -20,6 +21,7 @@ type PdfNavigationDirection = 'previous' | 'next';
 
 export interface LessonPdfPreviewProps {
   readonly file: Blob;
+  readonly onClose: () => void;
 }
 
 function boundedPageWidth(element: HTMLElement): number | undefined {
@@ -30,7 +32,7 @@ function boundedPageWidth(element: HTMLElement): number | undefined {
   return width > 0 ? width : undefined;
 }
 
-export function LessonPdfPreview({ file }: LessonPdfPreviewProps) {
+export function LessonPdfPreview({ file, onClose }: LessonPdfPreviewProps) {
   const { t } = useTranslation();
   const previewRef = useRef<HTMLElement>(null);
   const pageHostRef = useRef<HTMLDivElement>(null);
@@ -141,35 +143,46 @@ export function LessonPdfPreview({ file }: LessonPdfPreviewProps) {
       aria-label={t('learning:lessonPdfPreview', { defaultValue: 'Lesson PDF preview' })}
       tabIndex={-1}
     >
-      <div className={styles.toolbar}>
+      <div className={styles.toolbar} data-part="lesson-pdf-toolbar">
         <p className={styles.status} role="status" aria-live="polite">
           {statusMessage}
         </p>
-        {pageCount !== null && pageCount > 1 ? (
-          <div
-            ref={navigationRef}
-            className={styles.navigation}
-            aria-label={t('learning:pdfPages', { defaultValue: 'PDF pages' })}
-            aria-busy={status === 'rendering' ? true : undefined}
+        <div className={styles.toolbarActions}>
+          {pageCount !== null && pageCount > 1 ? (
+            <div
+              ref={navigationRef}
+              className={styles.navigation}
+              aria-label={t('learning:pdfPages', { defaultValue: 'PDF pages' })}
+              aria-busy={status === 'rendering' ? true : undefined}
+            >
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={status !== 'rendering' && pageNumber <= 1}
+                onClick={() => showPage(pageNumber - 1, 'previous')}
+              >
+                {t('course:previousPage')}
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={status !== 'rendering' && pageNumber >= pageCount}
+                onClick={() => showPage(pageNumber + 1, 'next')}
+              >
+                {t('course:nextPage')}
+              </Button>
+            </div>
+          ) : null}
+          <Button
+            className={styles.closeButton}
+            variant="ghost"
+            size="sm"
+            aria-label={t('a11y:closeDialog', { defaultValue: 'Close dialog' })}
+            onClick={onClose}
           >
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={status !== 'rendering' && pageNumber <= 1}
-              onClick={() => showPage(pageNumber - 1, 'previous')}
-            >
-              {t('course:previousPage')}
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={status !== 'rendering' && pageNumber >= pageCount}
-              onClick={() => showPage(pageNumber + 1, 'next')}
-            >
-              {t('course:nextPage')}
-            </Button>
-          </div>
-        ) : null}
+            <X aria-hidden="true" focusable="false" size={18} strokeWidth={1.75} />
+          </Button>
+        </div>
       </div>
       {status === 'error' ? (
         <div ref={retryRef} className={styles.retry}>

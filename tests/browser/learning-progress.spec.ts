@@ -895,6 +895,15 @@ test('keeps aggregate progress separate from fresh lesson state, dedupes action,
   );
   await expect(page.getByText('1 available now · 1 lesson coming soon')).toBeVisible();
   await expect(page.getByText('Text lesson', { exact: true })).toBeVisible();
+  const textDetails = page.getByRole('button', { name: 'Details' });
+  await expect(textDetails).toBeVisible();
+  await textDetails.click();
+  const textReader = page.getByRole('region', { name: 'Text lesson' });
+  await expect(textReader).toBeFocused();
+  await expect(textReader).toContainText('Keep the reasoning reproducible');
+  await textReader.getByRole('button', { name: 'Close dialog' }).click();
+  await expect(textReader).toBeHidden();
+  await expect(textDetails).toBeFocused();
   await expect(page.getByText('Listed metadata', { exact: true })).toHaveCount(0);
   await expect(page.getByText('Draft metadata', { exact: true })).toHaveCount(0);
   await expect(page.getByText('Media unavailable in this workspace')).toHaveCount(0);
@@ -1170,6 +1179,11 @@ test('keeps authorized video usable without requesting a subtitle track by defau
   await expectEffectivePageScaleGeometry(page, preview);
   expect(mediaRequests).toEqual(['/media/lessons/lesson%20one.mp4']);
   expect(subtitleRequests).toEqual([]);
+  await page.getByRole('button', { name: 'Close dialog' }).click();
+  await expect(preview).toBeHidden();
+  await expect(loadVideo).toBeVisible();
+  await expect(loadVideo).toBeFocused();
+  expect(mediaRequests).toEqual(['/media/lessons/lesson%20one.mp4']);
   expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
   expect(diagnostics.httpFailures).toEqual([]);
 });
@@ -1504,6 +1518,11 @@ test('renders authorized PDF in-page with basic navigation and stable geometry',
   }
   await expectEffectivePageScaleGeometry(page, preview);
   await expectPdfViewportGeometry(preview, 1440);
+  await preview.getByRole('button', { name: 'Close dialog' }).click();
+  await expect(preview).toBeHidden();
+  await expect(loadPdf).toBeVisible();
+  await expect(loadPdf).toBeFocused();
+  expect(mediaRequests).toEqual(['/media/lessons/lesson.pdf']);
   expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
   expect(diagnostics.httpFailures).toEqual([]);
 });

@@ -4,6 +4,47 @@
   margin-inline: auto;
   aspect-ratio: 16 / 9;
 }
+.videoShell {
+  display: grid;
+  inline-size: min(100%, 56rem);
+  min-inline-size: 0;
+  gap: var(--spacing-1, 4px);
+  margin-inline: auto;
+}
+.videoShell .mediaFrame {
+  inline-size: 100%;
+  margin-inline: 0;
+}
+.videoActions {
+  display: flex;
+  justify-content: flex-end;
+}
+.closeButton {
+  inline-size: var(--control-height-sm);
+  padding-inline: 0;
+}
+.textReader {
+  display: grid;
+  max-block-size: min(32rem, 70vh);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  overflow: hidden;
+}
+.textActions {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--spacing-2, 8px);
+  border-block-end: 1px solid var(--border-default);
+}
+.textBody {
+  margin: 0;
+  padding: var(--spacing-4, 16px);
+  overflow: auto;
+  color: var(--text-primary);
+  line-height: var(--type-body-lh);
+  white-space: pre-wrap;
+}
 .media {
   display: block;
   inline-size: 100%;

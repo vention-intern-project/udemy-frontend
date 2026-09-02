@@ -169,10 +169,27 @@ function renderCatalog(
     }
     vi.stubGlobal('IntersectionObserver', NonIntersectingObserver);
   }
+  const requestWithMaximumPriceFixture = (requestOptions: ApiRequestOptions) => {
+    const query = requestOptions.query as
+      | { readonly page?: number; readonly page_size?: number; readonly sort?: string }
+      | undefined;
+    if (
+      requestOptions.path === '/courses' &&
+      query?.page === 1 &&
+      query.page_size === 1 &&
+      query.sort === '-price'
+    ) {
+      return Promise.resolve(response());
+    }
+    return request(requestOptions);
+  };
   return render(
     <QueryClientProvider client={options.queryClient ?? createAppQueryClient()}>
       <LocaleProvider initialLocale={options.locale ?? 'en'}>
-        <SessionProvider client={{ request }} tokenStore={options.tokenStore ?? tokenStore(token)}>
+        <SessionProvider
+          client={{ request: requestWithMaximumPriceFixture as ApiClient['request'] }}
+          tokenStore={options.tokenStore ?? tokenStore(token)}
+        >
           <MemoryRouter
             initialEntries={initialEntries}
             initialIndex={initialIndex}
@@ -402,7 +419,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(requestHeaders.get('/courses')?.get('Authorization')).toBeNull();
     expect(clearToken).not.toHaveBeenCalled();
     expect(storedToken).toBe('stored-access-token');
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(fetchSpy).toHaveBeenCalledTimes(4);
   });
 
   it('renders the hero as one semantic heading with decorative background content kept out of the accessibility tree', async () => {
@@ -2059,6 +2076,8 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(screen.getByRole('spinbutton', { name: 'To' })).toBe(maximum);
     expect(minimum.labels?.[0]?.textContent).toBe('From');
     expect(maximum.labels?.[0]?.textContent).toBe('To');
+    expect(minimum.getAttribute('placeholder')).toBe('0');
+    await waitFor(() => expect(maximum.getAttribute('placeholder')).toBe('9.99'));
     await act(async () => {
       fireEvent.change(minimum, { target: { value: '5' } });
       fireEvent.change(maximum, { target: { value: '25' } });

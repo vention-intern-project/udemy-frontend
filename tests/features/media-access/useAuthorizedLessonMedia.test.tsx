@@ -21,11 +21,14 @@ vi.mock('../../../src/features/media-access/api', () => ({
   requestAuthorizedLessonSubtitles: mediaMocks.requestAuthorizedLessonSubtitles,
 }));
 vi.mock('../../../src/features/media-access/LessonPdfPreview', () => ({
-  default: ({ file }: { file: Blob }) => {
+  default: ({ file, onClose }: { file: Blob; onClose: () => void }) => {
     mediaMocks.renderedPdf = file;
     return (
       <section role="region" aria-label="Lesson PDF preview" tabIndex={-1}>
         PDF preview
+        <button type="button" aria-label="Close dialog" onClick={onClose}>
+          Close
+        </button>
       </section>
     );
   },
@@ -101,12 +104,45 @@ describe('LessonMediaAccess', () => {
     },
   );
 
-  it('does not request or render media for a text lesson', () => {
-    render(<LessonMediaAccess lessonType="text" locator={null} />);
+  it('opens and closes long text lesson content without making a media request', async () => {
+    const lessonText = 'A long lesson body that remains available inside a bounded reader.';
+    render(<LessonMediaAccess lessonType="text" locator={null} textContent={lessonText} />);
 
     expect(screen.queryByText('Media unavailable in this workspace')).toBeNull();
+    expect(screen.queryByText(lessonText)).toBeNull();
+    const details = screen.getByRole('button', { name: 'Details' });
+    fireEvent.click(details);
+
+    const reader = await screen.findByRole('region', { name: 'Text lesson' });
+    expect(reader.textContent).toContain(lessonText);
+    await waitFor(() => expect(document.activeElement).toBe(reader));
+    fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }));
+
+    expect(screen.queryByRole('region', { name: 'Text lesson' })).toBeNull();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Details' })).toBe(document.activeElement),
+    );
     expect(requestAuthorizedLessonMedia).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ['ru', 'Подробнее', 'Текстовый урок', 'Закрыть диалог'],
+    ['uz', 'Batafsil', 'Matnli dars', 'Dialogni yopish'],
+  ] as const)(
+    'localizes text lesson disclosure controls in %s',
+    async (locale: Locale, detailsLabel, regionLabel, closeLabel) => {
+      render(
+        <LocaleProvider initialLocale={locale}>
+          <LessonMediaAccess lessonType="text" locator={null} textContent="Lesson content" />
+        </LocaleProvider>,
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: detailsLabel }));
+
+      expect(await screen.findByRole('region', { name: regionLabel })).toBeTruthy();
+      expect(screen.getByRole('button', { name: closeLabel })).toBeTruthy();
+    },
+  );
 
   it.each([
     '/media/lessons/%00private.pdf',
@@ -145,6 +181,22 @@ describe('LessonMediaAccess', () => {
     expect(screen.getByText('Video ready.')).toBeTruthy();
     view.unmount();
     expect(revokeObjectUrl).toHaveBeenCalledWith(objectUrl);
+  });
+
+  it('closes an opened video, revokes its object URL, and restores the load control focus', async () => {
+    vi.stubGlobal('URL', { createObjectURL: createObjectUrl, revokeObjectURL: revokeObjectUrl });
+    requestAuthorizedLessonMedia.mockResolvedValue(admittedMediaResponse('video/mp4'));
+    render(<LessonMediaAccess lessonType="video" locator={{ filename: 'lesson.mp4' }} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load video' }));
+    const preview = await screen.findByLabelText('Lesson video preview');
+    fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }));
+
+    await waitFor(() => expect(screen.queryByLabelText('Lesson video preview')).toBeNull());
+    expect(screen.getByRole('button', { name: 'Load video' })).toBe(document.activeElement);
+    expect(revokeObjectUrl).toHaveBeenCalledWith(objectUrl);
+    expect(requestAuthorizedLessonMedia).toHaveBeenCalledTimes(1);
+    expect(preview.isConnected).toBe(false);
   });
 
   it('adds and revokes an authorized WebVTT subtitle track without blocking the video', async () => {
@@ -317,6 +369,21 @@ describe('LessonMediaAccess', () => {
     expect(createObjectUrl).not.toHaveBeenCalled();
     expect(document.querySelector('iframe, object, embed')).toBeNull();
     expect(document.querySelector('a[download], a[target]')).toBeNull();
+  });
+
+  it('closes an opened PDF and returns keyboard focus to its load control', async () => {
+    requestAuthorizedLessonMedia.mockResolvedValue(admittedMediaResponse('application/pdf'));
+    render(<LessonMediaAccess lessonType="pdf" locator={{ filename: 'lesson.pdf' }} />);
+
+    const loadPdf = screen.getByRole('button', { name: 'Load PDF' });
+    fireEvent.click(loadPdf);
+    const closePdf = await screen.findByRole('button', { name: 'Close dialog' });
+
+    fireEvent.click(closePdf);
+
+    await waitFor(() => expect(screen.queryByLabelText('Lesson PDF preview')).toBeNull());
+    expect(screen.getByRole('button', { name: 'Load PDF' })).toBe(document.activeElement);
+    expect(requestAuthorizedLessonMedia).toHaveBeenCalledTimes(1);
   });
 
   it.each([
