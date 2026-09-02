@@ -286,7 +286,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
         name: 'Освойте навыки, которые формируют будущее',
       }),
     ).toBeTruthy();
-    expect(screen.getByRole('heading', { level: 2, name: 'Найдено 2 курса' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 2, name: 'Найдено 2 курса' })).toBeTruthy();
     expect(screen.queryByText('Сортировка:')).toBeNull();
     expect(screen.getByRole('button', { name: 'Цена' })).toBeTruthy();
     expect(screen.getByText('БЕСПЛАТНО')).toBeTruthy();
