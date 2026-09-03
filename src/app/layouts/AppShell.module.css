@@ -1163,6 +1163,14 @@
   padding: 0;
 }
 
+.main.mainInstructorCourses {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  margin: 0;
+  padding-inline: 0;
+}
+
 .mainAuth {
   display: grid;
   place-items: start center;

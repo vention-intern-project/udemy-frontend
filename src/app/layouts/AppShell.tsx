@@ -1441,6 +1441,7 @@ export function AppShell() {
         className={[
           styles.main,
           isCatalogRoute ? styles.mainCatalog : null,
+          isInstructorCoursesRoute ? styles.mainInstructorCourses : null,
           layout === 'workspace' ? styles.mainWorkspace : null,
           layout === 'auth' ? styles.mainAuth : null,
         ]

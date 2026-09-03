@@ -89,6 +89,13 @@ interface WorkFrameBoundaryGeometry {
   readonly workFrameBottom: number;
 }
 
+interface ClassicScrollbarBoundaryGeometry {
+  readonly canvasLeft: number;
+  readonly canvasRight: number;
+  readonly contentLeft: number;
+  readonly contentRight: number;
+}
+
 const unexpectedRuntimeErrors = new WeakMap<Page, string[]>();
 const instructorCollectionAbort: RequestFailureIdentity = {
   method: 'GET',
@@ -207,6 +214,24 @@ async function expectNoHorizontalOverflow(page: Page) {
   }));
   expect(widths.document).toBeLessThanOrEqual(widths.client);
   expect(widths.body).toBeLessThanOrEqual(widths.client);
+}
+
+async function expectInstructorCanvasInsideReservedScrollbarGutter(page: Page) {
+  const geometry = await page.evaluate<ClassicScrollbarBoundaryGeometry>(() => {
+    const canvas = document.querySelector('article');
+    if (!canvas) throw new Error('Expected Instructor canvas.');
+    const canvasBox = canvas.getBoundingClientRect();
+    const rootBox = document.documentElement.getBoundingClientRect();
+    const rootStyle = getComputedStyle(document.documentElement);
+    return {
+      canvasLeft: canvasBox.left,
+      canvasRight: canvasBox.right,
+      contentLeft: rootBox.left + Number.parseFloat(rootStyle.paddingLeft),
+      contentRight: rootBox.right - Number.parseFloat(rootStyle.paddingRight),
+    };
+  });
+  expect(geometry.canvasLeft).toBeGreaterThanOrEqual(geometry.contentLeft);
+  expect(geometry.canvasRight).toBeLessThanOrEqual(geometry.contentRight);
 }
 
 async function expectInstructorCanvasEndsBeforeFooter(page: Page) {
@@ -993,9 +1018,14 @@ test('renders the contract-faithful empty collection without a public collection
   await page.goto('/instructor/courses');
   await expect(page.getByText('You have not created any courses yet.')).toBeVisible();
   await expect(page.getByRole('list', { name: 'Your courses' })).toHaveCount(0);
+  await page.addStyleTag({
+    content:
+      'html { box-sizing: border-box; overflow-y: scroll !important; padding-right: 17px !important; }',
+  });
   for (const width of [320, 640, 768, 1440] as const) {
     await page.setViewportSize({ width, height: 900 });
     await expectNoHorizontalOverflow(page);
+    await expectInstructorCanvasInsideReservedScrollbarGutter(page);
   }
   expect(forbiddenPublicRequests).toEqual([]);
 });
