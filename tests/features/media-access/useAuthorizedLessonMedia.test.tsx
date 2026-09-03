@@ -89,12 +89,12 @@ function admittedMediaResponse(contentType: string | null): ApiBinaryResponse {
   };
 }
 
-function signalPlayableMetadata(video: HTMLVideoElement) {
+function signalPlayableMetadata(video: HTMLVideoElement, duration = 1) {
   Object.defineProperties(video, {
     readyState: { configurable: true, value: HTMLMediaElement.HAVE_METADATA },
     videoWidth: { configurable: true, value: 2 },
     videoHeight: { configurable: true, value: 2 },
-    duration: { configurable: true, value: 1 },
+    duration: { configurable: true, value: duration },
   });
   fireEvent.loadedMetadata(video);
 }
@@ -228,6 +228,23 @@ describe('LessonMediaAccess', () => {
     expect(screen.getByText('Video ready.')).toBeTruthy();
     view.unmount();
     expect(revokeObjectUrl).toHaveBeenCalledWith(objectUrl);
+  });
+
+  it('accepts playable WebM metadata when duration remains infinite', async () => {
+    vi.stubGlobal('URL', { createObjectURL: createObjectUrl, revokeObjectURL: revokeObjectUrl });
+    requestAuthorizedLessonMedia.mockResolvedValue(admittedMediaResponse('video/webm'));
+    render(
+      <LessonMediaAccess lessonType="video" isPublished locator={{ filename: 'lesson.webm' }} />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load video' }));
+    const preview = (await screen.findByLabelText('Lesson video preview')) as HTMLVideoElement;
+
+    signalPlayableMetadata(preview, Number.POSITIVE_INFINITY);
+
+    await waitFor(() => expect(screen.getByText('Video ready.')).toBeTruthy());
+    expect(screen.queryByText('Media could not be loaded. Try again.')).toBeNull();
+    expect(document.activeElement).toBe(preview);
   });
 
   it('closes an opened video, revokes its object URL, and restores the load control focus', async () => {
