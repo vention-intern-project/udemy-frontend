@@ -122,7 +122,7 @@ function catalogDiscoveryReducer(
 ): CatalogDiscoveryState {
   switch (action.type) {
     case 'request-started':
-      return previous.data && previous.dataQueryKey === action.queryKey
+      return previous.data
         ? {
             activeQueryKey: action.queryKey,
             data: previous.data,
@@ -142,7 +142,7 @@ function catalogDiscoveryReducer(
         status: action.data.items.length === 0 ? 'empty' : 'populated',
       };
     case 'request-failed':
-      return previous.data && previous.dataQueryKey === action.queryKey
+      return previous.data
         ? {
             activeQueryKey: action.queryKey,
             data: previous.data,

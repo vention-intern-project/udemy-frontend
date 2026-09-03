@@ -76,6 +76,10 @@ interface ExpectedRequestFailureInput extends RequestFailureIdentity {
   occurrences?: number;
 }
 
+interface AppShellStaleScrollWindow extends Window {
+  queueAppShellStaleScrollEvent(): void;
+}
+
 const CART_STRICT_MODE_ABORT: RequestFailureIdentity = {
   method: 'GET',
   path: '/cart',
@@ -402,7 +406,7 @@ function normalizeFontFamily(value: string) {
 }
 
 async function mockAuthenticatedSession(page: Page, role: BackendRole) {
-  await page.addInitScript(() => {
+  const accessTokenInit = await page.addInitScript(() => {
     localStorage.setItem('learnhub.access-token', 'browser-test-token');
   });
   await page.route('**/me', async (route) =>
@@ -420,6 +424,7 @@ async function mockAuthenticatedSession(page: Page, role: BackendRole) {
       }),
     }),
   );
+  return accessTokenInit;
 }
 
 interface InstructorPopupFixture {
@@ -1780,12 +1785,31 @@ test('resets pathname navigation while restoring the browser history entry scrol
   page,
 }) => {
   const assertRuntimeClean = monitorRuntime(page);
+  await page.addInitScript(() => {
+    const nativeScrollTo = window.scrollTo;
+    let queueStaleScrollEvent = false;
+    Object.assign(window, {
+      queueAppShellStaleScrollEvent() {
+        queueStaleScrollEvent = true;
+      },
+    });
+    window.scrollTo = ((...args: Parameters<typeof window.scrollTo>) => {
+      nativeScrollTo.apply(window, args);
+      if (!queueStaleScrollEvent) return;
+      queueStaleScrollEvent = false;
+      queueMicrotask(() => window.dispatchEvent(new Event('scroll')));
+    }) as typeof window.scrollTo;
+  });
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/');
   await page.getByRole('contentinfo').scrollIntoViewIfNeeded();
   const catalogScroll = await page.evaluate(() => window.scrollY);
   expect(catalogScroll).toBeGreaterThan(0);
 
+  await page.evaluate(() => {
+    const staleScrollWindow = window as unknown as AppShellStaleScrollWindow;
+    staleScrollWindow.queueAppShellStaleScrollEvent();
+  });
   await page.getByRole('link', { name: 'Log in', exact: true }).click();
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.getByRole('heading', { level: 1, name: 'Log in' })).toBeVisible();
@@ -1806,6 +1830,56 @@ test('resets pathname navigation while restoring the browser history entry scrol
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
   await expect(page.locator('#main-content')).toBeFocused();
   await expectNoHorizontalOverflow(page);
+  assertRuntimeClean();
+});
+
+test('keeps recent search history open through debounced typing and clearing without requiring a blur', async ({
+  page,
+}) => {
+  const assertRuntimeClean = monitorRuntime(page);
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'learnhub.catalog-search-history',
+      JSON.stringify(['React testing', 'TypeScript']),
+    );
+  });
+  await installCatalogFixture(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/');
+
+  const search = page.getByRole('combobox', { name: 'Search courses' });
+  const history = page.getByRole('listbox', { name: 'Recent searches' });
+  await search.focus();
+  await expect(history).toBeVisible();
+  await search.fill('React');
+  await search.press('Escape');
+  await expect(history).toHaveCount(0);
+  await expect(page).toHaveURL(/search_query=React/);
+  await expect(search).toBeFocused();
+  await expect(history).toHaveCount(0);
+  await search.click();
+  await expect(history).toBeVisible();
+  await expect(history.getByRole('option', { name: 'React testing' })).toBeVisible();
+
+  await search.fill('Reac');
+  await expect(page).toHaveURL(/search_query=Reac/);
+  await expect(history).toBeVisible();
+  await expect(history.getByRole('option', { name: 'React testing' })).toBeVisible();
+
+  await search.fill('');
+  await expect(page).toHaveURL('/');
+  await expect(search).toHaveValue('');
+  await expect(history).toBeVisible();
+  await expect(history.getByRole('option', { name: 'TypeScript' })).toBeVisible();
+  await search.press('Escape');
+  await expect(history).toHaveCount(0);
+  await search.click();
+  await expect(history).toBeVisible();
+  await search.press('ArrowDown');
+  await expect(history.getByRole('option', { name: 'React testing' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
   assertRuntimeClean();
 });
 
@@ -2182,14 +2256,14 @@ test('keeps Instructor courses neutral and hover-violet on nested desktop worksp
   await expectNoHorizontalOverflow(page);
 });
 
-test('shows authenticated account details on hover and clears the session through Log out', async ({
+test('shows authenticated account details on hover and preserves the device locale through Log out', async ({
   page,
 }) => {
   await page.addInitScript(() => {
     localStorage.setItem('learnhub.locale', 'ru');
     localStorage.setItem('browser-oracle-unrelated-key', 'preserve-me');
   });
-  await mockAuthenticatedSession(page, 'student');
+  const accessTokenInit = await mockAuthenticatedSession(page, 'student');
   await mockStudentWorkspaceData(page);
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/learning');
@@ -2248,10 +2322,14 @@ test('shows authenticated account details on hover and clears the session throug
   await expect(page).toHaveURL('/');
   await expect(page.getByRole('link', { name: 'Войти' })).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('learnhub.access-token'))).toBeNull();
-  expect(await page.evaluate(() => localStorage.getItem('learnhub.locale'))).toBeNull();
+  expect(await page.evaluate(() => localStorage.getItem('learnhub.locale'))).toBe('ru');
   expect(await page.evaluate(() => localStorage.getItem('browser-oracle-unrelated-key'))).toBe(
     'preserve-me',
   );
+  await expect(page.locator('html')).toHaveAttribute('lang', 'ru');
+  await accessTokenInit.dispose();
+  await page.reload();
+  await expect(page.getByRole('link', { name: 'Войти' })).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('lang', 'ru');
   assertRuntimeClean();
 });

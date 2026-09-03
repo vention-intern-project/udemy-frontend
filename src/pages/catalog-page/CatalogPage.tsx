@@ -25,6 +25,8 @@ type CourseDisclosureId = number;
 type RefreshAnnouncementKey = 'updatingCourseResults' | 'courseResultsUpdated';
 type ToolbarDisclosure = 'price' | 'sort';
 
+const INITIAL_CATALOG_SKELETON_DELAY_MS = 200;
+
 type DisclosureDismissOptions = {
   returnFocus?: boolean;
 };
@@ -80,6 +82,24 @@ function getActiveCatalogPriceDisclosureControl() {
   const isPriceDisclosureControl =
     activeElement instanceof HTMLElement && activeElement.closest('#catalog-price-disclosure');
   return isPriceDisclosureControl ? activeElement : null;
+}
+
+function useDelayedInitialCatalogLoading(isInitialLoading: boolean) {
+  const [shouldShowInitialSkeleton, setShouldShowInitialSkeleton] = useState(false);
+
+  useEffect(() => {
+    if (!isInitialLoading) {
+      setShouldShowInitialSkeleton(false);
+      return undefined;
+    }
+    const timer = globalThis.setTimeout(
+      () => setShouldShowInitialSkeleton(true),
+      INITIAL_CATALOG_SKELETON_DELAY_MS,
+    );
+    return () => globalThis.clearTimeout(timer);
+  }, [isInitialLoading]);
+
+  return shouldShowInitialSkeleton;
 }
 
 function restoreBrowserSelectedFocus(target: HTMLElement) {
@@ -275,11 +295,16 @@ export function CatalogPage() {
   const isInitialLoading = discovery.status === 'initial-loading';
   const isRefreshing = discovery.status === 'refreshing';
   const isUpdating = isInitialLoading || isRefreshing;
+  const shouldShowInitialSkeleton = useDelayedInitialCatalogLoading(isInitialLoading);
+  const shouldRenderInitialSkeleton =
+    discovery.status === 'initial-loading' && shouldShowInitialSkeleton;
   const retainedResultsTotal =
     lastKnownResultTotal?.presentationKey === presentationKey ? lastKnownResultTotal.total : null;
   const currentResults = discovery.dataQueryKey === queryKey ? results : undefined;
-  const isChangedCriteriaLoading =
-    isInitialLoading && lastKnownResultTotal?.presentationKey !== presentationKey;
+  const isChangedCriteriaLoading = isRefreshing && discovery.dataQueryKey !== queryKey;
+  const isResultsHeadingLoading = isInitialLoading || isChangedCriteriaLoading;
+  const shouldShowEmptyState =
+    currentResults?.items.length === 0 && discovery.failure === undefined;
   const visibleResultsTotal = currentResults?.total ?? retainedResultsTotal;
   const displayedResultsTotal =
     visibleResultsTotal ??
@@ -428,7 +453,7 @@ export function CatalogPage() {
                 </VisuallyHidden>
                 <h2
                   id="catalog-results-title"
-                  aria-label={isChangedCriteriaLoading ? loadingCourseResultsLabel : undefined}
+                  aria-label={isResultsHeadingLoading ? loadingCourseResultsLabel : undefined}
                 >
                   {displayedResultsTotal !== null ? (
                     <>
@@ -436,7 +461,7 @@ export function CatalogPage() {
                       <strong className={styles.resultsTotal}>{displayedResultsTotal}</strong>
                       <span className={styles.resultsSuffix}>{resultCountSuffix}</span>
                     </>
-                  ) : isChangedCriteriaLoading ? (
+                  ) : isResultsHeadingLoading ? (
                     loadingCourseResultsLabel
                   ) : (
                     t('catalog:courseResultsUnavailable', {
@@ -476,7 +501,7 @@ export function CatalogPage() {
                   </Button>
                 </Notice>
               ) : null}
-              {discovery.status === 'initial-loading' ? (
+              {shouldRenderInitialSkeleton ? (
                 <ul
                   className={[styles.list, styles.skeletons].join(' ')}
                   data-part="catalog-result-list"
@@ -489,7 +514,7 @@ export function CatalogPage() {
                   ))}
                 </ul>
               ) : null}
-              {results?.items.length === 0 ? (
+              {shouldShowEmptyState ? (
                 <Notice
                   tone="info"
                   title={t('catalog:noCoursesFound', { defaultValue: 'No courses found' })}

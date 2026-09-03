@@ -45,7 +45,7 @@ import {
 } from '@features/catalog-discovery';
 import { Dialog, Input, VisuallyHidden } from '@shared/ui/primitives';
 import { useDensityMode } from '@shared/ui/theme';
-import { LanguageSelector, useLocale } from '@shared/locale';
+import { LanguageSelector } from '@shared/locale';
 import type { ExclusiveDisclosureControl } from '@shared/types';
 import { CourseChatLauncher } from '@widgets/course-chat';
 import learnHubBookMark from './assets/learnhub-book-ui018.png';
@@ -74,6 +74,7 @@ const INSTRUCTOR_COURSES_HEADING_ID = 'your-courses-heading';
 const INSTRUCTOR_COURSES_NEW_TAB_FOCUS_KEY = 'learnhub.instructor-courses.new-tab-focus';
 const INSTRUCTOR_COURSES_NEW_TAB_FOCUS_MAX_AGE_MS = 30_000;
 const CATALOG_SEARCH_DEBOUNCE_MS = 500;
+const POP_SCROLL_RESTORE_MAX_DURATION_MS = 1_000;
 
 interface CartPresentation {
   badge: string | null;
@@ -82,6 +83,30 @@ interface CartPresentation {
 interface ScrollPosition {
   left: number;
   top: number;
+}
+
+interface PendingPopScrollRestore {
+  readonly locationKey: string;
+  readonly startedAt: number;
+  frameId: number | null;
+}
+
+interface FailedPopScrollRestore {
+  readonly locationKey: string;
+  readonly position: ScrollPosition;
+}
+
+function readCurrentHistoryEntryKey(fallbackKey: string): string {
+  const historyState = window.history.state;
+  if (
+    typeof historyState === 'object' &&
+    historyState !== null &&
+    'key' in historyState &&
+    typeof historyState.key === 'string'
+  ) {
+    return historyState.key;
+  }
+  return fallbackKey;
 }
 
 interface InstructorCoursesNewTabFocusMarker {
@@ -560,7 +585,6 @@ function AuthenticatedTabletDrawer({
 export function AppShell() {
   const { t } = useTranslation();
   const session = useSession();
-  const { clearStoredLocale } = useLocale();
   const { cacheEpoch, clearSession, state } = session;
   const cartSubject =
     state.status === 'authenticated' && state.user.role === 'student' ? (cacheEpoch ?? null) : null;
@@ -608,7 +632,9 @@ export function AppShell() {
   const catalogSearchWrapperRef = useRef<HTMLDivElement>(null);
   const catalogSearchDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const catalogSearchIsComposingRef = useRef(false);
+  const catalogSearchListExplicitlyDismissedRef = useRef(false);
   const restoreCatalogSearchFocusRef = useRef(false);
+  const preserveCatalogSearchListOnQuerySyncRef = useRef(false);
   const newTabInstructorCoursesFocusClaimedRef = useRef(false);
   const catalogSearchListboxId = `catalog-search-history-${useId()}`;
   const currentLocation = `${location.pathname}${location.search}${location.hash}`;
@@ -616,7 +642,11 @@ export function AppShell() {
   const catalogSearchLocationRef = useRef(catalogSearchLocationIdentity);
   const previousLocationRef = useRef(currentLocation);
   const previousScrollLocationRef = useRef(location);
+  const initialHistoryEntryKeyRef = useRef(location.key);
+  const activeScrollLocationKeyRef = useRef(location.key);
   const entryScrollPositionsRef = useRef(new Map<string, ScrollPosition>());
+  const pendingPopScrollRestoreRef = useRef<PendingPopScrollRestore | null>(null);
+  const failedPopScrollRestoreRef = useRef<FailedPopScrollRestore | null>(null);
   const routeFocusIdentity = `${location.pathname}${location.search}`;
   const previousRouteFocusIdentityRef = useRef(routeFocusIdentity);
   const initialRoutePathnameRef = useRef(location.pathname);
@@ -660,10 +690,9 @@ export function AppShell() {
   const showHeaderCart = hasCartNavigation && !(isAnonymous && isStudentMobileViewport);
   const requestLogout = useCallback(() => {
     setAuthenticatedTabletDrawerOpen(false);
-    clearStoredLocale();
     setLogoutPending(true);
     navigate('/', { replace: true, flushSync: true });
-  }, [clearStoredLocale, navigate]);
+  }, [navigate]);
 
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') return undefined;
@@ -770,9 +799,13 @@ export function AppShell() {
 
   useEffect(() => {
     if (!isCatalogRoute) return;
+    const preserveCatalogSearchList =
+      preserveCatalogSearchListOnQuerySyncRef.current &&
+      document.activeElement === catalogSearchRef.current;
+    preserveCatalogSearchListOnQuerySyncRef.current = false;
     clearCatalogSearchDebounce();
     setCatalogSearchDraft(catalogQuery.search_query ?? '');
-    setCatalogSearchOpen(false);
+    setCatalogSearchOpen(preserveCatalogSearchList);
     setActiveCatalogSearchIndex(null);
   }, [catalogQuery.search_query, isCatalogRoute]);
 
@@ -783,9 +816,94 @@ export function AppShell() {
     setCatalogSearchHistory(readCatalogSearchHistory());
   }, [isCatalogRoute]);
 
-  useEffect(() => {
+  const cancelPendingPopScrollRestore = useCallback(() => {
+    const pendingRestore = pendingPopScrollRestoreRef.current;
+    if (pendingRestore !== null && pendingRestore.frameId !== null) {
+      window.cancelAnimationFrame(pendingRestore.frameId);
+    }
+    pendingPopScrollRestoreRef.current = null;
+  }, []);
+
+  const restorePopScrollPosition = useCallback(
+    (locationKey: string, position: ScrollPosition) => {
+      cancelPendingPopScrollRestore();
+      failedPopScrollRestoreRef.current = null;
+      const pendingRestore: PendingPopScrollRestore = {
+        locationKey,
+        startedAt: window.performance.now(),
+        frameId: null,
+      };
+      pendingPopScrollRestoreRef.current = pendingRestore;
+
+      const settlePendingRestore = () => {
+        queueMicrotask(() => {
+          if (pendingPopScrollRestoreRef.current === pendingRestore) {
+            pendingPopScrollRestoreRef.current = null;
+          }
+        });
+      };
+
+      const applyRestore = () => {
+        pendingRestore.frameId = null;
+        if (activeScrollLocationKeyRef.current !== locationKey) {
+          cancelPendingPopScrollRestore();
+          return;
+        }
+
+        window.scrollTo(position.left, position.top);
+        const restored =
+          Math.abs(window.scrollX - position.left) <= 1 &&
+          Math.abs(window.scrollY - position.top) <= 1;
+        if (restored) {
+          entryScrollPositionsRef.current.set(locationKey, {
+            left: window.scrollX,
+            top: window.scrollY,
+          });
+          settlePendingRestore();
+          return;
+        }
+
+        if (
+          window.performance.now() - pendingRestore.startedAt >=
+          POP_SCROLL_RESTORE_MAX_DURATION_MS
+        ) {
+          failedPopScrollRestoreRef.current = {
+            locationKey,
+            position: {
+              left: window.scrollX,
+              top: window.scrollY,
+            },
+          };
+          settlePendingRestore();
+          return;
+        }
+
+        pendingRestore.frameId = window.requestAnimationFrame(applyRestore);
+      };
+
+      applyRestore();
+    },
+    [cancelPendingPopScrollRestore],
+  );
+
+  useEffect(() => cancelPendingPopScrollRestore, [cancelPendingPopScrollRestore]);
+
+  useLayoutEffect(() => {
+    const trackedLocationKey = location.key;
     const rememberCurrentPosition = () => {
-      entryScrollPositionsRef.current.set(location.key, {
+      const failedRestore = failedPopScrollRestoreRef.current;
+      if (failedRestore?.locationKey === trackedLocationKey) {
+        const stillAtFailedPosition =
+          Math.abs(window.scrollX - failedRestore.position.left) <= 1 &&
+          Math.abs(window.scrollY - failedRestore.position.top) <= 1;
+        if (stillAtFailedPosition) return;
+        failedPopScrollRestoreRef.current = null;
+      }
+      if (pendingPopScrollRestoreRef.current?.locationKey === trackedLocationKey) return;
+      const historyEntryKey = readCurrentHistoryEntryKey(initialHistoryEntryKeyRef.current);
+      if (activeScrollLocationKeyRef.current !== trackedLocationKey) return;
+      if (historyEntryKey !== trackedLocationKey) return;
+      entryScrollPositionsRef.current.set(trackedLocationKey, {
         left: window.scrollX,
         top: window.scrollY,
       });
@@ -800,6 +918,11 @@ export function AppShell() {
   }, [location.key]);
 
   useLayoutEffect(() => {
+    activeScrollLocationKeyRef.current = location.key;
+    cancelPendingPopScrollRestore();
+    if (failedPopScrollRestoreRef.current?.locationKey !== location.key) {
+      failedPopScrollRestoreRef.current = null;
+    }
     const previousLocation = previousScrollLocationRef.current;
     if (previousLocation.key === location.key) return;
 
@@ -829,14 +952,16 @@ export function AppShell() {
       }
       document.getElementById(targetId)?.scrollIntoView?.();
     } else if ((pathnameChanged || catalogPageChanged) && navigationType === 'POP') {
-      const position = entryScrollPositionsRef.current.get(location.key);
-      window.scrollTo(position?.left ?? 0, position?.top ?? 0);
+      restorePopScrollPosition(
+        location.key,
+        entryScrollPositionsRef.current.get(location.key) ?? { left: 0, top: 0 },
+      );
     } else if (pathnameChanged || catalogPageChanged) {
       window.scrollTo(0, 0);
     }
 
     previousScrollLocationRef.current = location;
-  }, [location, navigationType]);
+  }, [cancelPendingPopScrollRestore, location, navigationType, restorePopScrollPosition]);
 
   useEffect(() => {
     if (previousLocationRef.current !== currentLocation) {
@@ -933,6 +1058,17 @@ export function AppShell() {
     setActiveCatalogSearchIndex(null);
   }
 
+  function openCatalogSearchList() {
+    catalogSearchListExplicitlyDismissedRef.current = false;
+    setCatalogSearchOpen(catalogSearchMatches.length > 0);
+    setActiveCatalogSearchIndex(null);
+  }
+
+  function explicitlyDismissCatalogSearchList() {
+    catalogSearchListExplicitlyDismissedRef.current = true;
+    closeCatalogSearchList();
+  }
+
   function clearCatalogSearchDebounce() {
     if (catalogSearchDebounceTimerRef.current === null) return;
     clearTimeout(catalogSearchDebounceTimerRef.current);
@@ -946,7 +1082,11 @@ export function AppShell() {
     persistCatalogSearchHistory(nextHistory);
   }
 
-  function submitCatalogSearch(value = catalogSearchDraft, remember = true) {
+  function submitCatalogSearch(
+    value = catalogSearchDraft,
+    remember = true,
+    preserveListOnCatalogQuerySync = false,
+  ) {
     clearCatalogSearchDebounce();
     const submittedSearch = value.trim();
     const next = {
@@ -956,10 +1096,15 @@ export function AppShell() {
     };
     const nextSearch = serializeCatalogQuery(next);
     const currentCanonicalSearch = serializeCatalogQuery(catalogQuery);
+    const destinationPathname = isCatalogRoute ? location.pathname : '/';
+    const preserveCatalogSearchList =
+      preserveListOnCatalogQuerySync &&
+      destinationPathname === location.pathname &&
+      !catalogSearchListExplicitlyDismissedRef.current;
     setCatalogSearchDraft(next.search_query ?? '');
     if (submittedSearch && remember) rememberCatalogSearch(submittedSearch);
-    closeCatalogSearchList();
-    const destinationPathname = isCatalogRoute ? location.pathname : '/';
+    if (preserveCatalogSearchList) setActiveCatalogSearchIndex(null);
+    else closeCatalogSearchList();
     if (
       destinationPathname === location.pathname &&
       nextSearch === currentCanonicalSearch &&
@@ -968,6 +1113,7 @@ export function AppShell() {
       return;
 
     restoreCatalogSearchFocusRef.current = true;
+    preserveCatalogSearchListOnQuerySyncRef.current = preserveCatalogSearchList;
     navigate({
       pathname: destinationPathname,
       search: nextSearch ? `?${nextSearch}` : '',
@@ -985,16 +1131,16 @@ export function AppShell() {
       )
         return;
       catalogSearchDebounceTimerRef.current = null;
-      submitCatalogSearch(value, false);
+      submitCatalogSearch(value, false, true);
     }, CATALOG_SEARCH_DEBOUNCE_MS);
     catalogSearchDebounceTimerRef.current = timeoutId;
   }
 
   function clearCatalogSearch() {
     clearCatalogSearchDebounce();
+    catalogSearchListExplicitlyDismissedRef.current = false;
     setCatalogSearchDraft('');
-    closeCatalogSearchList();
-    submitCatalogSearch('', false);
+    submitCatalogSearch('', false, true);
     catalogSearchRef.current?.focus();
   }
 
@@ -1170,12 +1316,11 @@ export function AppShell() {
                       closeCatalogSearchList();
                     }
                   }}
-                  onFocus={() => {
-                    setCatalogSearchOpen(catalogSearchMatches.length > 0);
-                    setActiveCatalogSearchIndex(null);
-                  }}
+                  onFocus={openCatalogSearchList}
+                  onClick={openCatalogSearchList}
                   onChange={(event) => {
                     const nextDraft = event.target.value;
+                    catalogSearchListExplicitlyDismissedRef.current = false;
                     setCatalogSearchDraft(nextDraft);
                     setCatalogSearchOpen(catalogSearchHistory.length > 0);
                     setActiveCatalogSearchIndex(null);
@@ -1192,12 +1337,13 @@ export function AppShell() {
                   onKeyDown={(event) => {
                     if (event.key === 'Escape') {
                       event.preventDefault();
-                      closeCatalogSearchList();
+                      explicitlyDismissCatalogSearchList();
                       return;
                     }
                     if (catalogSearchMatches.length === 0) return;
                     if (event.key === 'ArrowDown') {
                       event.preventDefault();
+                      catalogSearchListExplicitlyDismissedRef.current = false;
                       setCatalogSearchOpen(true);
                       setActiveCatalogSearchIndex((index) =>
                         index === null ? 0 : Math.min(index + 1, catalogSearchMatches.length - 1),
@@ -1205,6 +1351,7 @@ export function AppShell() {
                     }
                     if (event.key === 'ArrowUp') {
                       event.preventDefault();
+                      catalogSearchListExplicitlyDismissedRef.current = false;
                       setCatalogSearchOpen(true);
                       setActiveCatalogSearchIndex((index) =>
                         index === null ? catalogSearchMatches.length - 1 : Math.max(index - 1, 0),
@@ -1441,6 +1588,7 @@ export function AppShell() {
         className={[
           styles.main,
           isCatalogRoute ? styles.mainCatalog : null,
+          isInstructorCoursesRoute ? styles.mainInstructorCourses : null,
           layout === 'workspace' ? styles.mainWorkspace : null,
           layout === 'auth' ? styles.mainAuth : null,
         ]

@@ -38005,7 +38005,7 @@
             "functionName": "CatalogPage",
             "argument": "discovery.failure.messageKey",
             "occurrence": 1,
-            "sourceFingerprint": "sha256:f6514c9ec022c2bef4743bdb222d5d29d4b5818116eff307a05ee1fb816638fb"
+            "sourceFingerprint": "sha256:d5565eeb302b625458f8d619bc187cb876ae3833da5d03e28e911d44d65e11f9"
           }
         ]
       },
@@ -38018,7 +38018,7 @@
             "functionName": "CatalogPage",
             "argument": "discovery.failure.titleKey",
             "occurrence": 1,
-            "sourceFingerprint": "sha256:f6514c9ec022c2bef4743bdb222d5d29d4b5818116eff307a05ee1fb816638fb"
+            "sourceFingerprint": "sha256:d5565eeb302b625458f8d619bc187cb876ae3833da5d03e28e911d44d65e11f9"
           }
         ]
       },
@@ -38031,7 +38031,7 @@
             "functionName": "CatalogPage",
             "argument": "`catalog:${refreshAnnouncement}`",
             "occurrence": 1,
-            "sourceFingerprint": "sha256:f6514c9ec022c2bef4743bdb222d5d29d4b5818116eff307a05ee1fb816638fb"
+            "sourceFingerprint": "sha256:d5565eeb302b625458f8d619bc187cb876ae3833da5d03e28e911d44d65e11f9"
           }
         ]
       },
@@ -38390,7 +38390,7 @@
             "functionName": "NavigationLinks",
             "argument": "item.labelKey",
             "occurrence": 1,
-            "sourceFingerprint": "sha256:9fc71bd89f92e9a8cfec850a0366dbc61c11b0abb4611f5fcbebfebc125529a6"
+            "sourceFingerprint": "sha256:414628a77a85df9235df0bc5d91cfb849618c85549c399feb9b73e8224246ba6"
           }
         ]
       },
@@ -38816,6 +38816,35 @@
             "sourcePath": "pages/instructor-courses-page/InstructorCoursesPage.tsx",
             "sourceFingerprint": "sha256:9f6ce1e72b63ea3140e14f5c6878ad21543093bc6526c8cbd171342e92b14e57",
             "entryCount": 2
+          }
+        ]
+      },
+      {
+        "request": {
+          "taskId": "FE-029",
+          "sources": [
+            {
+              "sourcePath": "app/layouts/AppShell.tsx",
+              "expectedSourceFingerprint": "sha256:fdec331974c617a15801a6220daf3411f3d24f974f6e7ceff91f65cc4f424638"
+            },
+            {
+              "sourcePath": "pages/catalog-page/CatalogPage.tsx",
+              "expectedSourceFingerprint": "sha256:05d585ec7a4605a0b91d404c18e13990079f1e7479a3598028d82ee494e13943"
+            }
+          ],
+          "obsolete": []
+        },
+        "requestDigest": "sha256:a848c3e8cbdc15d62c2629c619cd4d636e3a399b1a957cb9591839bf362ad627",
+        "sources": [
+          {
+            "sourcePath": "app/layouts/AppShell.tsx",
+            "sourceFingerprint": "sha256:414628a77a85df9235df0bc5d91cfb849618c85549c399feb9b73e8224246ba6",
+            "entryCount": 1
+          },
+          {
+            "sourcePath": "pages/catalog-page/CatalogPage.tsx",
+            "sourceFingerprint": "sha256:5b397477c7463a284cdbcaa48f0c6995b3d942926b61e3e07cd38672bfd71cf7",
+            "entryCount": 3
           }
         ]
       }
