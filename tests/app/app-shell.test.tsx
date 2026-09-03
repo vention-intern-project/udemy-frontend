@@ -6,8 +6,8 @@ import { pathToFileURL } from 'node:url';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, useLocation } from 'react-router-dom';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
 import {
   AppShell,
@@ -119,6 +119,127 @@ function renderRouter(client: ApiClient, token: string | null, path: string) {
     </QueryClientProvider>,
   );
   return queryClient;
+}
+
+interface AppShellScrollHarness {
+  readonly scrollToSpy: Mock<
+    [leftOrOptions?: number | ScrollToOptions, topArgument?: number],
+    void
+  >;
+  flushAnimationFrame(advanceMs?: number): void;
+  getScrollTop(): number;
+  setMaxScrollTop(value: number): void;
+  setScrollTop(value: number): void;
+}
+
+function ScrollRestoreTestNavigation() {
+  const navigate = useNavigate();
+
+  return (
+    <>
+      <button type="button" onClick={() => navigate('/login')}>
+        Go to login
+      </button>
+      <button type="button" onClick={() => navigate(-1)}>
+        Go back
+      </button>
+    </>
+  );
+}
+
+function renderScrollRestoreHarness(): AppShellScrollHarness {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  let nowMs = 0;
+  let maxScrollTop = Number.POSITIVE_INFINITY;
+  let scrollTop = 0;
+  let scrollLeft = 0;
+  let nextAnimationFrameId = 1;
+  const animationFrameCallbacks = new Map<number, FrameRequestCallback>();
+
+  Object.defineProperty(window, 'scrollX', {
+    configurable: true,
+    get: () => scrollLeft,
+  });
+  Object.defineProperty(window, 'scrollY', {
+    configurable: true,
+    get: () => scrollTop,
+  });
+
+  const scrollToSpy: Mock<[leftOrOptions?: number | ScrollToOptions, topArgument?: number], void> =
+    vi.fn((leftOrOptions?: number | ScrollToOptions, topArgument?: number) => {
+      let nextLeft = scrollLeft;
+      let nextTop = scrollTop;
+
+      if (typeof leftOrOptions === 'object' && leftOrOptions !== null) {
+        nextLeft = leftOrOptions.left ?? nextLeft;
+        nextTop = leftOrOptions.top ?? nextTop;
+      } else {
+        nextLeft = typeof leftOrOptions === 'number' ? leftOrOptions : nextLeft;
+        nextTop = typeof topArgument === 'number' ? topArgument : nextTop;
+      }
+
+      scrollLeft = nextLeft;
+      scrollTop = Math.min(nextTop, maxScrollTop);
+    });
+
+  vi.stubGlobal('scrollTo', scrollToSpy);
+  vi.spyOn(window.performance, 'now').mockImplementation(() => nowMs);
+  vi.stubGlobal(
+    'requestAnimationFrame',
+    vi.fn((callback: FrameRequestCallback) => {
+      const frameId = nextAnimationFrameId;
+      nextAnimationFrameId += 1;
+      animationFrameCallbacks.set(frameId, callback);
+      return frameId;
+    }),
+  );
+  vi.stubGlobal(
+    'cancelAnimationFrame',
+    vi.fn((frameId: number) => {
+      animationFrameCallbacks.delete(frameId);
+    }),
+  );
+
+  render(
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider initialDensityMode="marketplace">
+        <LocaleProvider>
+          <SessionProvider client={authenticatedClient('student')} tokenStore={tokenStore(null)}>
+            <MemoryRouter initialEntries={['/']}>
+              <ScrollRestoreTestNavigation />
+              <Routes>
+                <Route element={<AppShell />}>
+                  <Route index element={<h1>Catalog test page</h1>} />
+                  <Route path="login" element={<h1>Login test page</h1>} />
+                </Route>
+              </Routes>
+            </MemoryRouter>
+          </SessionProvider>
+        </LocaleProvider>
+      </ThemeProvider>
+    </QueryClientProvider>,
+  );
+
+  return {
+    scrollToSpy,
+    flushAnimationFrame(advanceMs = 16) {
+      nowMs += advanceMs;
+      const scheduledFrames = [...animationFrameCallbacks.values()];
+      animationFrameCallbacks.clear();
+      for (const callback of scheduledFrames) {
+        callback(nowMs);
+      }
+    },
+    getScrollTop() {
+      return scrollTop;
+    },
+    setMaxScrollTop(value: number) {
+      maxScrollTop = value;
+    },
+    setScrollTop(value: number) {
+      scrollTop = value;
+    },
+  };
 }
 
 function LocationStateProbe() {
@@ -791,58 +912,73 @@ describe('AppShell student cart query and presentation', () => {
     expect(document.activeElement).toBe(brandLink);
   });
 
-  it('opens a labelled account-details popover and clears the session through Log out', async () => {
-    renderShell(authenticatedClient('student'), 'student-token');
-    const accountTrigger = await screen.findByRole('button', {
-      name: 'Account menu for student User',
-    });
-    expect(accountTrigger.getAttribute('title')).toBeNull();
-    expect(accountTrigger.getAttribute('aria-controls')).toBeNull();
+  it.each([
+    { locale: 'ru', logInLabel: 'Войти' },
+    { locale: 'uz', logInLabel: 'Kirish' },
+  ] as const)(
+    'keeps the $locale device locale through Log out and a shell remount',
+    async ({ locale, logInLabel }) => {
+      localStorage.setItem('learnhub.locale', locale);
+      renderShell(authenticatedClient('student'), 'student-token');
+      const accountTrigger = await screen.findByRole('button', {
+        name: /account menu|меню аккаунта|akkaunt menyusi/i,
+      });
+      expect(accountTrigger.getAttribute('title')).toBeNull();
+      expect(accountTrigger.getAttribute('aria-controls')).toBeNull();
 
-    fireEvent.mouseEnter(accountTrigger);
-    const accountDetails = screen.getByRole('group', {
-      name: 'Account details for student User',
-    });
-    expect(accountDetails).toBeTruthy();
-    expect(accountTrigger.getAttribute('aria-controls')).toBe(accountDetails.id);
-    expect(screen.getByText('student@example.test')).toBeTruthy();
-    expect(screen.getByText('student User')).toBeTruthy();
-    expect(screen.getByText('Student', { exact: true })).toBeTruthy();
-    expect(
-      accountDetails.querySelector('[data-part="account-menu-profile"]')?.textContent,
-    ).toContain('student User');
-    expect(screen.getByRole('separator')).toBeTruthy();
+      fireEvent.mouseEnter(accountTrigger);
+      const accountDetails = screen.getByRole('group', {
+        name: /account details|данные аккаунта|akkaunt/i,
+      });
+      expect(accountDetails).toBeTruthy();
+      expect(accountTrigger.getAttribute('aria-controls')).toBe(accountDetails.id);
+      expect(screen.getByText('student@example.test')).toBeTruthy();
+      expect(screen.getByText('student User')).toBeTruthy();
+      expect(
+        accountDetails.querySelector('[data-part="account-menu-profile"]')?.textContent,
+      ).toContain('student User');
+      expect(screen.getByRole('separator')).toBeTruthy();
 
-    fireEvent.click(accountTrigger);
-    expect(accountTrigger.getAttribute('aria-expanded')).toBe('true');
+      fireEvent.click(accountTrigger);
+      expect(accountTrigger.getAttribute('aria-expanded')).toBe('true');
 
-    fireEvent.click(accountTrigger);
-    expect(accountTrigger.getAttribute('aria-expanded')).toBe('false');
-    expect(accountTrigger.getAttribute('aria-controls')).toBeNull();
-    expect(screen.queryByRole('group', { name: 'Account details for student User' })).toBeNull();
+      fireEvent.click(accountTrigger);
+      expect(accountTrigger.getAttribute('aria-expanded')).toBe('false');
+      expect(accountTrigger.getAttribute('aria-controls')).toBeNull();
+      expect(
+        screen.queryByRole('group', { name: /account details|данные аккаунта|akkaunt/i }),
+      ).toBeNull();
 
-    fireEvent.click(accountTrigger);
-    expect(accountTrigger.getAttribute('aria-expanded')).toBe('true');
-    expect(screen.getByRole('group', { name: 'Account details for student User' })).toBeTruthy();
+      fireEvent.click(accountTrigger);
+      expect(accountTrigger.getAttribute('aria-expanded')).toBe('true');
+      expect(
+        screen.getByRole('group', { name: /account details|данные аккаунта|akkaunt/i }),
+      ).toBeTruthy();
 
-    fireEvent.keyDown(document, { key: 'Escape' });
-    expect(screen.queryByRole('group', { name: 'Account details for student User' })).toBeNull();
-    expect(accountTrigger.getAttribute('aria-controls')).toBeNull();
-    expect(document.activeElement).toBe(accountTrigger);
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(screen.queryByRole('group', { name: 'Account details for student User' })).toBeNull();
+      expect(accountTrigger.getAttribute('aria-controls')).toBeNull();
+      expect(document.activeElement).toBe(accountTrigger);
 
-    fireEvent.click(accountTrigger);
-    const logout = screen.getByRole('button', { name: 'Log out' });
-    expect(logout.querySelector('svg')).toBeTruthy();
-    localStorage.setItem('learnhub.locale', 'ru');
+      fireEvent.click(accountTrigger);
+      const logout = screen.getByRole('button', { name: /log out|выйти|chiqish/i });
+      expect(logout.querySelector('svg')).toBeTruthy();
+      fireEvent.click(logout);
+      await waitFor(() => expect(screen.getByRole('link', { name: logInLabel })).toBeTruthy());
+      expect(
+        screen.queryByRole('button', { name: /account menu|меню аккаунта|akkaunt menyusi/i }),
+      ).toBeNull();
+      expect(localStorage.getItem('learnhub.locale')).toBe(locale);
+      expect(document.documentElement.lang).toBe(locale);
 
-    fireEvent.click(logout);
-    await waitFor(() => expect(screen.getByRole('link', { name: 'Log in' })).toBeTruthy());
-    expect(screen.queryByRole('button', { name: /Account menu/ })).toBeNull();
-    expect(localStorage.getItem('learnhub.locale')).toBeNull();
-    expect(document.documentElement.lang).toBe('en');
-  });
+      cleanup();
+      renderShell(authenticatedClient('student'), null);
+      expect(await screen.findByRole('link', { name: logInLabel })).toBeTruthy();
+      expect(document.documentElement.lang).toBe(locale);
+    },
+  );
 
-  it('completes explicit logout when locale storage removal throws', async () => {
+  it('completes explicit logout without touching locale storage', async () => {
     renderShell(authenticatedClient('student'), 'student-token');
     const accountTrigger = await screen.findByRole('button', {
       name: 'Account menu for student User',
@@ -854,7 +990,7 @@ describe('AppShell student cart query and presentation', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Log out' }));
     await waitFor(() => expect(screen.getByRole('link', { name: 'Log in' })).toBeTruthy());
-    expect(removeItem).toHaveBeenCalledWith('learnhub.locale');
+    expect(removeItem).not.toHaveBeenCalled();
     expect(document.documentElement.lang).toBe('en');
   });
 
@@ -1331,4 +1467,95 @@ describe('AppShell student cart query and presentation', () => {
       expect(screen.queryByText(role, { exact: true })).toBeNull();
     },
   );
+
+  it('preserves the saved POP target when the bounded restore deadline expires', async () => {
+    const harness = renderScrollRestoreHarness();
+    const user = userEvent.setup();
+    await screen.findByRole('heading', { level: 1, name: 'Catalog test page' });
+
+    act(() => {
+      harness.setScrollTop(93);
+      fireEvent.scroll(window);
+    });
+
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Go to login' }));
+    });
+    await screen.findByRole('heading', { level: 1, name: 'Login test page' });
+    expect(harness.getScrollTop()).toBe(0);
+
+    act(() => {
+      harness.setMaxScrollTop(0);
+    });
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Go back' }));
+    });
+    await screen.findByRole('heading', { level: 1, name: 'Catalog test page' });
+    expect(harness.getScrollTop()).toBe(0);
+
+    act(() => {
+      harness.flushAnimationFrame(400);
+      harness.flushAnimationFrame(400);
+      harness.flushAnimationFrame(400);
+      harness.setMaxScrollTop(200);
+    });
+
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Go to login' }));
+    });
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Go back' }));
+    });
+
+    expect(harness.getScrollTop()).toBe(93);
+  });
+
+  it('cancels stale POP restore work after a newer navigation without losing the saved target', async () => {
+    const harness = renderScrollRestoreHarness();
+    const user = userEvent.setup();
+    await screen.findByRole('heading', { level: 1, name: 'Catalog test page' });
+
+    act(() => {
+      harness.setScrollTop(93);
+      fireEvent.scroll(window);
+    });
+
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Go to login' }));
+    });
+    await screen.findByRole('heading', { level: 1, name: 'Login test page' });
+
+    act(() => {
+      harness.setMaxScrollTop(0);
+    });
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Go back' }));
+    });
+    await screen.findByRole('heading', { level: 1, name: 'Catalog test page' });
+    const restoreCallsBeforeCancellation = harness.scrollToSpy.mock.calls.filter(
+      ([left, top]) => left === 0 && top === 93,
+    ).length;
+
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Go to login' }));
+    });
+    await screen.findByRole('heading', { level: 1, name: 'Login test page' });
+
+    act(() => {
+      harness.setMaxScrollTop(200);
+      harness.flushAnimationFrame(1_200);
+      harness.flushAnimationFrame(1_200);
+    });
+
+    expect(harness.getScrollTop()).toBe(0);
+    expect(
+      harness.scrollToSpy.mock.calls.filter(([left, top]) => left === 0 && top === 93).length,
+    ).toBe(restoreCallsBeforeCancellation);
+
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Go back' }));
+    });
+
+    expect(harness.getScrollTop()).toBe(93);
+  });
 });

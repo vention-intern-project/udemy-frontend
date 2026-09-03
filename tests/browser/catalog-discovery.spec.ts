@@ -61,6 +61,26 @@ interface EffectiveStructuralOverflow extends HorizontalBounds {
   readonly tagName: string;
 }
 
+interface CatalogToolbarRectGeometry extends HorizontalBounds {
+  readonly bottom: number;
+  readonly height: number;
+  readonly top: number;
+  readonly width: number;
+}
+
+interface CatalogToolbarBreakpointGeometry {
+  readonly bodyWidth: number;
+  readonly clientWidth: number;
+  readonly controls: CatalogToolbarRectGeometry;
+  readonly documentWidth: number;
+  readonly heading: CatalogToolbarRectGeometry;
+  readonly price: CatalogToolbarRectGeometry;
+  readonly priceContentFits: boolean;
+  readonly priceDisclosure: CatalogToolbarRectGeometry | null;
+  readonly sort: CatalogToolbarRectGeometry;
+  readonly sortContentFits: boolean;
+}
+
 function expectedCatalogHeroHeight(viewportWidth: number): number {
   if (viewportWidth <= 767) return 208;
   if (viewportWidth >= 1100) return 288;
@@ -1901,7 +1921,9 @@ test('keeps Catalog result geometry stable while changed Sort and price requests
   const captureDeferredRefresh = async () => {
     await expect.poll(() => refreshScenario.hasDeferredResponse()).toBe(true);
     await expect(page.getByRole('heading', { level: 2 })).toHaveText('Found 20 courses');
-    await expect(page.getByRole('status', { name: 'Catalog refresh status' })).toHaveText('');
+    await expect(page.getByRole('status', { name: 'Catalog refresh status' })).toHaveText(
+      'Updating course results…',
+    );
     return capture();
   };
   const settleRefresh = async () => {
@@ -1911,7 +1933,9 @@ test('keeps Catalog result geometry stable while changed Sort and price requests
       'aria-busy',
       'false',
     );
-    await expect(page.getByRole('status', { name: 'Catalog refresh status' })).toHaveText('');
+    await expect(page.getByRole('status', { name: 'Catalog refresh status' })).toHaveText(
+      'Course results updated.',
+    );
     return capture();
   };
 
@@ -2005,15 +2029,15 @@ test('keeps Catalog result geometry stable while changed Sort and price requests
     expect(record.requestCount).toBe(initialRequestCount + index + 1);
     expect(record.during.ariaBusy).toBe('true');
     expect(record.during.heading.text).toBe('Found 20 courses');
-    expect(record.during.refreshStatus).toBe('');
+    expect(record.during.refreshStatus).toBe('Updating course results…');
     expect(
       record.during.firstCard,
-      `${record.name} must not retain prior-query cards during refresh`,
-    ).toBeNull();
+      `${record.name} must retain prior cards during refresh`,
+    ).not.toBeNull();
     expect(
       record.during.resultsList?.ariaHidden,
-      `${record.name} must expose only noninteractive skeleton geometry`,
-    ).toBe('true');
+      `${record.name} must keep cards interactive`,
+    ).toBeNull();
     expect(
       record.during.scrollY,
       `${record.name} must not move the page during refresh`,
@@ -2075,8 +2099,8 @@ test('keeps Catalog result geometry stable while changed Sort and price requests
   during = await captureDeferredRefresh();
   after = await settleRefresh();
   expect(requests).toHaveLength(mobileRequestsBeforeSelection + 1);
-  expect(during.firstCard).toBeNull();
-  expect(during.resultsList?.ariaHidden).toBe('true');
+  expect(during.firstCard).not.toBeNull();
+  expect(during.resultsList?.ariaHidden).toBeNull();
   expect(during.scrollY).toBeCloseTo(before.scrollY, 0);
   expect(after.scrollY).toBeCloseTo(before.scrollY, 0);
   expect(during.documentScrollHeight).toBeGreaterThanOrEqual(during.scrollY + 740);
@@ -4713,6 +4737,9 @@ test('Keeps the labelled whole-card route and omits Details for compact or coars
     const priceRect = price.getBoundingClientRect();
     const sortRect = sort.getBoundingClientRect();
     return {
+      bodyWidth: document.body.scrollWidth,
+      clientWidth: document.documentElement.clientWidth,
+      documentWidth: document.documentElement.scrollWidth,
       heroCentreDelta: Math.abs(
         heroRect.top + heroRect.height / 2 - (copyRect.top + copyRect.height / 2),
       ),
@@ -4721,12 +4748,23 @@ test('Keeps the labelled whole-card route and omits Details for compact or coars
     };
   });
   expect(intermediateGeometry.heroCentreDelta).toBeLessThanOrEqual(1);
+  expect(intermediateGeometry.price.width, JSON.stringify(intermediateGeometry)).toBeLessThan(100);
+  expect(intermediateGeometry.price.width, JSON.stringify(intermediateGeometry)).toBeLessThan(
+    intermediateGeometry.sort.width,
+  );
   expect(Math.abs(intermediateGeometry.price.height - 44)).toBeLessThanOrEqual(1);
-  // Preserve intrinsic label sizing while allowing the declared fallback font's Linux metrics.
-  expect(Math.abs(intermediateGeometry.sort.width - 148)).toBeLessThanOrEqual(3);
+  expect(intermediateGeometry.sort.height).toBeGreaterThanOrEqual(44);
   expect(
     Math.abs(intermediateGeometry.price.top - intermediateGeometry.sort.top),
+    JSON.stringify(intermediateGeometry),
   ).toBeLessThanOrEqual(1);
+  expect(
+    intermediateGeometry.documentWidth,
+    JSON.stringify(intermediateGeometry),
+  ).toBeLessThanOrEqual(intermediateGeometry.clientWidth);
+  expect(intermediateGeometry.bodyWidth, JSON.stringify(intermediateGeometry)).toBeLessThanOrEqual(
+    intermediateGeometry.clientWidth,
+  );
   assertClean();
 });
 
@@ -4971,6 +5009,193 @@ test('localizes the Price disclosure trigger and fields without changing respons
         url.searchParams.get('sort') === '-price',
     ),
   ).toBe(true);
+  assertClean();
+});
+
+test('keeps the localized Catalog Price and Sort group compact until its content must wrap', async ({
+  page,
+}, testInfo) => {
+  const assertClean = await monitor(page);
+  assertClean.allowRequestFailure(
+    {
+      method: 'GET',
+      path: '/courses?page=1&page_size=24&sort=created_at',
+      errorText: 'net::ERR_ABORTED',
+    },
+    4,
+  );
+  for (let index = 0; index < 4; index += 1)
+    assertClean.allowOptionalRequestFailure(catalogRatingCancellation);
+  await page.route('**/courses**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: response([permittedCourse()]),
+    });
+  });
+
+  await page.goto('/');
+  await page.evaluate(() => localStorage.setItem('learnhub.locale', 'ru'));
+  await page.reload();
+
+  const price = page.getByRole('button', { name: 'Цена' });
+  const sort = page.locator('[data-part="catalog-sort-trigger"]');
+  const heading = page.getByRole('heading', { level: 2 });
+  const capture = () =>
+    page.evaluate<CatalogToolbarBreakpointGeometry>(() => {
+      const priceTrigger = document.querySelector<HTMLElement>(
+        '[data-part="catalog-price-trigger"]',
+      );
+      const sortTrigger = document.querySelector<HTMLElement>('[data-part="catalog-sort-trigger"]');
+      const resultsHeading = document.querySelector<HTMLElement>('#catalog-results-title');
+      const toolbarControls = document.querySelector<HTMLElement>(
+        '[data-part="catalog-toolbar-controls"]',
+      );
+      const priceDisclosure = document.querySelector<HTMLElement>('#catalog-price-disclosure');
+      if (!priceTrigger || !sortTrigger || !resultsHeading || !toolbarControls)
+        throw new Error('Catalog toolbar breakpoint targets are missing.');
+      return {
+        bodyWidth: document.body.scrollWidth,
+        clientWidth: document.documentElement.clientWidth,
+        controls: toolbarControls.getBoundingClientRect().toJSON(),
+        documentWidth: document.documentElement.scrollWidth,
+        heading: resultsHeading.getBoundingClientRect().toJSON(),
+        price: priceTrigger.getBoundingClientRect().toJSON(),
+        priceContentFits: priceTrigger.scrollWidth <= priceTrigger.clientWidth,
+        priceDisclosure: priceDisclosure?.getBoundingClientRect().toJSON() ?? null,
+        sort: sortTrigger.getBoundingClientRect().toJSON(),
+        sortContentFits: sortTrigger.scrollWidth <= sortTrigger.clientWidth,
+      };
+    });
+
+  const russianGeometryByWidth = new Map<number, CatalogToolbarBreakpointGeometry>();
+  for (const width of [320, 388, 390, 470, 480, 528, 560, 561, 600, 617, 639, 640, 760, 768]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(heading).toBeVisible();
+    await expect(price).toBeVisible();
+    await expect(sort).toBeVisible();
+    const geometry = await capture();
+    russianGeometryByWidth.set(width, geometry);
+    if (width <= 560) {
+      expect(geometry.heading.bottom, JSON.stringify(geometry)).toBeLessThanOrEqual(
+        geometry.controls.top + 1,
+      );
+      expect(
+        Math.abs(geometry.price.width - geometry.sort.width),
+        JSON.stringify(geometry),
+      ).toBeLessThanOrEqual(1);
+    } else {
+      expect(
+        Math.abs(
+          geometry.heading.top +
+            geometry.heading.height / 2 -
+            (geometry.controls.top + geometry.controls.height / 2),
+        ),
+        JSON.stringify(geometry),
+      ).toBeLessThanOrEqual(10);
+      expect(geometry.heading.right, JSON.stringify(geometry)).toBeLessThanOrEqual(
+        geometry.controls.left + 1,
+      );
+      expect(geometry.price.width, JSON.stringify(geometry)).toBeLessThan(100);
+      expect(geometry.price.width, JSON.stringify(geometry)).toBeLessThan(geometry.sort.width);
+    }
+    expect(geometry.price.top, JSON.stringify(geometry)).toBeCloseTo(geometry.sort.top, 0);
+    expect(geometry.price.height).toBeGreaterThanOrEqual(44);
+    expect(geometry.sort.height).toBeGreaterThanOrEqual(44);
+    expect(geometry.priceContentFits, JSON.stringify(geometry)).toBe(true);
+    expect(geometry.sortContentFits, JSON.stringify(geometry)).toBe(true);
+    expect(geometry.controls.right, JSON.stringify(geometry)).toBeLessThanOrEqual(
+      geometry.clientWidth,
+    );
+    expect(geometry.documentWidth, JSON.stringify(geometry)).toBeLessThanOrEqual(
+      geometry.clientWidth,
+    );
+    expect(geometry.bodyWidth, JSON.stringify(geometry)).toBeLessThanOrEqual(geometry.clientWidth);
+    expect(
+      geometry.clientWidth - geometry.controls.right,
+      JSON.stringify(geometry),
+    ).toBeLessThanOrEqual(24);
+  }
+
+  const geometry639 = russianGeometryByWidth.get(639)!;
+  const geometry640 = russianGeometryByWidth.get(640)!;
+  const geometry760 = russianGeometryByWidth.get(760)!;
+  const geometry768 = russianGeometryByWidth.get(768)!;
+  expect(geometry639.controls.left).toBeLessThan(geometry640.controls.left);
+  expect(geometry639.controls.left).toBeLessThan(geometry760.controls.left);
+  expect(Math.abs(geometry760.controls.left - geometry768.controls.left)).toBeLessThanOrEqual(1);
+  expect(Math.abs(geometry760.price.width - geometry768.price.width)).toBeLessThanOrEqual(2);
+  expect(Math.abs(geometry760.sort.width - geometry768.sort.width)).toBeLessThanOrEqual(2);
+
+  for (const width of [388, 560, 639, 760]) {
+    await page.setViewportSize({ width, height: 900 });
+    await price.click();
+    await expect(page.getByRole('group', { name: 'Диапазон цен' })).toBeVisible();
+    const geometry = await capture();
+    expect(geometry.priceDisclosure).not.toBeNull();
+    expect(geometry.priceDisclosure!.left).toBeGreaterThanOrEqual(0);
+    expect(geometry.priceDisclosure!.right).toBeLessThanOrEqual(geometry.clientWidth + 1);
+    if (width === 760)
+      await page.screenshot({ path: testInfo.outputPath('catalog-toolbar-ru-760.png') });
+    await page.keyboard.press('Escape');
+    await expect(price).toBeFocused();
+  }
+
+  await page.setViewportSize({ width: 639, height: 900 });
+  await page.mouse.move(0, 0);
+  await sort.focus();
+  await sort.press('Enter');
+  const sortListbox = page.getByRole('listbox');
+  await expect(sortListbox).toBeFocused();
+  const sortDisclosure = await sortListbox.boundingBox();
+  expect(sortDisclosure).not.toBeNull();
+  expect(sortDisclosure!.x).toBeGreaterThanOrEqual(0);
+  expect(sortDisclosure!.x + sortDisclosure!.width).toBeLessThanOrEqual(639);
+  await page.keyboard.press('Escape');
+  await expect(sort).toBeFocused();
+
+  for (const locale of ['en', 'uz'] as const) {
+    await page.evaluate(
+      (nextLocale) => localStorage.setItem('learnhub.locale', nextLocale),
+      locale,
+    );
+    await page.reload();
+    for (const width of [320, 388, 390, 470, 480, 528, 560, 561, 600, 617, 639, 640, 760, 768]) {
+      await page.setViewportSize({ width, height: 900 });
+      const geometry = await capture();
+      if (width <= 560) {
+        expect(geometry.heading.bottom, JSON.stringify(geometry)).toBeLessThanOrEqual(
+          geometry.controls.top + 1,
+        );
+        expect(
+          Math.abs(geometry.price.width - geometry.sort.width),
+          JSON.stringify(geometry),
+        ).toBeLessThanOrEqual(1);
+      } else {
+        expect(
+          Math.abs(
+            geometry.heading.top +
+              geometry.heading.height / 2 -
+              (geometry.controls.top + geometry.controls.height / 2),
+          ),
+          JSON.stringify(geometry),
+        ).toBeLessThanOrEqual(10);
+        expect(geometry.price.width, JSON.stringify(geometry)).toBeLessThan(100);
+        expect(geometry.price.width, JSON.stringify(geometry)).toBeLessThan(geometry.sort.width);
+      }
+      expect(geometry.priceContentFits, JSON.stringify(geometry)).toBe(true);
+      expect(geometry.sortContentFits, JSON.stringify(geometry)).toBe(true);
+      expect(geometry.controls.right, JSON.stringify(geometry)).toBeLessThanOrEqual(
+        geometry.clientWidth,
+      );
+      expect(geometry.documentWidth, JSON.stringify(geometry)).toBeLessThanOrEqual(
+        geometry.clientWidth,
+      );
+      expect(geometry.bodyWidth, JSON.stringify(geometry)).toBeLessThanOrEqual(
+        geometry.clientWidth,
+      );
+    }
+  }
   assertClean();
 });
 

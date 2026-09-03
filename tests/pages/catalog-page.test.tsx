@@ -1410,7 +1410,7 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(mutationRequests).toBe(1);
   });
 
-  it('does not retain a prior criteria total when a changed-query request fails', async () => {
+  it('retains prior cards while a changed query is pending, then exposes an error without claiming stale results are fresh', async () => {
     const first = deferred<unknown>();
     const second = deferred<unknown>();
     const request: ApiClient['request'] = vi
@@ -1427,10 +1427,12 @@ describe('CatalogPage public URL and pagination behavior', () => {
       await user.click(screen.getByRole('button', { name: 'Forward' }));
     });
     expect(screen.getByRole('heading', { level: 2, name: 'Loading course results…' })).toBeTruthy();
-    expect(screen.getByRole('status', { name: 'Catalog refresh status' }).textContent).toBe('');
-    expect(screen.queryByRole('link', { name: 'React' })).toBeNull();
+    expect(screen.getByRole('status', { name: 'Catalog refresh status' }).textContent).toBe(
+      'Updating course results…',
+    );
+    expect(screen.getByRole('link', { name: 'React' })).toBeTruthy();
     expect(document.querySelector('[data-part="catalog-result-list"]')).toBeTruthy();
-    expect(document.querySelectorAll('[data-part="skeleton"]')).toHaveLength(24);
+    expect(document.querySelectorAll('[data-part="skeleton"]')).toHaveLength(0);
     expect(
       document.querySelector('[data-part="catalog-discovery-results"]')?.getAttribute('aria-busy'),
     ).toBe('true');
@@ -1445,10 +1447,109 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(
       screen.getByRole('heading', { level: 2, name: 'Course results unavailable.' }),
     ).toBeTruthy();
-    expect(screen.queryByRole('heading', { level: 2, name: 'Found 1 course' })).toBeNull();
-    expect(screen.queryByRole('link', { name: 'React' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'React' })).toBeTruthy();
     expect(document.querySelectorAll('[data-part="skeleton"]')).toHaveLength(0);
     expect(screen.getByRole('status', { name: 'Catalog refresh status' }).textContent).toBe('');
+  });
+
+  it('shows only the refresh failure when a changed query fails after a previous empty result', async () => {
+    const first = deferred<unknown>();
+    const second = deferred<unknown>();
+    const request: ApiClient['request'] = vi
+      .fn()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const user = userEvent.setup();
+    renderCatalog(request, ['/?search_query=first', '/?search_query=second'], 0);
+
+    first.resolve(response({ items: [], total: 0, pages: 0 }));
+    await screen.findByRole('heading', { level: 2, name: 'Found 0 courses' });
+    expect(screen.getByText('Try changing or clearing your filters.')).toBeTruthy();
+
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Forward' }));
+    });
+
+    expect(screen.getByRole('heading', { level: 2, name: 'Loading course results…' })).toBeTruthy();
+    expect(screen.getByRole('status', { name: 'Catalog refresh status' }).textContent).toBe(
+      'Updating course results…',
+    );
+
+    await act(async () => {
+      second.reject(new ApiError({ kind: 'server', status: 500, message: 'Unavailable' }));
+    });
+
+    expect(await screen.findByText('We could not load courses')).toBeTruthy();
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Course results unavailable.' }),
+    ).toBeTruthy();
+    expect(screen.queryByText('No courses found')).toBeNull();
+    expect(screen.queryByText('Try changing or clearing your filters.')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+  });
+
+  it('shows the empty state after a successful empty response without any failure notice', async () => {
+    const request: ApiClient['request'] = async <TResponse,>() =>
+      response({ items: [], total: 0, pages: 0 }) as TResponse;
+
+    renderCatalog(request, ['/']);
+
+    expect(await screen.findByRole('heading', { level: 2, name: 'Found 0 courses' })).toBeTruthy();
+    expect(screen.getByText('No courses found')).toBeTruthy();
+    expect(screen.getByText('Try changing or clearing your filters.')).toBeTruthy();
+    expect(screen.queryByText('We could not load courses')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+  });
+
+  it('delays initial catalog skeletons for 200ms and skips them when the response is fast', async () => {
+    vi.useFakeTimers();
+    const initial = deferred<unknown>();
+    const request: ApiClient['request'] = vi.fn().mockReturnValueOnce(initial.promise);
+    renderCatalog(request, ['/']);
+
+    expect(screen.getByRole('heading', { level: 2, name: 'Loading course results…' }).hidden).toBe(
+      false,
+    );
+    expect(document.querySelectorAll('[data-part="skeleton"]')).toHaveLength(0);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(199);
+    });
+    expect(screen.getByRole('heading', { level: 2, name: 'Loading course results…' }).hidden).toBe(
+      false,
+    );
+    expect(document.querySelectorAll('[data-part="skeleton"]')).toHaveLength(0);
+    await act(async () => {
+      initial.resolve(response());
+      await initial.promise;
+      await vi.runAllTimersAsync();
+    });
+    expect(screen.getByRole('link', { name: 'React' })).toBeTruthy();
+    expect(document.querySelectorAll('[data-part="skeleton"]')).toHaveLength(0);
+  });
+
+  it('shows initial catalog skeletons only after 200ms when the first response is slow', async () => {
+    vi.useFakeTimers();
+    const initial = deferred<unknown>();
+    const request: ApiClient['request'] = vi.fn().mockReturnValueOnce(initial.promise);
+    renderCatalog(request, ['/']);
+
+    expect(screen.getByRole('heading', { level: 2, name: 'Loading course results…' }).hidden).toBe(
+      false,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(199);
+    });
+    expect(screen.getByRole('heading', { level: 2, name: 'Loading course results…' }).hidden).toBe(
+      false,
+    );
+    expect(document.querySelectorAll('[data-part="skeleton"]')).toHaveLength(0);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(screen.getByRole('heading', { level: 2, name: 'Loading course results…' }).hidden).toBe(
+      false,
+    );
+    expect(document.querySelectorAll('[data-part="skeleton"]')).toHaveLength(24);
   });
 
   it('renders one whole-card link with a controlled disclosure popover and disabled cart action without mutations', async () => {
@@ -2714,8 +2815,13 @@ describe('CatalogPage public URL and pagination behavior', () => {
       await user.click(screen.getByRole('button', { name: 'Go to next page' }));
     });
 
-    expect(screen.getByRole('heading', { level: 2, name: 'Found 24 courses' })).toBeTruthy();
-    expect(document.querySelectorAll('[data-part="skeleton"]')).toHaveLength(4);
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Loading course results…' }).textContent,
+    ).toBe('Found 24 courses');
+    expect(document.querySelectorAll('[data-part="skeleton"]')).toHaveLength(0);
+    expect(
+      screen.getAllByRole('link').some((link) => link.getAttribute('aria-label') === 'React'),
+    ).toBe(true);
     expect(screen.getByRole('navigation', { name: 'Course result pages' })).toBeTruthy();
     expect(screen.getByLabelText('Page 2, current page')).toBeTruthy();
     expect(document.querySelectorAll('.ui-pagination__ellipsis')).toHaveLength(0);
@@ -2754,7 +2860,8 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(
       screen.getByRole('heading', { level: 2, name: 'Loading course results…' }).textContent,
     ).toBe('Found 22 courses');
-    expect(document.querySelectorAll('[data-part="skeleton"]')).toHaveLength(20);
+    expect(document.querySelectorAll('[data-part="skeleton"]')).toHaveLength(0);
+    expect(screen.getByRole('link', { name: 'React' })).toBeTruthy();
 
     await act(async () => {
       sortedResults.resolve(response({ total: 22, pages: 2, has_next: true }));

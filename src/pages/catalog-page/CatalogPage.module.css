@@ -283,20 +283,41 @@
   }
 
   .toolbarControls {
-    display: contents;
+    display: flex;
+    flex: 0 1 max-content;
+    flex-wrap: nowrap;
+    width: auto;
+    max-width: 100%;
+    align-items: start;
+    gap: var(--spacing-2);
+    margin-inline-start: auto;
   }
 
   .toolbarControls [data-part='catalog-filter-form'] {
     order: 1;
     width: auto;
+    min-width: 0;
     flex: 0 1 auto;
-    margin-inline-start: auto;
-    padding-inline-start: var(--spacing-4);
+    margin-inline-start: 0;
+    padding-inline-start: 0;
+  }
+
+  .toolbarControls [data-part='catalog-price-trigger'] {
+    inline-size: auto;
   }
 
   .sortToolbar {
     order: 2;
+    width: auto;
+    max-width: 100%;
+    flex: 0 1 auto;
+    margin: 0;
     align-self: flex-end;
+  }
+
+  .sortField,
+  .sortField [data-part='catalog-sort-control'] {
+    width: auto;
   }
 
   .resultsHeading h2 {
@@ -315,48 +336,28 @@
   }
 }
 
-@media (max-width: 639px) {
+/* Below this fixed viewport boundary, the compact group cannot reliably share the
+   row with every supported locale's result count, so it becomes one balanced row. */
+@media (max-width: 560px) {
   .resultsHeading h2 {
     flex: 1 1 100%;
   }
 
-  .toolbarControls [data-part='catalog-filter-form'] {
-    order: 1;
-    width: min(100%, 16rem);
-    flex: 0 1 16rem;
-    margin-inline-start: 0;
-    padding-inline-start: 0;
-  }
-
-  .sortToolbar {
-    order: 2;
-    flex: 0 0 auto;
-    max-width: none;
-    margin-inline-start: 0;
-  }
-}
-
-@media (max-width: 480px) {
   .toolbarControls {
     display: grid;
     width: 100%;
+    flex: 1 1 100%;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    align-items: start;
-    gap: var(--spacing-2);
   }
 
-  .sortToolbar {
-    grid-row: 1;
-    grid-column: 2;
-    max-width: 100%;
-    margin: 0;
-  }
-
-  .sortField {
+  .toolbarControls [data-part='catalog-filter-form'],
+  .sortToolbar,
+  .sortField,
+  .sortField [data-part='catalog-sort-control'] {
     width: 100%;
   }
 
-  .sortField [data-part='catalog-sort-control'] {
+  .toolbarControls [data-part='catalog-price-trigger'] {
     inline-size: 100%;
   }
 }

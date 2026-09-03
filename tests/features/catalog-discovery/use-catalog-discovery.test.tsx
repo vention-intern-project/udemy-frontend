@@ -95,7 +95,7 @@ describe('catalog discovery lifecycle', () => {
     expect(hook.current.status).toBe('populated');
   });
 
-  it('removes prior-query data while a changed query is pending or fails', async () => {
+  it('retains prior-query data while a changed query is pending and marks a failed refresh', async () => {
     const first = deferred<unknown>();
     const second = deferred<unknown>();
     const request = vi
@@ -113,15 +113,38 @@ describe('catalog discovery lifecycle', () => {
 
     rerender({ search_query: 'second' });
     const pending = hook.current;
-    expect(pending.status).toBe('initial-loading');
-    expect(pending.data).toBeUndefined();
-    if (pending.status !== 'initial-loading')
-      throw new Error('Expected changed-query placeholder state.');
-    expect(pending.placeholderCount).toBe(24);
+    expect(pending.status).toBe('refreshing');
+    expect(pending.data?.items[0].title).toBe('First');
 
     second.reject(new ApiError({ kind: 'server', status: 500, message: 'Unavailable' }));
-    await waitFor(() => expect(hook.current.status).toBe('error-without-results'));
-    expect(hook.current.data).toBeUndefined();
+    await waitFor(() => expect(hook.current.status).toBe('error-with-results'));
+    expect(hook.current.data?.items[0].title).toBe('First');
+    expect(hook.current.failure?.kind).toBe('request');
+  });
+
+  it('atomically replaces retained cards only when the changed query succeeds', async () => {
+    const first = deferred<unknown>();
+    const second = deferred<unknown>();
+    const request = vi
+      .fn()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise) as CatalogRequester;
+    const { result: hook, rerender } = renderHook(
+      ({ search_query }) =>
+        useCatalogDiscovery({ search_query, sort: 'created_at', page: 1 }, request),
+      { initialProps: { search_query: 'first' } },
+    );
+
+    first.resolve(result('First'));
+    await waitFor(() => expect(hook.current.data?.items[0].title).toBe('First'));
+
+    rerender({ search_query: 'second' });
+    expect(hook.current.status).toBe('refreshing');
+    expect(hook.current.data?.items[0].title).toBe('First');
+
+    second.resolve(result('Second'));
+    await waitFor(() => expect(hook.current.status).toBe('populated'));
+    expect(hook.current.data?.items[0].title).toBe('Second');
   });
 
   it('retains same-query cards while retrying and reaches terminal failure for a live aborted rejection', async () => {
@@ -205,8 +228,8 @@ describe('catalog discovery lifecycle', () => {
     expect(hook.current.data?.items).toEqual([]);
     expect(hook.current.failure).toBeUndefined();
     rerender({ search_query: 'failed-refresh' });
-    await waitFor(() => expect(hook.current.status).toBe('error-without-results'));
-    expect(hook.current.data).toBeUndefined();
+    await waitFor(() => expect(hook.current.status).toBe('error-with-results'));
+    expect(hook.current.data?.items).toEqual([]);
     expect(hook.current.failure?.kind).toBe('request');
   });
 });
