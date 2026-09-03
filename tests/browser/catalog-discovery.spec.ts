@@ -5038,9 +5038,9 @@ test('keeps the localized Catalog Price and Sort group compact until its content
   await page.evaluate(() => localStorage.setItem('learnhub.locale', 'ru'));
   await page.reload();
 
-  const price = page.getByRole('button', { name: 'Цена' });
+  const price = page.locator('[data-part="catalog-price-trigger"]');
   const sort = page.locator('[data-part="catalog-sort-trigger"]');
-  const heading = page.getByRole('heading', { level: 2 });
+  const heading = page.locator('#catalog-results-title');
   const capture = () =>
     page.evaluate<CatalogToolbarBreakpointGeometry>(() => {
       const priceTrigger = document.querySelector<HTMLElement>(
@@ -5160,6 +5160,9 @@ test('keeps the localized Catalog Price and Sort group compact until its content
       locale,
     );
     await page.reload();
+    await expect(heading).toBeVisible();
+    await expect(price).toBeVisible();
+    await expect(sort).toBeVisible();
     for (const width of [320, 388, 390, 470, 480, 528, 560, 561, 600, 617, 639, 640, 760, 768]) {
       await page.setViewportSize({ width, height: 900 });
       const geometry = await capture();

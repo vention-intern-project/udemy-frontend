@@ -303,7 +303,8 @@ export function CatalogPage() {
   const currentResults = discovery.dataQueryKey === queryKey ? results : undefined;
   const isChangedCriteriaLoading = isRefreshing && discovery.dataQueryKey !== queryKey;
   const isResultsHeadingLoading = isInitialLoading || isChangedCriteriaLoading;
-  const shouldShowEmptyState = results?.items.length === 0 && discovery.failure === undefined;
+  const shouldShowEmptyState =
+    currentResults?.items.length === 0 && discovery.failure === undefined;
   const visibleResultsTotal = currentResults?.total ?? retainedResultsTotal;
   const displayedResultsTotal =
     visibleResultsTotal ??

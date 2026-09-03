@@ -38005,7 +38005,7 @@
             "functionName": "CatalogPage",
             "argument": "discovery.failure.messageKey",
             "occurrence": 1,
-            "sourceFingerprint": "sha256:5b397477c7463a284cdbcaa48f0c6995b3d942926b61e3e07cd38672bfd71cf7"
+            "sourceFingerprint": "sha256:d5565eeb302b625458f8d619bc187cb876ae3833da5d03e28e911d44d65e11f9"
           }
         ]
       },
@@ -38018,7 +38018,7 @@
             "functionName": "CatalogPage",
             "argument": "discovery.failure.titleKey",
             "occurrence": 1,
-            "sourceFingerprint": "sha256:5b397477c7463a284cdbcaa48f0c6995b3d942926b61e3e07cd38672bfd71cf7"
+            "sourceFingerprint": "sha256:d5565eeb302b625458f8d619bc187cb876ae3833da5d03e28e911d44d65e11f9"
           }
         ]
       },
@@ -38031,7 +38031,7 @@
             "functionName": "CatalogPage",
             "argument": "`catalog:${refreshAnnouncement}`",
             "occurrence": 1,
-            "sourceFingerprint": "sha256:5b397477c7463a284cdbcaa48f0c6995b3d942926b61e3e07cd38672bfd71cf7"
+            "sourceFingerprint": "sha256:d5565eeb302b625458f8d619bc187cb876ae3833da5d03e28e911d44d65e11f9"
           }
         ]
       },

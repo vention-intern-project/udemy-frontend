@@ -1488,6 +1488,38 @@ describe('CatalogPage public URL and pagination behavior', () => {
     expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
   });
 
+  it('does not expose a previous empty state while a changed query is still pending', async () => {
+    const first = deferred<unknown>();
+    const second = deferred<unknown>();
+    const request: ApiClient['request'] = vi
+      .fn()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const user = userEvent.setup();
+    renderCatalog(request, ['/?search_query=first', '/?search_query=second'], 0);
+
+    first.resolve(response({ items: [], total: 0, pages: 0 }));
+    await screen.findByRole('heading', { level: 2, name: 'Found 0 courses' });
+    expect(screen.getByText('No courses found')).toBeTruthy();
+
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Forward' }));
+    });
+
+    expect(screen.getByRole('heading', { level: 2, name: 'Loading course results…' })).toBeTruthy();
+    expect(screen.queryByText('No courses found')).toBeNull();
+    expect(screen.queryByText('Try changing or clearing your filters.')).toBeNull();
+
+    await act(async () => {
+      second.resolve(response({ items: [], total: 0, pages: 0 }));
+      await second.promise;
+    });
+
+    expect(await screen.findByRole('heading', { level: 2, name: 'Found 0 courses' })).toBeTruthy();
+    expect(screen.getByText('No courses found')).toBeTruthy();
+    expect(screen.getByText('Try changing or clearing your filters.')).toBeTruthy();
+  });
+
   it('shows the empty state after a successful empty response without any failure notice', async () => {
     const request: ApiClient['request'] = async <TResponse,>() =>
       response({ items: [], total: 0, pages: 0 }) as TResponse;
