@@ -1,6 +1,14 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, renderHook, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { StrictMode, type ReactNode } from 'react';
 import { MemoryRouter, useNavigate } from 'react-router-dom';
@@ -738,6 +746,30 @@ describe('course chat interaction lifecycle', () => {
     });
     await screen.findByText('Assistant unavailable');
     expect(screen.getByText('The assistant is unavailable.')).toBeTruthy();
+  });
+
+  it('uses the same safe assistant renderer for course and general responses while keeping learner text literal', async () => {
+    const contexts = [{ kind: 'course', courseId: 7 }, { kind: 'general' }] as const;
+    for (const context of contexts) {
+      cleanup();
+      requestCourseChatMock.mockResolvedValueOnce({
+        thread_id: `thread-${context.kind}`,
+        response: '## Plan\n\n**Important** [Docs](https://example.com/a)',
+      });
+      const user = userEvent.setup();
+      render(<CourseChatPanel context={context} />, { wrapper: sessionWrapper });
+      await interact(async () => {
+        fireEvent.change(screen.getByRole('textbox', { name: 'Message the course assistant' }), {
+          target: { value: '## Learner **text** [link](https://example.com)' },
+        });
+      });
+      await interact(() => user.click(screen.getByRole('button', { name: 'Send message' })));
+
+      expect(await screen.findByRole('heading', { level: 2, name: 'Plan' })).toBeTruthy();
+      expect(screen.getByRole('link', { name: 'Docs' })).toBeTruthy();
+      expect(screen.getByText('## Learner **text** [link](https://example.com)')).toBeTruthy();
+      expect(screen.queryByRole('heading', { name: 'Learner text link' })).toBeNull();
+    }
   });
 
   it('keeps the message list at its bottom when an assistant response arrives', async () => {

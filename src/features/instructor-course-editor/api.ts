@@ -3,6 +3,7 @@ import type {
   LessonType,
   LessonUploadStatusDto,
 } from '@entities/course';
+import { mapLessonMediaLocator } from '@entities/course';
 import type { SessionContextValue } from '@features/auth-session';
 import { requestOperation } from '@features/auth-session';
 import { ApiError, readBoolean, readPositiveInteger, readRecord, readString } from '@shared/api';
@@ -80,6 +81,7 @@ function decodeLesson(value: unknown, expectedCourseId?: number): InstructorEdit
     courseId,
     title: readString(lesson.title, 'lesson title'),
     lessonType: lessonType(lesson.lesson_type),
+    mediaLocator: mapLessonMediaLocator(nullableString(lesson.download_url, 'lesson download_url')),
     description: nullableString(lesson.description, 'lesson description'),
     isPublished: readBoolean(lesson.is_published, 'lesson is_published'),
   };

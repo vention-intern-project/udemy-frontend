@@ -6,6 +6,7 @@ import {
   deleteInstructorLesson,
   mapInstructorEditorFormFailure,
   requestInstructorEditorCourse,
+  requestInstructorEditorLesson,
   requestInstructorLessonUploadStatus,
   updateInstructorCourse,
   uploadInstructorLessonFile,
@@ -147,7 +148,10 @@ describe('instructor course editor API', () => {
     const session = sessionWith(asSessionRequest(request));
     await expect(
       requestInstructorEditorCourse(session, 7, new AbortController().signal),
-    ).resolves.toMatchObject({ id: 7, lessons: [{ id: 8, courseId: 7 }] });
+    ).resolves.toMatchObject({
+      id: 7,
+      lessons: [{ id: 8, courseId: 7, mediaLocator: { filename: 'video.mp4' } }],
+    });
     await updateInstructorCourse(session, 7, {
       title: 'Updated course',
       description: 'Updated description',
@@ -182,6 +186,26 @@ describe('instructor course editor API', () => {
       ],
       ['DELETE', '/courses/7/lessons/8', undefined],
     ]);
+  });
+
+  it.each([
+    null,
+    '/media/lessons/%00private.pdf',
+    '/media/lessons/../private.pdf',
+    '/media/lessons/private%2Fnotes.pdf',
+    '/media/lessons/private notes.pdf',
+  ])('fails closed for noncanonical instructor lesson locators: %s', async (downloadUrl) => {
+    const request = vi.fn(async (options: ApiRequestOptions) =>
+      decode(options, { ...lesson, download_url: downloadUrl }),
+    );
+
+    await expect(
+      requestInstructorEditorLesson(
+        sessionWith(asSessionRequest(request)),
+        8,
+        new AbortController().signal,
+      ),
+    ).resolves.toMatchObject({ mediaLocator: null });
   });
 
   it('sends API-032 as authenticated multipart file data and never maps terminal media state', async () => {

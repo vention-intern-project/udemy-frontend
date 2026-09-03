@@ -6,6 +6,7 @@ import type { LessonMediaLocator, LessonSubtitleLocator, LessonType } from '@ent
 import { Button, VisuallyHidden } from '@shared/ui/primitives';
 
 import { useAuthorizedLessonMedia } from './useAuthorizedLessonMedia';
+import type { LessonMediaAccessPolicy } from './model';
 
 import styles from './LessonMediaAccess.module.css';
 
@@ -15,6 +16,7 @@ export interface LessonMediaAccessProps {
   readonly lessonType: LessonType;
   /** Whether the learner can access this lesson in the current course outline. */
   readonly isPublished: boolean;
+  readonly accessPolicy?: LessonMediaAccessPolicy;
   readonly locator: LessonMediaLocator | null;
   readonly subtitleLocator?: LessonSubtitleLocator | null;
   readonly textContent?: string | null;
@@ -23,6 +25,7 @@ export interface LessonMediaAccessProps {
 export function LessonMediaAccess({
   lessonType,
   isPublished,
+  accessPolicy = 'learner',
   locator,
   subtitleLocator = null,
   textContent = null,
@@ -93,7 +96,7 @@ export function LessonMediaAccess({
     setTextOpen(false);
   }
 
-  if (!isPublished) {
+  if (accessPolicy === 'learner' && !isPublished) {
     return <p className={styles.unavailable}>{t('course:mediaUnavailableInWorkspace')}</p>;
   }
 
@@ -132,10 +135,11 @@ export function LessonMediaAccess({
           </Button>
         </div>
         <p className={styles.textBody}>
-          {textContent ??
-            t('course:noLessonDescriptionIsAvailable', {
-              defaultValue: 'No lesson description is available.',
-            })}
+          {textContent === null || textContent === ''
+            ? t('course:noLessonDescriptionIsAvailable', {
+                defaultValue: 'No lesson description is available.',
+              })
+            : textContent}
         </p>
       </section>
     );

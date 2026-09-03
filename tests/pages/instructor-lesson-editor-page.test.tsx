@@ -172,6 +172,33 @@ describe('InstructorLessonEditorPage', () => {
     },
   );
 
+  it('identifies and opens unpublished instructor saved text without issuing a media request', async () => {
+    const requests: ApiRequestOptions[] = [];
+    const request: ApiClient['request'] = async (options) => {
+      requests.push(options);
+      if (options.path === '/me') return decode(options, instructor);
+      if (options.path === '/lessons/8')
+        return decode(options, {
+          ...lesson,
+          lesson_type: 'text',
+          download_url: null,
+          description: 'Saved instructor text.',
+        });
+      throw new Error(`Unexpected request: ${options.method} ${options.path}`);
+    };
+
+    await renderPage({ request });
+    expect(await screen.findByRole('heading', { name: 'Text lesson' })).toBeTruthy();
+    const user = userEvent.setup();
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Details' }));
+    });
+    expect((await screen.findByRole('region', { name: 'Text lesson' })).textContent).toContain(
+      'Saved instructor text.',
+    );
+    expect(requests.map((item) => item.path)).not.toContain('/media/lessons/');
+  });
+
   it.each([
     ['en', 'This lesson address is not valid.'],
     ['ru', 'Адрес урока указан неверно.'],

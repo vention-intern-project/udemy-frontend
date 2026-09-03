@@ -1,10 +1,11 @@
-import type { LessonType } from '@entities/course';
+import type { LessonMediaLocator, LessonType } from '@entities/course';
 
 export interface InstructorEditorLesson {
   readonly id: number;
   readonly courseId: number;
   readonly title: string;
   readonly lessonType: LessonType;
+  readonly mediaLocator: LessonMediaLocator | null;
   readonly description: string | null;
   readonly isPublished: boolean;
 }

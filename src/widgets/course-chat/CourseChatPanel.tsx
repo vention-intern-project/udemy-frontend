@@ -12,6 +12,7 @@ import {
 } from '@features/course-chat';
 
 import styles from './CourseChatPanel.module.css';
+import { AssistantMarkdown } from './AssistantMarkdown';
 
 interface CourseChatPanelProps {
   readonly context: CourseChatContext;
@@ -75,9 +76,13 @@ function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
           <Sparkles />
         </span>
       ) : null}
-      <p className={`${styles.messageBubble} ${isLearner ? styles.learner : styles.assistant}`}>
-        {message.text}
-      </p>
+      {isLearner ? (
+        <p className={`${styles.messageBubble} ${styles.learner}`}>{message.text}</p>
+      ) : (
+        <div className={`${styles.messageBubble} ${styles.assistant}`}>
+          <AssistantMarkdown text={message.text} />
+        </div>
+      )}
     </div>
   );
 }
