@@ -73,9 +73,7 @@ export function LessonMediaAccess({
     const isReady =
       video.readyState >= HTMLMediaElement.HAVE_METADATA &&
       video.videoWidth > 0 &&
-      video.videoHeight > 0 &&
-      Number.isFinite(video.duration) &&
-      video.duration > 0;
+      video.videoHeight > 0;
     if (isReady) media.markVideoReady(objectUrl);
     else media.reportVideoError(objectUrl);
   }
