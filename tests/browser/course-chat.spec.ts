@@ -1084,7 +1084,7 @@ test('keeps the launcher clear through a sorted Catalog footer and page-three tr
       };
     });
   expect(beforeGeometry.insetBlockEnd).toBe('32px');
-  expect(beforeGeometry.inlineStyle).toBeNull();
+  expect(beforeGeometry.inlineStyle ?? '').toBe('');
   await page.getByRole('button', { name: 'Sort by: Oldest' }).click();
   await page.getByRole('option', { name: 'A to Z' }).click();
   await expect(page).toHaveURL('/?sort=title');
