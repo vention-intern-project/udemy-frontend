@@ -40,7 +40,7 @@ function CourseNotFound() {
         {t('course:courseNotFound', { defaultValue: 'Course not found' })}
       </h1>
       <p>{t('course:thisCourseDoesNotExistOr')}</p>
-      <ContextualNavigationLink to="/">
+      <ContextualNavigationLink className={styles.courseNotFoundReturnLink} to="/">
         {t('course:returnToTheCourseCatalog', { defaultValue: 'Return to the course catalog' })}
       </ContextualNavigationLink>
     </section>

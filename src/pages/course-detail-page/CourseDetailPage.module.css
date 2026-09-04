@@ -24,6 +24,33 @@
   justify-items: start;
 }
 
+.state .courseNotFoundReturnLink,
+.state .courseNotFoundReturnLink:visited,
+.state .courseNotFoundReturnLink:hover,
+.state .courseNotFoundReturnLink:active,
+.state .courseNotFoundReturnLink:focus-visible {
+  background: transparent;
+}
+
+.state .courseNotFoundReturnLink,
+.state .courseNotFoundReturnLink:visited,
+.state .courseNotFoundReturnLink:focus-visible {
+  color: var(--action-primary-bg);
+  font-size: var(--type-body-md-size);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--type-body-md-lh);
+}
+
+.state .courseNotFoundReturnLink:hover {
+  color: var(--action-primary-bg-hover);
+  text-decoration: underline;
+}
+
+.state .courseNotFoundReturnLink:active {
+  color: var(--action-primary-bg-hover);
+  text-decoration: underline;
+}
+
 .state h1,
 .intro h1,
 .outline h2,

@@ -1074,7 +1074,7 @@ for (const locale of ['en', 'ru', 'uz'] as const) {
     await expect(resetSuccessFooter).toHaveAttribute('href', '/login');
     await expectTokenCss(resetSuccessFooter, 'color', '--action-primary-bg');
     await expect(inlineSuccessLink).toHaveAttribute('href', '/login');
-    await expectTokenCss(inlineSuccessLink, 'color', '--action-link');
+    await expectTokenCss(inlineSuccessLink, 'color', '--action-primary-bg');
   });
 
   test(`DRAFT-21 auth residual copy reflows and preserves keyboard focus in ${locale}`, async ({

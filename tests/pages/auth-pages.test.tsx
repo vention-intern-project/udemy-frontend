@@ -25,6 +25,7 @@ import {
   useResetPasswordWorkflow,
   useSignupWorkflow,
 } from '../../src/features/auth-workflows';
+import authFormStyles from '../../src/features/auth-workflows/AuthForm.module.css';
 import { SessionProvider, type AccessTokenStore } from '../../src/features/auth-session';
 import { CartCompositeCheckoutProvider } from '../../src/features/checkout-cart';
 import { ApiError, type ApiClient, type ApiRequestOptions } from '../../src/shared/api';
@@ -348,7 +349,7 @@ describe('authentication pages', () => {
       expect(resetSuccessFooter.getAttribute('href')).toBe('/login');
       expect(resetSuccessFooter.className).toBe(primaryClassName);
       expect(inlineSuccessLink.getAttribute('href')).toBe('/login');
-      expect(inlineSuccessLink.className).not.toBe(primaryClassName);
+      expect(inlineSuccessLink.className).toBe(primaryClassName);
     },
   );
 
@@ -1190,7 +1191,8 @@ describe('authentication pages', () => {
     expect(document.body.textContent).not.toContain('raw token detail');
     await interact(() => user.click(screen.getByRole('button', { name: 'Reset password' })));
     expect(await screen.findByText('Password reset complete')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Log in with your new password' })).toBeTruthy();
+    const loginRecovery = screen.getByRole('link', { name: 'Log in with your new password' });
+    expect(loginRecovery.classList.contains(authFormStyles.linkPrimary)).toBe(true);
     expect(request).toHaveBeenCalledTimes(2);
   });
 

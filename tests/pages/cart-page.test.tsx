@@ -331,6 +331,20 @@ const CART_PAGE_SOURCE = readFileSync(
   pathToFileURL(resolve(process.cwd(), 'src/pages/cart-page/CartPage.tsx')),
   'utf8',
 );
+const CART_PAGE_STYLES = readFileSync(
+  pathToFileURL(resolve(process.cwd(), 'src/pages/cart-page/CartPage.module.css')),
+  'utf8',
+);
+
+function cssDeclarationBlock(source: string, selectorStart: string): string {
+  const selectorOffset = source.indexOf(selectorStart);
+  expect(selectorOffset).toBeGreaterThanOrEqual(0);
+  const blockStart = source.indexOf('{', selectorOffset);
+  const blockEnd = source.indexOf('}', blockStart);
+  expect(blockStart).toBeGreaterThan(selectorOffset);
+  expect(blockEnd).toBeGreaterThan(blockStart);
+  return source.slice(blockStart + 1, blockEnd);
+}
 
 async function interact(action: () => Promise<void>) {
   await act(async () => {
@@ -370,6 +384,30 @@ async function removeCourseAndExpectFocus(courseId: number, expectedActionName: 
 }
 
 describe('CartPage', () => {
+  it('keeps the backend-401 login recovery bound to a 44px local text-link target', () => {
+    expect(CART_PAGE_SOURCE).toMatch(
+      /<Link\s+className=\{styles\.loginRecoveryLink\}\s+to=\{`\/login\?returnTo=\$\{encodeURIComponent\('\/cart'\)\}`\}\s*>/,
+    );
+
+    const loginRecoveryRule = cssDeclarationBlock(CART_PAGE_STYLES, '.loginRecoveryLink,');
+    expect(loginRecoveryRule).toContain('display: inline-flex;');
+    expect(loginRecoveryRule).toContain('min-height: var(--control-height-md);');
+    expect(loginRecoveryRule).toContain('align-items: center;');
+    expect(loginRecoveryRule).toContain('font-size: var(--type-body-md-size);');
+    expect(loginRecoveryRule).toContain('font-weight: var(--font-weight-medium);');
+    expect(loginRecoveryRule).toContain('line-height: var(--type-body-md-lh);');
+  });
+
+  it('keeps the backend-403 catalog recovery in the same DD-258 typography family', () => {
+    const catalogRecoveryRule = cssDeclarationBlock(CART_PAGE_STYLES, '.catalogLink');
+
+    expect(CART_PAGE_SOURCE).toContain('<Link className={styles.catalogLink} to="/">');
+    expect(catalogRecoveryRule).toContain('min-height: var(--control-height-md);');
+    expect(catalogRecoveryRule).toContain('font-size: var(--type-body-md-size);');
+    expect(catalogRecoveryRule).toContain('font-weight: var(--font-weight-medium);');
+    expect(catalogRecoveryRule).toContain('line-height: var(--type-body-md-lh);');
+  });
+
   it('measures the summary jump from the structural Cart navigation seam, not localized copy', () => {
     expect(CART_PAGE_SOURCE).toContain('querySelector<HTMLAnchorElement>(\'nav a[href="/cart"]\')');
     expect(CART_PAGE_SOURCE).not.toContain('[aria-label="Student navigation"]');

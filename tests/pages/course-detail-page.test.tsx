@@ -1,5 +1,9 @@
 // @vitest-environment jsdom
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+
 import { defaultScheduler, notifyManager, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -17,6 +21,7 @@ import {
 import * as authSession from '../../src/features/auth-session';
 import { CourseDetailPage } from '../../src/pages/course-detail-page';
 import { CourseActionPanel } from '../../src/pages/course-detail-page/CourseActionPanel';
+import courseDetailStyles from '../../src/pages/course-detail-page/CourseDetailPage.module.css';
 import {
   courseMutationDisposition,
   type CourseMutationDisposition,
@@ -30,6 +35,20 @@ declare global {
 }
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+const COURSE_DETAIL_STYLES = readFileSync(
+  pathToFileURL(resolve(process.cwd(), 'src/pages/course-detail-page/CourseDetailPage.module.css')),
+  'utf8',
+);
+
+function cssDeclarationBlock(source: string, selectorStart: string): string {
+  const selectorOffset = source.indexOf(selectorStart);
+  expect(selectorOffset).toBeGreaterThanOrEqual(0);
+  const blockStart = source.indexOf('{', selectorOffset);
+  const blockEnd = source.indexOf('}', blockStart);
+  expect(blockEnd).toBeGreaterThan(blockStart);
+  return source.slice(blockStart + 1, blockEnd);
+}
 
 const course = {
   id: 7,
@@ -423,6 +442,22 @@ afterEach(() => {
 });
 
 describe('CourseDetailPage', () => {
+  it('keeps the not-found recovery typography and active violet in its bounded local rules', () => {
+    const recoveryRule = cssDeclarationBlock(
+      COURSE_DETAIL_STYLES,
+      '.state .courseNotFoundReturnLink:focus-visible {\n  color:',
+    );
+    const activeRule = cssDeclarationBlock(
+      COURSE_DETAIL_STYLES,
+      '.state .courseNotFoundReturnLink:active {\n  color:',
+    );
+
+    expect(recoveryRule).toContain('font-size: var(--type-body-md-size);');
+    expect(recoveryRule).toContain('font-weight: var(--font-weight-medium);');
+    expect(recoveryRule).toContain('line-height: var(--type-body-md-lh);');
+    expect(activeRule).toContain('color: var(--action-primary-bg-hover);');
+  });
+
   it('mounts the public reviews seam only after course detail succeeds', async () => {
     const reviews = {
       items: [],
@@ -972,9 +1007,9 @@ describe('CourseDetailPage', () => {
     renderPage(request);
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Course not found' })).toBeTruthy();
-    expect(
-      screen.getByRole('link', { name: 'Return to the course catalog' }).getAttribute('href'),
-    ).toBe('/');
+    const returnLink = screen.getByRole('link', { name: 'Return to the course catalog' });
+    expect(returnLink.getAttribute('href')).toBe('/');
+    expect(returnLink.classList.contains(courseDetailStyles.courseNotFoundReturnLink)).toBe(true);
     expect(paths).toEqual(['/courses/7']);
   });
 

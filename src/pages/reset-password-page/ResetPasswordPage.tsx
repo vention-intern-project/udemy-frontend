@@ -93,7 +93,10 @@ export function ResetPasswordPage() {
       >
         <Notice tone="success" title={t('auth:passwordResetComplete')}>
           {t('auth:passwordUpdated')}{' '}
-          <AuthLink to="/login">{t('auth:logInWithYourNewPassword')}</AuthLink>.
+          <AuthLink to="/login" tone="primary">
+            {t('auth:logInWithYourNewPassword')}
+          </AuthLink>
+          .
         </Notice>
       </AuthFormShell>
     );

@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+
 import { QueryClientProvider, type QueryClient } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -8,6 +13,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAppQueryClient } from '../../src/app/query';
 import { SessionProvider, type AccessTokenStore } from '../../src/features/auth-session';
 import { InstructorCourseEditorPage } from '../../src/pages/instructor-course-editor-page';
+import instructorCourseEditorStyles from '../../src/pages/instructor-course-editor-page/InstructorCourseEditorPage.module.css';
 import { ApiError, type ApiClient, type ApiRequestOptions } from '../../src/shared/api';
 import { LocaleProvider, useLocale, type Locale } from '../../src/shared/locale';
 
@@ -20,6 +26,25 @@ const instructor = {
   phone_number: null,
   created_at: '2026-08-08T00:00:00Z',
 };
+
+const INSTRUCTOR_COURSE_EDITOR_STYLES = readFileSync(
+  pathToFileURL(
+    resolve(
+      process.cwd(),
+      'src/pages/instructor-course-editor-page/InstructorCourseEditorPage.module.css',
+    ),
+  ),
+  'utf8',
+);
+
+function cssDeclarationBlock(source: string, selectorStart: string): string {
+  const selectorOffset = source.indexOf(selectorStart);
+  expect(selectorOffset).toBeGreaterThanOrEqual(0);
+  const blockStart = source.indexOf('{', selectorOffset);
+  const blockEnd = source.indexOf('}', blockStart);
+  expect(blockEnd).toBeGreaterThan(blockStart);
+  return source.slice(blockStart + 1, blockEnd);
+}
 const course = {
   id: 7,
   title: 'Verified course',
@@ -138,6 +163,17 @@ function expectContextualReturnBeforeEditorHeading(currentLabel = 'Edit course')
 }
 
 describe('InstructorCourseEditorPage', () => {
+  it('keeps the upload-failure recovery typography in its dedicated local rule', () => {
+    const recoveryRule = cssDeclarationBlock(
+      INSTRUCTOR_COURSE_EDITOR_STYLES,
+      '.createdLessonUploadRecoveryLink,',
+    );
+
+    expect(recoveryRule).toContain('font-size: var(--type-body-md-size);');
+    expect(recoveryRule).toContain('font-weight: var(--font-weight-medium);');
+    expect(recoveryRule).toContain('line-height: var(--type-body-md-lh);');
+  });
+
   it.each([
     ['en', 'Save changes'],
     ['ru', 'Сохранить изменения'],
@@ -603,6 +639,11 @@ describe('InstructorCourseEditorPage', () => {
       .find((link) => link.getAttribute('href') === '/instructor/lessons/9/edit');
     expect(recoveryLink).toBeTruthy();
     expect(recoveryLink?.getAttribute('href')).toBe('/instructor/lessons/9/edit');
+    expect(
+      recoveryLink?.classList.contains(
+        instructorCourseEditorStyles.createdLessonUploadRecoveryLink,
+      ),
+    ).toBe(true);
     expect(screen.queryByText('private upload failure')).toBeNull();
     expect(screen.queryByRole('heading', { name: 'Create lesson' })).toBeNull();
   });
