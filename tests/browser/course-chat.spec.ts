@@ -614,13 +614,15 @@ test('completes the mobile chat flow, restores focus, and preserves history afte
   await expect(page.getByRole('tooltip', { name: 'Conversation actions' })).toBeHidden();
   await input.fill('Explain this course');
   await page.getByRole('button', { name: 'Send message' }).click();
-  await expect(page.getByText('One answer 1.')).toBeVisible();
+  const assistantAnswer = page.getByText('One answer 1.');
+  const assistantBubble = assistantAnswer.locator('../..');
+  await expect(assistantAnswer).toBeVisible();
   await expect(page.getByText('Explain this course')).toHaveCSS(
     'border-bottom-right-radius',
     '0px',
   );
-  await expect(page.getByText('One answer 1.')).toHaveCSS('border-bottom-left-radius', '0px');
-  await expect(page.getByText('One answer 1.')).toHaveCSS('background-color', 'rgb(238, 240, 244)');
+  await expect(assistantBubble).toHaveCSS('border-bottom-left-radius', '0px');
+  await expect(assistantBubble).toHaveCSS('background-color', 'rgb(238, 240, 244)');
   expect(chatRequests).toEqual([
     {
       method: 'POST',
