@@ -1,8 +1,15 @@
+import { Buffer } from 'node:buffer';
+
 import { expect, test, type Page, type Request, type Route } from '@playwright/test';
 
 const accessToken = 'fe014-test-only-instructor-token';
 const courseId = 7;
 const lessonId = 101;
+
+const VALID_VIDEO_MP4 = Buffer.from(
+  'AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAAIZnJlZQAACIhtZGF0//tQxAADwAABpAAAACAAADSAAAAETEFNRTMuOTkuNVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVUxBTUUzLjk5LjVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVQAAAq4GBf//qtxF6b3m2Ui3lizYINkj7u94MjY0IC0gY29yZSAxNDggcjI2NDMgNWM2NTcwNCAtIEguMjY0L01QRUctNCBBVkMgY29kZWMgLSBDb3B5bGVmdCAyMDAzLTIwMTUgLSBodHRwOi8vd3d3LnZpZGVvbGFuLm9yZy94MjY0Lmh0bWwgLSBvcHRpb25zOiBjYWJhYz0xIHJlZj0zIGRlYmxvY2s9MTowOjAgYW5hbHlzZT0weDM6MHgxMTMgbWU9aGV4IHN1Ym1lPTcgcHN5PTEgcHN5X3JkPTEuMDA6MC4wMCBtaXhlZF9yZWY9MSBtZV9yYW5nZT0xNiBjaHJvbWFfbWU9MSB0cmVsbGlzPTEgOHg4ZGN0PTEgY3FtPTAgZGVhZHpvbmU9MjEsMTEgZmFzdF9wc2tpcD0xIGNocm9tYV9xcF9vZmZzZXQ9LTIgdGhyZWFkcz0xIGxvb2thaGVhZF90aHJlYWRzPTEgc2xpY2VkX3RocmVhZHM9MCBucj0wIGRlY2ltYXRlPTEgaW50ZXJsYWNlZD0wIGJsdXJheV9jb21wYXQ9MCBjb25zdHJhaW5lZF9pbnRyYT0wIGJmcmFtZXM9MyBiX3B5cmFtaWQ9MiBiX2FkYXB0PTEgYl9iaWFzPTAgZGlyZWN0PTEgd2VpZ2h0Yj0xIG9wZW5fZ29wPTAgd2VpZ2h0cD0yIGtleWludD0yNTAga2V5aW50X21pbj0yNSBzY2VuZWN1dD00MCBpbnRyYV9yZWZyZXNoPTAgcmNfbG9va2FoZWFkPTQwIHJjPWNyZiBtYnRyZWU9MSBjcmY9MjMuMCBxY29tcD0wLjYwIHFwbWluPTAgcXBtYXg9NjkgcXBzdGVwPTQgaXBfcmF0aW89MS40MCBhcT0xOjEuMDAAgAAAABRliIQAK//+2OfzLJOXereQdLvG0f/7UsRdg8AAAaQAAAAgAAA0gAAABFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMuOTkuNVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//tSxKGDwAABpAAAACAAADSAAAAEVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVMQU1FMy45OS41VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/+1LEoYPAAAGkAAAAIAAANIAAAARVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVUxBTUUzLjk5LjVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/7UsShg8AAAaQAAAAgAAA0gAAABFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMuOTkuNVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//tSxKGDwAABpAAAACAAADSAAAAEVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/+1LEoYPAAAGkAAAAIAAANIAAAARVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVQAABP9tb292AAAAbG12aGQAAAAAAAAAAAAAAAAAAAPoAAAAtgABAAABAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAAACEXRyYWsAAABcdGtoZAAAAAMAAAAAAAAAAAAAAAEAAAAAAAAAtgAAAAAAAAAAAAAAAQEAAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAACRlZHRzAAAAHGVsc3QAAAAAAAAAAQAAAJwAAARRAAEAAAAAAYltZGlhAAAAIG1kaGQAAAAAAAAAAAAAAAAAAKxEAAAfUVXEAAAAAAAtaGRscgAAAAAAAAAAc291bgAAAAAAAAAAAAAAAFNvdW5kSGFuZGxlcgAAAAE0bWluZgAAABBzbWhkAAAAAAAAAAAAAAAkZGluZgAAABxkcmVmAAAAAAAAAAEAAAAMdXJsIAAAAAEAAAD4c3RibAAAAGBzdHNkAAAAAAAAAAEAAABQbXA0YQAAAAAAAAABAAAAAAAAAAAAAgAQAAAAAKxEAAAAAAAsZXNkcwAAAAADgICAGwABAASAgIANaxUAAAAAAPtRAAD7UQaAgIABAgAAACBzdHRzAAAAAAAAAAIAAAAGAAAEgAAAAAEAAARRAAAAKHN0c2MAAAAAAAAAAgAAAAEAAAABAAAAAQAAAAIAAAAGAAAAAQAAADBzdHN6AAAAAAAAAAAAAAAHAAAA0AAAANEAAADRAAAA0QAAANEAAADRAAAA0QAAABhzdGNvAAAAAAAAAAIAAAAwAAADygAAAhh0cmFrAAAAXHRraGQAAAADAAAAAAAAAAAAAAACAAAAAAAAACgAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAIAAAACAAAAAAAkZWR0cwAAABxlbHN0AAAAAAAAAAEAAAAoAAAAAAABAAAAAAGQbWRpYQAAACBtZGhkAAAAAAAAAAAAAAAAAAAyAAAAAgBVxAAAAAAALWhkbHIAAAAAAAAAAHZpZGUAAAAAAAAAAAAAAABWaWRlb0hhbmRsZXIAAAABO21pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAAPtzdGJsAAAAl3N0c2QAAAAAAAAAAQAAAIdhdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAIAAgBIAAAASAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGP//AAAAMWF2Y0MBZAAK/+EAGGdkAAqs2V+IiIQAAAMABAAAAwDIPEiWWAEABmjr48siwAAAABhzdHRzAAAAAAAAAAEAAAABAAACAAAAABxzdHNjAAAAAAAAAAEAAAABAAAAAQAAAAEAAAAUc3RzegAAAAAAAALKAAAAAQAAABRzdGNvAAAAAAAAAAEAAAEAAAAAYnVkdGEAAABabWV0YQAAAAAAAAAhaGRscgAAAAAAAAAAbWRpcmFwcGwAAAAAAAAAAAAAAAAtaWxzdAAAACWpdG9vAAAAHWRhdGEAAAABAAAAAExhdmY1Ni40MC4xMDE=',
+  'base64',
+);
 
 type FixtureLocale = 'en' | 'ru' | 'uz';
 type UploadStatusFixture = 'queued' | 'processing' | 'ready' | 'failed';
@@ -28,6 +35,7 @@ interface LessonFixture {
   readonly course_id: number;
   readonly title: string;
   readonly lesson_type: 'video' | 'text' | 'pdf';
+  readonly download_url: string | null;
   readonly description: string | null;
   readonly is_published: boolean;
 }
@@ -67,6 +75,7 @@ interface FixtureState {
   lessonDeleteGate?: Promise<void>;
   readonly requests: Request[];
   readonly uploadStatusRequests: Request[];
+  readonly mediaRequests: Request[];
 }
 
 interface DeferredAction {
@@ -101,6 +110,7 @@ function createLesson(type: LessonFixture['lesson_type'] = 'video'): LessonFixtu
     course_id: courseId,
     title: 'Contract-faithful lesson',
     lesson_type: type,
+    download_url: null,
     description: 'An instructor-owned lesson for browser verification.',
     is_published: false,
   };
@@ -134,6 +144,7 @@ function createFixtureState(): FixtureState {
     lessonDeleteStatus: 200,
     requests: [],
     uploadStatusRequests: [],
+    mediaRequests: [],
   };
 }
 
@@ -154,6 +165,7 @@ function fulfilledCourse(course: CourseFixture) {
       title: lesson.title,
       course_id: lesson.course_id,
       lesson_type: lesson.lesson_type,
+      download_url: lesson.download_url,
       description: lesson.description,
       is_published: lesson.is_published,
     })),
@@ -279,6 +291,22 @@ async function installInstructorFixture(page: Page, state: FixtureState): Promis
       await fulfillJson(route, 200, state.lesson);
       return;
     }
+    const mediaMatch = /^\/media\/lessons\/([^/]+)$/u.exec(path);
+    if (mediaMatch !== null && method === 'GET') {
+      await expectAuthorized(request);
+      state.mediaRequests.push(request);
+      const filename = decodeURIComponent(mediaMatch[1]);
+      const contentType = filename.endsWith('.pdf') ? 'application/pdf' : 'video/mp4';
+      await route.fulfill({
+        status: 200,
+        contentType,
+        body:
+          contentType === 'application/pdf'
+            ? '%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF'
+            : VALID_VIDEO_MP4,
+      });
+      return;
+    }
     if (
       path === `/lessons/uploads/${lessonId.toString(16).padStart(32, '0')}/status` &&
       method === 'GET'
@@ -363,6 +391,7 @@ async function installInstructorFixture(page: Page, state: FixtureState): Promis
         course_id: courseId,
         title: String(body.title),
         lesson_type: body.lesson_type as LessonFixture['lesson_type'],
+        download_url: null,
         description: body.description as string | null,
         is_published: body.is_published as boolean,
       };
@@ -586,6 +615,89 @@ test('creates a PDF lesson and then uploads its optional source file', async ({ 
     .poll(() => state.requests.map((request) => new URL(request.url()).pathname))
     .toEqual([`/courses/${courseId}/lessons`, '/lessons/102/upload-file']);
   await page.setViewportSize({ width: 390, height: 844 });
+  await expectNoHorizontalOverflow(page);
+});
+
+test('opens truthful saved instructor content with canonical media access and restores focus', async ({
+  page,
+}) => {
+  const state = createFixtureState();
+  await installInstructorFixture(page, state);
+
+  state.lesson = {
+    ...createLesson('text'),
+    title: 'Saved browser text lesson',
+    description: 'Saved instructor text from the browser fixture.',
+  };
+  state.course = createCourse([state.lesson]);
+  await page.goto(`/instructor/lessons/${lessonId}/edit`, { waitUntil: 'commit' });
+  await expect(page.getByRole('heading', { name: 'Text lesson' })).toBeVisible();
+  const textDetails = page.getByRole('button', { name: 'Details' });
+  await textDetails.click();
+  await expect(page.getByRole('region', { name: 'Text lesson' })).toContainText(
+    'Saved instructor text from the browser fixture.',
+  );
+  const closeText = page.getByRole('button', { name: 'Close dialog' });
+  await expect(closeText).toHaveCSS('color', 'rgb(91, 63, 214)');
+  await closeText.click();
+  await expect(textDetails).toBeFocused();
+  expect(state.mediaRequests).toEqual([]);
+
+  state.lesson = { ...state.lesson, description: '' };
+  state.course = createCourse([state.lesson]);
+  await page.goto(`/instructor/lessons/${lessonId}/edit`, { waitUntil: 'commit' });
+  await selectFixtureLocale(page, 'ru');
+  await page.getByRole('button', { name: 'Подробнее' }).click();
+  await expect(page.getByRole('region', { name: 'Текстовый урок' })).toContainText(
+    'Описание урока отсутствует.',
+  );
+  await page.getByRole('button', { name: 'Закрыть диалог' }).dispatchEvent('click');
+  expect(state.mediaRequests).toEqual([]);
+
+  state.lesson = {
+    ...createLesson('video'),
+    title: 'Saved browser video lesson',
+    download_url: '/media/lessons/browser-video.mp4',
+  };
+  state.course = createCourse([state.lesson]);
+  await page.goto(`/instructor/lessons/${lessonId}/edit`, { waitUntil: 'commit' });
+  await expect(page.getByRole('heading', { name: 'Предпросмотр видео урока' })).toBeVisible();
+  const loadVideo = page.getByRole('button', { name: 'Загрузить видео' });
+  await loadVideo.click();
+  await expect(page.getByLabel('Предпросмотр видео урока')).toBeVisible();
+  await expect
+    .poll(() => state.mediaRequests.map((request) => new URL(request.url()).pathname))
+    .toEqual(['/media/lessons/browser-video.mp4']);
+  const closeVideo = page.getByRole('button', { name: 'Закрыть диалог' });
+  await expect(closeVideo).toHaveCSS('color', 'rgb(91, 63, 214)');
+  await closeVideo.dispatchEvent('click');
+  await expect(loadVideo).toBeFocused();
+
+  state.lesson = {
+    ...createLesson('pdf'),
+    title: 'Saved browser PDF lesson',
+    download_url: '/media/lessons/browser-notes.pdf',
+  };
+  state.course = createCourse([state.lesson]);
+  await page.goto(`/instructor/lessons/${lessonId}/edit`, { waitUntil: 'commit' });
+  await expect(page.getByRole('heading', { name: 'Предпросмотр PDF-файла урока' })).toBeVisible();
+  const loadPdf = page.getByRole('button', { name: 'Загрузить PDF' });
+  await loadPdf.click();
+  await expect(page.getByRole('button', { name: 'Закрыть диалог' })).toBeVisible();
+  await expect
+    .poll(() => state.mediaRequests.map((request) => new URL(request.url()).pathname))
+    .toEqual(['/media/lessons/browser-video.mp4', '/media/lessons/browser-notes.pdf']);
+  const closePdf = page.getByRole('button', { name: 'Закрыть диалог' });
+  await expect(closePdf).toHaveCSS('color', 'rgb(91, 63, 214)');
+  await closePdf.click();
+  await expect(loadPdf).toBeFocused();
+
+  state.lesson = { ...createLesson('video'), download_url: null };
+  state.course = createCourse([state.lesson]);
+  await page.goto(`/instructor/lessons/${lessonId}/edit`, { waitUntil: 'commit' });
+  await expect(page.getByText('Медиа недоступны в этом разделе')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Загрузить видео' })).toHaveCount(0);
+  expect(state.mediaRequests).toHaveLength(2);
   await expectNoHorizontalOverflow(page);
 });
 

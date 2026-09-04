@@ -99,4 +99,37 @@ describe('RouteErrorBoundary', () => {
     await userEvent.setup().click(catalogLink);
     expect(await screen.findByRole('heading', { level: 1, name: 'Course catalog' })).toBeTruthy();
   });
+
+  it('uses instructor-course recovery without catalog copy for an instructor render failure', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    function RouteTarget() {
+      const location = useLocation();
+      if (location.pathname === '/instructor/courses/7/edit') {
+        throw new Error('private instructor route failure');
+      }
+      return <h1>Instructor courses</h1>;
+    }
+
+    render(
+      <MemoryRouter
+        initialEntries={['/instructor/courses/7/edit']}
+        future={{ v7_relativeSplatPath: true, v7_startTransition: true }}
+      >
+        <RouteErrorBoundary>
+          <RouteTarget />
+        </RouteErrorBoundary>
+      </MemoryRouter>,
+    );
+
+    const alert = screen.getByRole('alert');
+    const instructorCoursesLink = screen.getByRole('link', { name: 'Instructor courses' });
+    expect(alert.textContent).not.toContain('return to the catalog');
+    expect(instructorCoursesLink.getAttribute('href')).toBe('/instructor/courses');
+
+    await userEvent.setup().click(instructorCoursesLink);
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Instructor courses' }),
+    ).toBeTruthy();
+  });
 });

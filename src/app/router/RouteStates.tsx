@@ -12,6 +12,12 @@ interface RetryStateProps {
   onRetry: () => void;
 }
 
+export type RenderErrorRecovery = 'catalog' | 'instructor-courses';
+
+interface RenderErrorStateProps extends RetryStateProps {
+  recovery: RenderErrorRecovery;
+}
+
 export function BootstrapState() {
   const { t } = useTranslation();
   return (
@@ -44,18 +50,25 @@ export function SessionErrorState({ onRetry }: RetryStateProps) {
   );
 }
 
-export function RenderErrorState({ onRetry }: RetryStateProps) {
+export function RenderErrorState({ onRetry, recovery }: RenderErrorStateProps) {
   const { t } = useTranslation();
+  const isInstructorRecovery = recovery === 'instructor-courses';
   return (
     <main className={[styles.root, styles.centered].join(' ')} id="main-content">
       <div className={styles.card} role="alert" aria-labelledby="render-error-title">
         <h1 id="render-error-title">{t('routes:renderErrorHeading')}</h1>
-        <p>{t('routes:renderErrorDescription')}</p>
+        {isInstructorRecovery ? null : <p>{t('routes:renderErrorDescription')}</p>}
         <div className={styles.actions}>
           <Button onClick={onRetry}>{t('routes:tryAgain')}</Button>
-          <ContextualNavigationLink className={styles.linkButton} to="/">
-            {t('routes:backToCatalog')}
-          </ContextualNavigationLink>
+          {isInstructorRecovery ? (
+            <ContextualNavigationLink className={styles.linkButton} to="/instructor/courses">
+              {t('navigation:instructorCourses')}
+            </ContextualNavigationLink>
+          ) : (
+            <ContextualNavigationLink className={styles.linkButton} to="/">
+              {t('routes:backToCatalog')}
+            </ContextualNavigationLink>
+          )}
         </div>
       </div>
     </main>

@@ -56,6 +56,34 @@
   margin: 0;
   overflow-wrap: anywhere;
 }
+.assistant > :first-child {
+  margin-block-start: 0;
+}
+.assistant > :last-child {
+  margin-block-end: 0;
+}
+.assistant p,
+.assistant h1,
+.assistant h2,
+.assistant h3,
+.assistant h4,
+.assistant h5,
+.assistant h6,
+.assistant ul,
+.assistant ol,
+.assistant pre {
+  margin-block: var(--spacing-2);
+}
+.assistant pre {
+  max-width: 100%;
+  overflow-x: auto;
+  padding: var(--spacing-2);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+.assistant code {
+  overflow-wrap: anywhere;
+}
 .avatar {
   display: inline-grid;
   flex: 0 0 28px;

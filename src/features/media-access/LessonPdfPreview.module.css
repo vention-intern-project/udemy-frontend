@@ -35,6 +35,7 @@
 .closeButton {
   inline-size: var(--control-height-sm);
   padding-inline: 0;
+  color: var(--action-primary-bg);
 }
 .pageViewport {
   min-inline-size: 0;

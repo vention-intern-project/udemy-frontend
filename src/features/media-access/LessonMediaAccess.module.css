@@ -22,6 +22,7 @@
 .closeButton {
   inline-size: var(--control-height-sm);
   padding-inline: 0;
+  color: var(--action-primary-bg);
 }
 .textReader {
   display: grid;
@@ -67,6 +68,7 @@
 .pdfLoadingCloseButton {
   inline-size: var(--control-height-md);
   padding-inline: 0;
+  color: var(--action-primary-bg);
 }
 .pdfLoadingStatus {
   display: grid;

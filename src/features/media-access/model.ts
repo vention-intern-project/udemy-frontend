@@ -1,4 +1,5 @@
 export type AuthorizedLessonMediaKind = 'video' | 'pdf';
+export type LessonMediaAccessPolicy = 'learner' | 'instructor_owner';
 export type AuthorizedVideoPresentationStatus = 'loading_metadata' | 'ready';
 
 export interface IdleAuthorizedLessonMediaState {

@@ -22,6 +22,7 @@ import {
   type UpdateInstructorLessonInput,
   type InstructorEditorFormFailure,
 } from '@features/instructor-course-editor';
+import { LessonMediaAccess } from '@features/media-access';
 import { useSession } from '@features/auth-session';
 import {
   Button,
@@ -361,6 +362,12 @@ export function InstructorLessonEditorPage() {
       form.lessonType !== lesson.data.lessonType ||
       form.description !== (lesson.data.description ?? '') ||
       form.isPublished !== lesson.data.isPublished);
+  const savedContentTitle =
+    lesson.data.lessonType === 'video'
+      ? t('learning:lessonVideoPreview')
+      : lesson.data.lessonType === 'pdf'
+        ? t('learning:lessonPdfPreview')
+        : t('learning:textLessonType');
   return (
     <article className={styles.page} aria-busy={update.isPending || upload.isPending}>
       <header className={styles.header}>
@@ -508,6 +515,16 @@ export function InstructorLessonEditorPage() {
             </Button>
           </form>
         )}
+      </section>
+      <section className={styles.panel}>
+        <h2>{savedContentTitle}</h2>
+        <LessonMediaAccess
+          accessPolicy="instructor_owner"
+          isPublished={lesson.data.isPublished}
+          lessonType={lesson.data.lessonType}
+          locator={lesson.data.mediaLocator}
+          textContent={lesson.data.description}
+        />
       </section>
       <div className={styles.pageActions}>
         {hasUnsavedChanges || update.isPending ? (

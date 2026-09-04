@@ -3,4 +3,8 @@ export { LessonMediaAccess } from './LessonMediaAccess';
 export type { LessonMediaAccessProps } from './LessonMediaAccess';
 export type { AuthorizedLessonMediaController } from './useAuthorizedLessonMedia';
 export { useAuthorizedLessonMedia } from './useAuthorizedLessonMedia';
-export type { AuthorizedLessonMediaKind, AuthorizedLessonMediaState } from './model';
+export type {
+  AuthorizedLessonMediaKind,
+  AuthorizedLessonMediaState,
+  LessonMediaAccessPolicy,
+} from './model';

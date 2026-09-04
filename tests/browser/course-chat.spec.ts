@@ -614,13 +614,15 @@ test('completes the mobile chat flow, restores focus, and preserves history afte
   await expect(page.getByRole('tooltip', { name: 'Conversation actions' })).toBeHidden();
   await input.fill('Explain this course');
   await page.getByRole('button', { name: 'Send message' }).click();
-  await expect(page.getByText('One answer 1.')).toBeVisible();
+  const assistantAnswer = page.getByText('One answer 1.');
+  const assistantBubble = assistantAnswer.locator('../..');
+  await expect(assistantAnswer).toBeVisible();
   await expect(page.getByText('Explain this course')).toHaveCSS(
     'border-bottom-right-radius',
     '0px',
   );
-  await expect(page.getByText('One answer 1.')).toHaveCSS('border-bottom-left-radius', '0px');
-  await expect(page.getByText('One answer 1.')).toHaveCSS('background-color', 'rgb(238, 240, 244)');
+  await expect(assistantBubble).toHaveCSS('border-bottom-left-radius', '0px');
+  await expect(assistantBubble).toHaveCSS('background-color', 'rgb(238, 240, 244)');
   expect(chatRequests).toEqual([
     {
       method: 'POST',
@@ -696,6 +698,94 @@ test('keeps a pending general request through mini-to-full expansion without a d
   await expectNoOverflow(page);
   expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
   expect(diagnostics.httpFailures).toEqual([]);
+});
+
+test('renders a screenshot-ready React guidance response from the browser chat mock', async ({
+  page,
+}, testInfo) => {
+  const scenarioReadinessTimeout = 120_000;
+  test.setTimeout(600_000);
+  const chatRequests: ChatRequestEvidence[] = [];
+  const diagnostics = captureRuntimeDiagnostics(page);
+  const learnerSource = '## Learner **formatting** [link](https://example.com)';
+  const realisticResponse = `### Why Choose React First?
+
+For most beginners, **React is generally recommended to learn first**, but the best choice depends on your background and goals.
+
+### Focus on Core JavaScript
+
+Before adding more tools, practice variables, functions, arrays, objects, modules, and asynchronous code.
+
+### Suggested next steps
+
+3. Continue with one small React component.
+4. Practice state and effects in that component.
+
+\`\`\`jsx
+useEffect(() => {
+  const controller = new AbortController();
+
+  loadProfile({ signal: controller.signal });
+
+  return () => controller.abort();
+}, []);
+\`\`\``;
+
+  await installCourseChatFixture(page, chatRequests);
+  await page.route('**/chat/', (route) => {
+    const request = route.request();
+    chatRequests.push({
+      method: request.method(),
+      path: new URL(request.url()).pathname,
+      body: request.postDataJSON(),
+    });
+    return json(route, { thread_id: 'react-preview-thread', response: realisticResponse });
+  });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/ai-chat', { waitUntil: 'commit' });
+
+  const input = page.getByLabel('Message the course assistant');
+  await expect(input).toBeVisible({ timeout: scenarioReadinessTimeout });
+  await input.fill(learnerSource);
+  await page.getByRole('button', { name: 'Send message' }).click();
+
+  await expect(
+    page.getByRole('heading', { level: 3, name: 'Why Choose React First?' }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('heading', { level: 3, name: 'Focus on Core JavaScript' }),
+  ).toBeVisible();
+  const nextSteps = page
+    .locator('ol')
+    .filter({ hasText: 'Continue with one small React component.' });
+  await expect(nextSteps).toHaveCount(1);
+  await expect(nextSteps).not.toHaveAttribute('start');
+  const assistantStrong = page.getByText('React is generally recommended to learn first', {
+    exact: true,
+  });
+  await expect(assistantStrong).toHaveCount(1);
+  expect(await assistantStrong.evaluate((element) => element.tagName)).toBe('STRONG');
+  await expect(page.locator('pre code')).toHaveText(
+    'useEffect(() => {\n  const controller = new AbortController();\n\n  loadProfile({ signal: controller.signal });\n\n  return () => controller.abort();\n}, []);',
+  );
+
+  const learnerMessage = page.getByText(learnerSource, { exact: true });
+  await expect(learnerMessage).toBeVisible();
+  await expect(learnerMessage.locator('strong, a, h2')).toHaveCount(0);
+  expect(chatRequests).toEqual([
+    {
+      method: 'POST',
+      path: '/chat/',
+      body: { thread_id: expect.any(String), message: learnerSource },
+    },
+  ]);
+  await expectNoOverflow(page);
+  expect(diagnostics.unexpectedRuntimeFailures).toEqual([]);
+  expect(diagnostics.httpFailures).toEqual([]);
+  await page.screenshot({
+    path: testInfo.outputPath('ai-chat-markdown-preview.png'),
+    fullPage: true,
+  });
 });
 
 test('renders the D04 Russian pending course-chat state without overflow', async ({ page }) => {

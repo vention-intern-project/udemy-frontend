@@ -161,6 +161,46 @@ describe('LessonMediaAccess', () => {
     expect(requestAuthorizedLessonMedia).not.toHaveBeenCalled();
   });
 
+  it('permits an owning instructor to open an unpublished saved text lesson without media transport', async () => {
+    const text = 'Instructor-only saved draft text.';
+    render(
+      <LessonMediaAccess
+        accessPolicy="instructor_owner"
+        lessonType="text"
+        isPublished={false}
+        locator={null}
+        textContent={text}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+    expect((await screen.findByRole('region', { name: 'Text lesson' })).textContent).toContain(
+      text,
+    );
+    expect(requestAuthorizedLessonMedia).not.toHaveBeenCalled();
+  });
+
+  it('uses the localized no-description fallback for an empty saved text lesson without media transport', async () => {
+    render(
+      <LocaleProvider initialLocale="ru">
+        <LessonMediaAccess
+          accessPolicy="instructor_owner"
+          lessonType="text"
+          isPublished={false}
+          locator={null}
+          textContent=""
+        />
+      </LocaleProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Подробнее' }));
+
+    expect((await screen.findByRole('region', { name: 'Текстовый урок' })).textContent).toContain(
+      'Описание урока отсутствует.',
+    );
+    expect(requestAuthorizedLessonMedia).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['ru', 'Подробнее', 'Текстовый урок', 'Закрыть диалог'],
     ['uz', 'Batafsil', 'Matnli dars', 'Dialogni yopish'],
