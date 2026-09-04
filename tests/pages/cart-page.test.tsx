@@ -331,6 +331,10 @@ const CART_PAGE_SOURCE = readFileSync(
   pathToFileURL(resolve(process.cwd(), 'src/pages/cart-page/CartPage.tsx')),
   'utf8',
 );
+const CART_PAGE_STYLES = readFileSync(
+  pathToFileURL(resolve(process.cwd(), 'src/pages/cart-page/CartPage.module.css')),
+  'utf8',
+);
 
 async function interact(action: () => Promise<void>) {
   await act(async () => {
@@ -370,6 +374,14 @@ async function removeCourseAndExpectFocus(courseId: number, expectedActionName: 
 }
 
 describe('CartPage', () => {
+  it('keeps the backend-401 login recovery bound to a 44px local text-link target', () => {
+    expect(CART_PAGE_SOURCE).toContain('className={styles.loginRecoveryLink}');
+    expect(CART_PAGE_SOURCE).toContain("to={`/login?returnTo=${encodeURIComponent('/cart')}`}");
+    expect(CART_PAGE_STYLES).toMatch(
+      /\.loginRecoveryLink,[\s\S]*?display: inline-flex;[\s\S]*?min-height: var\(--control-height-md\);[\s\S]*?align-items: center;/,
+    );
+  });
+
   it('measures the summary jump from the structural Cart navigation seam, not localized copy', () => {
     expect(CART_PAGE_SOURCE).toContain('querySelector<HTMLAnchorElement>(\'nav a[href="/cart"]\')');
     expect(CART_PAGE_SOURCE).not.toContain('[aria-label="Student navigation"]');

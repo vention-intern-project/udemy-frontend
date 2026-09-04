@@ -643,7 +643,7 @@ export function InstructorCourseEditorPage() {
           <p>{t('instructor:courseEditorLessonCreatedFileUploadFailed')}</p>
           <Link
             id="created-lesson-upload-retry"
-            className={styles.backLink}
+            className={styles.createdLessonUploadRecoveryLink}
             to={`/instructor/lessons/${createdLessonUploadFailure.lessonId}/edit`}
           >
             <Pencil aria-hidden="true" size={18} />

@@ -267,7 +267,12 @@ function CartRecoveryAction({
 }: CartRecoveryActionProps) {
   if (failure.action.kind === 'login')
     return (
-      <Link to={`/login?returnTo=${encodeURIComponent('/cart')}`}>{t('navigation:logIn')}</Link>
+      <Link
+        className={styles.loginRecoveryLink}
+        to={`/login?returnTo=${encodeURIComponent('/cart')}`}
+      >
+        {t('navigation:logIn')}
+      </Link>
     );
   if (failure.action.kind === 'catalog')
     return (

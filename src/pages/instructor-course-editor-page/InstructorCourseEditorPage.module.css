@@ -262,6 +262,37 @@
   outline: var(--focus-ring-width) solid var(--focus-ring);
   outline-offset: var(--focus-ring-offset);
 }
+
+.createdLessonUploadRecoveryLink,
+.createdLessonUploadRecoveryLink:visited,
+.createdLessonUploadRecoveryLink:focus-visible {
+  display: inline-flex;
+  min-height: var(--control-height-md);
+  align-items: center;
+  gap: var(--spacing-2);
+  padding-inline: var(--spacing-3);
+  color: var(--action-primary-bg);
+  background: transparent;
+  font-weight: var(--font-weight-medium);
+  text-decoration: none;
+}
+
+.createdLessonUploadRecoveryLink:hover {
+  color: var(--action-primary-bg-hover);
+  background: transparent;
+  text-decoration: underline;
+}
+
+.createdLessonUploadRecoveryLink:active {
+  color: var(--action-primary-bg-hover);
+  background: transparent;
+  text-decoration: underline;
+}
+
+.createdLessonUploadRecoveryLink:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
 .lessonDeleteAction {
   width: var(--control-height-md);
   padding: 0;

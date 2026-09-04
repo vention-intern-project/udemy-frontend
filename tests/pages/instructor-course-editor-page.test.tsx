@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAppQueryClient } from '../../src/app/query';
 import { SessionProvider, type AccessTokenStore } from '../../src/features/auth-session';
 import { InstructorCourseEditorPage } from '../../src/pages/instructor-course-editor-page';
+import instructorCourseEditorStyles from '../../src/pages/instructor-course-editor-page/InstructorCourseEditorPage.module.css';
 import { ApiError, type ApiClient, type ApiRequestOptions } from '../../src/shared/api';
 import { LocaleProvider, useLocale, type Locale } from '../../src/shared/locale';
 
@@ -603,6 +604,11 @@ describe('InstructorCourseEditorPage', () => {
       .find((link) => link.getAttribute('href') === '/instructor/lessons/9/edit');
     expect(recoveryLink).toBeTruthy();
     expect(recoveryLink?.getAttribute('href')).toBe('/instructor/lessons/9/edit');
+    expect(
+      recoveryLink?.classList.contains(
+        instructorCourseEditorStyles.createdLessonUploadRecoveryLink,
+      ),
+    ).toBe(true);
     expect(screen.queryByText('private upload failure')).toBeNull();
     expect(screen.queryByRole('heading', { name: 'Create lesson' })).toBeNull();
   });
