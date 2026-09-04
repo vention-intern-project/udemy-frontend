@@ -1,5 +1,9 @@
 // @vitest-environment jsdom
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -11,7 +15,31 @@ import {
 
 afterEach(cleanup);
 
+const CONTEXTUAL_NAVIGATION_LINK_STYLES = readFileSync(
+  pathToFileURL(
+    resolve(process.cwd(), 'src/shared/ui/primitives/ContextualNavigationLink.module.css'),
+  ),
+  'utf8',
+);
+
+function cssDeclarationBlock(source: string, selector: string): string {
+  const selectorOffset = source.indexOf(`${selector} {`);
+  expect(selectorOffset).toBeGreaterThanOrEqual(0);
+  const blockStart = source.indexOf('{', selectorOffset);
+  const blockEnd = source.indexOf('}', blockStart);
+  expect(blockEnd).toBeGreaterThan(blockStart);
+  return source.slice(blockStart + 1, blockEnd);
+}
+
 describe('ContextualNavigationLink', () => {
+  it('owns the complete DD-258 contextual-link typography contract', () => {
+    const linkRule = cssDeclarationBlock(CONTEXTUAL_NAVIGATION_LINK_STYLES, '.link');
+
+    expect(linkRule).toContain('font-size: var(--type-body-md-size);');
+    expect(linkRule).toContain('font-weight: var(--font-weight-medium);');
+    expect(linkRule).toContain('line-height: var(--type-body-md-lh);');
+  });
+
   it('keeps the caller destination and accessible link semantics while adding its shared class', () => {
     render(
       <MemoryRouter>

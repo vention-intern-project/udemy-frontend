@@ -327,7 +327,9 @@
   min-height: var(--control-height-md);
   align-items: center;
   color: var(--action-primary-bg);
-  font-weight: var(--font-weight-semibold);
+  font-size: var(--type-body-md-size);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--type-body-md-lh);
 }
 .catalogLink:hover,
 .catalogLink:active {
@@ -347,7 +349,9 @@
   align-items: center;
   color: var(--action-primary-bg);
   background: transparent;
-  font-weight: var(--font-weight-semibold);
+  font-size: var(--type-body-md-size);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--type-body-md-lh);
 }
 
 .loginRecoveryLink:hover {

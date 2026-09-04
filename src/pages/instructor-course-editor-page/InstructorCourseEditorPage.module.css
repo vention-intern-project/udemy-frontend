@@ -273,7 +273,9 @@
   padding-inline: var(--spacing-3);
   color: var(--action-primary-bg);
   background: transparent;
+  font-size: var(--type-body-md-size);
   font-weight: var(--font-weight-medium);
+  line-height: var(--type-body-md-lh);
   text-decoration: none;
 }
 

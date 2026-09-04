@@ -10,6 +10,9 @@
   padding-inline: var(--spacing-3);
   border-radius: var(--radius-md);
   color: var(--action-primary-bg);
+  font-size: var(--type-body-md-size);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--type-body-md-lh);
   overflow-wrap: anywhere;
   text-align: start;
   text-decoration: none;

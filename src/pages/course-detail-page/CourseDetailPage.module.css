@@ -36,9 +36,9 @@
 .state .courseNotFoundReturnLink:visited,
 .state .courseNotFoundReturnLink:focus-visible {
   color: var(--action-primary-bg);
-  font-size: var(--type-body-size);
+  font-size: var(--type-body-md-size);
   font-weight: var(--font-weight-medium);
-  line-height: var(--type-body-lh);
+  line-height: var(--type-body-md-lh);
 }
 
 .state .courseNotFoundReturnLink:hover {
@@ -47,7 +47,7 @@
 }
 
 .state .courseNotFoundReturnLink:active {
-  color: var(--action-primary-bg-pressed);
+  color: var(--action-primary-bg-hover);
   text-decoration: underline;
 }
 
