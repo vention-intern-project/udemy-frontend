@@ -714,6 +714,11 @@ For most beginners, **React is generally recommended to learn first**, but the b
 
 Before adding more tools, practice variables, functions, arrays, objects, modules, and asynchronous code.
 
+### Suggested next steps
+
+3. Continue with one small React component.
+4. Practice state and effects in that component.
+
 \`\`\`jsx
 useEffect(() => {
   const controller = new AbortController();
@@ -748,6 +753,11 @@ useEffect(() => {
   await expect(
     page.getByRole('heading', { level: 3, name: 'Focus on Core JavaScript' }),
   ).toBeVisible();
+  const nextSteps = page
+    .locator('ol')
+    .filter({ hasText: 'Continue with one small React component.' });
+  await expect(nextSteps).toHaveCount(1);
+  await expect(nextSteps).not.toHaveAttribute('start');
   const assistantStrong = page.getByText('React is generally recommended to learn first', {
     exact: true,
   });

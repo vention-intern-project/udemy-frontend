@@ -49,9 +49,13 @@ interface AssistantMarkdownHeadingBlock {
   readonly text: string;
 }
 
-interface AssistantMarkdownListBlock {
-  readonly kind: 'list';
-  readonly ordered: boolean;
+interface AssistantMarkdownUnorderedListBlock {
+  readonly kind: 'unordered-list';
+  readonly items: readonly string[];
+}
+
+interface AssistantMarkdownOrderedListBlock {
+  readonly kind: 'ordered-list';
   readonly items: readonly string[];
 }
 
@@ -63,7 +67,8 @@ interface AssistantMarkdownCodeBlock {
 type AssistantMarkdownBlock =
   | AssistantMarkdownParagraphBlock
   | AssistantMarkdownHeadingBlock
-  | AssistantMarkdownListBlock
+  | AssistantMarkdownUnorderedListBlock
+  | AssistantMarkdownOrderedListBlock
   | AssistantMarkdownCodeBlock;
 
 interface AssistantMarkdownLinkCandidate {
@@ -366,15 +371,24 @@ function parseBlocks(text: string): readonly AssistantMarkdownBlock[] {
     const unordered = unorderedItemFor(line);
     const ordered = orderedItemFor(line);
     if (unordered !== null || ordered !== null) {
-      const isOrdered = ordered !== null;
       const items: string[] = [];
-      while (index < lines.length) {
-        const item = isOrdered ? orderedItemFor(lines[index]) : unorderedItemFor(lines[index]);
-        if (item === null) break;
-        items.push(item);
-        index += 1;
+      if (ordered !== null) {
+        while (index < lines.length) {
+          const item = orderedItemFor(lines[index]);
+          if (item === null) break;
+          items.push(item);
+          index += 1;
+        }
+        blocks.push({ kind: 'ordered-list', items });
+      } else {
+        while (index < lines.length) {
+          const item = unorderedItemFor(lines[index]);
+          if (item === null) break;
+          items.push(item);
+          index += 1;
+        }
+        blocks.push({ kind: 'unordered-list', items });
       }
-      blocks.push({ kind: 'list', ordered: isOrdered, items });
       continue;
     }
     if (line === '') {
@@ -422,6 +436,12 @@ function renderLines(lines: readonly string[], literal: boolean, keyPrefix: stri
   ]);
 }
 
+function renderListItems(items: readonly string[], keyPrefix: string): ReactNode[] {
+  return items.map((item, itemIndex) => (
+    <li key={`${keyPrefix}-${itemIndex}`}>{renderInline(item, `${keyPrefix}-${itemIndex}`)}</li>
+  ));
+}
+
 export function AssistantMarkdown({ text }: AssistantMarkdownProps) {
   return (
     <div>
@@ -439,14 +459,9 @@ export function AssistantMarkdown({ text }: AssistantMarkdownProps) {
               <code>{block.text}</code>
             </pre>
           );
-        const List = block.ordered ? 'ol' : 'ul';
-        return (
-          <List key={key}>
-            {block.items.map((item, itemIndex) => (
-              <li key={`${key}-${itemIndex}`}>{renderInline(item, `${key}-${itemIndex}`)}</li>
-            ))}
-          </List>
-        );
+        if (block.kind === 'ordered-list')
+          return <ol key={key}>{renderListItems(block.items, key)}</ol>;
+        return <ul key={key}>{renderListItems(block.items, key)}</ul>;
       })}
     </div>
   );

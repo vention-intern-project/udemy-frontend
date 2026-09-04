@@ -196,7 +196,7 @@ describe('InstructorLessonEditorPage', () => {
     expect((await screen.findByRole('region', { name: 'Text lesson' })).textContent).toContain(
       'Saved instructor text.',
     );
-    expect(requests.map((item) => item.path)).not.toContain('/media/lessons/');
+    expect(requests.some((item) => item.path.startsWith('/media/lessons/'))).toBe(false);
   });
 
   it.each([

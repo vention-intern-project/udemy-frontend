@@ -37746,7 +37746,7 @@
         "sourcePath": "app/router/RouteErrorBoundary.tsx",
         "functionName": "resolveApplicationTitle",
         "bindingName": "t",
-        "sourceFingerprint": "sha256:72550b6247b69f1fc2de594fd4c1f8c3d23e7daf7e729cc20f0f2801e087aedc"
+        "sourceFingerprint": "sha256:55ee6f53e3f2a18b186befc606cc7f1cce8a1109e5b0b5ee81eb7f6eb6f0ed18"
       },
       {
         "sourcePath": "features/auth-workflows/validation.ts",
@@ -37806,25 +37806,25 @@
         "sourcePath": "pages/instructor-lesson-editor-page/InstructorLessonEditorPage.tsx",
         "functionName": "uploadRule",
         "bindingName": "t",
-        "sourceFingerprint": "sha256:ae9b117bb37674e8526de306dcc004fe9092a2e11f5bc693329b7c8eab5f2478"
+        "sourceFingerprint": "sha256:c938607eb1be97d14eab0b72279836f75a885fd3d3979e18b906d65ad8ca9e6a"
       },
       {
         "sourcePath": "widgets/course-chat/CourseChatPanel.tsx",
         "functionName": "AssistantResponseError",
         "bindingName": "t",
-        "sourceFingerprint": "sha256:6283863330fced0e58d44f9ff6fd593ffec8f99952168632de5380f66030da66"
+        "sourceFingerprint": "sha256:1d6b2462c49fb483e02b8242ef6a0657a058ab326f3a1040ee7f84fe3cca28cd"
       },
       {
         "sourcePath": "widgets/course-chat/CourseChatPanel.tsx",
         "functionName": "AssistantTypingIndicator",
         "bindingName": "t",
-        "sourceFingerprint": "sha256:6283863330fced0e58d44f9ff6fd593ffec8f99952168632de5380f66030da66"
+        "sourceFingerprint": "sha256:1d6b2462c49fb483e02b8242ef6a0657a058ab326f3a1040ee7f84fe3cca28cd"
       },
       {
         "sourcePath": "widgets/course-chat/CourseChatPanel.tsx",
         "functionName": "errorCopy",
         "bindingName": "t",
-        "sourceFingerprint": "sha256:6283863330fced0e58d44f9ff6fd593ffec8f99952168632de5380f66030da66"
+        "sourceFingerprint": "sha256:1d6b2462c49fb483e02b8242ef6a0657a058ab326f3a1040ee7f84fe3cca28cd"
       }
     ],
     "translatorForwarders": [
@@ -38419,7 +38419,7 @@
             "functionName": "ApplicationTitleBoundary",
             "argument": "route.titleKey",
             "occurrence": 1,
-            "sourceFingerprint": "sha256:72550b6247b69f1fc2de594fd4c1f8c3d23e7daf7e729cc20f0f2801e087aedc"
+            "sourceFingerprint": "sha256:55ee6f53e3f2a18b186befc606cc7f1cce8a1109e5b0b5ee81eb7f6eb6f0ed18"
           }
         ]
       },
@@ -38844,6 +38844,44 @@
           {
             "sourcePath": "pages/catalog-page/CatalogPage.tsx",
             "sourceFingerprint": "sha256:5b397477c7463a284cdbcaa48f0c6995b3d942926b61e3e07cd38672bfd71cf7",
+            "entryCount": 3
+          }
+        ]
+      },
+      {
+        "request": {
+          "taskId": "CRF-004",
+          "sources": [
+            {
+              "sourcePath": "app/router/RouteErrorBoundary.tsx",
+              "expectedSourceFingerprint": "sha256:72550b6247b69f1fc2de594fd4c1f8c3d23e7daf7e729cc20f0f2801e087aedc"
+            },
+            {
+              "sourcePath": "pages/instructor-lesson-editor-page/InstructorLessonEditorPage.tsx",
+              "expectedSourceFingerprint": "sha256:ae9b117bb37674e8526de306dcc004fe9092a2e11f5bc693329b7c8eab5f2478"
+            },
+            {
+              "sourcePath": "widgets/course-chat/CourseChatPanel.tsx",
+              "expectedSourceFingerprint": "sha256:6283863330fced0e58d44f9ff6fd593ffec8f99952168632de5380f66030da66"
+            }
+          ],
+          "obsolete": []
+        },
+        "requestDigest": "sha256:cf3853dd8df37dfede457054c270f1c0c074d44693ae8c395b1de99ad1f8906e",
+        "sources": [
+          {
+            "sourcePath": "app/router/RouteErrorBoundary.tsx",
+            "sourceFingerprint": "sha256:55ee6f53e3f2a18b186befc606cc7f1cce8a1109e5b0b5ee81eb7f6eb6f0ed18",
+            "entryCount": 2
+          },
+          {
+            "sourcePath": "pages/instructor-lesson-editor-page/InstructorLessonEditorPage.tsx",
+            "sourceFingerprint": "sha256:c938607eb1be97d14eab0b72279836f75a885fd3d3979e18b906d65ad8ca9e6a",
+            "entryCount": 1
+          },
+          {
+            "sourcePath": "widgets/course-chat/CourseChatPanel.tsx",
+            "sourceFingerprint": "sha256:1d6b2462c49fb483e02b8242ef6a0657a058ab326f3a1040ee7f84fe3cca28cd",
             "entryCount": 3
           }
         ]

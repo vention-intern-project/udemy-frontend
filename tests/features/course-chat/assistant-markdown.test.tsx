@@ -27,6 +27,21 @@ describe('AssistantMarkdown', () => {
     );
   });
 
+  it('recognizes an ordered marker above one without setting an HTML start and keeps invalid markers literal', () => {
+    const ordered = render(<AssistantMarkdown text={'3. Continue\n4. Complete'} />);
+    const list = ordered.container.querySelector('ol');
+    expect(list).toBeTruthy();
+    expect(list?.getAttribute('start')).toBeNull();
+    expect(list?.textContent).toBe('ContinueComplete');
+    ordered.unmount();
+
+    const malformed = render(
+      <AssistantMarkdown text={'0. Zero\n01. Leading zero\n2147483648. Overflow'} />,
+    );
+    expect(malformed.container.querySelectorAll('ol')).toHaveLength(0);
+    expect(malformed.container.textContent).toBe('0. Zero01. Leading zero2147483648. Overflow');
+  });
+
   it.each(['```ts', '``` ts'])('renders MC-001 %s fenced code as inert code', (opener) => {
     const { container } = render(
       <AssistantMarkdown text={`${opener}\nconst x = '<b>';\n\`\`\``} />,

@@ -60,12 +60,15 @@ export function RenderErrorState({ onRetry, recovery }: RenderErrorStateProps) {
         {isInstructorRecovery ? null : <p>{t('routes:renderErrorDescription')}</p>}
         <div className={styles.actions}>
           <Button onClick={onRetry}>{t('routes:tryAgain')}</Button>
-          <ContextualNavigationLink
-            className={styles.linkButton}
-            to={isInstructorRecovery ? '/instructor/courses' : '/'}
-          >
-            {t(isInstructorRecovery ? 'navigation:instructorCourses' : 'routes:backToCatalog')}
-          </ContextualNavigationLink>
+          {isInstructorRecovery ? (
+            <ContextualNavigationLink className={styles.linkButton} to="/instructor/courses">
+              {t('navigation:instructorCourses')}
+            </ContextualNavigationLink>
+          ) : (
+            <ContextualNavigationLink className={styles.linkButton} to="/">
+              {t('routes:backToCatalog')}
+            </ContextualNavigationLink>
+          )}
         </div>
       </div>
     </main>
