@@ -21,6 +21,7 @@ import {
 import * as authSession from '../../src/features/auth-session';
 import { CourseDetailPage } from '../../src/pages/course-detail-page';
 import { CourseActionPanel } from '../../src/pages/course-detail-page/CourseActionPanel';
+import courseDetailStyles from '../../src/pages/course-detail-page/CourseDetailPage.module.css';
 import {
   courseMutationDisposition,
   type CourseMutationDisposition,
@@ -1006,9 +1007,9 @@ describe('CourseDetailPage', () => {
     renderPage(request);
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Course not found' })).toBeTruthy();
-    expect(
-      screen.getByRole('link', { name: 'Return to the course catalog' }).getAttribute('href'),
-    ).toBe('/');
+    const returnLink = screen.getByRole('link', { name: 'Return to the course catalog' });
+    expect(returnLink.getAttribute('href')).toBe('/');
+    expect(returnLink.classList.contains(courseDetailStyles.courseNotFoundReturnLink)).toBe(true);
     expect(paths).toEqual(['/courses/7']);
   });
 
