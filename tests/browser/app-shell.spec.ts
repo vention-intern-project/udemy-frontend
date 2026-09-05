@@ -11,6 +11,10 @@ import {
 import { LOCALE_RESOURCES } from '@shared/locale/resources';
 import { installCatalogFixture } from './support/catalog-fixture';
 import {
+  APP_SHELL_BRAND_IMAGE_PATH,
+  waitForAppShellBrandImage,
+} from './support/app-shell-brand-image';
+import {
   createHttpFailureAccounting,
   createRequestFailureAccounting,
   findUnexpectedConsoleErrors,
@@ -23,6 +27,11 @@ type BackendRole = 'student' | 'instructor' | 'admin';
 type ShellSurfaceViewportWidth = 320 | 390 | 768 | 1280 | 1440;
 type DesktopViewportWidth = 768 | 1024 | 1280;
 type MobileViewportWidth = 320 | 390 | 767;
+type StudentHeaderDesktopWidth = 1024 | 1090 | 1100 | 1110 | 1280 | 1440;
+
+const STUDENT_HEADER_DESKTOP_WIDTHS: readonly StudentHeaderDesktopWidth[] = [
+  1024, 1090, 1100, 1110, 1280, 1440,
+];
 
 function localeResourceString(resource: unknown, key: string): string {
   const value = resource && typeof resource === 'object' ? Reflect.get(resource, key) : undefined;
@@ -342,6 +351,14 @@ async function waitForLearningEmptyStateIllustration(page: Page) {
         throw new Error(`Learning empty-state illustration failed: ${assetUrl.href}`);
       await image.decode();
     }, LEARNING_EMPTY_STATE_IMAGE_PATH);
+}
+
+async function navigateStudentHeaderAtDesktopWidth(page: Page, width: StudentHeaderDesktopWidth) {
+  await page.setViewportSize({ width, height: 720 });
+  await page.goto('/learning');
+  await expect(page.getByRole('heading', { level: 1, name: 'My learning' })).toBeVisible();
+  await waitForAppShellBrandImage(page);
+  await waitForLearningEmptyStateIllustration(page);
 }
 
 function monitorRuntime(
@@ -2821,11 +2838,8 @@ test('keeps Search contained before the accepted Cart-to-Profile desktop group',
   await mockAuthenticatedSession(page, 'student');
   await mockStudentWorkspaceData(page);
 
-  for (const width of [1024, 1090, 1100, 1110, 1280, 1440] as const) {
-    await page.setViewportSize({ width, height: 720 });
-    await page.goto('/learning');
-    await expect(page.getByRole('heading', { level: 1, name: 'My learning' })).toBeVisible();
-    await waitForLearningEmptyStateIllustration(page);
+  for (const width of STUDENT_HEADER_DESKTOP_WIDTHS) {
+    await navigateStudentHeaderAtDesktopWidth(page, width);
 
     const geometry = await readStudentHeaderGeometry(page);
     const learningRight = geometry.learning.x + geometry.learning.width;
@@ -2842,6 +2856,60 @@ test('keeps Search contained before the accepted Cart-to-Profile desktop group',
     expect(geometry.cartAccountGap).toBeCloseTo(15, 1);
     expect(geometry.learningWhiteSpace).toBe('nowrap');
     expect(geometry.overflowFree).toBe(true);
+  }
+
+  assertRuntimeClean();
+});
+
+test('waits for the real AppShell brand image before every student-header reload', async ({
+  page,
+}) => {
+  const assertRuntimeClean = monitorRuntime(
+    page,
+    [],
+    [
+      { ...ENROLLMENTS_STRICT_MODE_ABORT, occurrences: 6 },
+      { ...CART_STRICT_MODE_ABORT, occurrences: 6 },
+    ],
+  );
+  await mockAuthenticatedSession(page, 'student');
+  await mockStudentWorkspaceData(page);
+
+  let releaseHeldLogo!: () => void;
+  const heldLogo = new Promise<void>((resolve) => {
+    releaseHeldLogo = resolve;
+  });
+  let logoRequests = 0;
+  const completedWidths: StudentHeaderDesktopWidth[] = [];
+  await page.route(`**${APP_SHELL_BRAND_IMAGE_PATH}`, async (route) => {
+    logoRequests += 1;
+    if (logoRequests === 1) await heldLogo;
+    await route.fallback();
+  });
+
+  const runSixColdLoads = (async () => {
+    for (const width of STUDENT_HEADER_DESKTOP_WIDTHS) {
+      await navigateStudentHeaderAtDesktopWidth(page, width);
+      completedWidths.push(width);
+    }
+  })();
+
+  try {
+    await expect.poll(() => logoRequests).toBe(1);
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
+    expect(completedWidths).toEqual([]);
+
+    releaseHeldLogo();
+    await runSixColdLoads;
+    expect(completedWidths).toEqual(STUDENT_HEADER_DESKTOP_WIDTHS);
+  } finally {
+    releaseHeldLogo();
+    await runSixColdLoads.catch(() => undefined);
   }
 
   assertRuntimeClean();

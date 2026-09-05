@@ -1343,11 +1343,11 @@ test('rejects auth readiness when the actual AppShell brand image is broken', as
     await route.abort('failed');
   });
 
-  await page.goto('/signup', { waitUntil: 'commit' });
-  await expect.poll(() => logoRequested).toBe(true);
+  await page.goto('/signup', { waitUntil: 'domcontentloaded' });
   await expect(waitForAuthAppShellBrandImage(page)).rejects.toThrow(
     'AppShell brand image failed to load',
   );
+  expect(logoRequested).toBe(true);
 });
 
 test('finishes auth readiness only after a held AppShell brand image loads', async ({ page }) => {
@@ -1361,11 +1361,11 @@ test('finishes auth readiness only after a held AppShell brand image loads', asy
   });
 
   try {
-    await page.goto('/signup', { waitUntil: 'commit' });
-    await expect.poll(() => logoRequested).toBe(true);
+    await page.goto('/signup', { waitUntil: 'domcontentloaded' });
     const brandImage = page.locator(`img[src*="${logoPath}"]`);
-    await expect(brandImage).toBeAttached();
     const readiness = waitForAuthAppShellBrandImage(page);
+    await expect.poll(() => logoRequested).toBe(true);
+    await expect(brandImage).toBeAttached();
     logoGate.resolve();
     await readiness;
     await expect(brandImage).toHaveJSProperty('complete', true);
