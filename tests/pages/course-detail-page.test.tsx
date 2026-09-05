@@ -473,23 +473,23 @@ describe('CourseDetailPage', () => {
     { name: 'fails closed for an array state', state: [{ returnTo: '/' }], href: '/' },
     {
       name: 'fails closed for an inherited return target',
-      state: Object.create({ returnTo: '/' }),
+      state: Object.create({ returnTo: '/?page=3' }),
       href: '/',
     },
     { name: 'fails closed for a non-string return target', state: { returnTo: 3 }, href: '/' },
     {
       name: 'fails closed for an extra state key',
-      state: { returnTo: '/', extra: true },
+      state: { returnTo: '/?page=3', extra: true },
       href: '/',
     },
     {
       name: 'fails closed for a non-enumerable extra own state key',
-      state: Object.defineProperty({ returnTo: '/' }, 'extra', { value: true }),
+      state: Object.defineProperty({ returnTo: '/?page=3' }, 'extra', { value: true }),
       href: '/',
     },
     {
       name: 'fails closed for a symbol extra own state key',
-      state: { returnTo: '/', [Symbol('extra')]: true },
+      state: { returnTo: '/?page=3', [Symbol('extra')]: true },
       href: '/',
     },
     {
@@ -572,7 +572,7 @@ describe('CourseDetailPage', () => {
     },
     {
       name: 'fails closed for a wrong-shaped state',
-      state: { returnTo: '/', unexpected: true },
+      state: { returnTo: '/?page=3', unexpected: true },
       href: '/',
     },
   ])('$name', async ({ state, href }) => {
@@ -618,7 +618,7 @@ describe('CourseDetailPage', () => {
   it('fails closed without invoking a hostile route-state get trap', () => {
     let getTrapWasInvoked = false;
     const state = new Proxy(
-      { returnTo: '/' },
+      { returnTo: '/?page=3', extra: true },
       {
         get: () => {
           getTrapWasInvoked = true;
