@@ -5,6 +5,7 @@ import {
   QUALITY_COMMAND_GROUPS,
   REQUIRED_QUALITY_COMMAND_IDS,
   stableJson,
+  validateQualityCommandGroupPartition,
 } from '../../scripts/quality/report-utils.mjs';
 import type {
   CiGroupId,
@@ -152,6 +153,28 @@ describe('parallel CI quality command plan', () => {
       REQUIRED_QUALITY_COMMAND_IDS,
     );
   });
+
+  it('rejects missing, duplicate, and unknown command-group membership', () => {
+    expect(validateQualityCommandGroupPartition(QUALITY_COMMAND_GROUPS)).toEqual([]);
+    expect(
+      validateQualityCommandGroupPartition({
+        ...QUALITY_COMMAND_GROUPS,
+        tests: ['tests', 'build'],
+      }),
+    ).not.toEqual([]);
+    expect(
+      validateQualityCommandGroupPartition({
+        ...QUALITY_COMMAND_GROUPS,
+        build: [],
+      }),
+    ).not.toEqual([]);
+    expect(
+      validateQualityCommandGroupPartition({
+        ...QUALITY_COMMAND_GROUPS,
+        build: ['unknown'],
+      }),
+    ).not.toEqual([]);
+  });
 });
 
 describe('parallel CI quality result assembly', () => {
@@ -208,6 +231,8 @@ describe('parallel CI quality result assembly', () => {
 
   it('validates exact successful producer records and lossless nonfuture attempts', () => {
     expect(validateCiProducerResults(producerResults(), ciRun.runAttempt)).toEqual([]);
+    expect(isNonFutureCiRunAttempt('1', '1')).toBe(true);
+    expect(isNonFutureCiRunAttempt('9', '10')).toBe(true);
     expect(
       isNonFutureCiRunAttempt('999999999999999999999999999998', '999999999999999999999999999999'),
     ).toBe(true);
@@ -294,6 +319,13 @@ describe('parallel CI quality result assembly', () => {
     expect(() => assemble(values)).toThrow();
   });
 
+  it('accepts equivalent SHA casing without rewriting the integrity-protected receipt', () => {
+    const values = CI_GROUP_IDS.map((group) => envelope(group));
+    values[0] = redigest({ ...values[0], sha: targetSha.toUpperCase() });
+
+    expect(assemble(values).commands.map((item) => item.id)).toEqual(REQUIRED_QUALITY_COMMAND_IDS);
+  });
+
   it.each(['failure', 'skipped', 'cancelled'] as const)(
     'rejects a %s producer even with a valid current-run artifact',
     (state) => {
@@ -340,7 +372,7 @@ describe('parallel CI quality result assembly', () => {
       'unknown command',
       (value: CiGroupResultEnvelope) => ({
         ...value,
-        commands: [{ ...value.commands[0], id: 'unknown' as QualityCommand['id'] }],
+        commands: [{ ...value.commands[0], id: 'unknown' as unknown as QualityCommand['id'] }],
       }),
     ],
     [
@@ -359,7 +391,7 @@ describe('parallel CI quality result assembly', () => {
     ],
   ])('rejects a redigested %s producer command set', (_name, alter) => {
     const values = CI_GROUP_IDS.map((group) => envelope(group));
-    values[0] = redigest(alter(values[0]));
+    values[0] = redigest(alter(values[0]) as CiGroupResultEnvelope);
     expect(() => assemble(values)).toThrow();
   });
 
@@ -409,6 +441,21 @@ describe('parallel CI quality result assembly', () => {
         receipt,
       ]),
     ).toThrow();
+  });
+
+  it('keeps parsing clock-independent while target-aware admission rejects stale and future receipts', () => {
+    for (const generatedAtValue of ['2026-09-05T11:00:00.000Z', '2026-09-05T12:10:00.000Z']) {
+      const staleOrFuture = redigest({ ...envelope('tests'), generatedAt: generatedAtValue });
+      expect(parseCiGroupResultEnvelope(Buffer.from(JSON.stringify(staleOrFuture)))).toEqual(
+        staleOrFuture,
+      );
+      expect(() =>
+        assemble([
+          ...CI_GROUP_IDS.filter((group) => group !== 'tests').map((group) => envelope(group)),
+          staleOrFuture,
+        ]),
+      ).toThrow();
+    }
   });
 
   it('rejects invalid or oversized on-disk envelopes before JSON data is admitted', () => {

@@ -672,6 +672,14 @@ function validCiReport(sha: string, ciRun?: CiRunIdentity) {
   return report;
 }
 
+function hasOrderedSteps(source: string, steps: readonly string[]) {
+  const positions = steps.map((step) => source.indexOf(step));
+  return (
+    positions.every((position) => position >= 0) &&
+    positions.every((position, index) => index === 0 || position > positions[index - 1])
+  );
+}
+
 function productionAggregateGuard(
   workflow: string,
   resolverResult: string,
@@ -1634,9 +1642,13 @@ describe('staged and CI decision simulations', () => {
       );
       expect(job).toContain('id: execute');
       expect(job).toContain(`npm run quality -- --ci-group ${group}`);
-      expect(job.indexOf('npm run quality --')).toBeLessThan(
-        job.indexOf('echo "attempt=$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"'),
-      );
+      const orderedSteps = [
+        'npm run quality --',
+        'echo "attempt=$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"',
+      ] as const;
+      expect(hasOrderedSteps(job, orderedSteps)).toBe(true);
+      expect(hasOrderedSteps(orderedSteps[1], orderedSteps)).toBe(false);
+      expect(hasOrderedSteps([...orderedSteps].reverse().join('\n'), orderedSteps)).toBe(false);
     }
 
     const qualityReport = workflow.slice(
@@ -1647,9 +1659,13 @@ describe('staged and CI decision simulations', () => {
       'outputs:\n      report-attempt: ${{ steps.verify.outputs.attempt }}',
     );
     expect(qualityReport).toContain('id: verify');
-    expect(qualityReport.indexOf('node scripts/quality/verify-report.mjs')).toBeLessThan(
-      qualityReport.indexOf('echo "attempt=$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"'),
-    );
+    const reportSteps = [
+      'node scripts/quality/verify-report.mjs',
+      'echo "attempt=$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"',
+    ] as const;
+    expect(hasOrderedSteps(qualityReport, reportSteps)).toBe(true);
+    expect(hasOrderedSteps(reportSteps[1], reportSteps)).toBe(false);
+    expect(hasOrderedSteps([...reportSteps].reverse().join('\n'), reportSteps)).toBe(false);
   });
 
   it('preserves the exact authenticated localization fixture through staged Prettier selection', async () => {
@@ -2089,9 +2105,12 @@ describe('staged and CI decision simulations', () => {
       workflow.indexOf('  quality-report:\n'),
       workflow.indexOf('  frontend-quality-required:\n'),
     );
-    expect(
-      qualityReportJob.indexOf('Guard resolved quality target before checkout or artifacts'),
-    ).toBeLessThan(qualityReportJob.indexOf('actions/checkout@'));
+    const qualityReportSteps = [
+      'Guard resolved quality target before checkout or artifacts',
+      'actions/checkout@',
+    ] as const;
+    expect(hasOrderedSteps(qualityReportJob, qualityReportSteps)).toBe(true);
+    expect(hasOrderedSteps(qualityReportSteps[1], qualityReportSteps)).toBe(false);
     expect(workflow).toContain(
       'frontend-quality-report-${{ env.QUALITY_TARGET_SHA }}-${{ github.run_id }}-${{ github.run_attempt }}',
     );
@@ -2149,10 +2168,19 @@ describe('staged and CI decision simulations', () => {
     const verify = aggregate.indexOf('Fail closed on job state and current-SHA report artifact');
 
     expect(aggregate).toContain('if: always()');
+    const aggregateSteps = [
+      'Guard resolved quality target before artifact or checkout',
+      'actions/checkout@',
+      'actions/download-artifact@',
+      'Fail closed on job state and current-SHA report artifact',
+    ] as const;
     expect(guard).toBeGreaterThanOrEqual(0);
-    expect(checkout).toBeGreaterThan(guard);
-    expect(download).toBeGreaterThan(checkout);
-    expect(verify).toBeGreaterThan(download);
+    expect(checkout).toBeGreaterThanOrEqual(0);
+    expect(download).toBeGreaterThanOrEqual(0);
+    expect(verify).toBeGreaterThanOrEqual(0);
+    expect(hasOrderedSteps(aggregate, aggregateSteps)).toBe(true);
+    expect(hasOrderedSteps(aggregateSteps.slice(1).join('\n'), aggregateSteps)).toBe(false);
+    expect(hasOrderedSteps([...aggregateSteps].reverse().join('\n'), aggregateSteps)).toBe(false);
     expect(aggregate.match(/actions\/checkout@/g)).toHaveLength(1);
     expect(aggregate).toContain('ref: ${{ env.QUALITY_TARGET_SHA }}');
     expect(aggregate).toContain(
@@ -2211,6 +2239,65 @@ describe('staged and CI decision simulations', () => {
 
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
     expect(result.stdout).toContain('QUALITY_CI_AGGREGATE_ACCEPTED');
+  });
+
+  it('requires parallel provenance only for admission paths that provide an expected CI identity', () => {
+    const sha = 'd'.repeat(40);
+    const expectedCiRun: CiRunIdentity = { runId: '4312', runAttempt: '1' };
+    const legacyCiReport = validCiReport(sha);
+    expect(
+      validateReportAdmission(legacyCiReport, { target: targetForCommit(sha), scope: 'ci' }),
+    ).toEqual([]);
+    expect(
+      validateReportAdmission(legacyCiReport, {
+        target: targetForCommit(sha),
+        scope: 'ci',
+        expectedCiRun,
+      }),
+    ).toContain('report CI run provenance does not match the current workflow run');
+    expect(
+      validateReportAdmission(validCiReport(sha, { runId: '4312', runAttempt: '2' }), {
+        target: targetForCommit(sha),
+        scope: 'ci',
+        expectedCiRun,
+      }),
+    ).toContain('report CI run provenance does not match the current workflow run');
+    const upperCaseReport = validCiReport(sha.toUpperCase(), expectedCiRun);
+    expect(
+      validateReportAdmission(upperCaseReport, {
+        target: targetForCommit(sha),
+        scope: 'ci',
+        expectedCiRun,
+      }),
+    ).toEqual([]);
+  });
+
+  it('requires commit-target CI context base SHA to identify the same commit at public admission', () => {
+    const sha = 'd'.repeat(40);
+    const target = targetForCommit(sha);
+    const differentlyBasedReport = validCiReport(sha);
+    differentlyBasedReport.context.baseSha = 'e'.repeat(40);
+    differentlyBasedReport.integrity.digest = reportDigest(differentlyBasedReport);
+    expect(validateReportAdmission(differentlyBasedReport, { target, scope: 'ci' })).toContain(
+      'commit context base SHA does not match report SHA',
+    );
+
+    const missingBaseReport = {
+      ...validCiReport(sha),
+      context: { execution: 'ci', scope: 'ci', targetKind: 'commit' },
+    };
+    missingBaseReport.integrity.digest = reportDigest(missingBaseReport);
+    expect(validateReportAdmission(missingBaseReport, { target, scope: 'ci' })).not.toEqual([]);
+
+    const malformedBaseReport = validCiReport(sha);
+    malformedBaseReport.context.baseSha = 'not-a-sha';
+    malformedBaseReport.integrity.digest = reportDigest(malformedBaseReport);
+    expect(validateReportAdmission(malformedBaseReport, { target, scope: 'ci' })).not.toEqual([]);
+
+    const mixedCaseReport = validCiReport(sha.toUpperCase());
+    mixedCaseReport.context.baseSha = `${sha.slice(0, 20).toUpperCase()}${sha.slice(20)}`;
+    mixedCaseReport.integrity.digest = reportDigest(mixedCaseReport);
+    expect(validateReportAdmission(mixedCaseReport, { target, scope: 'ci' })).toEqual([]);
   });
 
   it('executes the production aggregate guard and rejects resolver failures before an otherwise successful aggregate can pass', async () => {

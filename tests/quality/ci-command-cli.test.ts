@@ -540,7 +540,7 @@ describe('dependency-free CI quality CLI', () => {
     expect(await readTrace(nonregularTrace)).toEqual([]);
   });
 
-  it('rejects oversized, wrong-run, wrong-head, and failed-producer inputs', async () => {
+  it('rejects oversized, malformed, invalid-UTF8, wrong-run, wrong-head, and failed-producer inputs', async () => {
     const oversized = await writeValidResults(fixture, 'oversized');
     await writeFile(resolve(oversized.directory, 'tests.json'), Buffer.alloc(1024 * 1024 + 1));
     const oversizedTrace = resolve(fixture.root, 'cases/oversized/spawn-trace.jsonl');
@@ -548,6 +548,31 @@ describe('dependency-free CI quality CLI', () => {
       0,
     );
     expect(await readTrace(oversizedTrace)).toHaveLength(1);
+
+    const oversizedProducerState = await writeValidResults(fixture, 'oversized-producer-state');
+    await writeFile(oversizedProducerState.producerResults, Buffer.alloc(1024 * 1024 + 1));
+    const oversizedProducerStateResult = runCli(
+      fixture,
+      assemblyArguments(fixture, oversizedProducerState),
+      resolve(fixture.root, 'cases/oversized-producer-state/spawn-trace.jsonl'),
+    );
+    expect(oversizedProducerStateResult.status).not.toBe(0);
+    expect(oversizedProducerStateResult.stderr).toContain('producer results size is invalid');
+
+    for (const [name, payload] of [
+      ['invalid-utf8', Buffer.from([0xff, 0xfe, 0xfd])],
+      ['malformed', Buffer.from('{')],
+    ] as const) {
+      const invalidProducerState = await writeValidResults(fixture, `producer-state-${name}`);
+      await writeFile(invalidProducerState.producerResults, payload);
+      const invalidProducerStateResult = runCli(
+        fixture,
+        assemblyArguments(fixture, invalidProducerState),
+        resolve(fixture.root, `cases/producer-state-${name}/spawn-trace.jsonl`),
+      );
+      expect(invalidProducerStateResult.status).not.toBe(0);
+      expect(invalidProducerStateResult.stderr).toContain('producer results are malformed JSON');
+    }
 
     const wrongRun = await writeValidResults(fixture, 'wrong-run', {
       runId: '99',

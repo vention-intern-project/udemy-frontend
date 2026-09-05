@@ -41,6 +41,7 @@ const optionNames = new Set([
   '--run-id',
   '--run-attempt',
 ]);
+const maxProducerResultsBytes = 1024 * 1024;
 
 function options(argv) {
   const result = new Map();
@@ -85,15 +86,29 @@ function ciTarget(values, requireExactHead) {
 
 async function toolVersions() {
   const packageJson = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'));
-  const dependencies = packageJson.devDependencies;
+  const devDependencies = packageJson.devDependencies;
   return {
     node: process.version,
     npm: npmVersionFromUserAgent(process.env.npm_config_user_agent),
-    typescript: dependencies.typescript,
-    prettier: dependencies.prettier,
-    stylelint: dependencies.stylelint,
-    eslint: dependencies.eslint,
+    typescript: devDependencies.typescript,
+    prettier: devDependencies.prettier,
+    stylelint: devDependencies.stylelint,
+    eslint: devDependencies.eslint,
   };
+}
+
+async function readProducerResults(path) {
+  const size = (await stat(path)).size;
+  if (size === 0 || size > maxProducerResultsBytes)
+    throw new Error('producer results size is invalid');
+  const bytes = await readFile(path);
+  if (bytes.length === 0 || bytes.length > maxProducerResultsBytes)
+    throw new Error('producer results size is invalid');
+  try {
+    return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+  } catch {
+    throw new Error('producer results are malformed JSON');
+  }
 }
 
 async function staticAnalysis() {
@@ -207,7 +222,7 @@ async function resultsMode(values, output) {
       return parseCiGroupResultEnvelope(await readFile(path));
     }),
   );
-  const producerResults = JSON.parse(await readFile(producerResultsPath, 'utf8'));
+  const producerResults = await readProducerResults(producerResultsPath);
   await writeReport(
     output,
     assembleCiCommandResults({

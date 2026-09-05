@@ -3,6 +3,7 @@ import {
   CI_GROUP_IDS,
   QUALITY_COMMAND_GROUPS,
   REQUIRED_QUALITY_COMMAND_IDS,
+  commitShasEqual,
   REPORT_SCHEMA_VERSION,
   isStrictRfc3339DateTime,
   reportDigest,
@@ -107,7 +108,7 @@ export function validateCiGroupResultEnvelope(
   if (!CI_GROUP_IDS.includes(envelope?.group)) errors.push('envelope group is unknown');
   if (typeof envelope?.sha !== 'string' || !commitSha.test(envelope.sha))
     errors.push('envelope SHA is invalid');
-  if (expectedSha && envelope?.sha !== expectedSha)
+  if (expectedSha && !commitShasEqual(envelope?.sha, expectedSha))
     errors.push('envelope SHA does not match the target');
   knownProperties(envelope?.ciRun, ['runId', 'runAttempt'], 'ciRun', errors);
   if (typeof envelope?.ciRun?.runId !== 'string' || !nonZeroDecimal.test(envelope.ciRun.runId))

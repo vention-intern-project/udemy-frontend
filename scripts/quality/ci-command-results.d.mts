@@ -33,6 +33,15 @@ export interface CiGroupResultEnvelope {
   analysis?: CiGroupAnalysis;
   integrity: CiEnvelopeIntegrity;
 }
+export interface CiGroupResultEnvelopeInput {
+  group: CiGroupId;
+  sha: string;
+  ciRun: CiRunIdentity;
+  generatedAt?: string;
+  commands: QualityCommand[];
+  toolVersions: ToolVersions;
+  analysis?: CiGroupAnalysis;
+}
 export interface CiGroupEnvelopeOptions {
   expectedSha?: string;
   expectedCiRun?: CiRunIdentity;
@@ -64,7 +73,7 @@ export interface CiAssembledReport {
   [key: string]: unknown;
 }
 export function createCiGroupResultEnvelope(
-  input: Omit<CiGroupResultEnvelope, 'schemaVersion' | 'integrity'>,
+  input: CiGroupResultEnvelopeInput,
 ): CiGroupResultEnvelope;
 export function validateCiGroupResultEnvelope(
   envelope: unknown,

@@ -24,6 +24,7 @@ export const QUALITY_COMMAND_GROUPS = Object.freeze({
   tests: Object.freeze(['tests']),
   build: Object.freeze(['build']),
 });
+const commitSha = /^[0-9a-f]{7,64}$/i;
 export const DIAGNOSTIC_SUMMARY_KEYS = Object.freeze([
   'allowedRouterFutureWarnings',
   'unexpectedReactActWarnings',
@@ -67,6 +68,54 @@ const supportedKeywords = new Set([
   'definitions',
   'format',
 ]);
+
+export function commitShasEqual(left, right) {
+  return (
+    typeof left === 'string' &&
+    typeof right === 'string' &&
+    commitSha.test(left) &&
+    commitSha.test(right) &&
+    left.toLowerCase() === right.toLowerCase()
+  );
+}
+
+export function validateQualityCommandGroupPartition(commandGroups) {
+  const errors = [];
+  if (!commandGroups || typeof commandGroups !== 'object' || Array.isArray(commandGroups))
+    return ['quality command groups must be an object'];
+  for (const group of Object.keys(commandGroups))
+    if (!CI_GROUP_IDS.includes(group)) errors.push(`quality command group is unknown: ${group}`);
+  const owned = [];
+  for (const group of CI_GROUP_IDS) {
+    const commands = commandGroups[group];
+    if (!Array.isArray(commands)) {
+      errors.push(`quality command group is missing: ${group}`);
+      continue;
+    }
+    for (const command of commands) {
+      if (!REQUIRED_QUALITY_COMMAND_IDS.includes(command))
+        errors.push(`quality command is unknown: ${command}`);
+      else owned.push(command);
+    }
+  }
+  for (const command of REQUIRED_QUALITY_COMMAND_IDS) {
+    const count = owned.filter((ownedCommand) => ownedCommand === command).length;
+    if (count !== 1)
+      errors.push(
+        count === 0
+          ? `quality command is unassigned: ${command}`
+          : `quality command is assigned more than once: ${command}`,
+      );
+  }
+  return errors;
+}
+
+const qualityCommandGroupPartitionErrors =
+  validateQualityCommandGroupPartition(QUALITY_COMMAND_GROUPS);
+if (qualityCommandGroupPartitionErrors.length)
+  throw new Error(
+    `Quality command groups are invalid: ${qualityCommandGroupPartitionErrors.join('; ')}`,
+  );
 
 function schemaError(path, message) {
   return `${path}: ${message}`;
@@ -619,8 +668,10 @@ export function validateReport(report) {
     errors.push('context scope does not match report scope');
   if (report.context.targetKind !== report.target.kind)
     errors.push('context target kind does not match report target');
-  if (report.target.kind === 'commit' && report.target.sha !== report.sha)
+  if (report.target.kind === 'commit' && !commitShasEqual(report.target.sha, report.sha))
     errors.push('commit target does not match report SHA');
+  if (report.target.kind === 'commit' && !commitShasEqual(report.context.baseSha, report.sha))
+    errors.push('commit context base SHA does not match report SHA');
   if (report.target.kind === 'local_patch' && report.context.execution !== 'local')
     errors.push('local patch target must use local execution context');
   if (report.target.kind === 'commit' && report.context.execution !== 'ci')
@@ -648,7 +699,7 @@ export function verifyReportTarget(report, expectedTarget) {
   if (!expectedTarget || report.target?.kind !== expectedTarget.kind) {
     return ['report target kind does not match the current target'];
   }
-  if (expectedTarget.kind === 'commit' && report.target.sha !== expectedTarget.sha) {
+  if (expectedTarget.kind === 'commit' && !commitShasEqual(report.target.sha, expectedTarget.sha)) {
     errors.push('report commit target does not match the current target');
   }
   if (expectedTarget.kind === 'local_patch') {

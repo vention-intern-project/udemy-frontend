@@ -13,7 +13,7 @@ export const REQUIRED_QUALITY_COMMAND_IDS: readonly [
 export type QualityCommandId = (typeof REQUIRED_QUALITY_COMMAND_IDS)[number];
 export const CI_GROUP_IDS: readonly ['lint-static', 'typecheck', 'tests', 'build'];
 export type CiGroupId = (typeof CI_GROUP_IDS)[number];
-export const QUALITY_COMMAND_GROUPS: Readonly<Record<CiGroupId, readonly string[]>>;
+export const QUALITY_COMMAND_GROUPS: Readonly<Record<CiGroupId, readonly QualityCommandId[]>>;
 export const DIAGNOSTIC_SUMMARY_KEYS: readonly string[];
 export const FAILED_COMMAND_OUTPUT_MAX_CHARS: number;
 export const FAILED_COMMAND_OUTPUT_MAX_LINES: number;
@@ -46,7 +46,7 @@ export interface DiagnosticSummary {
   unexpectedGenericWarnings: number;
 }
 export interface QualityCommand {
-  id: string;
+  id: QualityCommandId;
   status: 'pass' | 'fail';
   durationMs: number;
   exitCode: number | null;
@@ -82,6 +82,8 @@ export interface ConfigVersions {
   staticRules: number;
 }
 export function stableJson(value: unknown): string;
+export function commitShasEqual(left: unknown, right: unknown): boolean;
+export function validateQualityCommandGroupPartition(commandGroups: unknown): string[];
 export function isStrictRfc3339DateTime(value: unknown): boolean;
 export function validateQualityCommand(command: unknown): string[];
 export function validateReportSection(section: string, value: unknown): string[];
