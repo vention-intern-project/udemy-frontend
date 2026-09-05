@@ -5,12 +5,18 @@ import {
   authAdmissionController,
   authLocalizedResidualController,
   authWorkflowReflowController,
+  type AuthWorkflow,
   fulfillAuthJson,
   installAuthAdmissionRoutes,
   installAuthWorkflowRuntime,
   requireAuthWorkflowRuntimeEvidence,
+  waitForAuthAppShellBrandImage,
 } from './fixtures/auth-workflows-fixture';
-import { type HttpFailureIdentity, type RequestFailureIdentity } from './support/visual-quality';
+import {
+  type HttpFailureIdentity,
+  type OptionalRequestFailureAllowanceRetirement,
+  type RequestFailureIdentity,
+} from './support/visual-quality';
 
 test.beforeEach(async ({ page }) => {
   await installAuthWorkflowRuntime(page);
@@ -54,8 +60,11 @@ function allowRequestFailures(
   );
 }
 
-export function allowOptionalRequestFailure(page: Page, failure: RequestFailureIdentity) {
-  requireAuthWorkflowRuntimeEvidence(page).requests.allowOptional(failure);
+export function allowOptionalRequestFailure(
+  page: Page,
+  failure: RequestFailureIdentity,
+): OptionalRequestFailureAllowanceRetirement {
+  return requireAuthWorkflowRuntimeEvidence(page).requests.allowOptional(failure);
 }
 
 const fulfillJson = fulfillAuthJson;
@@ -124,7 +133,6 @@ function createDeferred() {
   return { promise, resolve };
 }
 
-type AuthWorkflow = 'signup' | 'login' | 'forgot' | 'reset';
 type PasswordRevealCssProperty = 'color' | 'background' | 'borderColor';
 type TokenCssProperty = 'border-color' | 'color';
 
@@ -853,7 +861,110 @@ test('uses the Sort-pattern Role listbox and purple reveal states', async ({ pag
   expect(revealFocus.outlineOffset).toBe('2px');
 });
 
-test('login covers safe 401/422/offline retry, pending lock, bearer suppression, and safe returnTo', async ({
+function expectPublicLoginBearerSuppression(authorizations: readonly (string | null)[]) {
+  expect(authorizations).toEqual(authorizations.map(() => null));
+}
+
+function expectBoundedCartReconciliation(cartRequests: number) {
+  expect(cartRequests).toBe(3);
+}
+
+function expectExactLoginAttemptCount(loginRequests: number, expected: number) {
+  expect(loginRequests).toBe(expected);
+}
+
+async function expectLoginRecoveryRoleHome(page: Page) {
+  await expect(page).toHaveURL(/\/learning$/);
+  await expect(page.getByRole('heading', { name: 'My learning' })).toBeVisible();
+}
+
+type LoginRecoveryFailure = 'credential-401' | 'server-422' | 'offline';
+
+interface FocusedLoginRecoveryScenario {
+  readonly failure: LoginRecoveryFailure;
+  readonly token: string;
+}
+
+async function runFocusedLoginRecovery(page: Page, scenario: FocusedLoginRecoveryScenario) {
+  const authorizations: Array<string | null> = [];
+  let loginRequests = 0;
+  const retireCartAbortAllowance = allowOptionalRequestFailure(page, {
+    method: 'GET',
+    path: '/cart',
+    errorText: 'net::ERR_ABORTED',
+  });
+  const retireLearningAbortAllowance = allowOptionalRequestFailure(page, {
+    method: 'GET',
+    path: AUTH_MY_LEARNING_COLLECTION_PATH,
+    errorText: 'net::ERR_ABORTED',
+  });
+  allowHttpFailures(
+    page,
+    ...(scenario.failure === 'credential-401'
+      ? [{ method: 'POST', path: '/login', status: 401 }]
+      : scenario.failure === 'server-422'
+        ? [{ method: 'POST', path: '/login', status: 422 }]
+        : []),
+  );
+  await page.route('**/me', (route) => fulfillJson(route, 200, profile));
+  await page.route('**/login', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    loginRequests += 1;
+    authorizations.push(route.request().headers().authorization ?? null);
+    if (loginRequests > 2) return route.abort('blockedbyclient');
+    if (loginRequests === 2) {
+      await fulfillJson(route, 200, { access_token: scenario.token });
+      return;
+    }
+    if (scenario.failure === 'credential-401') {
+      await fulfillJson(route, 401, { detail: 'HOSTILE_LOGIN_CREDENTIAL_DETAIL' });
+      return;
+    }
+    if (scenario.failure === 'server-422') {
+      await fulfillJson(route, 422, {
+        detail: [
+          { loc: ['body', 'email'], msg: 'HOSTILE_LOGIN_EMAIL_422', type: 'value_error.email' },
+        ],
+      });
+      return;
+    }
+    allowRouteAbort(page, route, 'net::ERR_INTERNET_DISCONNECTED');
+    await route.abort('internetdisconnected');
+  });
+
+  await page.goto('/login');
+  const email = page.getByLabel(/^Email/);
+  const password = page.getByLabel(/^Password/);
+  await email.fill('learner@example.com');
+  await password.fill('password');
+  await password.press('Enter');
+
+  if (scenario.failure === 'credential-401') {
+    await expect(page.getByRole('alert')).toContainText('email or password');
+    await expect(page.locator('body')).not.toContainText('HOSTILE_LOGIN_CREDENTIAL_DETAIL');
+  } else if (scenario.failure === 'server-422') {
+    await expect(email).toBeFocused();
+    await expect(page.locator('#email-error')).toContainText('Enter a valid email address');
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    await expect(page.locator('body')).not.toContainText('HOSTILE_LOGIN_EMAIL_422');
+  } else {
+    await expect(page.getByRole('alert')).toContainText('offline');
+  }
+
+  await email.fill('recovered@example.com');
+  await expect(page.locator('#email-error')).toHaveCount(0);
+  await password.press('Enter');
+  await expectLoginRecoveryRoleHome(page);
+  retireCartAbortAllowance();
+  retireLearningAbortAllowance();
+  expectExactLoginAttemptCount(loginRequests, 2);
+  expectPublicLoginBearerSuppression(authorizations);
+  expect(await page.evaluate(() => localStorage.getItem('learnhub.access-token'))).toBe(
+    scenario.token,
+  );
+}
+
+test('login keeps the connected 401 to 422 to offline to held-success Cart journey on one page', async ({
   page,
 }) => {
   allowHttpFailures(
@@ -862,14 +973,23 @@ test('login covers safe 401/422/offline retry, pending lock, bearer suppression,
     { method: 'POST', path: '/login', status: 401 },
     { method: 'POST', path: '/login', status: 422 },
   );
-  allowRequestFailures(page, { method: 'GET', path: '/cart', errorText: 'net::ERR_ABORTED' });
   await page.addInitScript(() => localStorage.setItem('learnhub.access-token', 'stale-token'));
-  let loginAuthorization: string | null = 'not-observed';
+  const loginAuthorizations: Array<string | null> = [];
   let loginRequests = 0;
   let unexpectedLoginRequests = 0;
   let cartRequests = 0;
   let unexpectedCartRequests = 0;
   const loginGate = createDeferred();
+  const retireCartAbortAllowance = allowOptionalRequestFailure(page, {
+    method: 'GET',
+    path: '/cart',
+    errorText: 'net::ERR_ABORTED',
+  });
+  const retireLearningAbortAllowance = allowOptionalRequestFailure(page, {
+    method: 'GET',
+    path: AUTH_MY_LEARNING_COLLECTION_PATH,
+    errorText: 'net::ERR_ABORTED',
+  });
 
   await page.route('**/me', async (route) => {
     if (route.request().headers().authorization === 'Bearer stale-token') {
@@ -881,7 +1001,7 @@ test('login covers safe 401/422/offline retry, pending lock, bearer suppression,
   await page.route('**/login', async (route) => {
     if (route.request().method() !== 'POST') return route.fallback();
     loginRequests += 1;
-    loginAuthorization = route.request().headers().authorization ?? null;
+    loginAuthorizations.push(route.request().headers().authorization ?? null);
     if (loginRequests === 1) {
       await fulfillJson(route, 401, { detail: 'HOSTILE_LOGIN_CREDENTIAL_DETAIL' });
       return;
@@ -928,56 +1048,168 @@ test('login covers safe 401/422/offline retry, pending lock, bearer suppression,
       item_count: 0,
     });
   });
+  try {
+    await page.goto('/login?returnTo=%2Fcart');
+    await page.getByRole('button', { name: 'Log in' }).press('Enter');
+    await expect(page.getByLabel(/^Email/)).toBeFocused();
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    expect(loginRequests).toBe(0);
+
+    await page.getByLabel(/^Email/).fill('learner@example.com');
+    await page.getByLabel(/^Password/).fill('password');
+    await page.getByLabel(/^Password/).press('Enter');
+    await expect(page.getByRole('alert')).toContainText('email or password');
+    await expect(page.locator('body')).not.toContainText(
+      /HOSTILE_(LOGIN_CREDENTIAL|STALE_SESSION)_DETAIL/,
+    );
+
+    await page.getByRole('button', { name: 'Log in' }).press('Enter');
+    await expect(page.getByLabel(/^Email/)).toBeFocused();
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    await expect(page.locator('#email-error')).toContainText('Enter a valid email address');
+    await expect(page.locator('#password-error')).toContainText(
+      'Check this field and submit again',
+    );
+    await expect(page.locator('body')).not.toContainText(/HOSTILE_LOGIN_(EMAIL|PASSWORD)_422/);
+    await page.getByRole('button', { name: 'Log in' }).press('Enter');
+    await expect(page.getByRole('alert')).toContainText('offline');
+
+    await dispatchSameTickSubmits(page);
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    const pendingSubmit = page.getByRole('button', { name: 'Logging in...' });
+    await expect(pendingSubmit).toBeDisabled();
+    await expect(pendingSubmit).toHaveAttribute('aria-busy', 'true');
+    await expect(page.getByLabel(/^Email/)).toBeDisabled();
+    await expect(page.getByLabel(/^Password/)).toBeDisabled();
+    await expect.poll(() => loginRequests).toBe(4);
+    loginGate.resolve();
+
+    await expect(page).toHaveURL(/\/cart$/);
+    await expect(page.getByRole('heading', { name: 'Cart' })).toBeVisible();
+    await expect.poll(() => cartRequests).toBe(3);
+    await expect(page.getByRole('heading', { name: 'Your cart is empty' })).toBeVisible();
+    const settledLoginRequests = loginRequests;
+    const settledCartRequests = cartRequests;
+    await page.waitForTimeout(100);
+    expect(loginRequests).toBe(settledLoginRequests);
+    expect(cartRequests).toBe(settledCartRequests);
+    expectExactLoginAttemptCount(loginRequests, 4);
+    expectBoundedCartReconciliation(cartRequests);
+    expect(unexpectedLoginRequests).toBe(0);
+    expect(unexpectedCartRequests).toBe(0);
+    expectPublicLoginBearerSuppression(loginAuthorizations);
+    expect(await page.evaluate(() => localStorage.getItem('learnhub.access-token'))).toBe(
+      'fresh-token',
+    );
+  } finally {
+    loginGate.resolve();
+    retireCartAbortAllowance();
+    retireLearningAbortAllowance();
+  }
+});
+
+test('login recovers from a credential 401 without resetting the page', async ({ page }) => {
+  await runFocusedLoginRecovery(page, {
+    failure: 'credential-401',
+    token: 'credential-recovery-token',
+  });
+});
+
+test('login clears 422 field feedback before retrying to the role home', async ({ page }) => {
+  await runFocusedLoginRecovery(page, {
+    failure: 'server-422',
+    token: 'validation-recovery-token',
+  });
+});
+
+test('login recovers from offline feedback without resetting the page', async ({ page }) => {
+  await runFocusedLoginRecovery(page, { failure: 'offline', token: 'offline-recovery-token' });
+});
+
+test('successful login reaches Cart with one public POST and the retained exact Cart guard', async ({
+  page,
+}) => {
+  const retireCartAbortAllowance = allowOptionalRequestFailure(page, {
+    method: 'GET',
+    path: '/cart',
+    errorText: 'net::ERR_ABORTED',
+  });
+  const loginAuthorizations: Array<string | null> = [];
+  let loginRequests = 0;
+  let cartRequests = 0;
+  let unexpectedCartRequests = 0;
+  await page.route('**/me', (route) => fulfillJson(route, 200, profile));
+  await page.route('**/login', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    loginRequests += 1;
+    loginAuthorizations.push(route.request().headers().authorization ?? null);
+    if (loginRequests !== 1) return route.abort('blockedbyclient');
+    await fulfillJson(route, 200, { access_token: 'fresh-cart-token' });
+  });
+  await page.route('**/cart', async (route) => {
+    const request = route.request();
+    if (
+      request.method() !== 'GET' ||
+      request.headers().authorization !== 'Bearer fresh-cart-token'
+    ) {
+      unexpectedCartRequests += 1;
+      await route.abort('blockedbyclient');
+      return;
+    }
+    cartRequests += 1;
+    await fulfillJson(route, 200, {
+      id: 1,
+      items: [],
+      total_price: '0.00',
+      currency: 'USD',
+      item_count: 0,
+    });
+  });
 
   await page.goto('/login?returnTo=%2Fcart');
-  await page.getByRole('button', { name: 'Log in' }).press('Enter');
-  await expect(page.getByLabel(/^Email/)).toBeFocused();
-  await expect(page.getByRole('alert')).toHaveCount(0);
-  expect(loginRequests).toBe(0);
+  await page.getByLabel(/^Email/).fill('learner@example.com');
+  await page.getByLabel(/^Password/).fill('password');
+  await page.getByLabel(/^Password/).press('Enter');
+  await expect(page).toHaveURL(/\/cart$/);
+  await expect(page.getByRole('heading', { name: 'Cart' })).toBeVisible();
+  await expect.poll(() => cartRequests).toBe(3);
+  await expect(page.getByRole('heading', { name: 'Your cart is empty' })).toBeVisible();
+  const settledLoginRequests = loginRequests;
+  const settledCartRequests = cartRequests;
+  await page.waitForTimeout(100);
+  retireCartAbortAllowance();
+  expect(loginRequests).toBe(settledLoginRequests);
+  expect(cartRequests).toBe(settledCartRequests);
+  expectBoundedCartReconciliation(cartRequests);
+  expectExactLoginAttemptCount(loginRequests, 1);
+  expect(unexpectedCartRequests).toBe(0);
+  expectPublicLoginBearerSuppression(loginAuthorizations);
+  expect(await page.evaluate(() => localStorage.getItem('learnhub.access-token'))).toBe(
+    'fresh-cart-token',
+  );
+});
 
+test('actual page recovery oracle rejects a second credential failure', async ({ page }) => {
+  allowHttpFailures(page, { method: 'POST', path: '/login', status: 401, occurrences: 2 });
+  await page.route('**/login', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    await fulfillJson(route, 401, { detail: 'HOSTILE_LOGIN_CREDENTIAL_DETAIL' });
+  });
+  await page.goto('/login');
   await page.getByLabel(/^Email/).fill('learner@example.com');
   await page.getByLabel(/^Password/).fill('password');
   await page.getByLabel(/^Password/).press('Enter');
   await expect(page.getByRole('alert')).toContainText('email or password');
-  await expect(page.locator('body')).not.toContainText(
-    /HOSTILE_(LOGIN_CREDENTIAL|STALE_SESSION)_DETAIL/,
-  );
-
   await page.getByRole('button', { name: 'Log in' }).press('Enter');
-  await expect(page.getByLabel(/^Email/)).toBeFocused();
-  await expect(page.getByRole('alert')).toHaveCount(0);
-  await expect(page.locator('#email-error')).toContainText('Enter a valid email address');
-  await expect(page.locator('body')).not.toContainText(/HOSTILE_LOGIN_(EMAIL|PASSWORD)_422/);
-  await page.getByRole('button', { name: 'Log in' }).press('Enter');
-  await expect(page.getByRole('alert')).toContainText('offline');
+  await expect(expectLoginRecoveryRoleHome(page)).rejects.toThrow();
+});
 
-  await dispatchSameTickSubmits(page);
-  const pendingSubmit = page.getByRole('button', { name: 'Logging in...' });
-  await expect(pendingSubmit).toBeDisabled();
-  await expect(pendingSubmit).toHaveAttribute('aria-busy', 'true');
-  await expect(page.getByLabel(/^Email/)).toBeDisabled();
-  await expect(page.getByLabel(/^Password/)).toBeDisabled();
-  await expect.poll(() => loginRequests).toBe(4);
-  loginGate.resolve();
-
-  await expect(page).toHaveURL(/\/cart$/);
-  await expect(page.getByRole('heading', { name: 'Cart' })).toBeVisible();
-  // The Cart route makes its normal query reads and one bounded CCMP recovery
-  // reconciliation read after an authenticated login reaches an empty Cart.
-  await expect.poll(() => cartRequests).toBe(3);
-  await expect(page.getByRole('heading', { name: 'Your cart is empty' })).toBeVisible();
-  const loginRequestsAfterNavigation = loginRequests;
-  const cartRequestsAfterNavigation = cartRequests;
-  await page.waitForTimeout(100);
-  expect(loginRequests).toBe(loginRequestsAfterNavigation);
-  expect(cartRequests).toBe(cartRequestsAfterNavigation);
-  expect(loginRequests).toBe(4);
-  expect(unexpectedLoginRequests).toBe(0);
-  expect(unexpectedCartRequests).toBe(0);
-  expect(loginAuthorization).toBe(null);
-  expect(await page.evaluate(() => localStorage.getItem('learnhub.access-token'))).toBe(
-    'fresh-token',
-  );
+test('test-owned login and Cart guards reject injected credential, duplicate, and reconciliation faults', () => {
+  expect(() => expectPublicLoginBearerSuppression([null, 'Bearer stale-token'])).toThrow();
+  expect(() => expectPublicLoginBearerSuppression([null, null, null])).not.toThrow();
+  expect(() => expectExactLoginAttemptCount(2, 1)).toThrow();
+  expect(() => expectBoundedCartReconciliation(4)).toThrow();
+  expect(() => expectBoundedCartReconciliation(3)).not.toThrow();
 });
 
 test('login rejects an external returnTo and falls back to the role home', async ({ page }) => {
@@ -1088,13 +1320,59 @@ const authViewportScenarios: readonly AuthViewportScenario[] = [
   { label: 'default scale', pageScaleFactor: 1, widths: [320, 390, 640, 768, 1280] },
   { label: 'effective 200% page scale', pageScaleFactor: 2, widths: [1280] },
 ];
+const authWorkflows: readonly AuthWorkflow[] = ['signup', 'login', 'forgot', 'reset'];
 
 for (const { label, pageScaleFactor, widths } of authViewportScenarios) {
   for (const width of widths) {
-    test(`all auth workflow states reflow without clipping at ${width}px (${label})`, async ({
-      page,
-    }) => {
-      await authWorkflowReflowController.run(page, { label, pageScaleFactor, width });
-    });
+    for (const workflow of authWorkflows) {
+      test(`all auth workflow states reflow without clipping: ${workflow} at ${width}px (${label})`, async ({
+        page,
+      }) => {
+        await authWorkflowReflowController.run(page, { label, pageScaleFactor, width, workflow });
+      });
+    }
   }
 }
+
+test('rejects auth readiness when the actual AppShell brand image is broken', async ({ page }) => {
+  const logoPath = '/src/app/layouts/assets/learnhub-book-ui018.png';
+  let logoRequested = false;
+  allowRequestFailures(page, { method: 'GET', path: logoPath, errorText: 'net::ERR_FAILED' });
+  await page.route(`**${logoPath}`, async (route) => {
+    logoRequested = true;
+    await route.abort('failed');
+  });
+
+  await page.goto('/signup', { waitUntil: 'domcontentloaded' });
+  await expect(waitForAuthAppShellBrandImage(page)).rejects.toThrow(
+    'AppShell brand image failed to load',
+  );
+  expect(logoRequested).toBe(true);
+});
+
+test('finishes auth readiness only after a held AppShell brand image loads', async ({ page }) => {
+  const logoPath = '/src/app/layouts/assets/learnhub-book-ui018.png';
+  let logoRequested = false;
+  const logoGate = createDeferred();
+  await page.route(`**${logoPath}`, async (route) => {
+    logoRequested = true;
+    await logoGate.promise;
+    await route.fallback();
+  });
+
+  try {
+    await page.goto('/signup', { waitUntil: 'domcontentloaded' });
+    const brandImage = page.locator(`img[src*="${logoPath}"]`);
+    const readiness = waitForAuthAppShellBrandImage(page);
+    await expect.poll(() => logoRequested).toBe(true);
+    await expect(brandImage).toBeAttached();
+    logoGate.resolve();
+    await readiness;
+    await expect(brandImage).toHaveJSProperty('complete', true);
+    expect(
+      await brandImage.evaluate((image) => (image as HTMLImageElement).naturalWidth),
+    ).toBeGreaterThan(0);
+  } finally {
+    logoGate.resolve();
+  }
+});

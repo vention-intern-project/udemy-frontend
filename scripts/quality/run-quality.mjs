@@ -1,110 +1,87 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import {
-  collectComplexitySignals,
-  collectStaticFindings,
-  staticSuppressions,
-} from './check-static.mjs';
+  assembleCiCommandResults,
+  createCiGroupResultEnvelope,
+  parseCiGroupResultEnvelope,
+} from './ci-command-results.mjs';
 import {
+  executeQualityGroup,
+  qualityCommandPlan,
+  executeQualityCommand,
+} from './quality-commands.mjs';
+import {
+  CI_GROUP_IDS,
   createLocalPatchAttestation,
-  commandFailureCode,
-  classifyCommandDiagnostics,
   collectVitestTestIdentifiers,
   formatCommandFailureExcerpt,
   npmVersionFromUserAgent,
-  runCapturedCommand,
   reportDigest,
-  REQUIRED_QUALITY_COMMAND_IDS,
   targetForCommit,
   targetForPatch,
-  unexpectedDiagnosticCount,
   validateReport,
   REPORT_SCHEMA_VERSION,
 } from './report-utils.mjs';
 import { summaryFor } from './report-summary.mjs';
 
 const root = resolve(fileURLToPath(new URL('../..', import.meta.url)));
-const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-const windowsNpmCli = resolve(dirname(process.execPath), 'node_modules/npm/bin/npm-cli.js');
-const COMMAND_OUTPUT_MAX_BUFFER = 16 * 1024 * 1024;
-const qualityCommands = [
-  ['format', ['run', 'format:check']],
-  ['stylelint', ['run', 'stylelint']],
-  ['lint', ['run', 'lint']],
-  ['quality-lint', ['run', 'lint:quality']],
-  ['typecheck', ['run', 'typecheck']],
-  ['static-rules', ['run', 'quality:rules']],
-  [
-    'tests',
-    [
-      'test',
-      '--',
-      '--pool=forks',
-      '--poolOptions.forks.maxForks=1',
-      '--poolOptions.forks.minForks=1',
-      '--poolOptions.forks.isolate=true',
-      '--testTimeout=60000',
-      '--hookTimeout=60000',
-    ],
-  ],
-  ['build', ['run', 'build']],
-];
-if (stableCommandIds(qualityCommands) !== stableCommandIds(REQUIRED_QUALITY_COMMAND_IDS))
-  throw new Error(
-    'The full report command plan must match the authoritative required command IDs.',
-  );
+const optionNames = new Set([
+  '--scope',
+  '--output',
+  '--sha',
+  '--target-patch',
+  '--target-root',
+  '--base-root',
+  '--ci-group',
+  '--ci-results',
+  '--producer-results',
+  '--run-id',
+  '--run-attempt',
+]);
+const maxProducerResultsBytes = 1024 * 1024;
 
-function stableCommandIds(commands) {
-  return commands.map((command) => (Array.isArray(command) ? command[0] : command)).join(',');
+function options(argv) {
+  const result = new Map();
+  for (let index = 0; index < argv.length; index += 1) {
+    const option = argv[index];
+    if (!optionNames.has(option)) throw new Error(`Unsupported or positional argument: ${option}`);
+    if (result.has(option)) throw new Error(`Duplicate option: ${option}`);
+    const value = argv[++index];
+    if (!value || value.startsWith('--')) throw new Error(`${option} requires a non-empty value.`);
+    result.set(option, value);
+  }
+  return result;
 }
 
-function argument(name, fallback) {
-  const index = process.argv.indexOf(name);
-  return index === -1 ? fallback : process.argv[index + 1];
+function ciIdentity(values) {
+  const runId = values.get('--run-id') ?? process.env.GITHUB_RUN_ID;
+  const runAttempt = values.get('--run-attempt') ?? process.env.GITHUB_RUN_ATTEMPT;
+  if (!/^[1-9][0-9]*$/.test(runId ?? '') || !/^[1-9][0-9]*$/.test(runAttempt ?? ''))
+    throw new Error('CI run id and attempt must be nonzero decimal strings.');
+  return { runId, runAttempt };
 }
 
-function run(id, args) {
-  const started = Date.now();
-  const windows = process.platform === 'win32';
-  const result = runCapturedCommand(
-    windows ? process.execPath : npm,
-    windows ? [windowsNpmCli, ...args] : args,
-    {
-      cwd: root,
-      maxBuffer: COMMAND_OUTPUT_MAX_BUFFER,
-    },
-  );
-  const diagnostics = classifyCommandDiagnostics(result.stdout, result.stderr);
-  const hasUnexpectedDiagnostics = unexpectedDiagnosticCount(diagnostics) > 0;
-  return {
-    command: {
-      id,
-      status: result.status === 0 && !result.error && !hasUnexpectedDiagnostics ? 'pass' : 'fail',
-      durationMs: Date.now() - started,
-      exitCode: result.status ?? null,
-      errorCode: commandFailureCode(result, hasUnexpectedDiagnostics),
-      diagnostics,
-    },
-    stdout: result.stdout,
-    stderr: result.stderr,
-    hasUnexpectedDiagnostics,
-  };
-}
-
-function currentSha(required) {
-  const requested = argument('--sha', process.env.GITHUB_SHA);
-  if (requested && /^[0-9a-f]{7,64}$/i.test(requested)) return requested;
+function gitHead() {
   const result = spawnSync('git', ['rev-parse', 'HEAD'], {
     cwd: root,
     encoding: 'utf8',
     shell: false,
   });
-  if (required || result.status !== 0)
-    throw new Error('Unable to determine the current commit identity. Pass --sha explicitly.');
+  if (result.status !== 0 || !/^[0-9a-f]{7,64}$/i.test(result.stdout.trim()))
+    throw new Error('Unable to determine the current commit identity.');
   return result.stdout.trim();
+}
+
+function ciTarget(values, requireExactHead) {
+  const sha = values.get('--sha') ?? process.env.GITHUB_SHA;
+  if (!/^[0-9a-f]{7,64}$/i.test(sha ?? ''))
+    throw new Error('CI reports require a valid target SHA.');
+  if (requireExactHead && gitHead().toLowerCase() !== sha.toLowerCase())
+    throw new Error('Checked-out HEAD does not match the supplied CI target SHA.');
+  return sha;
 }
 
 async function toolVersions() {
@@ -120,93 +97,231 @@ async function toolVersions() {
   };
 }
 
-const scope = argument('--scope', process.env.CI ? 'ci' : 'full');
+async function readProducerResults(path) {
+  const size = (await stat(path)).size;
+  if (size === 0 || size > maxProducerResultsBytes)
+    throw new Error('producer results size is invalid');
+  const bytes = await readFile(path);
+  if (bytes.length === 0 || bytes.length > maxProducerResultsBytes)
+    throw new Error('producer results size is invalid');
+  try {
+    return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+  } catch {
+    throw new Error('producer results are malformed JSON');
+  }
+}
+
+async function staticAnalysis() {
+  const { collectComplexitySignals, collectStaticFindings, staticSuppressions } = await import(
+    './check-static.mjs'
+  );
+  return {
+    findings: await collectStaticFindings(),
+    suppressions: staticSuppressions(),
+    advisory: { complexitySignals: await collectComplexitySignals() },
+    configVersions: { reportSchema: REPORT_SCHEMA_VERSION, staticRules: 1 },
+  };
+}
+
+async function writeReport(output, report) {
+  const errors = validateReport(report);
+  if (errors.length)
+    throw new Error(`Report generation failed schema validation: ${errors.join('; ')}`);
+  await mkdir(dirname(output), { recursive: true });
+  await writeFile(output, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+  console.log(summaryFor(report));
+}
+
+function printFailures(executions, knownTestIdentifiers) {
+  for (const { command, stdout, stderr, hasUnexpectedDiagnostics } of executions) {
+    const excerpt = formatCommandFailureExcerpt({
+      ...command,
+      stdout,
+      stderr,
+      hasUnexpectedDiagnostics,
+      knownTestIdentifiers,
+    });
+    if (excerpt) console.error(excerpt);
+  }
+}
+
+async function groupMode(values, output) {
+  if (!process.env.CI) throw new Error('CI group execution is restricted to CI.');
+  const group = values.get('--ci-group');
+  if (!CI_GROUP_IDS.includes(group)) throw new Error('A known --ci-group is required.');
+  if (values.get('--scope') && values.get('--scope') !== 'ci')
+    throw new Error('CI group execution requires --scope ci.');
+  if (
+    values.has('--target-patch') ||
+    values.has('--target-root') ||
+    values.has('--base-root') ||
+    values.has('--ci-results') ||
+    values.has('--producer-results')
+  )
+    throw new Error('CI group execution cannot accept local target or result inputs.');
+  const ciRun = ciIdentity(values);
+  const sha = ciTarget(values, true);
+  const knownTestIdentifiers = collectVitestTestIdentifiers(root);
+  const executions = executeQualityGroup(group, root);
+  const analysis = group === 'lint-static' ? await staticAnalysis() : undefined;
+  const envelope = createCiGroupResultEnvelope({
+    group,
+    sha,
+    ciRun,
+    commands: executions.map(({ command }) => command),
+    toolVersions: await toolVersions(),
+    ...(analysis ? { analysis } : {}),
+  });
+  await mkdir(dirname(output), { recursive: true });
+  await writeFile(output, `${JSON.stringify(envelope, null, 2)}\n`, 'utf8');
+  printFailures(executions, knownTestIdentifiers);
+  if (
+    executions.some(({ command }) => command.status !== 'pass') ||
+    (analysis?.findings.length ?? 0) > 0
+  )
+    process.exitCode = 1;
+}
+
+async function resultsMode(values, output) {
+  if (!process.env.CI) throw new Error('CI result assembly is restricted to CI.');
+  if (values.get('--scope') && values.get('--scope') !== 'ci')
+    throw new Error('CI result assembly requires --scope ci.');
+  if (
+    values.has('--target-patch') ||
+    values.has('--target-root') ||
+    values.has('--base-root') ||
+    values.has('--ci-group')
+  )
+    throw new Error('CI result assembly cannot accept group or local target inputs.');
+  const directory = values.get('--ci-results');
+  const producerPath = values.get('--producer-results');
+  if (!directory || !producerPath)
+    throw new Error('CI result assembly requires --ci-results and --producer-results.');
+  const ciRun = ciIdentity(values);
+  const resultsDirectory = resolve(directory);
+  const producerResultsPath = resolve(producerPath);
+  if (
+    producerResultsPath.startsWith(
+      `${resultsDirectory}${process.platform === 'win32' ? '\\' : '/'}`,
+    )
+  )
+    throw new Error('Producer-state bookkeeping must be outside the dedicated result directory.');
+  const entries = await readdir(resultsDirectory, { withFileTypes: true });
+  const expectedFiles = CI_GROUP_IDS.map((group) => `${group}.json`);
+  if (
+    entries.length !== expectedFiles.length ||
+    entries.some((entry) => !entry.isFile() || !expectedFiles.includes(entry.name))
+  )
+    throw new Error('CI result directory must contain exactly the four expected envelope files.');
+  const sha = ciTarget(values, true);
+  const envelopes = await Promise.all(
+    CI_GROUP_IDS.map(async (group) => {
+      const path = resolve(resultsDirectory, `${group}.json`);
+      if ((await stat(path)).size > 1024 * 1024)
+        throw new Error(`CI group envelope exceeds the byte limit: ${group}`);
+      return parseCiGroupResultEnvelope(await readFile(path));
+    }),
+  );
+  const producerResults = await readProducerResults(producerResultsPath);
+  await writeReport(
+    output,
+    assembleCiCommandResults({
+      envelopes,
+      expectedSha: sha,
+      expectedCiRun: ciRun,
+      producerResults,
+    }),
+  );
+}
+
+async function ordinaryMode(values, output, scope) {
+  if (
+    values.has('--ci-group') ||
+    values.has('--ci-results') ||
+    values.has('--producer-results') ||
+    values.has('--run-id') ||
+    values.has('--run-attempt')
+  )
+    throw new Error('CI protocol inputs require one explicit CI protocol mode.');
+  const targetPatch = values.get('--target-patch');
+  const targetRoot = values.get('--target-root');
+  const baseRoot = values.get('--base-root');
+  if (scope === 'ci' && (targetPatch || targetRoot || baseRoot))
+    throw new Error('CI reports must use the current commit target, not a local patch.');
+  const target =
+    scope === 'ci'
+      ? targetForCommit(ciTarget(values, true))
+      : targetPatch
+        ? await targetForPatch(
+            resolve(targetPatch),
+            targetRoot && resolve(targetRoot),
+            baseRoot && resolve(baseRoot),
+          )
+        : (() => {
+            throw new Error(
+              'Local full reports require --target-patch <exact no-index Review patch>.',
+            );
+          })();
+  const localAttestationKey =
+    scope === 'full' ? process.env.QUALITY_REPORT_ATTESTATION_KEY : undefined;
+  if (scope === 'full' && !localAttestationKey)
+    throw new Error(
+      'Local full reports require the ephemeral Manager-supplied QUALITY_REPORT_ATTESTATION_KEY after target capture.',
+    );
+  const sha = scope === 'ci' ? target.sha : gitHead();
+  const knownTestIdentifiers = collectVitestTestIdentifiers(root);
+  const executions = qualityCommandPlan({ mode: 'full' }).map((entry) =>
+    executeQualityCommand(entry, root),
+  );
+  const analysis = await staticAnalysis();
+  const report = {
+    schemaVersion: REPORT_SCHEMA_VERSION,
+    scope,
+    sha,
+    target,
+    generatedAt: new Date().toISOString(),
+    outcome:
+      executions.every(({ command }) => command.status === 'pass') && analysis.findings.length === 0
+        ? 'pass'
+        : 'fail',
+    commands: executions.map(({ command }) => command),
+    findings: analysis.findings,
+    toolVersions: await toolVersions(),
+    configVersions: analysis.configVersions,
+    context: {
+      execution: scope === 'ci' ? 'ci' : 'local',
+      scope,
+      targetKind: target.kind,
+      baseSha: sha,
+    },
+    suppressions: analysis.suppressions,
+    limitations: [
+      'Report pass is deterministic evidence only; it is not a semantic Review or QA verdict.',
+      'Complexity signals are advisory and do not affect the outcome.',
+    ],
+    advisory: analysis.advisory,
+    integrity: { algorithm: 'sha256', digest: '', attestation: null },
+  };
+  report.integrity.digest = reportDigest(report);
+  if (scope === 'full')
+    report.integrity.attestation = createLocalPatchAttestation(report, localAttestationKey);
+  await writeReport(output, report);
+  printFailures(executions, knownTestIdentifiers);
+  if (report.outcome !== 'pass') process.exitCode = 1;
+}
+
+const values = options(process.argv.slice(2));
+const group = values.has('--ci-group');
+const results = values.has('--ci-results');
+if (group && results) throw new Error('--ci-group and --ci-results cannot be combined.');
+const scope = values.get('--scope') ?? (process.env.CI ? 'ci' : 'full');
 if (!['full', 'ci'].includes(scope))
   throw new Error('Only full and ci report scopes are authoritative.');
+if ((group || results) && !values.has('--output'))
+  throw new Error('CI protocol modes require an explicit --output path.');
 const output = resolve(
-  argument('--output', resolve(tmpdir(), 'udemy-frontend-quality-report.json')),
+  values.get('--output') ?? resolve(tmpdir(), 'udemy-frontend-quality-report.json'),
 );
-const targetPatch = argument('--target-patch');
-const targetRoot = argument('--target-root');
-const baseRoot = argument('--base-root');
-const target =
-  scope === 'ci'
-    ? targetForCommit(currentSha(true))
-    : targetPatch
-      ? await targetForPatch(
-          resolve(targetPatch),
-          targetRoot && resolve(targetRoot),
-          baseRoot && resolve(baseRoot),
-        )
-      : (() => {
-          throw new Error(
-            'Local full reports require --target-patch <exact no-index Review patch>.',
-          );
-        })();
-if (scope === 'ci' && targetPatch)
-  throw new Error('CI reports must use the current commit target, not a local patch.');
-if (scope === 'ci' && targetRoot)
-  throw new Error('CI reports must not accept a local target root.');
-if (scope === 'ci' && baseRoot) throw new Error('CI reports must not accept a local base root.');
-const localAttestationKey =
-  scope === 'full' ? process.env.QUALITY_REPORT_ATTESTATION_KEY : undefined;
-if (scope === 'full' && !localAttestationKey)
-  throw new Error(
-    'Local full reports require the ephemeral Manager-supplied QUALITY_REPORT_ATTESTATION_KEY after target capture.',
-  );
-const sha = scope === 'ci' ? target.sha : currentSha(false);
-const knownTestIdentifiers = collectVitestTestIdentifiers(root);
-const executions = qualityCommands.map(([id, args]) => run(id, args));
-const commands = executions.map(({ command }) => command);
-const findings = await collectStaticFindings();
-const complexity = await collectComplexitySignals();
-const report = {
-  schemaVersion: REPORT_SCHEMA_VERSION,
-  scope,
-  sha,
-  target,
-  generatedAt: new Date().toISOString(),
-  outcome:
-    commands.every((command) => command.status === 'pass') && findings.length === 0
-      ? 'pass'
-      : 'fail',
-  commands,
-  findings,
-  toolVersions: await toolVersions(),
-  configVersions: { reportSchema: REPORT_SCHEMA_VERSION, staticRules: 1 },
-  context: {
-    execution: scope === 'ci' ? 'ci' : 'local',
-    scope,
-    targetKind: target.kind,
-    baseSha: sha,
-  },
-  suppressions: staticSuppressions(),
-  limitations: [
-    'Report pass is deterministic evidence only; it is not a semantic Review or QA verdict.',
-    'Complexity signals are advisory and do not affect the outcome.',
-  ],
-  advisory: {
-    complexitySignals: complexity,
-  },
-  integrity: { algorithm: 'sha256', digest: '', attestation: null },
-};
-report.integrity.digest = reportDigest(report);
-if (scope === 'full')
-  report.integrity.attestation = createLocalPatchAttestation(report, localAttestationKey);
-const errors = validateReport(report);
-if (errors.length)
-  throw new Error(`Report generation failed schema validation: ${errors.join('; ')}`);
-await mkdir(dirname(output), { recursive: true });
-await writeFile(output, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
-console.log(summaryFor(report));
-for (const { command, stdout, stderr, hasUnexpectedDiagnostics } of executions) {
-  const excerpt = formatCommandFailureExcerpt({
-    ...command,
-    stdout,
-    stderr,
-    hasUnexpectedDiagnostics,
-    knownTestIdentifiers,
-  });
-  if (excerpt) console.error(excerpt);
-}
-if (report.outcome !== 'pass') process.exitCode = 1;
+if (group) await groupMode(values, output);
+else if (results) await resultsMode(values, output);
+else await ordinaryMode(values, output, scope);

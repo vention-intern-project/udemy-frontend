@@ -11,6 +11,7 @@ import {
   collectImportCycleFindings,
   complexitySignals,
 } from '../../scripts/quality/check-static.mjs';
+import type { CiRunIdentity } from '../../scripts/quality/ci-command-results.mjs';
 import {
   createLocalPatchAttestation,
   commandFailureCode,
@@ -134,15 +135,18 @@ const { ESLint } = createRequire(import.meta.url)('eslint') as {
 
 describe('quality execution provenance', () => {
   it('uses one isolated fork and explicit finite timeouts for the embedded quality-report test command', async () => {
-    const qualityRunner = await readFile(resolve('scripts/quality/run-quality.mjs'), 'utf8');
+    const commandPlan = await readFile(resolve('scripts/quality/quality-commands.mjs'), 'utf8');
     const packageJson = JSON.parse(await readFile(resolve('package.json'), 'utf8')) as {
       scripts: { test: string };
     };
 
-    expect(qualityRunner).toContain(
-      "'--pool=forks',\n      '--poolOptions.forks.maxForks=1',\n      '--poolOptions.forks.minForks=1',\n      '--poolOptions.forks.isolate=true',\n      '--testTimeout=60000',\n      '--hookTimeout=60000',",
-    );
-    expect(qualityRunner).not.toContain('--poolOptions.forks.singleFork=true');
+    expect(commandPlan).toContain("'--pool=forks'");
+    expect(commandPlan).toContain("'--poolOptions.forks.maxForks=1'");
+    expect(commandPlan).toContain("'--poolOptions.forks.minForks=1'");
+    expect(commandPlan).toContain("'--poolOptions.forks.isolate=true'");
+    expect(commandPlan).toContain("'--testTimeout=60000'");
+    expect(commandPlan).toContain("'--hookTimeout=60000'");
+    expect(commandPlan).not.toContain('--poolOptions.forks.singleFork=true');
     expect(packageJson.scripts.test).toBe('vitest run');
   });
 
@@ -154,12 +158,30 @@ describe('quality execution provenance', () => {
     expect(identifiers).toContain('tests/app/app-shell.test.tsx');
     expect(
       qualityRunner.indexOf('const knownTestIdentifiers = collectVitestTestIdentifiers(root);'),
-    ).toBeLessThan(
-      qualityRunner.indexOf(
-        'const executions = qualityCommands.map(([id, args]) => run(id, args));',
-      ),
-    );
+    ).toBeLessThan(qualityRunner.indexOf('const executions = executeQualityGroup(group, root);'));
     expect(qualityRunner).toContain('knownTestIdentifiers,');
+  });
+
+  it('captures the ordinary local HEAD before identifiers and broad commands execute', async () => {
+    const qualityRunner = await readFile(resolve('scripts/quality/run-quality.mjs'), 'utf8');
+    const ordinaryMode = qualityRunner.slice(
+      qualityRunner.indexOf('async function ordinaryMode'),
+      qualityRunner.indexOf('\nconst values = options'),
+    );
+    const attestationGuard = ordinaryMode.indexOf("if (scope === 'full' && !localAttestationKey)");
+    const localSha = ordinaryMode.indexOf("const sha = scope === 'ci' ? target.sha : gitHead();");
+    const identifiers = ordinaryMode.indexOf(
+      'const knownTestIdentifiers = collectVitestTestIdentifiers(root);',
+    );
+    const firstCommand = ordinaryMode.indexOf('executeQualityCommand(entry, root)');
+
+    expect(attestationGuard).toBeGreaterThanOrEqual(0);
+    expect(localSha).toBeGreaterThan(attestationGuard);
+    expect(identifiers).toBeGreaterThan(localSha);
+    expect(firstCommand).toBeGreaterThan(identifiers);
+    expect(
+      ordinaryMode.match(/const sha = scope === 'ci' \? target\.sha : gitHead\(\);/g),
+    ).toHaveLength(1);
   });
 
   it("captures output above Node's default and fails closed at an explicit bounded cap", () => {
@@ -626,7 +648,7 @@ function sealReport(report: QualityReportFixture, key = testAttestationKey) {
   report.integrity.attestation = createLocalPatchAttestation(report, key);
 }
 
-function validCiReport(sha: string) {
+function validCiReport(sha: string, ciRun?: CiRunIdentity) {
   const local = validReport({
     kind: 'local_patch',
     patchSha256: 'f'.repeat(64),
@@ -637,11 +659,25 @@ function validCiReport(sha: string) {
     scope: 'ci',
     sha,
     target: { kind: 'commit', sha },
-    context: { execution: 'ci', scope: 'ci', targetKind: 'commit', baseSha: sha },
+    context: {
+      execution: 'ci',
+      scope: 'ci',
+      targetKind: 'commit',
+      baseSha: sha,
+      ...(ciRun ? { ciRun: { source: 'parallel-groups', ...ciRun } } : {}),
+    },
     integrity: { algorithm: 'sha256', digest: '', attestation: null },
   };
   report.integrity.digest = reportDigest(report);
   return report;
+}
+
+function hasOrderedSteps(source: string, steps: readonly string[]) {
+  const positions = steps.map((step) => source.indexOf(step));
+  return (
+    positions.every((position) => position >= 0) &&
+    positions.every((position, index) => index === 0 || position > positions[index - 1])
+  );
 }
 
 function productionAggregateGuard(
@@ -1279,7 +1315,10 @@ describe('quality report schema and exact-target admission', () => {
       })(),
       (() => {
         const report = validReport(target);
-        report.commands[1] = { ...report.commands[1], id: 'unknown' };
+        report.commands[1] = {
+          ...report.commands[1],
+          id: 'unknown' as QualityCommand['id'],
+        };
         sealReport(report);
         return report;
       })(),
@@ -1515,6 +1554,120 @@ describe('quality report schema and exact-target admission', () => {
 });
 
 describe('staged and CI decision simulations', () => {
+  it('rejects every invalid grouped-CI CLI combination before a quality command can run', () => {
+    const runner = resolve('scripts/quality/run-quality.mjs');
+    const environment = { ...process.env, CI: 'true' };
+    const invalidArguments = [
+      ['--ci-group', 'unknown'],
+      ['--ci-group'],
+      ['--ci-group', 'tests', '--ci-group', 'tests'],
+      ['--ci-results'],
+      ['--ci-group', 'tests', '--ci-results', 'quality-reports'],
+      ['--ci-group', 'tests', '--sha', 'not-a-sha'],
+      ['--ci-group', 'tests', '--sha', 'a'.repeat(40), '--run-id', '0', '--run-attempt', '1'],
+      ['--ci-group', 'tests', '--sha', 'a'.repeat(40), '--run-id', '1', '--run-attempt', 'zero'],
+      ['--ci-group', 'tests', '--target-patch', 'review.patch'],
+    ];
+
+    for (const args of invalidArguments) {
+      const result = spawnSync(process.execPath, [runner, ...args], {
+        cwd: resolve('.'),
+        encoding: 'utf8',
+        env: environment,
+      });
+      expect(result.status, `${args.join(' ')}\n${result.stdout}\n${result.stderr}`).not.toBe(0);
+      expect(`${result.stdout}\n${result.stderr}`).not.toContain('QUALITY_COMMAND_FAILURE');
+    }
+  });
+
+  it('wires exact published producer attempts into a dependency-free quality-report assembly', async () => {
+    const workflow = (
+      await readFile(resolve('.github/workflows/frontend-quality.yml'), 'utf8')
+    ).replace(/\r\n/g, '\n');
+    const qualityReport = workflow.slice(
+      workflow.indexOf('  quality-report:\n'),
+      workflow.indexOf('  frontend-quality-required:\n'),
+    );
+
+    expect(qualityReport).toContain(
+      'needs: [resolve-target, lint-static, typecheck, tests, build]',
+    );
+    expect(qualityReport).toContain('if: always()');
+    expect(qualityReport).not.toContain('npm ci');
+    expect(qualityReport).not.toContain('fetch-depth: 0');
+    expect(qualityReport).toContain('actions/download-artifact@');
+    expect(qualityReport).toContain(
+      'frontend-quality-command-${{ env.QUALITY_TARGET_SHA }}-${{ github.run_id }}-${{ needs.lint-static.outputs.receipt-attempt }}-lint-static',
+    );
+    expect(qualityReport).toContain(
+      'frontend-quality-command-${{ env.QUALITY_TARGET_SHA }}-${{ github.run_id }}-${{ needs.typecheck.outputs.receipt-attempt }}-typecheck',
+    );
+    expect(qualityReport).toContain(
+      'frontend-quality-command-${{ env.QUALITY_TARGET_SHA }}-${{ github.run_id }}-${{ needs.tests.outputs.receipt-attempt }}-tests',
+    );
+    expect(qualityReport).toContain(
+      'frontend-quality-command-${{ env.QUALITY_TARGET_SHA }}-${{ github.run_id }}-${{ needs.build.outputs.receipt-attempt }}-build',
+    );
+    expect(qualityReport).toContain(
+      'LINT_STATIC_ATTEMPT: ${{ needs.lint-static.outputs.receipt-attempt }}',
+    );
+    expect(qualityReport).toContain(
+      'TYPECHECK_ATTEMPT: ${{ needs.typecheck.outputs.receipt-attempt }}',
+    );
+    expect(qualityReport).toContain('TESTS_ATTEMPT: ${{ needs.tests.outputs.receipt-attempt }}');
+    expect(qualityReport).toContain('BUILD_ATTEMPT: ${{ needs.build.outputs.receipt-attempt }}');
+    expect(qualityReport).toContain('validateCiProducerResults');
+    expect(qualityReport).toContain('--ci-results quality-results');
+    expect(qualityReport).toContain(
+      '--run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT"',
+    );
+  });
+
+  it('publishes producer and report attempts only after their real successful commands', async () => {
+    const workflow = (
+      await readFile(resolve('.github/workflows/frontend-quality.yml'), 'utf8')
+    ).replace(/\r\n/g, '\n');
+    const producerJobs = [
+      ['lint-static', 'typecheck'],
+      ['typecheck', 'tests'],
+      ['tests', 'build'],
+      ['build', 'browser'],
+    ] as const;
+    for (const [group, nextGroup] of producerJobs) {
+      const start = workflow.indexOf(`  ${group}:\n`);
+      const nextJob = workflow.indexOf(`  ${nextGroup}:\n`, start + 3);
+      const job = workflow.slice(start, nextJob);
+      expect(job).toContain(
+        'outputs:\n      receipt-attempt: ${{ steps.execute.outputs.attempt }}',
+      );
+      expect(job).toContain('id: execute');
+      expect(job).toContain(`npm run quality -- --ci-group ${group}`);
+      const orderedSteps = [
+        'npm run quality --',
+        'echo "attempt=$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"',
+      ] as const;
+      expect(hasOrderedSteps(job, orderedSteps)).toBe(true);
+      expect(hasOrderedSteps(orderedSteps[1], orderedSteps)).toBe(false);
+      expect(hasOrderedSteps([...orderedSteps].reverse().join('\n'), orderedSteps)).toBe(false);
+    }
+
+    const qualityReport = workflow.slice(
+      workflow.indexOf('  quality-report:\n'),
+      workflow.indexOf('  frontend-quality-required:\n'),
+    );
+    expect(qualityReport).toContain(
+      'outputs:\n      report-attempt: ${{ steps.verify.outputs.attempt }}',
+    );
+    expect(qualityReport).toContain('id: verify');
+    const reportSteps = [
+      'node scripts/quality/verify-report.mjs',
+      'echo "attempt=$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"',
+    ] as const;
+    expect(hasOrderedSteps(qualityReport, reportSteps)).toBe(true);
+    expect(hasOrderedSteps(reportSteps[1], reportSteps)).toBe(false);
+    expect(hasOrderedSteps([...reportSteps].reverse().join('\n'), reportSteps)).toBe(false);
+  });
+
   it('preserves the exact authenticated localization fixture through staged Prettier selection', async () => {
     const fixturePath =
       'tests/shared/locale/fixtures/review-exchange/learnhub-multilingual-review-readable.md';
@@ -1577,8 +1730,10 @@ describe('staged and CI decision simulations', () => {
     expect(localizationOverride?.env?.node).toBe(true);
 
     const workflow = await readFile(resolve('.github/workflows/frontend-quality.yml'), 'utf8');
-    expect(workflow).toContain('npm run format:check');
-    expect(workflow).toContain('npm run lint:quality');
+    expect(workflow).toContain('--ci-group lint-static');
+    expect(await readFile(resolve('scripts/quality/quality-commands.mjs'), 'utf8')).toContain(
+      "'run', 'format:check'",
+    );
   });
 
   it('formats only the selected staged files through the real pre-commit hook without changing the live index', async () => {
@@ -1941,18 +2096,24 @@ describe('staged and CI decision simulations', () => {
     expect(workflow).toContain(
       'needs: [resolve-target, lint-static, typecheck, tests, build, browser, quality-report]',
     );
-    expect(workflow.match(/needs: resolve-target/g)).toHaveLength(6);
+    expect(workflow.match(/needs: resolve-target/g)).toHaveLength(5);
     expect(workflow.match(/ref: \$\{\{ env\.QUALITY_TARGET_SHA \}\}/g)).toHaveLength(7);
     expect(workflow.match(/needs\.resolve-target\.outputs\.quality-target-sha/g)).toHaveLength(7);
     expect(workflow).toContain('TARGET_RESOLUTION_RESULT: ${{ needs.resolve-target.result }}');
     expect(workflow).toContain('Guard resolved quality target before artifact or checkout');
-    expect(
-      workflow.indexOf('Guard resolved quality target before artifact or checkout'),
-    ).toBeLessThan(workflow.indexOf('actions/download-artifact'));
-    expect(
-      workflow.indexOf('Guard resolved quality target before artifact or checkout'),
-    ).toBeLessThan(workflow.lastIndexOf('actions/checkout'));
-    expect(workflow).toContain('frontend-quality-report-${{ env.QUALITY_TARGET_SHA }}');
+    const qualityReportJob = workflow.slice(
+      workflow.indexOf('  quality-report:\n'),
+      workflow.indexOf('  frontend-quality-required:\n'),
+    );
+    const qualityReportSteps = [
+      'Guard resolved quality target before checkout or artifacts',
+      'actions/checkout@',
+    ] as const;
+    expect(hasOrderedSteps(qualityReportJob, qualityReportSteps)).toBe(true);
+    expect(hasOrderedSteps(qualityReportSteps[1], qualityReportSteps)).toBe(false);
+    expect(workflow).toContain(
+      'frontend-quality-report-${{ env.QUALITY_TARGET_SHA }}-${{ github.run_id }}-${{ github.run_attempt }}',
+    );
     expect(workflow).toContain('--sha "$QUALITY_TARGET_SHA"');
     expect(workflow).toContain('QUALITY_TARGET_SHA: ${{ env.QUALITY_TARGET_SHA }}');
     const qualityReport = workflow.slice(
@@ -1960,7 +2121,9 @@ describe('staged and CI decision simulations', () => {
       workflow.indexOf('  frontend-quality-required:\n'),
     );
     expect(qualityReport).toContain('if: always()\n        uses: actions/upload-artifact@');
-    expect(qualityReport).toContain('name: frontend-quality-report-${{ env.QUALITY_TARGET_SHA }}');
+    expect(qualityReport).toContain(
+      'name: frontend-quality-report-${{ env.QUALITY_TARGET_SHA }}-${{ github.run_id }}-${{ github.run_attempt }}',
+    );
     expect(qualityReport).toContain('path: quality-reports/current.json');
     expect(qualityReport).toContain('retention-days: 7');
     expect(qualityReport).toContain('if-no-files-found: error');
@@ -1976,13 +2139,11 @@ describe('staged and CI decision simulations', () => {
     const testsJob = workflow.slice(workflow.indexOf('  tests:\n'), workflow.indexOf('  build:\n'));
 
     expect(testsJob).toContain('fetch-depth: 0');
-    expect(testsJob).toContain(
-      'npm test -- --pool=forks --poolOptions.forks.maxForks=1 --poolOptions.forks.minForks=1 --poolOptions.forks.isolate=true',
-    );
+    expect(testsJob).toContain('--ci-group tests');
     expect(packageJson.scripts.test).toBe('vitest run');
   });
 
-  it('gives the quality-report target checkout full history for immutable localization fixtures', async () => {
+  it('keeps the pure quality-report assembler free of dependency installation and history setup', async () => {
     const workflow = (
       await readFile(resolve('.github/workflows/frontend-quality.yml'), 'utf8')
     ).replace(/\r\n/g, '\n');
@@ -1992,7 +2153,8 @@ describe('staged and CI decision simulations', () => {
     );
 
     expect(qualityReport).toContain('ref: ${{ env.QUALITY_TARGET_SHA }}');
-    expect(qualityReport).toContain('fetch-depth: 0');
+    expect(qualityReport).not.toContain('fetch-depth: 0');
+    expect(qualityReport).not.toContain('npm ci');
   });
 
   it('orders aggregate guard, clean checkout, report download, and verification fail closed', async () => {
@@ -2006,20 +2168,136 @@ describe('staged and CI decision simulations', () => {
     const verify = aggregate.indexOf('Fail closed on job state and current-SHA report artifact');
 
     expect(aggregate).toContain('if: always()');
+    const aggregateSteps = [
+      'Guard resolved quality target before artifact or checkout',
+      'actions/checkout@',
+      'actions/download-artifact@',
+      'Fail closed on job state and current-SHA report artifact',
+    ] as const;
     expect(guard).toBeGreaterThanOrEqual(0);
-    expect(checkout).toBeGreaterThan(guard);
-    expect(download).toBeGreaterThan(checkout);
-    expect(verify).toBeGreaterThan(download);
+    expect(checkout).toBeGreaterThanOrEqual(0);
+    expect(download).toBeGreaterThanOrEqual(0);
+    expect(verify).toBeGreaterThanOrEqual(0);
+    expect(hasOrderedSteps(aggregate, aggregateSteps)).toBe(true);
+    expect(hasOrderedSteps(aggregateSteps.slice(1).join('\n'), aggregateSteps)).toBe(false);
+    expect(hasOrderedSteps([...aggregateSteps].reverse().join('\n'), aggregateSteps)).toBe(false);
     expect(aggregate.match(/actions\/checkout@/g)).toHaveLength(1);
     expect(aggregate).toContain('ref: ${{ env.QUALITY_TARGET_SHA }}');
-    expect(aggregate).toContain('name: frontend-quality-report-${{ env.QUALITY_TARGET_SHA }}');
+    expect(aggregate).toContain(
+      'name: frontend-quality-report-${{ env.QUALITY_TARGET_SHA }}-${{ github.run_id }}-${{ needs.quality-report.outputs.report-attempt }}',
+    );
     expect(aggregate).toContain('path: quality-reports');
     expect(aggregate).toContain('QUALITY_REPORT_PATH: quality-reports/current.json');
     expect(aggregate).toContain('QUALITY_TARGET_SHA: ${{ env.QUALITY_TARGET_SHA }}');
+    expect(aggregate).toContain('GITHUB_RUN_ID: ${{ github.run_id }}');
+    expect(aggregate).toContain('GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}');
+    expect(aggregate).toContain(
+      'QUALITY_REPORT_RUN_ATTEMPT: ${{ needs.quality-report.outputs.report-attempt }}',
+    );
     expect(aggregate).toContain('node-version: 20');
     expect(aggregate).toContain('run: node scripts/quality/verify-ci-aggregate.mjs');
     expect(aggregate).not.toContain('cache: npm');
     expect(aggregate).not.toContain('npm ci');
+  });
+
+  it('admits the exact successful report attempt during a later browser-only rerun', async () => {
+    const directory = await mkdtemp(resolve(tmpdir(), 'ci-browser-only-rerun-'));
+    temporaryPaths.push(directory);
+    const reportPath = resolve(directory, 'current.json');
+    const sha = 'd'.repeat(40);
+    const runId = '4312';
+    const reportAttempt = '1';
+    await writeFile(
+      reportPath,
+      `${JSON.stringify(validCiReport(sha, { runId, runAttempt: reportAttempt }))}\n`,
+      'utf8',
+    );
+    const needs = Object.fromEntries(
+      ['lint-static', 'typecheck', 'tests', 'build', 'browser', 'quality-report'].map((job) => [
+        job,
+        { result: 'success' },
+      ]),
+    );
+    const result = spawnSync(
+      process.execPath,
+      [resolve('scripts/quality/verify-ci-aggregate.mjs')],
+      {
+        cwd: resolve('.'),
+        encoding: 'utf8',
+        shell: false,
+        env: {
+          ...process.env,
+          QUALITY_REPORT_PATH: reportPath,
+          QUALITY_TARGET_SHA: sha,
+          GITHUB_RUN_ID: runId,
+          GITHUB_RUN_ATTEMPT: '2',
+          QUALITY_REPORT_RUN_ATTEMPT: reportAttempt,
+          NEEDS: JSON.stringify(needs),
+        },
+      },
+    );
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(result.stdout).toContain('QUALITY_CI_AGGREGATE_ACCEPTED');
+  });
+
+  it('requires parallel provenance only for admission paths that provide an expected CI identity', () => {
+    const sha = 'd'.repeat(40);
+    const expectedCiRun: CiRunIdentity = { runId: '4312', runAttempt: '1' };
+    const legacyCiReport = validCiReport(sha);
+    expect(
+      validateReportAdmission(legacyCiReport, { target: targetForCommit(sha), scope: 'ci' }),
+    ).toEqual([]);
+    expect(
+      validateReportAdmission(legacyCiReport, {
+        target: targetForCommit(sha),
+        scope: 'ci',
+        expectedCiRun,
+      }),
+    ).toContain('report CI run provenance does not match the current workflow run');
+    expect(
+      validateReportAdmission(validCiReport(sha, { runId: '4312', runAttempt: '2' }), {
+        target: targetForCommit(sha),
+        scope: 'ci',
+        expectedCiRun,
+      }),
+    ).toContain('report CI run provenance does not match the current workflow run');
+    const upperCaseReport = validCiReport(sha.toUpperCase(), expectedCiRun);
+    expect(
+      validateReportAdmission(upperCaseReport, {
+        target: targetForCommit(sha),
+        scope: 'ci',
+        expectedCiRun,
+      }),
+    ).toEqual([]);
+  });
+
+  it('requires commit-target CI context base SHA to identify the same commit at public admission', () => {
+    const sha = 'd'.repeat(40);
+    const target = targetForCommit(sha);
+    const differentlyBasedReport = validCiReport(sha);
+    differentlyBasedReport.context.baseSha = 'e'.repeat(40);
+    differentlyBasedReport.integrity.digest = reportDigest(differentlyBasedReport);
+    expect(validateReportAdmission(differentlyBasedReport, { target, scope: 'ci' })).toContain(
+      'commit context base SHA does not match report SHA',
+    );
+
+    const missingBaseReport = {
+      ...validCiReport(sha),
+      context: { execution: 'ci', scope: 'ci', targetKind: 'commit' },
+    };
+    missingBaseReport.integrity.digest = reportDigest(missingBaseReport);
+    expect(validateReportAdmission(missingBaseReport, { target, scope: 'ci' })).not.toEqual([]);
+
+    const malformedBaseReport = validCiReport(sha);
+    malformedBaseReport.context.baseSha = 'not-a-sha';
+    malformedBaseReport.integrity.digest = reportDigest(malformedBaseReport);
+    expect(validateReportAdmission(malformedBaseReport, { target, scope: 'ci' })).not.toEqual([]);
+
+    const mixedCaseReport = validCiReport(sha.toUpperCase());
+    mixedCaseReport.context.baseSha = `${sha.slice(0, 20).toUpperCase()}${sha.slice(20)}`;
+    mixedCaseReport.integrity.digest = reportDigest(mixedCaseReport);
+    expect(validateReportAdmission(mixedCaseReport, { target, scope: 'ci' })).toEqual([]);
   });
 
   it('executes the production aggregate guard and rejects resolver failures before an otherwise successful aggregate can pass', async () => {

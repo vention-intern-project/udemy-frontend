@@ -40,6 +40,8 @@ jobs:
   lint-static:
     needs: resolve-target
     runs-on: ubuntu-latest
+    outputs:
+      receipt-attempt: ${{ steps.execute.outputs.attempt }}
     env:
       QUALITY_TARGET_SHA: ${{ needs.resolve-target.outputs.quality-target-sha }}
     steps:
@@ -51,11 +53,24 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npm run format:check && npm run stylelint && npm run lint && npm run lint:quality && npm run quality:rules
+      - id: execute
+        name: Execute lint and static quality group
+        run: |
+          npm run quality -- --ci-group lint-static --sha "$QUALITY_TARGET_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" --output quality-results/lint-static.json
+          echo "attempt=$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+      - if: always()
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08
+        with:
+          name: frontend-quality-command-${{ env.QUALITY_TARGET_SHA }}-${{ github.run_id }}-${{ github.run_attempt }}-lint-static
+          path: quality-results/lint-static.json
+          retention-days: 7
+          if-no-files-found: error
 
   typecheck:
     needs: resolve-target
     runs-on: ubuntu-latest
+    outputs:
+      receipt-attempt: ${{ steps.execute.outputs.attempt }}
     env:
       QUALITY_TARGET_SHA: ${{ needs.resolve-target.outputs.quality-target-sha }}
     steps:
@@ -67,11 +82,24 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npm run typecheck
+      - id: execute
+        name: Execute typecheck quality group
+        run: |
+          npm run quality -- --ci-group typecheck --sha "$QUALITY_TARGET_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" --output quality-results/typecheck.json
+          echo "attempt=$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+      - if: always()
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08
+        with:
+          name: frontend-quality-command-${{ env.QUALITY_TARGET_SHA }}-${{ github.run_id }}-${{ github.run_attempt }}-typecheck
+          path: quality-results/typecheck.json
+          retention-days: 7
+          if-no-files-found: error
 
   tests:
     needs: resolve-target
     runs-on: ubuntu-latest
+    outputs:
+      receipt-attempt: ${{ steps.execute.outputs.attempt }}
     env:
       QUALITY_TARGET_SHA: ${{ needs.resolve-target.outputs.quality-target-sha }}
     steps:
@@ -84,11 +112,24 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npm test -- --pool=forks --poolOptions.forks.maxForks=1 --poolOptions.forks.minForks=1 --poolOptions.forks.isolate=true
+      - id: execute
+        name: Execute tests quality group
+        run: |
+          npm run quality -- --ci-group tests --sha "$QUALITY_TARGET_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" --output quality-results/tests.json
+          echo "attempt=$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+      - if: always()
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08
+        with:
+          name: frontend-quality-command-${{ env.QUALITY_TARGET_SHA }}-${{ github.run_id }}-${{ github.run_attempt }}-tests
+          path: quality-results/tests.json
+          retention-days: 7
+          if-no-files-found: error
 
   build:
     needs: resolve-target
     runs-on: ubuntu-latest
+    outputs:
+      receipt-attempt: ${{ steps.execute.outputs.attempt }}
     env:
       QUALITY_TARGET_SHA: ${{ needs.resolve-target.outputs.quality-target-sha }}
     steps:
@@ -100,11 +141,26 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npm run build
+      - id: execute
+        name: Execute build quality group
+        run: |
+          npm run quality -- --ci-group build --sha "$QUALITY_TARGET_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" --output quality-results/build.json
+          echo "attempt=$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+      - if: always()
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08
+        with:
+          name: frontend-quality-command-${{ env.QUALITY_TARGET_SHA }}-${{ github.run_id }}-${{ github.run_attempt }}-build
+          path: quality-results/build.json
+          retention-days: 7
+          if-no-files-found: error
 
   browser:
+    name: browser (${{ matrix.config }})
     needs: resolve-target
     runs-on: ubuntu-latest
+    container:
+      image: ${{ matrix.image || '' }}
+      options: --init --ipc=host
     strategy:
       fail-fast: false
       matrix:
@@ -121,8 +177,14 @@ jobs:
           - tests/browser/instructor-courses-fe029.playwright.config.ts
           - tests/browser/instructor-course-editor-fe014.playwright.config.ts
           - tests/browser/learning-progress.playwright.config.ts
+        include:
+          - config: tests/browser/course-detail.playwright.config.ts
+            image: mcr.microsoft.com/playwright:v1.61.1-noble@sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48
     env:
       QUALITY_TARGET_SHA: ${{ needs.resolve-target.outputs.quality-target-sha }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
@@ -131,31 +193,82 @@ jobs:
         with:
           node-version: 20
           cache: npm
+      - if: matrix.image != ''
+        name: Guard Playwright image and locked version
+        env:
+          PLAYWRIGHT_IMAGE: ${{ matrix.image }}
+        run: node scripts/quality/verify-playwright-image.mjs
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - if: matrix.image == ''
+        run: npx playwright install --with-deps chromium
       - run: npx playwright test --config "${{ matrix.config }}" --project=chromium --workers=1 --retries=0 --reporter=line
 
   quality-report:
-    needs: resolve-target
+    if: always()
+    needs: [resolve-target, lint-static, typecheck, tests, build]
     runs-on: ubuntu-latest
+    outputs:
+      report-attempt: ${{ steps.verify.outputs.attempt }}
     env:
       QUALITY_TARGET_SHA: ${{ needs.resolve-target.outputs.quality-target-sha }}
     steps:
+      - name: Guard resolved quality target before checkout or artifacts
+        shell: bash
+        env:
+          TARGET_RESOLUTION_RESULT: ${{ needs.resolve-target.result }}
+        run: |
+          if [[ "$TARGET_RESOLUTION_RESULT" != success || ! "$QUALITY_TARGET_SHA" =~ ^[0-9a-fA-F]{7,64}$ ]]; then
+            echo 'Quality target resolution failed; refusing checkout, artifact, and assembly work.' >&2
+            exit 1
+          fi
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           ref: ${{ env.QUALITY_TARGET_SHA }}
-          fetch-depth: 0
       - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a
         with:
           node-version: 20
-          cache: npm
-      - run: npm ci
-      - run: npm run quality -- --scope ci --sha "$QUALITY_TARGET_SHA" --output quality-reports/current.json
-      - run: npm run quality:verify-report -- --report quality-reports/current.json --sha "$QUALITY_TARGET_SHA" --scope ci
+      - name: Validate successful producer states and published attempts before artifact admission
+        shell: bash
+        env:
+          LINT_STATIC_RESULT: ${{ needs.lint-static.result }}
+          LINT_STATIC_ATTEMPT: ${{ needs.lint-static.outputs.receipt-attempt }}
+          TYPECHECK_RESULT: ${{ needs.typecheck.result }}
+          TYPECHECK_ATTEMPT: ${{ needs.typecheck.outputs.receipt-attempt }}
+          TESTS_RESULT: ${{ needs.tests.result }}
+          TESTS_ATTEMPT: ${{ needs.tests.outputs.receipt-attempt }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          BUILD_ATTEMPT: ${{ needs.build.outputs.receipt-attempt }}
+        run: |
+          printf '{"lint-static":{"result":"%s","runAttempt":"%s"},"typecheck":{"result":"%s","runAttempt":"%s"},"tests":{"result":"%s","runAttempt":"%s"},"build":{"result":"%s","runAttempt":"%s"}}' "$LINT_STATIC_RESULT" "$LINT_STATIC_ATTEMPT" "$TYPECHECK_RESULT" "$TYPECHECK_ATTEMPT" "$TESTS_RESULT" "$TESTS_ATTEMPT" "$BUILD_RESULT" "$BUILD_ATTEMPT" > producer-results.json
+          node --input-type=module -e "import { readFileSync } from 'node:fs'; import { validateCiProducerResults } from './scripts/quality/ci-command-results.mjs'; const errors = validateCiProducerResults(JSON.parse(readFileSync(process.argv[1], 'utf8')), process.argv[2]); if (errors.length) throw new Error('CI producer results rejected: ' + errors.join('; '));" producer-results.json "$GITHUB_RUN_ATTEMPT"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: frontend-quality-command-${{ env.QUALITY_TARGET_SHA }}-${{ github.run_id }}-${{ needs.lint-static.outputs.receipt-attempt }}-lint-static
+          path: quality-results
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: frontend-quality-command-${{ env.QUALITY_TARGET_SHA }}-${{ github.run_id }}-${{ needs.typecheck.outputs.receipt-attempt }}-typecheck
+          path: quality-results
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: frontend-quality-command-${{ env.QUALITY_TARGET_SHA }}-${{ github.run_id }}-${{ needs.tests.outputs.receipt-attempt }}-tests
+          path: quality-results
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: frontend-quality-command-${{ env.QUALITY_TARGET_SHA }}-${{ github.run_id }}-${{ needs.build.outputs.receipt-attempt }}-build
+          path: quality-results
+      - name: Assemble one exact-run report without broad command execution
+        run: |
+          node scripts/quality/run-quality.mjs --ci-results quality-results --producer-results producer-results.json --sha "$QUALITY_TARGET_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" --output quality-reports/current.json
+      - id: verify
+        name: Verify assembled quality report and publish its attempt
+        run: |
+          node scripts/quality/verify-report.mjs --report quality-reports/current.json --sha "$QUALITY_TARGET_SHA" --scope ci --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT"
+          echo "attempt=$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
       - if: always()
         uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08
         with:
-          name: frontend-quality-report-${{ env.QUALITY_TARGET_SHA }}
+          name: frontend-quality-report-${{ env.QUALITY_TARGET_SHA }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: quality-reports/current.json
           retention-days: 7
           if-no-files-found: error
@@ -180,7 +293,7 @@ jobs:
           ref: ${{ env.QUALITY_TARGET_SHA }}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: frontend-quality-report-${{ env.QUALITY_TARGET_SHA }}
+          name: frontend-quality-report-${{ env.QUALITY_TARGET_SHA }}-${{ github.run_id }}-${{ needs.quality-report.outputs.report-attempt }}
           path: quality-reports
       - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a
         with:
@@ -190,4 +303,7 @@ jobs:
           NEEDS: ${{ toJson(needs) }}
           QUALITY_REPORT_PATH: quality-reports/current.json
           QUALITY_TARGET_SHA: ${{ env.QUALITY_TARGET_SHA }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+          QUALITY_REPORT_RUN_ATTEMPT: ${{ needs.quality-report.outputs.report-attempt }}
         run: node scripts/quality/verify-ci-aggregate.mjs

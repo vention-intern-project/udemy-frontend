@@ -10,6 +10,8 @@ const supportedOptions = new Set([
   '--target-root',
   '--base-root',
   '--max-age-minutes',
+  '--run-id',
+  '--run-attempt',
 ]);
 
 function parseArguments(argv) {
@@ -41,6 +43,8 @@ const targetRoot = argumentsByName.get('--target-root');
 const baseRoot = argumentsByName.get('--base-root');
 const maxAgeValue = argumentsByName.get('--max-age-minutes');
 const maxAgeMinutes = maxAgeValue === undefined ? 30 : Number(maxAgeValue);
+const expectedRunId = argumentsByName.get('--run-id');
+const expectedRunAttempt = argumentsByName.get('--run-attempt');
 const localAttestationKey =
   expectedScope === 'full' ? process.env.QUALITY_REPORT_ATTESTATION_KEY : undefined;
 if (!reportPath)
@@ -64,6 +68,13 @@ if (expectedScope === 'ci' && (!expectedSha || targetPatch)) {
 if (expectedScope === 'ci' && (targetRoot || baseRoot)) {
   throw new Error('CI report verification must not accept local snapshot roots.');
 }
+if ((expectedRunId || expectedRunAttempt) && (!expectedRunId || !expectedRunAttempt))
+  throw new Error('CI run verification requires both --run-id and --run-attempt.');
+if (
+  (expectedRunId && !/^[1-9][0-9]*$/.test(expectedRunId)) ||
+  (expectedRunAttempt && !/^[1-9][0-9]*$/.test(expectedRunAttempt))
+)
+  throw new Error('CI run verification requires nonzero decimal identifiers.');
 let report;
 try {
   report = JSON.parse(await readFile(resolve(reportPath), 'utf8'));
@@ -83,6 +94,9 @@ const errors = validateReportAdmission(report, {
   scope: expectedScope,
   maxAgeMinutes,
   localAttestationKey,
+  expectedCiRun: expectedRunId
+    ? { runId: expectedRunId, runAttempt: expectedRunAttempt }
+    : undefined,
 });
 if (errors.length) throw new Error(`QUALITY_REPORT_REJECTED: ${errors.join('; ')}`);
 console.log('QUALITY_REPORT_ACCEPTED');

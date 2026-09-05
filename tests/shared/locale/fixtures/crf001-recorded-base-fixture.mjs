@@ -3,6 +3,7 @@ import { writeFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
+let recordedBaseArtifactsPromise;
 
 // This immutable tree is the complete CRF-001 reconciliation target, not a
 // projection of the caller's working tree.
@@ -195,7 +196,8 @@ export function recordedBaseAccountMenuSource(source) {
   return reverseUnifiedPatch(source, ACCOUNT_MENU_RUNTIME_PATCH);
 }
 
-export async function writeRecordedBaseArtifacts({ registryBaselinePath, generatedBaselinePath }) {
+async function recordedBaseArtifacts() {
+  if (recordedBaseArtifactsPromise) return recordedBaseArtifactsPromise;
   const readRecordedArtifact = async (path) => {
     const { stdout } = await execFileAsync('git', [
       'show',
@@ -203,10 +205,21 @@ export async function writeRecordedBaseArtifacts({ registryBaselinePath, generat
     ]);
     return stdout;
   };
-  const [registryBeforeCrf001, outputBeforeCrf001] = await Promise.all([
+  const load = Promise.all([
     readRecordedArtifact(RECORDED_BASE_REQUEST.base.registryPath),
     readRecordedArtifact(RECORDED_BASE_REQUEST.base.generatedPath),
   ]);
+  recordedBaseArtifactsPromise = load;
+  try {
+    return await load;
+  } catch (error) {
+    if (recordedBaseArtifactsPromise === load) recordedBaseArtifactsPromise = undefined;
+    throw error;
+  }
+}
+
+export async function writeRecordedBaseArtifacts({ registryBaselinePath, generatedBaselinePath }) {
+  const [registryBeforeCrf001, outputBeforeCrf001] = await recordedBaseArtifacts();
   await Promise.all([
     writeFile(registryBaselinePath, registryBeforeCrf001, 'utf8'),
     writeFile(generatedBaselinePath, outputBeforeCrf001, 'utf8'),

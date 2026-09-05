@@ -17,6 +17,14 @@ export const REQUIRED_QUALITY_COMMAND_IDS = Object.freeze([
   'tests',
   'build',
 ]);
+export const CI_GROUP_IDS = Object.freeze(['lint-static', 'typecheck', 'tests', 'build']);
+export const QUALITY_COMMAND_GROUPS = Object.freeze({
+  'lint-static': Object.freeze(['format', 'stylelint', 'lint', 'quality-lint', 'static-rules']),
+  typecheck: Object.freeze(['typecheck']),
+  tests: Object.freeze(['tests']),
+  build: Object.freeze(['build']),
+});
+const commitSha = /^[0-9a-f]{7,64}$/i;
 export const DIAGNOSTIC_SUMMARY_KEYS = Object.freeze([
   'allowedRouterFutureWarnings',
   'unexpectedReactActWarnings',
@@ -60,6 +68,54 @@ const supportedKeywords = new Set([
   'definitions',
   'format',
 ]);
+
+export function commitShasEqual(left, right) {
+  return (
+    typeof left === 'string' &&
+    typeof right === 'string' &&
+    commitSha.test(left) &&
+    commitSha.test(right) &&
+    left.toLowerCase() === right.toLowerCase()
+  );
+}
+
+export function validateQualityCommandGroupPartition(commandGroups) {
+  const errors = [];
+  if (!commandGroups || typeof commandGroups !== 'object' || Array.isArray(commandGroups))
+    return ['quality command groups must be an object'];
+  for (const group of Object.keys(commandGroups))
+    if (!CI_GROUP_IDS.includes(group)) errors.push(`quality command group is unknown: ${group}`);
+  const owned = [];
+  for (const group of CI_GROUP_IDS) {
+    const commands = commandGroups[group];
+    if (!Array.isArray(commands)) {
+      errors.push(`quality command group is missing: ${group}`);
+      continue;
+    }
+    for (const command of commands) {
+      if (!REQUIRED_QUALITY_COMMAND_IDS.includes(command))
+        errors.push(`quality command is unknown: ${command}`);
+      else owned.push(command);
+    }
+  }
+  for (const command of REQUIRED_QUALITY_COMMAND_IDS) {
+    const count = owned.filter((ownedCommand) => ownedCommand === command).length;
+    if (count !== 1)
+      errors.push(
+        count === 0
+          ? `quality command is unassigned: ${command}`
+          : `quality command is assigned more than once: ${command}`,
+      );
+  }
+  return errors;
+}
+
+const qualityCommandGroupPartitionErrors =
+  validateQualityCommandGroupPartition(QUALITY_COMMAND_GROUPS);
+if (qualityCommandGroupPartitionErrors.length)
+  throw new Error(
+    `Quality command groups are invalid: ${qualityCommandGroupPartitionErrors.join('; ')}`,
+  );
 
 function schemaError(path, message) {
   return `${path}: ${message}`;
@@ -222,7 +278,7 @@ function verifyLocalPatchAttestation(report, key) {
   return undefined;
 }
 
-function isStrictRfc3339DateTime(value) {
+export function isStrictRfc3339DateTime(value) {
   if (typeof value !== 'string') return false;
   const match =
     /^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d):([0-5]\d)(?:\.\d{1,9})?(Z|[+-](?:0\d|1\d|2[0-3]):[0-5]\d)$/.exec(
@@ -235,6 +291,33 @@ function isStrictRfc3339DateTime(value) {
   if (month < 1 || month > 12) return false;
   const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
   return day >= 1 && day <= daysInMonth && !Number.isNaN(Date.parse(value));
+}
+
+export function validateQualityCommand(command) {
+  const errors = [];
+  validateSchemaValue(reportSchema.definitions.command, command, '$command', errors);
+  if (errors.length || !command || typeof command !== 'object' || Array.isArray(command))
+    return errors;
+  if (!REQUIRED_QUALITY_COMMAND_IDS.includes(command.id)) errors.push('command id is not required');
+  if (command.status === 'pass' && (command.exitCode !== 0 || command.errorCode !== null))
+    errors.push('pass outcome must have exitCode 0 and no errorCode');
+  if (
+    command.status === 'fail' &&
+    (!Number.isInteger(command.exitCode) || command.exitCode === 0) &&
+    command.errorCode === null
+  )
+    errors.push('fail outcome must record a non-zero exitCode or errorCode');
+  if (command.status === 'pass' && unexpectedDiagnosticCount(command.diagnostics) > 0)
+    errors.push('pass outcome cannot contain unexpected diagnostics');
+  return errors;
+}
+
+export function validateReportSection(section, value) {
+  const schema = reportSchema.definitions?.[section];
+  if (!schema) return [`unknown report schema section ${section}`];
+  const errors = [];
+  validateSchemaValue(schema, value, `$${section}`, errors);
+  return errors;
 }
 
 function validateRequiredCommands(report, errors) {
@@ -250,16 +333,7 @@ function validateRequiredCommands(report, errors) {
     const expectedId = REQUIRED_QUALITY_COMMAND_IDS[index];
     if (command.id !== expectedId)
       errors.push(`commands[${index}] must be the required ${expectedId} command`);
-    if (command.status === 'pass' && (command.exitCode !== 0 || command.errorCode !== null))
-      errors.push(`commands[${index}] pass outcome must have exitCode 0 and no errorCode`);
-    if (
-      command.status === 'fail' &&
-      (!Number.isInteger(command.exitCode) || command.exitCode === 0) &&
-      command.errorCode === null
-    )
-      errors.push(`commands[${index}] fail outcome must record a non-zero exitCode or errorCode`);
-    if (command.status === 'pass' && unexpectedDiagnosticCount(command.diagnostics) > 0)
-      errors.push(`commands[${index}] pass outcome cannot contain unexpected diagnostics`);
+    errors.push(...validateQualityCommand(command).map((error) => `commands[${index}] ${error}`));
   });
   const expectedOutcome =
     commands.every((command) => command.status === 'pass') && report.findings.length === 0
@@ -594,12 +668,22 @@ export function validateReport(report) {
     errors.push('context scope does not match report scope');
   if (report.context.targetKind !== report.target.kind)
     errors.push('context target kind does not match report target');
-  if (report.target.kind === 'commit' && report.target.sha !== report.sha)
+  if (report.target.kind === 'commit' && !commitShasEqual(report.target.sha, report.sha))
     errors.push('commit target does not match report SHA');
+  if (report.target.kind === 'commit' && !commitShasEqual(report.context.baseSha, report.sha))
+    errors.push('commit context base SHA does not match report SHA');
   if (report.target.kind === 'local_patch' && report.context.execution !== 'local')
     errors.push('local patch target must use local execution context');
   if (report.target.kind === 'commit' && report.context.execution !== 'ci')
     errors.push('commit target must use CI execution context');
+  if (report.scope === 'full' && 'ciRun' in report.context)
+    errors.push('local full reports must not contain CI run provenance');
+  if (
+    report.scope === 'ci' &&
+    'ciRun' in report.context &&
+    report.context.ciRun?.source !== 'parallel-groups'
+  )
+    errors.push('CI run provenance must identify parallel groups');
   validateRequiredCommands(report, errors);
   if (
     report.integrity?.algorithm !== 'sha256' ||
@@ -615,7 +699,7 @@ export function verifyReportTarget(report, expectedTarget) {
   if (!expectedTarget || report.target?.kind !== expectedTarget.kind) {
     return ['report target kind does not match the current target'];
   }
-  if (expectedTarget.kind === 'commit' && report.target.sha !== expectedTarget.sha) {
+  if (expectedTarget.kind === 'commit' && !commitShasEqual(report.target.sha, expectedTarget.sha)) {
     errors.push('report commit target does not match the current target');
   }
   if (expectedTarget.kind === 'local_patch') {
@@ -636,6 +720,7 @@ export function validateReportAdmission(
     maxAgeMinutes = 30,
     clockSkewToleranceMinutes = REPORT_CLOCK_SKEW_TOLERANCE_MINUTES,
     localAttestationKey,
+    expectedCiRun,
   },
 ) {
   const errors = [...validateReport(report)];
@@ -654,6 +739,16 @@ export function validateReportAdmission(
   if (target?.kind === 'local_patch') {
     const attestationError = verifyLocalPatchAttestation(report, localAttestationKey);
     if (attestationError) errors.push(attestationError);
+  }
+  if (expectedCiRun) {
+    const ciRun = report?.context?.ciRun;
+    if (
+      !ciRun ||
+      ciRun.source !== 'parallel-groups' ||
+      ciRun.runId !== expectedCiRun.runId ||
+      ciRun.runAttempt !== expectedCiRun.runAttempt
+    )
+      errors.push('report CI run provenance does not match the current workflow run');
   }
   return errors;
 }

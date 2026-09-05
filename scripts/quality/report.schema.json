@@ -102,7 +102,17 @@
         "execution": { "enum": ["local", "ci"] },
         "scope": { "enum": ["full", "ci"] },
         "targetKind": { "enum": ["commit", "local_patch"] },
-        "baseSha": { "oneOf": [{ "$ref": "#/definitions/sha" }, { "type": "null" }] }
+        "baseSha": { "oneOf": [{ "$ref": "#/definitions/sha" }, { "type": "null" }] },
+        "ciRun": {
+          "type": "object",
+          "required": ["source", "runId", "runAttempt"],
+          "properties": {
+            "source": { "const": "parallel-groups" },
+            "runId": { "type": "string", "pattern": "^[1-9][0-9]*$" },
+            "runAttempt": { "type": "string", "pattern": "^[1-9][0-9]*$" }
+          },
+          "additionalProperties": false
+        }
       },
       "additionalProperties": false
     },
