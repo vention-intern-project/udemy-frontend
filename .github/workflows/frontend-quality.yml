@@ -155,8 +155,12 @@ jobs:
           if-no-files-found: error
 
   browser:
+    name: browser (${{ matrix.config }})
     needs: resolve-target
     runs-on: ubuntu-latest
+    container:
+      image: ${{ matrix.image || '' }}
+      options: --init --ipc=host
     strategy:
       fail-fast: false
       matrix:
@@ -173,8 +177,14 @@ jobs:
           - tests/browser/instructor-courses-fe029.playwright.config.ts
           - tests/browser/instructor-course-editor-fe014.playwright.config.ts
           - tests/browser/learning-progress.playwright.config.ts
+        include:
+          - config: tests/browser/course-detail.playwright.config.ts
+            image: mcr.microsoft.com/playwright:v1.61.1-noble@sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48
     env:
       QUALITY_TARGET_SHA: ${{ needs.resolve-target.outputs.quality-target-sha }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
@@ -183,8 +193,14 @@ jobs:
         with:
           node-version: 20
           cache: npm
+      - if: matrix.image != ''
+        name: Guard Playwright image and locked version
+        env:
+          PLAYWRIGHT_IMAGE: ${{ matrix.image }}
+        run: node scripts/quality/verify-playwright-image.mjs
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - if: matrix.image == ''
+        run: npx playwright install --with-deps chromium
       - run: npx playwright test --config "${{ matrix.config }}" --project=chromium --workers=1 --retries=0 --reporter=line
 
   quality-report:

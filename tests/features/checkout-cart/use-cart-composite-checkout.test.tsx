@@ -57,6 +57,33 @@ function decode<TResponse, TBody>(
   return options.decode ? options.decode(value) : (value as TResponse);
 }
 
+interface Deferred<TValue> {
+  readonly promise: Promise<TValue>;
+  resolve(value: TValue): void;
+}
+
+interface RecoveryDiscoveryReadCounts {
+  readonly enrollments: number;
+  readonly cart: number;
+}
+
+function expectOneRecoveryDiscoveryRead(counts: RecoveryDiscoveryReadCounts) {
+  expect(counts).toEqual({ enrollments: 1, cart: 1 });
+}
+
+function deferred<TValue>(): Deferred<TValue> {
+  let resolvePromise: ((value: TValue) => void) | undefined;
+  const promise = new Promise<TValue>((resolve) => {
+    resolvePromise = resolve;
+  });
+  return {
+    promise,
+    resolve(value) {
+      resolvePromise?.(value);
+    },
+  };
+}
+
 function enrollmentList(
   status: 'pending_payment' | 'active' = 'pending_payment',
   enrollmentId = 70,
@@ -224,6 +251,49 @@ describe('useCartCompositeCheckout', () => {
       },
     ]);
     expect(counts).toEqual({ checkout: 0, enrollments: 1, cart: 1, payment: 0, restore: 0 });
+  });
+
+  it('coalesces duplicate recovery discovery while its paired reads are held', async () => {
+    const counts = { enrollments: 0, cart: 0 };
+    const enrollments = deferred<ReturnType<typeof enrollmentList>>();
+    const cart = deferred<ReturnType<typeof emptyCart>>();
+    const request: ApiClient['request'] = async <TResponse, TBody>(
+      options: ApiRequestOptions<TBody, TResponse>,
+    ) => {
+      if (options.path === '/me') return decode(options, student);
+      if (options.path === '/enrollments/my') {
+        counts.enrollments += 1;
+        return decode(options, await enrollments.promise);
+      }
+      if (options.path === '/cart') {
+        counts.cart += 1;
+        return decode(options, await cart.promise);
+      }
+      throw new Error(`Unexpected request ${options.method} ${options.path}`);
+    };
+    const { result } = renderHook(() => useCartCompositeCheckout([paidCourse]), {
+      wrapper: createWrapper(request),
+    });
+
+    await waitFor(() => expect(result.current.phase).toBe('idle'));
+    act(() => {
+      result.current.discoverRecovery();
+      result.current.discoverRecovery();
+    });
+    await waitFor(() => expectOneRecoveryDiscoveryRead(counts));
+    expect(result.current.phase).toBe('discovering_recovery');
+
+    await act(async () => {
+      enrollments.resolve(enrollmentList());
+      cart.resolve(emptyCart());
+    });
+    await waitFor(() => expect(result.current.phase).toBe('recovery_candidates'));
+    expectOneRecoveryDiscoveryRead(counts);
+  });
+
+  it('test-owned recovery guard rejects an injected duplicate discovery read', () => {
+    expect(() => expectOneRecoveryDiscoveryRead({ enrollments: 2, cart: 1 })).toThrow();
+    expect(() => expectOneRecoveryDiscoveryRead({ enrollments: 1, cart: 1 })).not.toThrow();
   });
 
   it('re-proves recovery state before resuming one selected completion without checkout', async () => {

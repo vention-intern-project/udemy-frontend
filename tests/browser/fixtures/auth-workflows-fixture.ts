@@ -464,7 +464,7 @@ async function fillWorkflow(page: Page, workflow: AuthWorkflow) {
   await page.getByLabel(/^New password/).fill('new password');
   await page.getByLabel(/^Confirm new password/).fill('new password');
 }
-type AuthWorkflow = 'signup' | 'login' | 'forgot' | 'reset';
+export type AuthWorkflow = 'signup' | 'login' | 'forgot' | 'reset';
 
 const profile = {
   email: 'learner@example.com',
@@ -475,6 +475,29 @@ const profile = {
   phone_number: null,
   created_at: '2026-07-21T00:00:00Z',
 };
+
+const APP_SHELL_BRAND_IMAGE_SELECTOR =
+  'img[src*="/src/app/layouts/assets/learnhub-book-ui018.png"]';
+
+export async function waitForAuthAppShellBrandImage(page: Page) {
+  await page.locator(APP_SHELL_BRAND_IMAGE_SELECTOR).evaluate(async (element) => {
+    if (!(element instanceof HTMLImageElement))
+      throw new Error('AppShell brand image is unavailable');
+    if (!element.complete) {
+      await new Promise<void>((resolve, reject) => {
+        element.addEventListener('load', () => resolve(), { once: true });
+        element.addEventListener(
+          'error',
+          () => reject(new Error('AppShell brand image failed to load')),
+          {
+            once: true,
+          },
+        );
+      });
+    }
+    if (element.naturalWidth <= 0) throw new Error('AppShell brand image failed to load');
+  });
+}
 
 function signupResponse(accessToken: string) {
   return {
@@ -567,10 +590,6 @@ function allowRequestFailures(
   failures.forEach(({ occurrences = 1, ...identity }) =>
     evidence.requests.allow(identity, occurrences),
   );
-}
-
-function allowOptionalRequestFailure(page: Page, failure: RequestFailureIdentity) {
-  requireAuthWorkflowRuntimeEvidence(page).requests.allowOptional(failure);
 }
 
 export async function runAuthLocalizedResidualScenario(page: Page, locale: AuthResidualLocale) {
@@ -684,92 +703,70 @@ export interface AuthWorkflowReflowScenario {
   readonly label: string;
   readonly pageScaleFactor: number;
   readonly width: number;
+  readonly workflow: AuthWorkflow;
 }
 
 export async function runAuthWorkflowReflowScenario(
   page: Page,
-  { label, pageScaleFactor, width }: AuthWorkflowReflowScenario,
+  { label, pageScaleFactor, width, workflow }: AuthWorkflowReflowScenario,
 ) {
   void label;
 
-  allowHttpFailures(
-    page,
-    { method: 'POST', path: '/signup', status: 400 },
-    { method: 'POST', path: '/login', status: 401 },
-    { method: 'POST', path: '/forgot-password', status: 422 },
-    { method: 'POST', path: '/reset-password', status: 400 },
-  );
-  allowRequestFailures(
-    page,
-    { method: 'GET', path: '/cart', errorText: 'net::ERR_ABORTED', occurrences: 2 },
-    {
-      method: 'GET',
-      path: AUTH_MY_LEARNING_COLLECTION_PATH,
-      errorText: 'net::ERR_ABORTED',
-      occurrences: 2,
-    },
-  );
-  // Each authenticated success intentionally advances from Learning into the
-  // next independent workflow state. That navigation may abort this sole
-  // decorative Learning empty-state asset before it finishes loading.
-  allowOptionalRequestFailure(page, {
-    method: 'GET',
-    path: '/src/pages/learning-list-page/assets/my-learning-empty-state-ui022.png',
-    errorText: 'net::ERR_ABORTED',
+  allowHttpFailures(page, {
+    method: 'POST',
+    path: workflowUi[workflow].operation,
+    status: workflow === 'login' ? 401 : workflow === 'forgot' ? 422 : 400,
   });
+  if (workflow === 'signup' || workflow === 'login') {
+    allowRequestFailures(
+      page,
+      { method: 'GET', path: '/cart', errorText: 'net::ERR_ABORTED' },
+      { method: 'GET', path: AUTH_MY_LEARNING_COLLECTION_PATH, errorText: 'net::ERR_ABORTED' },
+    );
+  }
   await page.setViewportSize({ width, height: 800 });
   const cdp = pageScaleFactor === 1 ? null : await page.context().newCDPSession(page);
-  const workflows: AuthWorkflow[] = ['signup', 'login', 'forgot', 'reset'];
-  const attempts: Record<AuthWorkflow, number> = { signup: 0, login: 0, forgot: 0, reset: 0 };
-  const errorGates: Record<AuthWorkflow, ReturnType<typeof createDeferred>> = {
-    signup: createDeferred(),
-    login: createDeferred(),
-    forgot: createDeferred(),
-    reset: createDeferred(),
-  };
+  const ui = workflowUi[workflow];
+  let attempts = 0;
+  const errorGate = createDeferred();
 
   await page.route('**/me', (route) => fulfillJson(route, 200, profile));
-  for (const workflow of workflows) {
-    const ui = workflowUi[workflow];
-    await page.route(`**${ui.operation}`, async (route) => {
-      if (route.request().method() !== 'POST') return route.fallback();
-      attempts[workflow] += 1;
-      if (attempts[workflow] === 1) {
-        await errorGates[workflow].promise;
-        if (workflow === 'login') {
-          await fulfillJson(route, 401, { detail: 'RESPONSIVE_LOGIN_ERROR' });
-        } else if (workflow === 'forgot') {
-          await fulfillJson(route, 422, {
-            detail: [
-              {
-                loc: ['body', 'email'],
-                msg: 'RESPONSIVE_FORGOT_ERROR',
-                type: 'value_error.email',
-              },
-            ],
-          });
-        } else {
-          await fulfillJson(route, 400, {
-            detail: `RESPONSIVE_${workflow.toUpperCase()}_ERROR`,
-          });
-        }
-        return;
+  await page.route(`**${ui.operation}`, async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    attempts += 1;
+    if (attempts === 1) {
+      await errorGate.promise;
+      if (workflow === 'login') {
+        await fulfillAuthJson(route, 401, { detail: 'RESPONSIVE_LOGIN_ERROR' });
+      } else if (workflow === 'forgot') {
+        await fulfillAuthJson(route, 422, {
+          detail: [
+            {
+              loc: ['body', 'email'],
+              msg: 'RESPONSIVE_FORGOT_ERROR',
+              type: 'value_error.email',
+            },
+          ],
+        });
+      } else {
+        await fulfillAuthJson(route, 400, {
+          detail: `RESPONSIVE_${workflow.toUpperCase()}_ERROR`,
+        });
       }
-      await fulfillJson(
-        route,
-        200,
-        workflow === 'signup'
-          ? signupResponse('responsive-signup-token')
-          : workflow === 'login'
-            ? { access_token: 'responsive-login-token' }
-            : { message: 'ok' },
-      );
-    });
-  }
+      return;
+    }
+    await fulfillAuthJson(
+      route,
+      200,
+      workflow === 'signup'
+        ? signupResponse('responsive-signup-token')
+        : workflow === 'login'
+          ? { access_token: 'responsive-login-token' }
+          : { message: 'ok' },
+    );
+  });
 
-  for (const [index, workflow] of workflows.entries()) {
-    if (index > 0) await page.evaluate(() => localStorage.clear());
-    const ui = workflowUi[workflow];
+  try {
     await page.goto(ui.path);
     if (cdp) {
       await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor });
@@ -799,10 +796,10 @@ export async function runAuthWorkflowReflowScenario(
     await fillWorkflow(page, workflow);
     await dispatchSameTickSubmits(page);
     await expect(page.getByRole('button', { name: ui.pending })).toBeDisabled();
-    await expect.poll(() => attempts[workflow]).toBe(1);
+    await expect.poll(() => attempts).toBe(1);
     await expectNoHorizontalOverflow(page);
 
-    errorGates[workflow].resolve();
+    errorGate.resolve();
     if (workflow === 'forgot') {
       await expect(page.getByLabel(/^Email/)).toBeFocused();
       await expect(page.getByRole('alert')).toHaveCount(0);
@@ -816,6 +813,7 @@ export async function runAuthWorkflowReflowScenario(
     await page.getByRole('button', { name: ui.idle }).press('Enter');
     if (workflow === 'signup' || workflow === 'login') {
       await expect(page.getByRole('heading', { name: 'My learning' })).toBeVisible();
+      await waitForAuthAppShellBrandImage(page);
     } else if (workflow === 'forgot') {
       await expect(page.getByRole('status')).toContainText(
         'If the account can use password recovery',
@@ -823,10 +821,11 @@ export async function runAuthWorkflowReflowScenario(
     } else {
       await expect(page.getByText('Password reset complete')).toBeVisible();
     }
-    expect(attempts[workflow]).toBe(2);
+    expect(attempts).toBe(2);
     await expectNoHorizontalOverflow(page);
+  } finally {
+    await cdp?.detach();
   }
-  await cdp?.detach();
 }
 
 export const authLocalizedResidualController = {
