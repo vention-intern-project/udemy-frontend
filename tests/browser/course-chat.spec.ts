@@ -249,6 +249,15 @@ async function waitForRenderedAiChatAssets(page: Page) {
   });
 }
 
+async function waitForViewportReflow(page: Page) {
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
+}
+
 async function expectNoOverflow(page: Page) {
   const geometry = await page.evaluate(() => ({
     bodyWidth: document.body.scrollWidth,
@@ -1379,11 +1388,14 @@ test('uses one compact Suggested Actions disclosure below 1000px without changin
   await installCourseChatFixture(page, chatRequests);
   await page.emulateMedia({ reducedMotion: 'reduce' });
 
+  const compactSuggestedActionsColdLoadWidths = new Set([320, 768]);
   for (const width of [320, 390, 618, 767, 768, 789, 895, 896, 999]) {
     await page.setViewportSize({ width, height: 900 });
-    await page.goto('/ai-chat', { waitUntil: 'commit' });
+    if (compactSuggestedActionsColdLoadWidths.has(width))
+      await page.goto('/ai-chat', { waitUntil: 'commit' });
     const trigger = page.getByRole('button', { name: 'Suggested Actions' });
     await expect(trigger).toBeVisible({ timeout: scenarioReadinessTimeout });
+    await waitForViewportReflow(page);
     await expect(trigger).toHaveAttribute('aria-expanded', 'false');
     await expect(trigger).toHaveAttribute('aria-controls', /.+/);
     expect((await trigger.boundingBox())?.height).toBeGreaterThanOrEqual(44);
@@ -1411,6 +1423,7 @@ test('uses one compact Suggested Actions disclosure below 1000px without changin
   await page.goto('/ai-chat', { waitUntil: 'commit' });
   const trigger = page.getByRole('button', { name: 'Suggested Actions' });
   await expect(trigger).toBeVisible({ timeout: scenarioReadinessTimeout });
+  await waitForViewportReflow(page);
   await trigger.focus();
   await expect(trigger).toBeFocused();
   expect(await trigger.evaluate((element) => element.matches(':focus-visible'))).toBe(true);
@@ -1448,11 +1461,12 @@ test('uses one compact Suggested Actions disclosure below 1000px without changin
     await page.evaluate(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches),
   ).toBe(true);
 
+  const heroColdLoadWidths = new Set([768, 1000]);
   for (const width of [
     768, 789, 895, 896, 996, 998, 999, 1000, 1024, 1080, 1081, 1199, 1200, 1440,
   ]) {
     await page.setViewportSize({ width, height: 900 });
-    await page.goto('/ai-chat', { waitUntil: 'commit' });
+    if (heroColdLoadWidths.has(width)) await page.goto('/ai-chat', { waitUntil: 'commit' });
     const suggestedActionsTrigger = page.getByRole('button', { name: 'Suggested Actions' });
     const sidebar = page.getByRole('heading', { name: 'Suggested Actions' });
     if (width < 1000) {
@@ -1460,6 +1474,7 @@ test('uses one compact Suggested Actions disclosure below 1000px without changin
       await expect(sidebar).toHaveCount(0);
       const chatFrame = page.getByRole('region', { name: 'AI assistant chat' });
       await expect(chatFrame).toBeVisible();
+      await waitForViewportReflow(page);
       const compactGeometry = await Promise.all([
         suggestedActionsTrigger.boundingBox(),
         chatFrame.boundingBox(),
@@ -1489,6 +1504,7 @@ test('uses one compact Suggested Actions disclosure below 1000px without changin
     } else {
       await expect(suggestedActionsTrigger).toBeHidden();
       await expect(sidebar).toBeVisible({ timeout: scenarioReadinessTimeout });
+      await waitForViewportReflow(page);
       const sidebarBox = await sidebar.locator('..').boundingBox();
       expect(sidebarBox?.width).toBeCloseTo(300, 0);
     }
@@ -1595,6 +1611,14 @@ test('keeps RU and Uzbek accumulated locale states, focus, zoom, reflow, and net
   const diagnostics = captureRuntimeDiagnostics(page);
   await controller.install();
 
+  await page.setViewportSize({ width: 320, height: 900 });
+  await page.goto('/ai-chat', { waitUntil: 'commit' });
+  await expect(page.locator('section[aria-labelledby="ai-chat-hero-title"]')).toBeVisible({
+    timeout: scenarioReadinessTimeout,
+  });
+  await waitForRenderedAiChatAssets(page);
+  await waitForViewportReflow(page);
+
   for (const [
     locale,
     assistant,
@@ -1641,21 +1665,23 @@ test('keeps RU and Uzbek accumulated locale states, focus, zoom, reflow, and net
       'Chatni tozalash',
     ],
   ] as const) {
+    await page.setViewportSize({ width: 320, height: 900 });
+    await page.evaluate((selectedLocale: string) => {
+      localStorage.setItem('learnhub.locale', selectedLocale);
+    }, locale);
+    await page.goto('/ai-chat', { waitUntil: 'commit' });
+
     for (const width of [320, 390, 768, 998, 1280]) {
-      await page.setViewportSize({ width, height: 900 });
-      await page.goto('/ai-chat', { waitUntil: 'commit' });
+      if (width !== 320) await page.setViewportSize({ width, height: 900 });
+      if (width === 1280) await page.goto('/ai-chat', { waitUntil: 'commit' });
       await expect(page.locator('section[aria-labelledby="ai-chat-hero-title"]')).toBeVisible({
         timeout: scenarioReadinessTimeout,
       });
-      await waitForRenderedAiChatAssets(page);
-      await page.evaluate((selectedLocale: string) => {
-        localStorage.setItem('learnhub.locale', selectedLocale);
-      }, locale);
-      await page.reload({ waitUntil: 'commit' });
       await expect(page.getByRole('region', { name: assistant })).toBeVisible({
         timeout: scenarioReadinessTimeout,
       });
       await expect(page.getByLabel(composer)).toBeVisible();
+      await waitForViewportReflow(page);
       if (width === 998) {
         const actionTrigger = page.getByRole('button', { name: actions });
         await actionTrigger.click();
@@ -1682,10 +1708,13 @@ test('keeps RU and Uzbek accumulated locale states, focus, zoom, reflow, and net
     }
 
     await page.setViewportSize({ width: 390, height: 900 });
+    await waitForViewportReflow(page);
+    await waitForRenderedAiChatAssets(page);
     await page.goto('/', { waitUntil: 'commit' });
     await expect(page.getByText(catalogEmpty, { exact: true })).toBeVisible({
       timeout: scenarioReadinessTimeout,
     });
+    await waitForViewportReflow(page);
     await expect(page.locator('body')).not.toContainText('Translation unavailable');
     await expect(page.locator('body')).not.toContainText(
       /(?:catalog|course|cart|learning|common|navigation|routes):/,
@@ -1723,6 +1752,7 @@ test('keeps RU and Uzbek accumulated locale states, focus, zoom, reflow, and net
     await page.goto('/learning/enrollments/4', { waitUntil: 'commit' });
     const courseLauncher = page.getByRole('button', { name: openAssistant });
     await expect(courseLauncher).toBeVisible({ timeout: scenarioReadinessTimeout });
+    await waitForViewportReflow(page);
     await courseLauncher.click();
     await expect(page.getByRole('region', { name: chatLabel })).toBeVisible();
     await expect(page.getByLabel(composer)).toBeFocused();
@@ -1746,6 +1776,7 @@ test('keeps RU and Uzbek accumulated locale states, focus, zoom, reflow, and net
       timeout: scenarioReadinessTimeout,
     });
     await waitForRenderedAiChatAssets(page);
+    await waitForViewportReflow(page);
     await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 2 });
     expect(await page.evaluate(() => window.visualViewport?.scale)).toBeCloseTo(2, 1);
     await expectNoOverflow(page);

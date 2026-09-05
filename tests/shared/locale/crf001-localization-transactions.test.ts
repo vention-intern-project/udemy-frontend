@@ -1,8 +1,8 @@
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { cp, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { promisify } from 'node:util';
 
 import { afterEach, describe, expect, it } from 'vitest';
@@ -30,6 +30,9 @@ const {
   writeRecordedBaseArtifacts,
   // @ts-expect-error The dependency-free Node localization fixture has no TypeScript declaration.
 } = await import('./fixtures/crf001-recorded-base-fixture.mjs');
+const { materializeHistoricalSourceTree } = await import(
+  './fixtures/historical-source-tree-fixture.mjs'
+);
 const {
   CRF_001_CART_PAGE_SOURCE,
   // @ts-expect-error The fixture is a dependency-free Node module with no TypeScript declaration.
@@ -116,30 +119,12 @@ function recoveryRequestForTargets(targets: TransactionTargets, request = taskRe
 }
 
 async function createSourceFixture(): Promise<SourceFixture> {
-  const sourceRoot = join(await mkdtemp(join(tmpdir(), 'learnhub-crf001-source-')), 'src');
-  temporaryDirectories.push(dirname(sourceRoot));
+  const { directory, sourceRoot } = await materializeHistoricalSourceTree({
+    repositoryRoot: process.cwd(),
+    commit: CRF_001_FULL_TARGET_COMMIT,
+  });
+  temporaryDirectories.push(directory);
   const gitOptions = { maxBuffer: 32 * 1024 * 1024 };
-  const { stdout: paths } = await execFileAsync(
-    'git',
-    ['ls-tree', '-r', '--name-only', CRF_001_FULL_TARGET_COMMIT, '--', 'src'],
-    gitOptions,
-  );
-  const sourcePaths = paths.trim().split('\n').filter(Boolean);
-  if (sourcePaths.length === 0) {
-    throw new Error(`CRF-001 source target ${CRF_001_FULL_TARGET_COMMIT} is unavailable locally`);
-  }
-  await Promise.all(
-    sourcePaths.map(async (sourcePath) => {
-      const { stdout } = await execFileAsync(
-        'git',
-        ['show', `${CRF_001_FULL_TARGET_COMMIT}:${sourcePath}`],
-        gitOptions,
-      );
-      const destination = join(dirname(sourceRoot), sourcePath);
-      await mkdir(dirname(destination), { recursive: true });
-      await writeFile(destination, stdout, 'utf8');
-    }),
-  );
   const cartSourcePath = 'src/pages/cart-page/CartPage.tsx';
   const { stdout: recordedCartSource } = await execFileAsync(
     'git',
@@ -158,6 +143,35 @@ async function readPair(targets: TransactionTargets): Promise<readonly [string, 
     readFile(targets.registryPath, 'utf8'),
     readFile(targets.outputPath, 'utf8'),
   ]);
+}
+
+async function recordedBaseDestinationsStayIsolated(): Promise<void> {
+  const firstDirectory = await mkdtemp(join(tmpdir(), 'learnhub-crf001-recorded-base-isolation-'));
+  const secondDirectory = await mkdtemp(join(tmpdir(), 'learnhub-crf001-recorded-base-isolation-'));
+  temporaryDirectories.push(firstDirectory, secondDirectory);
+  const firstRegistryPath = join(firstDirectory, 'registry.json');
+  const firstOutputPath = join(firstDirectory, 'generated-resources.ts');
+  const secondRegistryPath = join(secondDirectory, 'registry.json');
+  const secondOutputPath = join(secondDirectory, 'generated-resources.ts');
+
+  await writeRecordedBaseArtifacts({
+    registryBaselinePath: firstRegistryPath,
+    generatedBaselinePath: firstOutputPath,
+  });
+  const expectedPair = await Promise.all([
+    readFile(firstRegistryPath, 'utf8'),
+    readFile(firstOutputPath, 'utf8'),
+  ]);
+  await writeFile(firstRegistryPath, 'caller mutation\n', 'utf8');
+  await writeFile(firstOutputPath, 'caller mutation\n', 'utf8');
+  await writeRecordedBaseArtifacts({
+    registryBaselinePath: secondRegistryPath,
+    generatedBaselinePath: secondOutputPath,
+  });
+
+  expect(
+    await Promise.all([readFile(secondRegistryPath, 'utf8'), readFile(secondOutputPath, 'utf8')]),
+  ).toEqual(expectedPair);
 }
 
 async function reviseFromRecordedBase(targets: TransactionTargets): Promise<void> {
@@ -190,6 +204,10 @@ afterEach(async () => {
 }, TEMPORARY_DIRECTORY_CLEANUP_TIMEOUT_MS);
 
 describe('CRF-001 localization transactions', () => {
+  it('keeps recorded-base destinations isolated from caller mutations', async () => {
+    await expect(recordedBaseDestinationsStayIsolated()).resolves.toBeUndefined();
+  });
+
   it('revises protected CRF sources transactionally, preserves identity/history and exactly replays', async () => {
     const targets = await createTargets();
     const [beforeRegistry] = await readPair(targets);

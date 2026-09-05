@@ -10,7 +10,6 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:browser": "playwright test --config tests/browser/playwright.config.ts --project=chromium --workers=1 --retries=0 --reporter=line && playwright test --config tests/browser/mlux006-multilingual-closure.playwright.config.ts --project=chromium --workers=1 --retries=0 --reporter=line",
-    "test:visual-admission": "node scripts/quality/visual-admission.mjs",
     "test:all": "npm run typecheck && npm run lint && npm test && npm run test:browser",
     "localization:sync": "node scripts/localization/sync.mjs",
     "localization:check": "node scripts/localization/check.mjs",

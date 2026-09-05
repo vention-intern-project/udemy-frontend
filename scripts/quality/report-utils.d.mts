@@ -1,6 +1,19 @@
 export const REPORT_SCHEMA_VERSION: number;
 export const REPORT_CLOCK_SKEW_TOLERANCE_MINUTES: number;
-export const REQUIRED_QUALITY_COMMAND_IDS: readonly string[];
+export const REQUIRED_QUALITY_COMMAND_IDS: readonly [
+  'format',
+  'stylelint',
+  'lint',
+  'quality-lint',
+  'typecheck',
+  'static-rules',
+  'tests',
+  'build',
+];
+export type QualityCommandId = (typeof REQUIRED_QUALITY_COMMAND_IDS)[number];
+export const CI_GROUP_IDS: readonly ['lint-static', 'typecheck', 'tests', 'build'];
+export type CiGroupId = (typeof CI_GROUP_IDS)[number];
+export const QUALITY_COMMAND_GROUPS: Readonly<Record<CiGroupId, readonly string[]>>;
 export const DIAGNOSTIC_SUMMARY_KEYS: readonly string[];
 export const FAILED_COMMAND_OUTPUT_MAX_CHARS: number;
 export const FAILED_COMMAND_OUTPUT_MAX_LINES: number;
@@ -25,6 +38,53 @@ export function classifyCommandDiagnostics(
   unexpectedGenericWarnings: number;
 };
 export function unexpectedDiagnosticCount(diagnostics: unknown): number;
+export interface DiagnosticSummary {
+  allowedRouterFutureWarnings: number;
+  unexpectedReactActWarnings: number;
+  unexpectedUnhandledRejections: number;
+  unexpectedConsoleWarnings: number;
+  unexpectedGenericWarnings: number;
+}
+export interface QualityCommand {
+  id: string;
+  status: 'pass' | 'fail';
+  durationMs: number;
+  exitCode: number | null;
+  errorCode: string | null;
+  diagnostics: DiagnosticSummary;
+}
+export interface ToolVersions {
+  node: string;
+  npm: string;
+  typescript: string;
+  prettier: string;
+  stylelint: string;
+  eslint: string;
+}
+export interface Finding {
+  category: string;
+  file: string;
+  line: number;
+  ruleId: string;
+  message: string;
+}
+export interface Suppression {
+  ruleId: string;
+  path: string;
+  owner: string;
+  rationale: string;
+}
+export interface Advisory {
+  complexitySignals: Record<string, unknown>[];
+}
+export interface ConfigVersions {
+  reportSchema: number;
+  staticRules: number;
+}
+export function stableJson(value: unknown): string;
+export function isStrictRfc3339DateTime(value: unknown): boolean;
+export function validateQualityCommand(command: unknown): string[];
+export function validateReportSection(section: string, value: unknown): string[];
 export interface CommandProcessResult {
   error?: Error & { code?: string };
   signal?: string | null;
