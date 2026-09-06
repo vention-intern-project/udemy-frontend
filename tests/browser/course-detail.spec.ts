@@ -513,12 +513,22 @@ test('fails closed for direct and malformed Catalog return state while preservin
     await expect(returnLink).toBeFocused();
     const geometry = await returnLink.evaluate((element) => {
       const link = element.getBoundingClientRect();
+      const summary = document
+        .querySelector<HTMLElement>('[class*="summary"]')
+        ?.getBoundingClientRect();
       const eyebrow = document
         .querySelector<HTMLElement>('[class*="eyebrow"]')
         ?.getBoundingClientRect();
-      return { height: link.height, linkBottom: link.bottom, eyebrowTop: eyebrow?.top ?? null };
+      return {
+        height: link.height,
+        linkBottom: link.bottom,
+        summaryTop: summary?.top ?? null,
+        eyebrowTop: eyebrow?.top ?? null,
+      };
     });
     expect(geometry.height).toBeGreaterThanOrEqual(44);
+    expect(geometry.summaryTop).not.toBeNull();
+    expect(Math.abs(geometry.summaryTop! - geometry.linkBottom - 16)).toBeLessThanOrEqual(0.5);
     expect(geometry.eyebrowTop).not.toBeNull();
     expect(geometry.linkBottom).toBeLessThanOrEqual(geometry.eyebrowTop!);
     await expectNoHorizontalOverflow(page);

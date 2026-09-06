@@ -211,50 +211,52 @@ export function CourseDetailPage() {
           })}
         </VisuallyHidden>
       ) : null}
-      <ContextualNavigationLink to={catalogReturnTarget}>
-        <ChevronLeft size={20} aria-hidden="true" />
-        {t('routes:backToCatalog', { defaultValue: 'Back to catalog' })}
-      </ContextualNavigationLink>
-      <header className={styles.summary}>
-        <div className={styles.intro}>
-          <p className={styles.eyebrow}>
-            {isDraft
-              ? t('course:draftCourse')
-              : t('routes:courseDetailsTitle', { defaultValue: 'Course details' })}
-          </p>
-          <h1 ref={detailHeadingRef} className={styles.recoveryTarget} tabIndex={-1}>
-            {course.title}
-          </h1>
-          <p className={styles.description}>{description}</p>
-          <dl className={styles.metadata}>
-            <div>
-              <dt>{t('course:instructor', { defaultValue: 'Instructor' })}</dt>
-              <dd>{course.instructorName}</dd>
-            </div>
-            <div>
-              <dt>{t('course:totalLessons', { defaultValue: 'Total lessons' })}</dt>
-              <dd>{outline.data?.total ?? course.lessons.length}</dd>
-            </div>
-            <div>
-              <dt>{t('course:status', { defaultValue: 'Status' })}</dt>
-              <dd>
-                {isDraft
-                  ? t('course:draft', { defaultValue: 'Draft' })
-                  : t('course:published', { defaultValue: 'Published' })}
-              </dd>
-            </div>
-          </dl>
-        </div>
-        <CourseActionPanel
-          action={action}
-          course={course}
-          isDraft={isDraft}
-          mutationState={mutationState}
-          preflight={preflight}
-          onRetryPreflight={() => void retryPreflight()}
-          onSubmitAction={submitAction}
-        />
-      </header>
+      <div className={styles.contextualSummary}>
+        <ContextualNavigationLink to={catalogReturnTarget}>
+          <ChevronLeft size={20} aria-hidden="true" />
+          {t('routes:backToCatalog', { defaultValue: 'Back to catalog' })}
+        </ContextualNavigationLink>
+        <header className={styles.summary}>
+          <div className={styles.intro}>
+            <p className={styles.eyebrow}>
+              {isDraft
+                ? t('course:draftCourse')
+                : t('routes:courseDetailsTitle', { defaultValue: 'Course details' })}
+            </p>
+            <h1 ref={detailHeadingRef} className={styles.recoveryTarget} tabIndex={-1}>
+              {course.title}
+            </h1>
+            <p className={styles.description}>{description}</p>
+            <dl className={styles.metadata}>
+              <div>
+                <dt>{t('course:instructor', { defaultValue: 'Instructor' })}</dt>
+                <dd>{course.instructorName}</dd>
+              </div>
+              <div>
+                <dt>{t('course:totalLessons', { defaultValue: 'Total lessons' })}</dt>
+                <dd>{outline.data?.total ?? course.lessons.length}</dd>
+              </div>
+              <div>
+                <dt>{t('course:status', { defaultValue: 'Status' })}</dt>
+                <dd>
+                  {isDraft
+                    ? t('course:draft', { defaultValue: 'Draft' })
+                    : t('course:published', { defaultValue: 'Published' })}
+                </dd>
+              </div>
+            </dl>
+          </div>
+          <CourseActionPanel
+            action={action}
+            course={course}
+            isDraft={isDraft}
+            mutationState={mutationState}
+            preflight={preflight}
+            onRetryPreflight={() => void retryPreflight()}
+            onSubmitAction={submitAction}
+          />
+        </header>
+      </div>
 
       <CourseOutline
         error={outline.error}
